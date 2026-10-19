@@ -23,7 +23,7 @@ import { industryDef, lineOf, type IndustryDef, type StaffFocus } from './indust
 import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { franchiseFeesFor } from './franchise-state'
-import { labIncomeIn, labValue } from './lab-state'
+import { fieldMarketOf, labIncomeIn, labValue } from './lab-state'
 import { hedgeProfitIn } from './hedge-record'
 import { studioValue } from './gamestudio-state'
 import { heavyPulse, readHeavy } from './heavy-rd'
@@ -444,7 +444,8 @@ export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx
   // and then everything below is exactly what it always was.
   const heavy = readHeavy(g, b.industry, marketKey(b))
   // What the rivals offer of each kind of product, and how well (product-market.ts).
-  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy)
+  // The company's trade and the shields its patents hold go with it (lab-state.ts fieldMarketOf).
+  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy, fieldMarketOf(b))
   const pot = ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1)
   // A breakthrough wakes up demand for the whole trade in its market, rivals and the player alike.
   return { ...ctx, pot: heavy.length ? pot * heavyPulse(heavy, year) : pot, field }

@@ -549,7 +549,8 @@ function lineSubtitle(l: LinePull, total: number, trend: -1 | 0 | 1, beats: stri
 function leadOf(family: string, field: Field, year: number): number | undefined {
   const rec = field.heavy.find((r) => r.family === family)
   if (!rec) return undefined
-  const lead = heavyLead(rec)
+  // A patent on the kind holds rivals back at least until its shield ends (lab-state.ts shieldsOf).
+  const lead = Math.max(heavyLead(rec), ...(field.market?.shield ?? []).filter((x) => x.family === family && x.until > year).map((x) => x.until))
   return lead >= year ? lead : undefined
 }
 

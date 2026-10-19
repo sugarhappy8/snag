@@ -8,12 +8,14 @@ import { log, notice } from '../core'
 import { chance } from '../rng'
 import type { Asset, GameState } from '../types'
 import { boardAllows } from './board'
+import { marketCtxFor } from './economy'
 import { manageBlock } from './gate'
 import { heavyEligible } from './heavy-rd'
-import { labCreditRate, labGrantAmount, labTierOf, LAB_CREDIT_CAP, LAB_GRANT_GAP, LAB_GRANT_SITES, opsProgram } from './lab-data'
-import { opsBlock, opsOdds, opsPrice, opsValue, opsYears, teamBlock, teamFee, teamPay, teamValue } from './lab-rules'
-import { applyWin, draftLab, readLab, saveLab, type LabProgram, type LabRow, type LabState } from './lab-state'
+import { BOOK_FADE, labCreditRate, labGrantAmount, labTierOf, LAB_CREDIT_CAP, LAB_GRANT_GAP, LAB_GRANT_SITES, LICENSE_X, opsProgram, ROYALTY_CAP_X } from './lab-data'
+import { licenseBlock, opsBlock, opsOdds, opsPrice, opsValue, opsYears, patentBlock, patentTerms, patentValue, teamBlock, teamFee, teamPay, teamValue } from './lab-rules'
+import { applyWin, draftLab, LAB_LIMITS, readLab, saveLab, type LabPatent, type LabProgram, type LabRow, type LabState } from './lab-state'
 import { LAB_LABEL, LAB_LOG, LAB_SAY } from './lab-text'
+import { fieldFor } from './product-market'
 import { rdProjects } from './rd'
 import { bizOf, findBusiness, runsIt, totalOutlets, type BizState } from './state'
 import { clampN, money, plural, rec } from './util'
@@ -40,11 +42,37 @@ interface LabMove {
   amount: number
 }
 
+/**
+ * The royalties a year's licensed patents earn: for each patent licensed and still shielded in the year
+ * (`lic <= fiscal < until`) a share of its fixed price scaled by how much of the rivals' pull really sells
+ * the kind and how far the kind has caught on, never more than what is left of its lifetime cap. The paid
+ * amount is added to the patent's `earned` on the draft; `firsts` lists the patents that earn for the first
+ * time. The market is read once and only when a patent needs it.
+ */
+function royalties(g: GameState, b: BizState, d: LabState, fiscal: number, firsts: { patent: LabPatent; amount: number }[]): number {
+  let total = 0
+  let field: ReturnType<typeof fieldFor> | undefined
+  for (const p of d.patents) {
+    if (!(p.lic > 0 && p.lic <= fiscal && fiscal < p.until)) continue
+    const left = Math.floor(ROYALTY_CAP_X * p.plan - p.earned)
+    if (!(left > 0)) continue
+    field ??= fieldFor(marketCtxFor(g, b, fiscal))
+    const f = field.of(p.family)
+    const amount = Math.min(left, Math.round(LICENSE_X * p.plan * f.offer * f.level))
+    if (!(amount > 0)) continue
+    if (!(p.earned > 0)) firsts.push({ patent: p, amount })
+    p.earned += amount
+    total += amount
+  }
+  return total
+}
+
 /** The money the lab moves for a fiscal year, in booking order. */
-function labMoves(_g: GameState, _a: Asset, b: BizState, d: LabState, fiscal: number): LabMove[] {
+function labMoves(g: GameState, _a: Asset, b: BizState, d: LabState, fiscal: number, firsts: { patent: LabPatent; amount: number }[]): LabMove[] {
   return [
     { key: 'credit', amount: labCredit(b.countryId, labSpendIn(b, fiscal)) },
     { key: 'grant', amount: Math.round(d.due.grant) },
+    { key: 'royalty', amount: royalties(g, b, d, fiscal, firsts) },
     // The research team's pay for the year: one salary for each scientist on the books (the team is never key staff).
     { key: 'payroll', amount: d.team.length * teamPay(b) },
   ]
@@ -59,7 +87,8 @@ export function bookLabYear(g: GameState, a: Asset, b: BizState, fiscal: number)
   if (!heavyEligible(b)) return
   if (readLab(b).booked >= fiscal) return
   const d = draftLab(b)
-  const moves = labMoves(g, a, b, d, fiscal)
+  const firsts: { patent: LabPatent; amount: number }[] = []
+  const moves = labMoves(g, a, b, d, fiscal, firsts)
   if (!rec(b.lab) && moves.every((m) => !(m.amount > 0))) return
   const row: LabRow = { year: fiscal, credit: 0, grant: 0, royalty: 0, payroll: 0 }
   let booked = false
@@ -80,6 +109,7 @@ export function bookLabYear(g: GameState, a: Asset, b: BizState, fiscal: number)
   d.booked = fiscal
   saveLab(b, d)
   if (row.grant > 0) log(g, LAB_LOG.grant(a.name, money(row.grant)), 'good')
+  for (const x of firsts) log(g, LAB_LOG.royalty(a.name, money(x.amount), x.patent.family), 'good')
 }
 
 /**
@@ -145,6 +175,13 @@ export function advanceLab(g: GameState, b: BizState, year: number): void {
       log(g, LAB_LOG.worked(name, def.label), 'good')
     } else log(g, LAB_LOG.failed(name, def.label), 'bad')
   }
+  // Patents: the book fades a tenth a year; one whose shield doesn't reach the new year is dropped (its family stays in `filed`).
+  d.patents = d.patents.filter((p) => {
+    if (year + 1 < p.until) return true
+    log(g, LAB_LOG.expired(name, p.family))
+    return false
+  })
+  for (const p of d.patents) p.book = Math.round(p.book * BOOK_FADE)
   saveLab(b, d)
 }
 
@@ -220,5 +257,80 @@ export function doRelease(g: GameState, a: Asset): boolean {
   d.team.shift()
   saveLab(b, d)
   log(g, LAB_LOG.released(cur.name))
+  return true
+}
+
+/**
+ * File a patent on a family the company launched: the fee leaves company cash now (a cost of this year)
+ * unless `pay` is false (the hired CEO's board budget already took it), the patent is stored with its fixed
+ * price, shield and book, and the family goes on the list of families patented here (it can't be filed
+ * again). `mode` 'license' files it already licensed from next year. The owner gets the notice when the
+ * owner's own action did it. Null (and a notice) when it can't be filed. No random draw.
+ */
+export function fileLabPatent(g: GameState, a: Asset, b: BizState, family: string, mode: 'hold' | 'license', pay: boolean): LabPatent | null {
+  const why = patentBlock(g, b, family, !pay)
+  if (why) {
+    notice(g, 'R&D', why, { emoji: '\u{1F9EA}' })
+    return null
+  }
+  const t = patentTerms(g, b, family)
+  if (pay) {
+    b.cash -= t.fee
+    b.yearCosts += t.fee
+  }
+  const filed: LabPatent = { family, filed: g.year, until: t.until, mode, lic: mode === 'license' ? g.year + 1 : 0, plan: t.plan, book: t.book, earned: 0 }
+  const d = draftLab(b)
+  d.patents.push(filed)
+  d.filed = [...d.filed.filter((x) => x !== family), family].slice(-LAB_LIMITS.filed)
+  saveLab(b, d)
+  log(g, LAB_LOG.patented(a.name, family))
+  if (pay && runsIt(g, a) && g.character.alive) notice(g, 'Patent Filed', LAB_SAY.patented(a.name, family, String(t.years), money(t.fee)), { emoji: '\u{1F4DC}' })
+  return filed
+}
+
+/**
+ * The owner patents a family: the live company, the right to manage it, the patent's own reason
+ * (patentBlock) and, past this year's capital budget, the board's vote (the gain is a fifth of what the
+ * patent is worth before its fee, patentValue) are all checked here, so a direct call, a restored menu or
+ * an older save can't skip them. Filed to hold: rivals can't sell the kind while the shield lasts. True
+ * when a patent was filed.
+ */
+export function doPatent(g: GameState, a: Asset, family: string): boolean {
+  const cur = findBusiness(g, a.id)
+  if (!cur || manageBlock(g, cur)) return false
+  const b = bizOf(g, cur)
+  const why = patentBlock(g, b, family)
+  if (why) {
+    notice(g, 'R&D', why, { emoji: '\u{1F9EA}' })
+    return false
+  }
+  const fee = patentTerms(g, b, family).fee
+  const gain = Math.max(0, (patentValue(g, b, family).value + fee) / 5)
+  if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: fee, gain, label: LAB_LABEL.patentVote(family, money(fee)) })) return false
+  return fileLabPatent(g, cur, b, family, 'hold', true) !== null
+}
+
+/**
+ * The owner licenses a held patent: one way, from next year rivals can sell the kind and the company earns
+ * royalties while they do. It spends nothing, so the board is not asked. The live company, the right to
+ * manage it and licenseBlock are checked here. True when it was licensed.
+ */
+export function doLicense(g: GameState, a: Asset, family: string): boolean {
+  const cur = findBusiness(g, a.id)
+  if (!cur || manageBlock(g, cur)) return false
+  const b = bizOf(g, cur)
+  const why = licenseBlock(g, b, family)
+  if (why) {
+    notice(g, 'R&D', why, { emoji: '\u{1F9EA}' })
+    return false
+  }
+  const d = draftLab(b)
+  const p = d.patents.find((x) => x.family === family)
+  if (!p) return false
+  p.mode = 'license'
+  p.lic = g.year + 1
+  saveLab(b, d)
+  log(g, LAB_LOG.licensed(cur.name, family))
+  if (runsIt(g, cur) && g.character.alive) notice(g, 'Licensed', LAB_SAY.licensed(family, String(p.lic), String(p.until)), { emoji: '\u{1F4DC}' })
   return true
 }

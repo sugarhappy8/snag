@@ -176,7 +176,7 @@ export function rdQuote(g: GameState, b: BizState, idea: string, budget: number,
   const field = fieldFor(c)
   const f = field.of(info.family)
   const launchYear = g.year + years
-  const later = fieldOf(c.rivals, c.fringe, c.key, launchYear, field.heavy)
+  const later = fieldOf(c.rivals, c.fringe, c.key, launchYear, field.heavy, field.market)
   const line: Product = { name: idea, launched: launchYear, boost: 0, quality, family: info.family, kind: info.kind }
   const lift = productPull(b.industry, [...b.products, line], launchYear, later).total - productPull(b.industry, b.products, launchYear, later).total
   return { cost, k, odds, years, quality, info, field: f.quality, offer: f.offer, level: f.level, trend: kindTrend(info.family, c.key, g.year, field.heavy), lift: Math.max(0, lift) }
@@ -230,9 +230,10 @@ export function shiftLineQuality(b: BizState, name: string, dq: number): void {
 function liftPath(b: BizState, ctx: MarketCtx, line: Product, from: number): { base: number; lift: number }[] {
   const out: { base: number; lift: number }[] = []
   const heavy = fieldFor(ctx).heavy
+  const market = fieldFor(ctx).market
   for (let t = 0; t < HORIZON; t++) {
     const year = from + t
-    const field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy)
+    const field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy, market)
     const base = productPull(b.industry, b.products, year, field).total
     const withIt = productPull(b.industry, [...b.products, { ...line, launched: from }], year, field).total
     out.push({ base, lift: Math.max(0, withIt - base) })

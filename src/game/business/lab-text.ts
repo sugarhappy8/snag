@@ -13,6 +13,11 @@ export const LAB_LOG: Record<string, Say> = {
   failed: (name, program) => `${name}'s ${program} didn't work.`,
   hired: (name) => `${name} hired a research scientist.`,
   released: (name) => `${name} let a research scientist go.`,
+  patented: (name, family) => `${name} patented ${family}.`,
+  expired: (name, family) => `${name}'s patent on ${family} ran out.`,
+  licensed: (name, family) => `${name} licensed ${family} to rivals.`,
+  // The first royalty a patent earns: name, amount, family.
+  royalty: (name, amount, family) => `${name} earned its first ${amount} in royalties on ${family}.`,
 }
 
 /** Outcomes, notices and the one reason a row can't run (cap 120). */
@@ -37,6 +42,20 @@ export const LAB_SAY: Record<string, Say> = {
   releaseCash: (need, short) => `Letting a scientist go needs ${need} of company cash with the usual cushion kept back (${short} short).`,
   // The longest-serving scientist's hire year, and the first year they can go.
   minService: (hired, free) => `Your longest-serving scientist came in ${hired}. They can go from ${free}.`,
+  // The owner's notices for a patent filed ("Patent Filed": name, family, years of shield, fee) and a licence ("Licensed": family, first year rivals can sell, last year of royalties).
+  patented: (name, family, years, fee) => `${name} filed for a patent on ${family}. For ${years} years rivals can't sell one. The fee was ${fee}.`,
+  licensed: (family, from, until) => `Rivals can sell ${family} from ${from}. You earn royalties while they do, until ${until}.`,
+  // The reasons a patent can't be filed or licensed: the same plain sentence a tap and a screen reader both get.
+  patentNotEligible: () => 'Patents are for product companies. This one runs its own kind of R&D.',
+  patentsFull: (n) => `You hold ${n} patents already. Wait for one to run out.`,
+  alreadyFiled: (family) => `${family} was patented here once. It can't be filed again.`,
+  noOwnLine: (years) => `Only a line you developed in the last ${years} years can be patented.`,
+  lowTier: (family) => `Low-tech trades can only patent a breakthrough, and ${family} isn't one.`,
+  notNovel: (family) => `Rivals already sell ${family}, so there is nothing new to patent.`,
+  patentCash: (need, short) => `A patent needs ${need} of company cash with the usual cushion kept back (${short} short).`,
+  noPatent: (family) => `You hold no patent on ${family}.`,
+  alreadyLicensed: (family) => `${family} is already licensed.`,
+  tooLate: (family) => `The patent on ${family} runs out next year. There is nothing left to license.`,
 }
 
 /** Tooltips: the rows and subtitles of the Research & Operations screen (cap 120). */
@@ -69,6 +88,15 @@ export const LAB_TIP: Record<string, Say> = {
   release: (fee, years) => `${fee} · after ${years} years`,
   hireConfirm: (fee, pay, years) => `Hire a research scientist? It costs ${fee} now and ${pay} a year. None can go for ${years} years.`,
   releaseConfirm: (fee) => `Let a research scientist go? It costs ${fee}. The longest-serving one leaves.`,
+  // The Patents rows: nothing to file yet (the years a launch stays patentable); a row's subtitle (fee, "6 years") and its confirm; a patent held ("5 more years") and one licensed (last year of royalties).
+  patentNone: (years) => `Nothing to patent yet. Your own new lines can be, for ${years} years after launch.`,
+  patent: (fee, years) => `${fee} · rivals can't sell one for ${years}`,
+  patentConfirm: (family, fee, years) => `Patent ${family}? It costs ${fee}. For ${years} rivals can't sell one.`,
+  held: (family, left) => `${family}: protected ${left} more`,
+  licensedRow: (family, until) => `${family}: licensed, royalties until ${until}`,
+  // The licence row: its subtitle and the confirm (first year rivals can sell).
+  license: () => 'No fee. Rivals can sell one from next year.',
+  licenseConfirm: (family, from) => `License ${family}? It can't be undone. Rivals can sell one from ${from}, and you earn royalties.`,
 }
 
 /** Labels of the screen's group, headings and team rows, the tier names, and the nouns for what a track changes. */
@@ -83,6 +111,10 @@ export const LAB_LABEL = {
   // What the board is asked to approve (it shows in the vote's notice and record).
   hireVote: 'Hire a research scientist',
   releaseVote: 'Let a research scientist go',
+  patents: 'Patents',
+  // The licence row's label and what the board is asked to approve for a patent (family, fee).
+  license: (family: string): string => `License ${family}`,
+  patentVote: (family: string, fee: string): string => `File a patent on ${family} (${fee})`,
 } as const
 
 /** The annual report's own lines for what the lab books. */

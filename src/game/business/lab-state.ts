@@ -8,6 +8,7 @@
 // change it and hand it to saveLab(), which stores a NEW object, so a cached read can never go stale.
 import type { Json } from '../types'
 import { LAB_FADE, LAB_LEVEL_MAX, LAB_WIN_DECAY, labTierOf, OPS_PROGRAMS, OPS_TIER, opsProgram, RUNG_GAIN, TEAM_STEP, type OpsProgram } from './lab-data'
+import type { FieldMarket, Shield } from './product-market'
 import type { BizState } from './state'
 import { clampN, num, rec } from './util'
 
@@ -354,4 +355,29 @@ export function teamPower(n: number): number {
 /** Extra R&D slots `n` scientists give the team: one for each two, at most two. */
 export function teamSlots(n: number): number {
   return Number.isFinite(n) ? Math.min(2, Math.max(0, Math.floor(n / 2))) : 0
+}
+
+const NO_SHIELD: readonly Shield[] = Object.freeze([])
+const shieldCache = new WeakMap<LabState, readonly Shield[]>()
+
+/**
+ * What the company's patents hold back from its rivals: for each one the family and the first year the
+ * shield no longer holds (a held patent: its `until`; a licensed one: the year licensing began). The list
+ * is shared, frozen and cached by the identity of the lab read; a company with no patent (or no lab) gets
+ * one shared empty list. It never says what year it is: the field compares the year with `until`.
+ */
+export function shieldsOf(b: Pick<BizState, 'lab'>): readonly Shield[] {
+  if (!b.lab) return NO_SHIELD
+  const st = readLab(b)
+  if (!st.patents.length) return NO_SHIELD
+  const hit = shieldCache.get(st)
+  if (hit) return hit
+  const out = Object.freeze(st.patents.map((p) => Object.freeze({ family: p.family, until: p.mode === 'license' ? p.lic : p.until })))
+  shieldCache.set(st, out)
+  return out
+}
+
+/** What a field is read with for this company: its trade and its shields (product-market.ts fieldOf). */
+export function fieldMarketOf(b: Pick<BizState, 'lab' | 'industry'>): FieldMarket {
+  return { industry: b.industry, shield: shieldsOf(b) }
 }

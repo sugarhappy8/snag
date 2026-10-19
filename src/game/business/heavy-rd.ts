@@ -19,11 +19,12 @@ import { eraFits } from './era'
 import { isFinanceFirm } from './finance-firm-state'
 import { breakthroughByName, breakthroughsFor, type Breakthrough } from './heavy-data'
 import { industryDef } from './industries'
+import { shieldsOf } from './lab-state'
 import type { DemandLevel } from './product-data'
 import { fieldFor, fieldOf, hashOf, mix, productPull } from './product-market'
 import { classicIdeas } from './products'
 import { baseYears, DISCOUNT, HORIZON, launchP, projectQuality, pullValue, rdCost, rdOf, rdProjects, rdQuality, rdReserve, retiredReason, roundBudget } from './rd'
-import { MAX_STORED_PROJECTS, retiredOf, type BizState, type Product, type RdProject } from './state'
+import { findBusiness, MAX_STORED_PROJECTS, readBiz, retiredOf, type BizState, type Product, type RdProject } from './state'
 import { clampN, money } from './util'
 
 /** A breakthrough that worked, in the market it was launched in. */
@@ -458,7 +459,7 @@ export function heavyGain(g: GameState, b: BizState, name: string, ctx?: MarketC
   let sales = 0
   for (let t = 0; t < HORIZON; t++) {
     const year = from + t
-    const field = fieldOf(c.rivals, c.fringe, c.key, year, records)
+    const field = fieldOf(c.rivals, c.fringe, c.key, year, records, fieldFor(c).market)
     const base = productPull(b.industry, b.products, year, field).total
     const withIt = productPull(b.industry, [...b.products.filter((p) => p.name !== name), line], year, field).total
     sales += pullValue(c, b, w, base, withIt) * Math.pow(DISCOUNT, years - 1 + t)
@@ -536,8 +537,13 @@ export function heavyArrivals(g: GameState, b: BizState, year: number): void {
   const market = marketKey(b)
   const records = readHeavy(g, b.industry, market)
   if (!records.length) return
+  // A pioneer's patent holds rivals back: while its shield lasts into the new year the first rival isn't reported (lab-state.ts shieldsOf).
+  const held = (r: HeavyRecord): boolean => {
+    const co = findBusiness(g, r.by)
+    return co !== undefined && shieldsOf(readBiz(g, co)).some((x) => x.family === r.family && year + 1 < x.until)
+  }
   // The new year is the one the rivals sell in; nothing can be due before the development time is over.
-  const due = records.filter((r) => r.rival === undefined && year + 1 >= r.year + r.years)
+  const due = records.filter((r) => r.rival === undefined && year + 1 >= r.year + r.years && !held(r))
   if (!due.length) return
   const rivals = marketCtxFor(g, b, year + 1).rivals
   let reported = false

@@ -1,16 +1,16 @@
 // The Research & Operations screen (R&D 3.0): what the country pays back, last year's lab ledger, the
-// Operations R&D programs (one row each) and the research team. Menus are pure: they re-read the live company every time they
+// Operations R&D programs (one row each), the patents and the research team. Menus are pure: they re-read the live company every time they
 // are built or tapped, never write state and never draw g.rng; a row that can't run carries the single
-// reason its rule gives (lab-rules.ts opsBlock, teamBlock), so a tap and a screen reader get the same words. The
+// reason its rule gives (lab-rules.ts opsBlock, patentBlock, licenseBlock, teamBlock), so a tap and a screen reader get the same words. The
 // money moves in lab-year.ts, whose entry points check everything again.
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { manageBlock } from './gate'
 import { heavyEligible } from './heavy-rd'
-import { labCreditRate, labTierOf, OPS_MAX_RUNG, opsProgram, TEAM_MIN_YEARS, TEAM_ODDS, type OpsProgram } from './lab-data'
-import { opsBlock, opsGain, opsOdds, opsOffers, opsPrice, opsYears, teamBlock, teamCap, teamFee, teamPay } from './lab-rules'
+import { labCreditRate, labTierOf, OPS_MAX_RUNG, opsProgram, PATENT_AGE, TEAM_MIN_YEARS, TEAM_ODDS, type OpsProgram } from './lab-data'
+import { licenseBlock, opsBlock, opsGain, opsOdds, opsOffers, opsPrice, opsYears, patentableFamilies, patentBlock, patentTerms, teamBlock, teamCap, teamFee, teamPay } from './lab-rules'
 import { readLab, teamPower, teamSlots } from './lab-state'
 import { LAB_LABEL, LAB_TIP } from './lab-text'
-import { doHire, doOps, doRelease } from './lab-year'
+import { doHire, doLicense, doOps, doPatent, doRelease } from './lab-year'
 import { live, mAct } from './market-menu-kit'
 import { readBiz, type BizState } from './state'
 import { money, plural } from './util'
@@ -33,7 +33,7 @@ function labGroup(a: Asset): MenuGroup {
     disabledReason: (g) => manageBlock(g, a),
     children: (g) => {
       const b = readBiz(g, live(g, a))
-      return [...headerRows(g, a, b), ...opsNodes(g, a, b), ...teamNodes(a, b)]
+      return [...headerRows(g, a, b), ...opsNodes(g, a, b), ...patentNodes(g, a, b), ...teamNodes(a, b)]
     },
   }
 }
@@ -90,6 +90,59 @@ function opsAction(a: Asset, p: OpsProgram): MenuAction {
     disabled: (g, b) => opsBlock(g, b, p.id),
     run: (g, cur) => {
       doOps(g, cur, p.id)
+    },
+  })
+}
+
+const PATENT_EMOJI = '\u{1F4DC}'
+const slug = (family: string): string => family.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
+/** The Patents part: one action for each line that can be patented, one row for each patent held, and a licence action on a held one. */
+function patentNodes(g: GameState, a: Asset, b: BizState): MenuNode[] {
+  const nodes: MenuNode[] = [{ type: 'heading', id: `biz.labPatentH.${a.id}`, label: LAB_LABEL.patents }]
+  const families = patentableFamilies(g, b)
+  const held = readLab(b).patents
+  if (!families.length && !held.length) nodes.push({ type: 'info', id: `biz.labPatentNone.${a.id}`, emoji: '\u{1F4AD}', text: LAB_TIP.patentNone(String(PATENT_AGE)) })
+  for (const family of families) nodes.push(patentAction(a, family))
+  for (const p of held) {
+    nodes.push({ type: 'info', id: `biz.labPatent.${a.id}.${slug(p.family)}`, emoji: PATENT_EMOJI, text: p.mode === 'license' ? LAB_TIP.licensedRow(p.family, String(p.until)) : LAB_TIP.held(p.family, plural(Math.max(1, p.until - g.year), 'year')) })
+    if (p.mode === 'hold') nodes.push(licenseAction(a, p.family))
+  }
+  return nodes
+}
+
+/** What filing costs and shields, read from the live company. */
+function patentQuote(g: GameState, a: Asset, family: string): { fee: string; years: string } {
+  const t = patentTerms(g, readBiz(g, live(g, a)), family)
+  return { fee: money(t.fee), years: plural(t.years, 'year') }
+}
+
+/** One line that can be patented: the fee and the years rivals can't sell one; greyed out with the one reason patentBlock gives. */
+function patentAction(a: Asset, family: string): MenuAction {
+  return mAct(a, `lab.patent.${slug(family)}`, family, PATENT_EMOJI, {
+    subtitle: (g) => {
+      const q = patentQuote(g, a, family)
+      return LAB_TIP.patent(q.fee, q.years)
+    },
+    confirm: (g) => {
+      const q = patentQuote(g, a, family)
+      return LAB_TIP.patentConfirm(family, q.fee, q.years)
+    },
+    disabled: (g, b) => patentBlock(g, b, family),
+    run: (g, cur) => {
+      doPatent(g, cur, family)
+    },
+  })
+}
+
+/** Licence a held patent: one way, no fee; greyed out with the one reason licenseBlock gives. */
+function licenseAction(a: Asset, family: string): MenuAction {
+  return mAct(a, `lab.license.${slug(family)}`, LAB_LABEL.license(family), PATENT_EMOJI, {
+    subtitle: () => LAB_TIP.license(),
+    confirm: (g) => LAB_TIP.licenseConfirm(family, String(g.year + 1)),
+    disabled: (g, b) => licenseBlock(g, b, family),
+    run: (g, cur) => {
+      doLicense(g, cur, family)
     },
   })
 }

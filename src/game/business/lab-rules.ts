@@ -4,14 +4,18 @@
 // and rung (rd.ts rdSiteScale): nothing here reads the company's cash, sales or valuation, except the
 // cash a program needs to start and the worth it is judged against.
 import type { GameState } from '../types'
-import { bizWorth, localEcon, type Worth } from './economy'
+import { patentLaw } from '../workshop/market'
+import { marketKey } from './competition-core'
+import { bizWorth, localEcon, marketCtxFor, type Worth } from './economy'
 import { eraFits } from './era'
-import { heavyEligible } from './heavy-rd'
-import { LAB_LEVEL_MAX, LAB_FADE, labTierOf, OPS_COOLDOWN, OPS_MAX_RUNG, OPS_PROGRAMS, OPS_TIER, opsProgram, RUNG_PENALTY, RUNG_X, RUNG_YEARS, TEAM_CAP, TEAM_FEE_X, TEAM_MIN_YEARS, TEAM_PAY_X, type OpsProgram } from './lab-data'
-import { draftLab, levelOf, opsEffectsOf, readLab, saveLab, winLevel, type LabTrack } from './lab-state'
+import { breakthroughByName } from './heavy-data'
+import { heavyEligible, readHeavy } from './heavy-rd'
+import { IP_SHARE, LAB_LEVEL_MAX, LAB_FADE, labTierOf, LICENSE_X, OPS_COOLDOWN, OPS_MAX_RUNG, OPS_PROGRAMS, OPS_TIER, opsProgram, PATENT_AGE, PATENT_FEE_X, ROYALTY_CAP_X, RUNG_PENALTY, RUNG_X, RUNG_YEARS, SHIELD, TEAM_CAP, TEAM_FEE_X, TEAM_MIN_YEARS, TEAM_PAY_X, type OpsProgram } from './lab-data'
+import { draftLab, LAB_LIMITS, levelOf, opsEffectsOf, readLab, saveLab, shieldsOf, winLevel, type LabTrack } from './lab-state'
 import { LAB_LABEL, LAB_SAY } from './lab-text'
+import { fieldFor, fieldOf, infoOf, productPull, type FieldMarket } from './product-market'
 import { productIdeas } from './products'
-import { baseYears, bestRdIdea, DISCOUNT, HORIZON, launchP, rdProjects, rdReserve, rdSiteScale, RD_BASE, roundBudget } from './rd'
+import { baseYears, bestRdIdea, DISCOUNT, HORIZON, launchP, pullValue, rdCost, rdProjects, rdReserve, rdSiteScale, RD_BASE, roundBudget } from './rd'
 import { MAX_STORED_PROJECTS, type BizState } from './state'
 import { clampN, money } from './util'
 
@@ -198,4 +202,112 @@ export function teamValue(g: GameState, b: BizState, w: Worth = bizWorth(g, b)):
   const gain = next.ordinary - now.ordinary + (next.ops - now.ops)
   const safe = Number.isFinite(gain) ? gain : 0
   return { gain: safe, pay, value: safe - pay }
+}
+
+/** Every family the company sells a line of that it developed itself (a rival bought out doesn't count) and launched at most PATENT_AGE years ago, with its newest launch. A line not on sale yet doesn't count. */
+function ownRecent(g: GameState, b: BizState): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const p of b.products) {
+    if (p.from || !(p.launched <= g.year) || g.year - p.launched > PATENT_AGE) continue
+    const family = infoOf(p, b.industry).family
+    out.set(family, Math.max(out.get(family) ?? Number.NEGATIVE_INFINITY, p.launched))
+  }
+  return out
+}
+
+/**
+ * The families the screen offers to patent: the company's own lines of the last PATENT_AGE years, newest
+ * launch first, at most as many as it may hold (patentBlock says which of them can be filed). Pure.
+ */
+export function patentableFamilies(g: GameState, b: BizState): readonly string[] {
+  if (!heavyEligible(b)) return []
+  return [...ownRecent(g, b)]
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, LAB_LIMITS.patents)
+    .map((x) => x[0])
+}
+
+/**
+ * What a patent on a family costs, shields and is worth on the books: fixed by the kind and the country,
+ * never by the company's cash or sales. `plan` is the price the kind cost to develop (a breakthrough's own
+ * record, else an ordinary idea's cost); the fee is a share of it plus the country's filing fee; the shield
+ * lasts the tier's years times how well the country's courts enforce it (at least two); the book is a share
+ * of the price. Pure.
+ */
+export function patentTerms(g: GameState, b: BizState, family: string): { plan: number; fee: number; years: number; until: number; book: number } {
+  const law = patentLaw(b.countryId, g.year)
+  const record = readHeavy(g, b.industry, marketKey(b)).find((r) => r.family === family)
+  const plan = record && record.cost > 0 ? record.cost : rdCost(b, family)
+  const fee = roundBudget(PATENT_FEE_X * plan) + law.fee
+  const years = Math.max(2, Math.round(SHIELD[labTierOf(b.industry) ?? 'mid'] * law.enforcement))
+  return { plan, fee, years, until: g.year + years, book: Math.round(IP_SHARE * plan) }
+}
+
+/**
+ * Why a family can't be patented now: one reason, or null when it can. In order: not a product company, six
+ * live patents already, the family was patented here before, no line of its own launched in the last
+ * PATENT_AGE years, a recipe or service in a low-tech trade (only a breakthrough), a rival already sells it
+ * (nothing new) and cash (the fee plus the usual reserve; `cashPaid` skips it, for the hired CEO whose board
+ * budget already took the fee). Pure.
+ */
+export function patentBlock(g: GameState, b: BizState, family: string, cashPaid = false): string | null {
+  const tier = labTierOf(b.industry)
+  if (!tier || !heavyEligible(b)) return LAB_SAY.patentNotEligible()
+  const lab = readLab(b)
+  const name = typeof family === 'string' ? family : ''
+  if (lab.patents.length >= LAB_LIMITS.patents) return LAB_SAY.patentsFull(String(LAB_LIMITS.patents))
+  if (lab.filed.includes(name)) return LAB_SAY.alreadyFiled(shown(name))
+  if (!name || !ownRecent(g, b).has(name)) return LAB_SAY.noOwnLine(String(PATENT_AGE))
+  if (tier === 'low' && breakthroughByName(name) === null) return LAB_SAY.lowTier(shown(name))
+  if (fieldFor(marketCtxFor(g, b, g.year)).of(name).offer > 0.02) return LAB_SAY.notNovel(shown(name))
+  if (!cashPaid) {
+    const need = patentTerms(g, b, name).fee + rdReserve(b)
+    if (!(b.cash >= need)) return LAB_SAY.patentCash(money(need), money(need - Math.max(0, b.cash)))
+  }
+  return null
+}
+
+/** Why a held patent can't be licensed: no such patent, already licensed, or it runs out too soon to earn anything. Pure. */
+export function licenseBlock(g: GameState, b: BizState, family: string): string | null {
+  const name = typeof family === 'string' ? family : ''
+  const p = readLab(b).patents.find((x) => x.family === name)
+  if (!p) return LAB_SAY.noPatent(shown(name))
+  if (p.mode === 'license') return LAB_SAY.alreadyLicensed(shown(name))
+  if (p.until <= g.year + 1) return LAB_SAY.tooLate(shown(name))
+  return null
+}
+
+/**
+ * Expected dollars of patenting a family now, over the shield's years, in the better of two ways, less the
+ * fee. Hold: each year the company's pull with the shield against its pull in the open field, the
+ * customers that are worth (pullValue, as ordinary R&D counts them). License: from next year the
+ * royalties rivals that sell the kind would pay, up to the lifetime cap. Both fields come from fieldOf with
+ * and without the new shield (and with the company's other patents), the resolver's own math. Pure: it
+ * draws nothing and writes nothing.
+ */
+export function patentValue(g: GameState, b: BizState, family: string, w: Worth = bizWorth(g, b)): { value: number; mode: 'hold' | 'license'; hold: number; license: number; fee: number } {
+  const t = patentTerms(g, b, family)
+  const c = marketCtxFor(g, b, g.year)
+  const heavy = fieldFor(c).heavy
+  const others = shieldsOf(b).filter((x) => x.family !== family)
+  const open: FieldMarket = { industry: b.industry, shield: others }
+  const shut: FieldMarket = { industry: b.industry, shield: [...others, { family, until: t.until }] }
+  let hold = 0
+  let license = 0
+  let capLeft = ROYALTY_CAP_X * t.plan
+  for (let k = 0; k < t.years; k++) {
+    const year = g.year + k
+    const free = fieldOf(c.rivals, c.fringe, c.key, year, heavy, open)
+    const held = fieldOf(c.rivals, c.fringe, c.key, year, heavy, shut)
+    hold += Math.pow(DISCOUNT, k) * pullValue(c, b, w, productPull(b.industry, b.products, year, free).total, productPull(b.industry, b.products, year, held).total)
+    if (k >= 1) {
+      const f = free.of(family)
+      const royalty = Math.max(0, Math.min(capLeft, LICENSE_X * t.plan * f.offer * f.level))
+      license += Math.pow(DISCOUNT, k) * royalty
+      capLeft -= royalty
+    }
+  }
+  const best = Math.max(hold, license)
+  const value = Number.isFinite(best) ? best - t.fee : -t.fee
+  return { value, mode: license > hold ? 'license' : 'hold', hold: Number.isFinite(hold) ? hold : 0, license: Number.isFinite(license) ? license : 0, fee: t.fee }
 }

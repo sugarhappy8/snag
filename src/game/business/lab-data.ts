@@ -130,3 +130,14 @@ export const TEAM_FEE_X = 0.5
 export const LAB_LEVEL_MAX = 0.95
 export const LAB_FADE = 0.95
 export const LAB_WIN_DECAY = 0.8
+
+/** Years a patent shields its family by tier (before the country's enforcement): a recipe's edge is short, a mid-tech process holds longest. */
+export const SHIELD: Record<LabTier, number> = { low: 3, mid: 6, high: 5 }
+
+/** A patent's book value as a share of the fixed price it is based on (never above it, and it fades), the filing fee as a share of that price, the share of it a licence's royalty is paid on, the lifetime royalty cap as a multiple of it, the book's yearly fade, and the years after a launch a line can still be patented. */
+export const IP_SHARE = 0.6
+export const PATENT_FEE_X = 0.12
+export const LICENSE_X = 0.3
+export const ROYALTY_CAP_X = 1.5
+export const BOOK_FADE = 0.9
+export const PATENT_AGE = 3

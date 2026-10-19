@@ -218,6 +218,18 @@ export interface FamilyField {
   exists: boolean
 }
 
+/** A patent's hold on a kind of product: no rival (or long-tail seller) offers it while the year is before `until` (lab-state.ts shieldsOf). */
+export interface Shield {
+  family: string
+  until: number
+}
+
+/** What a field is read for besides the rivals: the company's trade and the shields its patents hold. */
+export interface FieldMarket {
+  industry: string
+  shield?: readonly Shield[]
+}
+
 /** The rivals' side of every kind of product in one market and year (computed on demand). */
 export interface Field {
   place: string
@@ -226,6 +238,8 @@ export interface Field {
   rivals: readonly unknown[]
   /** The breakthroughs of this market it was read with (heavy-rd.ts); a field for another year of the same market passes them on. */
   heavy: readonly HeavyRecord[]
+  /** The trade and the shields it was read with (absent for a field built without them); a field for another year passes them on. */
+  market?: FieldMarket
   of(family: string): FamilyField
   /** Each rival's version of a kind, in the order of the rivals the field was made from (-1: none). */
   versions(family: string): readonly number[]
@@ -241,7 +255,7 @@ const NO_HEAVY: readonly HeavyRecord[] = Object.freeze([])
  * records (heavy-rd.ts readHeavy): a kind with a record follows it instead of the real-history curve, and
  * the records are part of the cache key. Without records the field is what it always was.
  */
-export function fieldOf(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' | 'pull'>[], fringe: number, place: string, year: number, heavy?: readonly HeavyRecord[]): Field {
+export function fieldOf(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' | 'pull'>[], fringe: number, place: string, year: number, heavy?: readonly HeavyRecord[], market?: FieldMarket): Field {
   let pulls = 0
   let quality = 0
   rivals.forEach((r, i) => {
@@ -251,11 +265,15 @@ export function fieldOf(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quali
   const records = heavy ?? NO_HEAVY
   // Every number the field reads from a record is in the signature (the arrival depends on the years).
   const sig = records.length ? `|${records.map((r) => `${r.family}\u0001${r.year}\u0001${r.years}\u0001${r.quality}`).join('\u0002')}` : ''
-  const key = `${place}|${year}|${fringe}|${rivals.length}|${rivals[0]?.id ?? ''}|${rivals[rivals.length - 1]?.id ?? ''}|${pulls}|${quality}${sig}`
+  // The trade and the shields are part of the key too (shields in any order are one field); a field built without a market has no shield.
+  const shields = market?.shield?.length ? [...market.shield].sort((x, y) => (x.family < y.family ? -1 : x.family > y.family ? 1 : x.until - y.until)) : []
+  const mkey = market ? `|m${market.industry}|s${shields.map((x) => `${x.family}\u0001${x.until}`).join('\u0002')}` : ''
+  const key = `${place}|${year}|${fringe}|${rivals.length}|${rivals[0]?.id ?? ''}|${rivals[rivals.length - 1]?.id ?? ''}|${pulls}|${quality}${sig}${mkey}`
   const hit = fieldCache.get(key)
   if (hit) return hit
   // The field keeps its own frozen copy: a list changed later by its owner can't change a shared, cached field.
-  const out = makeField(rivals, fringe, place, year, records.length ? Object.freeze([...records]) : NO_HEAVY)
+  const kept = market ? Object.freeze({ industry: market.industry, ...(shields.length ? { shield: Object.freeze(shields.map((x) => Object.freeze({ family: x.family, until: x.until }))) } : {}) }) : undefined
+  const out = makeField(rivals, fringe, place, year, records.length ? Object.freeze([...records]) : NO_HEAVY, kept)
   if (fieldCache.size > 256) {
     const first = fieldCache.keys().next().value
     if (first !== undefined) fieldCache.delete(first)
@@ -264,7 +282,7 @@ export function fieldOf(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quali
   return out
 }
 
-function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' | 'pull'>[], fringe: number, place: string, year: number, heavy: readonly HeavyRecord[]): Field {
+function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' | 'pull'>[], fringe: number, place: string, year: number, heavy: readonly HeavyRecord[], market?: FieldMarket): Field {
   const memo = new Map<string, { f: FamilyField; v: number[] }>()
   const total = rivals.reduce((t, r) => t + Math.max(0, r.pull), 0) + Math.max(0, fringe)
   let hashes: number[] | null = null
@@ -277,7 +295,9 @@ function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' |
     const versions: number[] = new Array(rivals.length).fill(-1)
     let wo = 0
     let wq = 0
-    if (d.exists) {
+    // A patent holds the kind back: it exists and has its demand, but no rival and nobody in the long tail offers it yet.
+    const held = market?.shield?.some((x) => x.family === family && year < x.until) === true
+    if (d.exists && !held) {
       if (rec) {
         rivals.forEach((r, i) => {
           if (year < heavyArrival(rec, r)) return
@@ -310,12 +330,12 @@ function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' |
     memo.set(family, out)
     return out
   }
-  return { place, year, rivals, heavy, of: (family) => get(family).f, versions: (family) => get(family).v }
+  return { place, year, rivals, heavy, ...(market ? { market } : {}), of: (family) => get(family).f, versions: (family) => get(family).v }
 }
 
 /** The market's field for a context (marketCtxFor attaches one; a bare context gets it computed). */
 export function fieldFor(ctx: MarketCtx): Field {
-  return ctx.field ?? fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year)
+  return ctx.field ?? fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, undefined, { industry: ctx.industry })
 }
 
 /**
@@ -502,12 +522,12 @@ const MAX_PRESS = 0.5
  * The rivals' combined pull is unchanged (the company's own gain is its pull, productPull), so
  * this only decides who pays for it. Returns the context unchanged when the company has no lines.
  */
-export function applyProductRivalry(ctx: MarketCtx, industry: string, products: readonly Product[], field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, ctx.field?.heavy)): MarketCtx {
+export function applyProductRivalry(ctx: MarketCtx, industry: string, products: readonly Product[], field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, ctx.field?.heavy, ctx.field?.market)): MarketCtx {
   if (!products.length || !ctx.rivals.length) return ctx
   const mine = bestByFamily(industry, products, ctx.year)
   if (!mine.size) return ctx
   // The field must have been read from these very rivals (same order): its versions line up.
-  const own = field.rivals === ctx.rivals ? field : fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, field.heavy)
+  const own = field.rivals === ctx.rivals ? field : fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, field.heavy, field.market)
   const press: { seg: number; q: number; adoption: number; versions: readonly number[] }[] = []
   for (const [family, q] of mine) {
     const f = own.of(family)
