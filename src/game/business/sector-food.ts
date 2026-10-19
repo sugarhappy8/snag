@@ -138,7 +138,8 @@ export function foodHeader(g: GameState, b: BizState, st: FoodState | null): str
     lines.push(`${first.name.charAt(0).toUpperCase()}${first.name.slice(1)} fills above ${pct(above)} use.`)
   }
   const delivery = st.channel === 1 ? 'on a platform' : st.channel === 2 ? 'by own fleet' : 'off'
-  lines.push(`Menu ${MENU_NAME[st.menu]}. Delivery ${delivery}. ${st.hours === 1 ? 'Extended' : 'Standard'} hours.`)
+  // One short fact a line: three short sentences in one line would read as a trailing fragment.
+  lines.push(`Menu ${MENU_NAME[st.menu]}.`, `Delivery ${delivery}.`, `${st.hours === 1 ? 'Extended' : 'Standard'} hours.`)
   const history = sectorHistoryLine(g, b)
   if (history) lines.push(history)
   return lines
