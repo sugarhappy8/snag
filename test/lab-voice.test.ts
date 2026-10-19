@@ -15,7 +15,7 @@ import { LAB_LABEL, LAB_LOG, LAB_SAY, LAB_STATEMENT, LAB_TIP, type Say } from '.
 import { doHire, doLicense, doOps, doPatent, doRelease } from '../src/game/business/lab-year'
 import { money, plural } from '../src/game/business/util'
 import type { GameState } from '../src/game/types'
-import { labGame, launchBreakthrough } from './lab-kit'
+import { labGame, launchBreakthrough, PATENT_COUNTRY, PATENT_TRADE } from './lab-kit'
 import { nextYear } from './market-kit'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -157,8 +157,8 @@ describe('R&D 3.0 text keeps to the voice guide', () => {
   }, 120_000)
 
   it('the first royalty line of a played licence fits as a template', () => {
-    // A brewery in Canada (mid tech: its shield outlasts the first rivals' arrival, so a royalty is paid).
-    const { g, a, b } = labGame(71, 'brewery', { country: 'ca' })
+    // A mid-tech company in Canada whose breakthrough takes 4 years: its shield outlasts the first rivals' arrival, so a royalty is paid.
+    const { g, a, b } = labGame(71, PATENT_TRADE, { country: PATENT_COUNTRY })
     const family = launchBreakthrough(g, a, b)
     expect(doPatent(g, a, family)).toBe(true)
     expect(doLicense(g, a, family)).toBe(true)

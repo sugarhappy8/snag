@@ -11,7 +11,7 @@ import { askingSalary, stepDown } from '../src/game/business/career'
 import * as economy from '../src/game/business/economy'
 import { bizWorth } from '../src/game/business/economy'
 import { smartManagerTurn } from '../src/game/business/board-ceo'
-import { opsProgram } from '../src/game/business/lab-data'
+import { OPS_PROGRAMS, opsProgram } from '../src/game/business/lab-data'
 import { labMenus } from '../src/game/business/lab-menu'
 import * as rules from '../src/game/business/lab-rules'
 import { bestLabMove, opsBlock, opsOffers, opsPrice, opsValue, patentableFamilies, patentBlock, patentTerms, patentValue, teamBlock, teamValue, type LabMove } from '../src/game/business/lab-rules'
@@ -20,7 +20,8 @@ import { bizOf, readBiz, type BizState, type CeoStyle } from '../src/game/busine
 import { money } from '../src/game/business/util'
 import type { Mandate } from '../src/game/business/board-state'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
-import { deepFreeze, labGame, launchBreakthrough, noDraw, patchLab } from './lab-kit'
+import type { Industry } from '../src/game/data/markets'
+import { deepFreeze, labGame, launchBreakthrough, noDraw, PATENT_COUNTRY, PATENT_TRADE, patchLab } from './lab-kit'
 
 const exact = (v: number): number => v
 const NO_PAY = "Doesn't pay back now"
@@ -48,8 +49,9 @@ function textOf(g: GameState, n: MenuNode): string {
 }
 
 /** A rich mid-tech company: 40 sites, so the cost and quality programs pay. */
-function rich(seed: number, opts: { country?: string; cash?: number } = {}): { g: GameState; a: Asset; b: BizState } {
-  return labGame(seed, 'brewery', { outlets: 40, ...opts })
+function rich(seed: number, opts: { country?: string; cash?: number; industry?: Industry } = {}): { g: GameState; a: Asset; b: BizState } {
+  const { industry, ...rest } = opts
+  return labGame(seed, industry ?? 'brewery', { outlets: 40, ...rest })
 }
 
 /** A held patent that is not a real family: only the book and the count matter to the screen. */
@@ -86,7 +88,7 @@ describe('the hints on the Research & Operations screen', () => {
   })
 
   it('a patent row names its better way and the number patentValue gives', () => {
-    const { g, a, b } = rich(41)
+    const { g, a, b } = rich(41, { industry: PATENT_TRADE, country: PATENT_COUNTRY })
     const fam = launchBreakthrough(g, a, b)
     const w = bizWorth(g, b)
     const pv = patentValue(g, b, fam, w)
@@ -313,9 +315,14 @@ describe('the hired CEO', () => {
   })
 
   it('files the patent when that is the best move, in the mode the value prefers', () => {
-    const { g, a, b } = rich(52)
+    const { g, a, b } = rich(52, { industry: PATENT_TRADE, country: PATENT_COUNTRY })
     const fam = launchBreakthrough(g, a, b)
+    // Every Operations program has just been won (the three years' wait), so the patent is the one move left that can pay.
+    patchLab(b, (d) => {
+      for (const p of OPS_PROGRAMS) d.done[p.id] = g.year
+    })
     const pv = patentValue(g, b, fam, bizWorth(g, b))
+    expect(pv.value).toBeGreaterThan(0)
     hireCeo(g, a, b)
     const { calls } = turn(g, a, b)
     expect(calls[0].move).toMatchObject({ kind: 'patent', family: fam, mode: pv.mode })

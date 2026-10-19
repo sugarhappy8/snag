@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { marketKey } from '../src/game/business/competition-core'
 import { marketCtxFor } from '../src/game/business/economy'
 import { breakthroughByName } from '../src/game/business/heavy-data'
-import { heavyLead, readHeavy } from '../src/game/business/heavy-rd'
+import { heavyArrival, readHeavy } from '../src/game/business/heavy-rd'
 import { opsProgram, ROYALTY_CAP_X, SHIELD } from '../src/game/business/lab-data'
 import { opsBlock, opsPrice, patentBlock } from '../src/game/business/lab-rules'
 import { labValue, opsEffectsOf, readLab, type LabRow } from '../src/game/business/lab-state'
@@ -18,7 +18,7 @@ import { money } from '../src/game/business/util'
 import { statementLines } from '../src/game/business/yearly'
 import { patentLaw } from '../src/game/workshop/market'
 import type { GameState } from '../src/game/types'
-import { labGame, launchBreakthrough } from './lab-kit'
+import { labGame, launchBreakthrough, PATENT_COUNTRY, PATENT_TRADE } from './lab-kit'
 import { nextYear } from './market-kit'
 
 const SEEDS = [3, 11, 29]
@@ -30,7 +30,7 @@ function lines(g: GameState): string[] {
 describe('a mid company', () => {
   for (const seed of SEEDS) {
     it(`runs a program, books credit and grant, patents a breakthrough and licenses it (seed ${seed})`, () => {
-      const { g, a, b } = labGame(seed, 'brewery', { country: 'ca' })
+      const { g, a, b } = labGame(seed, PATENT_TRADE, { country: PATENT_COUNTRY })
       const id = 'ops.cost.2'
       const def = opsProgram(id)!
       const price = opsPrice(b, def.rung)
@@ -98,9 +98,12 @@ describe('a mid company', () => {
         return field.of(family).offer
       }
       for (let y = g.year; y < patent.until; y++) expect(offer(y), `shielded ${y}`).toBe(0)
-      // The shield matters: with no patent the first rivals would be selling the kind before it ends.
-      const lead = heavyLead(readHeavy(g, b.industry, marketKey(b)).find((r) => r.family === family)!)
-      if (patent.until > lead) expect(offer(lead, false)).toBeGreaterThan(0)
+      // The shield matters: with no patent the first rival would be selling the kind before it ends.
+      const rec = readHeavy(g, b.industry, marketKey(b)).find((r) => r.family === family)!
+      const rivals = marketCtxFor(g, b, patent.until).rivals.filter((x) => !x.legacy && x.pull > 0 && !x.id.startsWith('owned:'))
+      const arrives = Math.min(...rivals.map((x) => heavyArrival(rec, x)))
+      expect(arrives).toBeLessThan(patent.until)
+      expect(offer(arrives, false)).toBeGreaterThan(0)
 
       // Licensed: royalties come once rivals sell it, never past 1.5 times the plan, and the patent runs out with its line.
       expect(doLicense(g, a, family)).toBe(true)

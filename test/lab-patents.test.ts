@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import * as board from '../src/game/business/board'
 import { marketKey } from '../src/game/business/competition-core'
 import { bizWorth, marketCtxFor, valuationOf } from '../src/game/business/economy'
-import { heavyArrival, heavyArrivals, heavyEligible, heavyGain, readHeavy } from '../src/game/business/heavy-rd'
+import { heavyArrival, heavyArrivals, heavyEligible, heavyGain, heavyLead, readHeavy } from '../src/game/business/heavy-rd'
 import { INDUSTRIES } from '../src/game/business/industries'
 import { BOOK_FADE, IP_SHARE, LICENSE_X, PATENT_AGE, PATENT_FEE_X, ROYALTY_CAP_X, SHIELD } from '../src/game/business/lab-data'
 import { labMenus } from '../src/game/business/lab-menu'
@@ -24,7 +24,7 @@ import { statementLines } from '../src/game/business/yearly'
 import { marketOf, type Industry } from '../src/game/data/markets'
 import { patentLaw } from '../src/game/workshop/market'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
-import { deepFreeze, labGame, launchBreakthrough, noDraw, patchLab } from './lab-kit'
+import { deepFreeze, labGame, launchBreakthrough, noDraw, PATENT_COUNTRY, PATENT_TRADE, patchLab } from './lab-kit'
 import { company, nextYear, renderAll } from './market-kit'
 
 /** The money and the stored lab, as text: equal before and after means a refusal changed nothing. */
@@ -157,7 +157,8 @@ describe('terms', () => {
       const fam = launchBreakthrough(g, a, b)
       const t = patentTerms(g, b, fam)
       const law = patentLaw(country, g.year)
-      expect(t.plan).toBe(2_000_000)
+      expect(t.plan).toBe(readHeavy(g, b.industry, marketKey(b))[0].cost)
+      expect(t.plan).toBeGreaterThan(0)
       expect(t.fee).toBe(roundBudget(PATENT_FEE_X * t.plan) + law.fee)
       expect(t.years).toBe(Math.max(2, Math.round(SHIELD.mid * law.enforcement)))
       expect(t.until).toBe(g.year + t.years)
@@ -431,7 +432,7 @@ describe('filing', () => {
 
 describe('licensing and royalties', () => {
   it('is one way, and royalties need rivals that sell [RF2]', () => {
-    const { g, a, b } = labGame(71, 'brewery', { country: 'ca' })
+    const { g, a, b } = labGame(71, PATENT_TRADE, { country: PATENT_COUNTRY })
     const fam = launchBreakthrough(g, a, b)
     expect(doPatent(g, a, fam)).toBe(true)
     expect(doLicense(g, a, fam)).toBe(true)
@@ -583,17 +584,17 @@ describe('the book and the expiry', () => {
 
 describe('a held breakthrough', () => {
   it('holds back the first-rival report and the lead date until the shield ends', () => {
-    const { g, a, b } = labGame(77, 'brewery', { country: 'ca' })
+    const { g, a, b } = labGame(77, PATENT_TRADE, { country: PATENT_COUNTRY })
     const fam = launchBreakthrough(g, a, b)
     const rec = readHeavy(g, b.industry, marketKey(b))[0]
-    // a second company of the same market, with no lab of its own
-    const second = company(g, 'brewery', { name: 'Second Brewery' })
+    // a second company of the same trade and market, with no lab of its own
+    const second = company(g, PATENT_TRADE, { name: 'Second Utility' })
     const b2 = bizOf(g, second)
     expect(b2.lab).toBeUndefined()
     const sees = (): string[] => renderAll(g, a).filter((x) => x.includes('rivals can have their own from about'))
     const leadBefore = sees()
     expect(leadBefore.length).toBeGreaterThan(0)
-    expect(leadBefore[0]).toContain(`from about ${rec.year + 4}`)
+    expect(leadBefore[0]).toContain(`from about ${heavyLead(rec)}`)
     expect(doPatent(g, a, fam)).toBe(true)
     const until = readLab(b).patents[0].until
     const rivals = marketCtxFor(g, b, until).rivals.filter((x) => !x.legacy && x.pull > 0 && !x.id.startsWith('owned:'))
@@ -630,7 +631,7 @@ describe('a held breakthrough', () => {
 
 describe('what a patent is worth', () => {
   it('is pure and names the better mode', () => {
-    const { g, a, b } = labGame(78, 'brewery', { country: 'ca' })
+    const { g, a, b } = labGame(78, PATENT_TRADE, { country: PATENT_COUNTRY })
     const fam = launchBreakthrough(g, a, b)
     const w = bizWorth(g, b)
     const json = JSON.stringify(b)

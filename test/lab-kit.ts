@@ -3,7 +3,7 @@
 // piece of code drew nothing from the game's random stream.
 import { marketKey } from '../src/game/business/competition-core'
 import { breakthroughsFor } from '../src/game/business/heavy-data'
-import { addHeavy } from '../src/game/business/heavy-rd'
+import { addHeavy, heavyCost, heavyYears } from '../src/game/business/heavy-rd'
 import { draftLab, saveLab, type LabState } from '../src/game/business/lab-state'
 import { bizOf, type BizState } from '../src/game/business/state'
 import type { Industry } from '../src/game/data/markets'
@@ -37,15 +37,30 @@ export function noDraw(g: GameState, f: () => void): boolean {
 }
 
 /**
- * A breakthrough this company launched last year, as Heavy R&D would have left it: the market's record
- * (four years of development, quality 80, a fixed 2,000,000 cost, this company the pioneer) and the
- * matching line on sale. Returns its family. The first giant rival follows at `rec.year + 4`, which is
- * `g.year + 3`, so the family is novel (no rival sells one) now.
+ * A trade and a country where a patent on a real breakthrough is worth something at its launch. A mid-tech
+ * breakthrough in this trade takes 4 years to develop (heavyYears) and the country's courts give a mid-tech
+ * patent 6 years (patentLaw): filed at the launch it outlasts the earliest year a rival can follow (heavyLead)
+ * by 2, so it holds back the first rival whichever way the rivals' extra year falls. Brewery, the usual test
+ * trade, develops in 5 years and 'us' or 'ca' give 5: there a patent filed at launch ends when the first rival
+ * may arrive and is worth nothing then.
+ */
+export const PATENT_TRADE: Industry = 'water'
+export const PATENT_COUNTRY = 'au'
+
+/**
+ * A breakthrough this company launches this year, as Heavy R&D leaves it (heavy-rd.ts advanceHeavy): the
+ * market's record is filed under the launch year itself (the first year the line is on sale), with the
+ * trade's own development years (`heavyYears`, 4 to 6) and the price the company paid (`heavyCost`), this
+ * company the pioneer, and the matching line on sale. test/lab-kit.test.ts holds it to a real launch.
+ * Returns its family. The first giant rival can follow `heavyYears` after the launch (`heavyLead`), so the
+ * family is novel (no rival sells one) now.
  */
 export function launchBreakthrough(g: GameState, a: Asset, b: BizState, index = 0): string {
   const family = breakthroughsFor(b.industry)[index].name
-  addHeavy(g, b.industry, marketKey(b), { family, year: g.year - 1, years: 4, quality: 80, cost: 2_000_000, by: a.id })
-  b.products.push({ name: family, launched: g.year - 1, boost: 0, quality: 80, family, kind: 'breakthrough' })
+  const cost = heavyCost(g, b)
+  if (cost === null) throw new Error(`no classic idea to price a breakthrough on for ${b.industry}`)
+  addHeavy(g, b.industry, marketKey(b), { family, year: g.year, years: heavyYears(b), quality: 80, cost, by: a.id })
+  b.products.push({ name: family, launched: g.year, boost: 0, quality: 80, family, kind: 'breakthrough' })
   return family
 }
 
