@@ -19,7 +19,7 @@ import { industryDef } from './industries'
 import { entryStrength, presenceIn } from './market-reach'
 import { regionalShares } from './market-regional'
 import { readBiz, type BizState } from './state'
-import { entrantsDue, lowerLead } from './tech-waves'
+import { entrantsDue, lowerLead, waveScrutiny } from './tech-waves'
 import { clampN, money as moneyShort, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ export function recentAcquisitions(st: Pick<MarketState, 'acquired'> | null, yea
 }
 
 /** Antitrust exposure at a share (no RNG). `rivals` lets it add the countries where the company dominates locally. */
-export function antitrustOf(b: BizState, share: number, year: number, priceRatio = 1, rivals?: readonly RivalView[]): AntitrustView {
+export function antitrustOf(b: BizState, share: number, year: number, priceRatio = 1, rivals?: readonly RivalView[], scrutiny = 1): AntitrustView {
   const world = marketDef(b.industry).scope === 'world'
   const regime = effectiveRegime(b.countryId, year, world)
   const st = marketStateOf(b)
@@ -282,7 +282,8 @@ export function antitrustOf(b: BizState, share: number, year: number, priceRatio
     }
     for (const r of regional) p = 1 - (1 - p) * (1 - r.p)
   }
-  p = clampN(p, 0, 0.5)
+  // A breakthrough in the company's own trade draws regulators (business/tech-waves.ts waveScrutiny); 1 changes nothing.
+  p = clampN(p * scrutiny, 0, 0.5)
   const label = p <= 0 ? 'none' : p < 0.03 ? 'low' : p < 0.07 ? 'moderate' : p < 0.14 ? 'high' : 'severe'
   return { regime, p, label, acquisitions, regional }
 }
@@ -410,7 +411,7 @@ export function marketViewOf(g: GameState, b: BizState): MarketView {
     fringe,
     worldShare,
     home,
-    antitrust: antitrustOf(b, Math.max(share, base), g.year, priceRatio, rivals),
+    antitrust: antitrustOf(b, Math.max(share, base), g.year, priceRatio, rivals, waveScrutiny(g, b.industry)),
     history: (st?.history ?? []).map((h) => ({ year: h.year, share: h.share, rank: h.rank, size: h.size, ...(h.lead !== undefined ? { lead: h.lead } : {}), ...(h.hhi !== undefined ? { hhi: h.hhi } : {}) })),
   }
 }

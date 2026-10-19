@@ -44,7 +44,7 @@ import { marketDef } from './competition-data'
 import { groupsOf, liveGroup, sharePriceOf } from './conglomerate-state'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
-import { advanceTechWaves, stampWave } from './tech-waves'
+import { advanceTechWaves, stampWave, waveLines } from './tech-waves'
 import { maybeBusinessEvent } from './events'
 import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
@@ -208,6 +208,8 @@ function marketNote(g: GameState, b: BizState, lastCycle: number): string {
   parts.push(`Locals typically pay about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)} per ${def.unitOne}.`)
   if (m.inflation >= 0.15) parts.push(`Inflation runs ${Math.round(m.inflation * 100)}% a year: reprice every year or your prices go stale.`)
   for (const x of marketEventImpacts(b.industry, b.countryId, b.last?.year ?? g.year - 1, v.scope === 'world').slice(0, 2)) parts.push(`${x.event.name}: ${x.text.charAt(0).toLowerCase() + x.text.slice(1)}`)
+  // One tech-wave line, after the events and on the same year basis (the note is cut at 520 characters on screen).
+  parts.push(...waveLines(g, b, b.last?.year ?? g.year - 1).slice(0, 1))
   if (v.booked && v.share > 0 && (v.scope === 'world' || v.share >= 0.005)) {
     parts.push(`You hold ${shareText(v.share)} of ${marketOwner(v.place)} ${v.noun} market (#${v.rank})${v.unmet >= 0.05 ? ` and turned away ${pct(v.unmet)} of your customers last year` : ''}.`)
   }

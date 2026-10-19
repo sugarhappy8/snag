@@ -156,7 +156,7 @@ export function readReportData(data: Json): ReportView {
     maxProduction,
     inventory,
     expectedDemand,
-    marketNote: text(d.marketNote, '', 400),
+    marketNote: text(d.marketNote, '', 520),
     lines: readLines(d.lines),
     talentHint,
   }

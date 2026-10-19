@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import { staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { seeded } from '../src/game/assets'
 import { addHeavy } from '../src/game/business/heavy-rd'
 import { hashOf } from '../src/game/business/product-market'
+import { DEEPTECH_WAVES, WAVE_KINDS } from '../src/game/business/tech-wave-data'
 import { MAX_WAVES, advanceTechWaves, announceWave, lowerLead, nextState, readTechBase, readTechWaves, rivalWave, waveDraw, waveFactors, waveFactorsFor, waveWorldFlags, type TechBase, type TechWave } from '../src/game/business/tech-waves'
 import { INDUSTRY_IDS } from '../src/game/data/markets'
-import { FACTOR_BOUNDS, marketEventFactors } from '../src/game/history/market-events'
+import { FACTOR_BOUNDS, marketEventFactors, readMarketNews } from '../src/game/history/market-events'
+import { HISTORY_WAVES } from '../src/game/history/tech-waves'
 import type { GameState, Json } from '../src/game/types'
 import { makeTestGame } from './helpers'
+import { adult, company } from './market-kit'
 
 const flagsOnly = (flags: Record<string, Json>): Pick<GameState, 'flags'> => ({ flags })
 const W = (o: Partial<TechWave> = {}): TechWave => ({ id: 'deeptech:ai:2031:x', kind: 'ai', name: 'Frontier AI', source: 'deeptech', year: 2031, market: 'world', size: 0.5, hype: 0.8, delivery: 0.6, last: 2031, ...o })
@@ -174,5 +178,34 @@ describe('rivalWave and waveWorldFlags', () => {
     expect(waveWorldFlags(flagsOnly({}))).toEqual({})
     const out = waveWorldFlags(flagsOnly({ techWaves: J([null, 7, W()]), techBase: J({ 'aiLab|world': { demand: 9, costs: 1 } }), 'market.news': J([]) }))
     expect(Object.keys(out).sort()).toEqual(['techBase', 'techWaves']); expect(out.techWaves).toHaveLength(1); expect(out.techBase).toEqual({ 'aiLab|world': { demand: 1.5, costs: 1 } })
+  })
+})
+
+/** The text with each value that was poured into it put back as a "${...}" hole (as test/heavy-voice.test.ts does). */
+function template(text: string, values: readonly string[]): string {
+  return [...values].sort((x, y) => y.length - x.length).reduce((t, v) => (v ? t.split(v).join('${...}') : t), text)
+}
+
+describe('voice', () => {
+  const lines: [string, 'outcome' | 'text' | 'log' | 'title'][] = [
+    ['Your lab landed ${...}. Investors expect a lot. Delivery decides the rest.', 'outcome'], ['A rival landed ${...}. Investors are watching. Delivery decides the rest.', 'outcome'],
+    ['${...} Wave', 'title'], ['${...} launched to chase the ${...} wave.', 'log'], ['Frontier AI wave. Demand +9%, costs \u22123%, value +13%.', 'text'],
+  ]
+  const cap = (role: string) => (role === 'log' ? 90 : 120)
+  it('every wave string passes unitFlags and its length cap', () => {
+    for (const [t, role] of lines) { expect(unitFlags(t, role)).toEqual([]); if (role === 'log' || role === 'outcome') expect(staticLength(t)).toBeLessThanOrEqual(cap(role)) }
+  })
+  it('the wave news the game writes passes the same checks as the templates above', () => {
+    const g = adult(5, 2033, 'us'); const a = company(g, 'aiLab'); company(g, 'dataCenter')
+    announceWave(g, { kind: 'ai', source: 'deeptech', origin: `${a.id}#frontier`, name: 'Frontier AI', size: 0.6, market: 'world', home: 'us' })
+    announceWave(g, { kind: 'chips', source: 'rival', origin: 'semiconductor|world', name: 'Chip leap', size: 0.4, market: 'world', home: 'us' })
+    const news = readMarketNews(g); expect(news).toHaveLength(2)
+    for (const n of news) {
+      const t = template(n.text, [n.title.replace(/ Wave$/, '').replace(/^[A-Z](?![A-Z])/, (c) => c.toLowerCase())]); expect(unitFlags(t, 'outcome')).toEqual([]); expect(staticLength(t)).toBeLessThanOrEqual(120)
+      expect(unitFlags(template(n.title, [n.title.replace(/ Wave$/, '')]), 'title')).toEqual([])
+    }
+  })
+  it('no wave label, history name or deep-tech name holds an em-dash', () => {
+    for (const s of [...Object.values(WAVE_KINDS).map((d) => d.label), ...HISTORY_WAVES.map((w) => w.name), ...Object.values(DEEPTECH_WAVES).map((w) => w.name)]) expect(s).not.toMatch(/\u2014|\u2013/)
   })
 })

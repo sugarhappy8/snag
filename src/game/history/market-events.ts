@@ -325,7 +325,7 @@ export function marketEventFactors(industry: string, country: string, year: numb
 }
 
 /** "+20%" / "−35%": a factor as a signed percentage. */
-function signed(f: number): string {
+export function signed(f: number): string {
   const v = Math.round((f - 1) * 100)
   return `${v > 0 ? '+' : v < 0 ? '\u2212' : ''}${Math.abs(v)}%`
 }

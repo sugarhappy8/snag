@@ -28,6 +28,7 @@ import {
 } from './market-view'
 import { bizWorth } from './economy'
 import { readBiz, type BizState } from './state'
+import { waveLines } from './tech-waves'
 import { isDeepTech } from './deeptech-state'
 import { money, pct, plural, stars } from './util'
 
@@ -111,6 +112,8 @@ export function overviewMenu(a: Asset): MenuGroup {
           '\u{1F3DB}\u{FE0F}',
         ),
       )
+      // At most three tech-wave rows (the history table can have several live in one trade).
+      for (const [i, line] of waveLines(g, b).slice(0, 3).entries()) rows.push(info(`biz.mkt.ov.wave.${i}.${a.id}`, line, '\u{1F30A}'))
       rows.push(info(`biz.mkt.ov.era.${a.id}`, `It's ${eraOf(g.year).label}. ${v.scope === 'world' ? 'The business is global: customers and rivals are everywhere.' : `The business is local: you compete with everyone else in ${v.place}.`}`, '\u{1F570}\u{FE0F}'))
       return rows
     },

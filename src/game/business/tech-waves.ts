@@ -17,6 +17,8 @@
 // those modules is inside a function.
 import { seeded } from '../assets'
 import { recordEconomicActivity } from '../economy'
+import { anachronismsIn } from '../events/era'
+import { pushMarketNews, signed } from '../history/market-events'
 import { HISTORY_WAVES, historyKindActive } from '../history/tech-waves'
 import { PRESENT_YEAR } from '../history/timeline'
 import { outcomeTag } from '../timeMachine'
@@ -130,7 +132,31 @@ export function announceWave(g: GameState, a: WaveInput): TechWave | null {
   })
   if (!w) return null
   writeWaves(g, [...list, w])
-  return readTechWaves(g).find((x) => x.id === w.id) ?? null
+  const stored = readTechWaves(g).find((x) => x.id === w.id) ?? null
+  if (stored) announceWaveNews(g, stored)
+  return stored
+}
+
+/**
+ * The news of a NEW wave (D12). Heavy, workshop and race waves post nothing: the launch notice and the
+ * "You Beat History!" popup already announced them. A deep-tech or rival wave posts one market news item
+ * (text only, id `wave-${id}`) when it touches a trade the player runs or came from the player's lab; a
+ * deep-tech one also queues one notice, guarded as `announceLaunch` is. No shakeout notice in this release.
+ */
+function announceWaveNews(g: GameState, w: TechWave): void {
+  if (w.source !== 'deeptech' && w.source !== 'rival') return
+  const mine = businessAssets(g)
+  const lab = w.source === 'deeptech' && w.origin ? originHead(w.origin) : null
+  const own = lab !== null && mine.some((a) => a.id === lab)
+  if (!own && !mine.some((a) => roleOf(w.kind, readBiz(g, a).industry) !== null)) return
+  const def = WAVE_KINDS[w.kind]
+  const id = `wave-${w.id}`
+  const title = `${w.name} Wave`
+  const text = w.source === 'deeptech'
+    ? `Your lab landed ${lowerLead(w.name)}. Investors expect a lot. Delivery decides the rest.`
+    : `A rival landed ${lowerLead(w.name)}. Investors are watching. Delivery decides the rest.`
+  const fresh = pushMarketNews(g, { id, year: w.year, industry: def.core[0], market: w.market, emoji: def.emoji, title, text })
+  if (w.source === 'deeptech' && fresh && g.character.alive && !g.queue.some((m) => m.id === id)) g.queue.push({ kind: 'notice', id, title, text, emoji: def.emoji, tone: 'good' })
 }
 
 /** Lowercases a leading capital unless the next letter is a capital too, so a wave name reads inside a sentence ('Frontier AI' gives 'frontier AI', 'AI agents' stays). */
@@ -330,4 +356,46 @@ export function waveWorldFlags(g: Pick<GameState, 'flags'>): Record<string, Json
   const base = readTechBase(g)
   if (!noBase(base)) out[BASE_KEY] = storedBase(base)
   return out
+}
+
+// ---------------------------------------------------------------------------
+// What the player reads
+
+const NO_LINES: string[] = Object.freeze([]) as unknown as string[]
+
+/**
+ * The tech-wave lines of a company's trade and market in a year, for the Annual Report and Market Overview:
+ * one per live wave or history row the trade has a role in, as two sentences (`Frontier AI wave. Demand
+ * +12%, costs \u22124%, value +14%.`; costs only when they move), the biggest value change first. The numbers
+ * are the factors the market applies (a world-scope trade takes history demand at a third, as waveFactors
+ * does). A line the era check flags for the company's country and year is skipped. Pure: no writes, no
+ * draws, and one shared empty array when there is nothing to say. Callers cap the count.
+ */
+export function waveLines(g: Pick<GameState, 'flags' | 'year'>, b: Pick<BizState, 'industry' | 'countryId'>, year: number = g.year): string[] {
+  const y = Math.round(year)
+  if (!Number.isFinite(y)) return NO_LINES
+  const market = marketKey(b)
+  const waves = readTechWaves(g)
+  const out: { text: string; size: number }[] = []
+  for (const e of effectsOf(b.industry, market, y, waves)) {
+    const demand = e.hist && market === 'world' ? 1 + (e.demand - 1) / 3 : e.demand
+    if (!Number.isFinite(demand) || !Number.isFinite(e.costs) || !Number.isFinite(e.value)) continue
+    if (Math.abs(demand - 1) < 0.005 && Math.abs(e.costs - 1) < 0.005 && Math.abs(e.value - 1) < 0.005) continue
+    const text = `${e.name} wave. Demand ${signed(demand)}, ${Math.abs(e.costs - 1) >= 0.005 ? `costs ${signed(e.costs)}, ` : ''}value ${signed(e.value)}.`
+    if (anachronismsIn(text, y, [b.countryId]).length > 0) continue
+    out.push({ text, size: Math.abs(e.value - 1) })
+  }
+  if (!out.length) return NO_LINES
+  return out.sort((p, q) => q.size - p.size).map((x) => x.text)
+}
+
+/**
+ * How much more closely regulators look at a company in a trade that is the core of a live wave: the
+ * product of `1 + 0.5 x size x delivery` over those waves, held between 1 and 2 (exactly 1 with none).
+ * `antitrustOf` multiplies its chance by it; `antitrustChance` itself is unchanged. Pure.
+ */
+export function waveScrutiny(g: Pick<GameState, 'flags'>, trade: string): number {
+  let s = 1
+  for (const w of readTechWaves(g)) if ((WAVE_KINDS[w.kind].core as readonly string[]).includes(trade)) s *= 1 + 0.5 * w.size * w.delivery
+  return Number.isFinite(s) ? clampN(s, 1, 2) : 1
 }

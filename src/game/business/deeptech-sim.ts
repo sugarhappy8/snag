@@ -40,7 +40,7 @@ import { industryDef } from './industries'
 import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
 import { deepWaveFor } from './tech-wave-data'
-import { announceWave } from './tech-waves'
+import { announceWave, waveLines } from './tech-waves'
 import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJson, units } from './util'
 import { allocatedCorporateTax } from './tax'
 import { bookSupply, saveSupply, supplyProfile } from './supply'
@@ -449,12 +449,14 @@ export function techStatementLines(b: BizState, t: TechState, s: Statement): Ann
   return lines
 }
 
-function techMarketNote(g: GameState, b: BizState, t: TechState): string {
+export function techMarketNote(g: GameState, b: BizState, t: TechState): string {
   const ind = dtInd(b)
   const cyc = industryCycle(g, ind, g.year - 1)
   const def = industryDef(ind)
   const parts: string[] = []
   parts.push(cyc.label === 'steady' ? `The ${DEEP_TECH[ind].cycle.name} is steady.` : `The ${DEEP_TECH[ind].cycle.name}: ${cyc.label}.`)
+  // Deep-tech reports list no market events, so this is the one place the owner reads the wave.
+  parts.push(...waveLines(g, b, g.year - 1).slice(0, 1))
   if (ind === 'semiconductor') parts.push(`You're on the ${NODES[t.node]} node with ${Math.round(t.yieldRate * 100)}% yields.`)
   if (ind === 'aiLab') {
     const best = bestModel(t)
