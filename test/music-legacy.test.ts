@@ -9,6 +9,7 @@ import { allBrands } from '../src/game/data/brands'
 import { hasScript, runScript } from '../src/game/scripts'
 import { hire } from '../src/game/special/common'
 import { yearlyMusic } from '../src/game/special/music'
+import { musicSim } from '../src/game/special/music-sim'
 import type { GameState, Json, Person } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
@@ -58,10 +59,22 @@ function fiveYears(seed: number, hit = false): YearsGolden {
     g.character.age += 1
     g.yearActions = {}
     yearlyMusic(g)
+    // A hit life released through the ledger, so the sim owns its deal year: the real yearly order is the
+    // legacy hook, then the sim (special.ts). The money, the term, the popularity, the profile and the award
+    // draws below are the HEAD numbers; only the renewal screen changed its sentence.
+    if (hit) musicSim.yearly(g)
   }
   const d = g.character.job?.data
   const profile = g.flags['special.music']
-  const queue = g.queue.map((m) => (m as { text?: string }).text ?? '')
+  const queue = g.queue.map((m) => {
+    if (m.kind === 'choice' && m.scriptId === 'career.music.deal') {
+      // The renewal is now the negotiation screen. Its terms (years and advance, from the same two draws in
+      // the same order) are pinned by rebuilding the HEAD sentence from the screen's data.
+      const o = m.data as unknown as { label: string; years: number; advance: number }
+      return `Your contract with ${o.label} is up. They're offering a new ${o.years}-year deal worth $${o.advance.toLocaleString('en-US')}.`
+    }
+    return (m as { text?: string }).text ?? ''
+  })
   return { money: g.character.money, contractYears: d ? d.contractYears : null, popularity: d ? d.popularity : null, profile: profile === undefined ? null : JSON.stringify(profile), queue }
 }
 
@@ -272,7 +285,10 @@ describe('music legacy pin', () => {
   })
 
   it('pins five legacy years of a hit with a release, royalties, awards and a renewal [RF2]', () => {
-    for (const s of HIT_SEEDS) expect(fiveYears(s, true)).toEqual(GOLDEN.hit[s])
+    // Music 2.0 caps every advance at $1,500,000 a deal, the renewal included (a legacy renewal could reach $2.2M).
+    // The draws are unchanged, so each golden renewal sentence is compared with its advance cut to that cap.
+    const capped = (line: string): string => line.replace(/worth \$([\d,]+)\./, (_, n: string) => `worth $${Math.min(1_500_000, Number(n.replace(/,/g, ''))).toLocaleString('en-US')}.`)
+    for (const s of HIT_SEEDS) expect(fiveYears(s, true)).toEqual({ ...GOLDEN.hit[s], queue: GOLDEN.hit[s].queue.map(capped) })
   })
 
   it('keeps the contract accept path byte for byte', () => {

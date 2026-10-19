@@ -5,10 +5,11 @@ import { money } from './common'
 import type { CareerSim } from './kit/careers'
 import { careerSay, settleYear, type CareerCtx } from './kit/year'
 import { musicJob } from './music-job'
+import { endDeal, stepDeal } from './music-label'
 import { MUSIC_SPEC, stepCatalogue } from './music-market'
 import { adoptMusic, musicScore, musicStore, type MusicState } from './music-state'
 
-function run(c: CareerCtx<MusicState>, _live: boolean): string | void {
+function run(c: CareerCtx<MusicState>, live: boolean): string | void {
   const { g, s } = c
   // The legacy hook already settled this year for a life the sim has not taken over: adopt it and stop,
   // even with the job gone, so a term is never settled twice.
@@ -16,6 +17,10 @@ function run(c: CareerCtx<MusicState>, _live: boolean): string | void {
     adoptMusic(g, s)
     return
   }
+  // The deal year comes first: the advance, trust, the renewal. A lost job closes the deal; nothing ticks in prison.
+  if (live) {
+    if (!g.character.prison) stepDeal(c)
+  } else if (s.deal) endDeal(c, 'expired')
   // Rows keep paying whatever the job is doing: exact arithmetic, no luck.
   const t = stepCatalogue(c)
   s.standing = musicScore(g, s)

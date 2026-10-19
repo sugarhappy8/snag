@@ -7,6 +7,7 @@ import { defineScript } from '../scripts'
 import { crowdedField } from '../mastery'
 import { musicMastersMenu, yearlyMusicRights } from './music-rights'
 import { CERTS, GENRES, RELEASE_TYPES, genresAt, subgenresAt } from './music-data'
+import { type RosterEntry, cooled, endDeal, labelNamed, labelsAt, offerDeal } from './music-label'
 import { bookRelease } from './music-market'
 import { musicStore } from './music-state'
 import { careerCtx, emitBooks } from './kit/year'
@@ -73,20 +74,6 @@ const INSTRUMENT_EMOJI: Record<string, string> = {
   Drums: '\u{1F941}',
 }
 
-interface Label {
-  name: string
-  tier: number
-}
-
-const LABELS: Label[] = [
-  { name: 'Garage Door Records', tier: 0 },
-  { name: 'Indigo Basement Music', tier: 0 },
-  { name: 'Echo Chamber Records', tier: 1 },
-  { name: 'Big Noise Music', tier: 1 },
-  { name: 'Velvet Records', tier: 2 },
-  { name: 'Platinum Peak Entertainment', tier: 2 },
-]
-
 /** The audition score before the luck roll (no randomness: safe for hints). */
 function labelPull(g: GameState, instrument: string): number {
   const job = musicJob(g)
@@ -119,7 +106,7 @@ const contractScript = defineScript('special.music.contract', (g, choice, data) 
   say(g, 'Record Deal', `You signed a ${o.years}-year contract with ${o.label}! You'll receive ${money(o.advance)} paid over ${o.years} years, and you'll be making ${o.genre} music.${quitNote(quit)}`, '\u{1F4BF}', 'good')
 })
 
-function auditionForLabel(g: GameState, instrument: string, label: Label, goingSolo: boolean): void {
+function auditionForLabel(g: GameState, instrument: string, label: RosterEntry, goingSolo: boolean): void {
   const job = musicJob(g)
   const pop = job ? md(job).popularity : 0
   const score = labelPull(g, instrument) + randInt(g, -20, 20)
@@ -141,7 +128,9 @@ function auditionForLabel(g: GameState, instrument: string, label: Label, goingS
   }
   const genre = job && goingSolo ? md(job).genre : pick(g, genresAt(g.year))
   const years = randInt(g, 2, 4)
-  const advance = Math.round(([25_000, 80_000, 250_000][label.tier] ?? 25_000) * (1 + fameOf(g) / 30 + pop / 50) * (0.7 + rand(g) * 0.6) * talentMult(g, 'Music', 1.25) / 1_000) * 1_000
+  const advance = Math.min(1_500_000, Math.round(([25_000, 80_000, 250_000, 750_000][label.tier] ?? 25_000) * (1 + fameOf(g) / 30 + pop / 50) * (0.7 + rand(g) * 0.6) * talentMult(g, 'Music', 1.25) / 1_000) * 1_000)
+  // The negotiation screen carries the offer. With no room in the career queue the legacy contract modal stands in, so an offer is never lost.
+  if (offerDeal(g, { instrument, labelId: label.id, label: label.name, tier: label.tier, genre, advance, years, goingSolo })) return
   const offer: ContractOffer = { instrument, label: label.name, tier: label.tier, genre, advance, years }
   scriptChoice(
     g,
@@ -159,7 +148,7 @@ function auditionForLabel(g: GameState, instrument: string, label: Label, goingS
 const labelScript = defineScript('special.music.label', (g, choice, data) => {
   if (choice === 'cancel') return
   const d = data as unknown as SoloStart & { goingSolo?: boolean }
-  const label = LABELS.find((l) => l.name === choice)
+  const label = labelNamed(choice, g.character.city)
   if (!label) return
   if (!useYearAction(g, 'music.audition', 3)) return tell(g, 'Auditions', "You've auditioned for enough labels this year. Your voice needs a rest.", '\u{1F971}')
   auditionForLabel(g, d.instrument, label, !!d.goingSolo)
@@ -167,7 +156,8 @@ const labelScript = defineScript('special.music.label', (g, choice, data) => {
 
 function chooseLabel(g: GameState, instrument: string, goingSolo: boolean): void {
   const burned = musicProfile(g).burnedLabels
-  const labels = LABELS.filter((l) => !burned.includes(l.name))
+  const record = musicStore.peek(g)
+  const labels = labelsAt(g.year, g.character.countryId, g.character.city).filter((l) => !burned.includes(l.name) && !(record && cooled(record, l.id, g.year)))
   if (labels.length === 0) return tell(g, 'Record Labels', 'Every record label in town has blacklisted you. Maybe stop turning down contracts.', '\u{1F6AB}')
   // Music talent: the biggest label that would most likely sign you (luck still decides).
   const pull = labelPull(g, instrument)
@@ -650,6 +640,7 @@ const quitMusic: MenuAction = {
     if (!job) return
     const d = md(job)
     const where = d.mode === 'band' ? d.bandName : d.label
+    if (musicStore.has(g)) endDeal(careerCtx(g, 'music', musicStore.mut(g)), 'quit')
     removeBand(g, job)
     leave(g, 'quit')
     log(g, 'I quit the music business.')
@@ -851,8 +842,10 @@ export function yearlyMusic(g: GameState): void {
   fameToward(g, d.popularity * 0.9, 4)
   if (!released && c.hidden.fame > d.popularity) addHidden(g, 'fame', -1)
 
+  // Once the sim owns the life, music-label's stepDeal pays the advance and runs the term (the sim hook follows this one).
+  const sim = musicStore.peek(g)?.migrated === true
   if (d.mode === 'solo') {
-    if (d.contractYears > 0) {
+    if (!sim && d.contractYears > 0) {
       earnIncome(g, d.advancePerYear)
       d.contractYears -= 1
       if (d.contractYears === 0) {
