@@ -46,7 +46,7 @@ import {
 } from './deeptech-core'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
-import { BUDGET_MAX, BUDGET_MIN, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
+import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
 import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
@@ -127,6 +127,8 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
     disabled: (_g, b, t) => programBlock(b, t, def),
     hint: (g) => {
       const { b, t } = view(g, a)
+      // A capability track is never the "best value" pick; its own hint names the one that moves the lab's standing most per dollar.
+      if (def.track) return bestCapTrack(g, a, b, t) === def.track ? talentHint(g, 'Business', 'Fund this one. It moves your standing most per dollar.') || null : null
       const best = bestProgram(g, a, b, t)
       return best && best.id === def.id ? talentHint(g, 'Business', 'Fund this one: the best value for your R&D money right now.') : null
     },

@@ -3,7 +3,7 @@
 // regulators, space agencies, export controls). Pure data and small pure helpers: no game state
 // is touched here. US dollars at US prices; deeptech-core.ts scales them to each market.
 import type { DegreeKind } from '../types'
-import { CAP_IDS, type CapMap } from './ai-bench-data'
+import { CAPS, CAP_IDS, type CapId, type CapMap } from './ai-bench-data'
 import { LEAD_ENDING, capWeight, compositeRating, leadTier, modelRating, modelScore, modelSpec, modelStrength, releasedRating, type BestRival } from './ai-bench'
 import { MAX_SERIES, nextDrugId, timesDone, type AiModel, type DeepTechIndustry, type TechState } from './deeptech-state'
 
@@ -368,6 +368,8 @@ export interface ProgramDef {
    * only counts for a lab that is still small (the first models, the first qubits).
    */
   unlocks?: boolean | ((t: TechState) => boolean)
+  /** AI Lab 2.0: a capability research track. It shares the lab's slots under a limit and is never picked automatically. */
+  track?: CapId
 }
 
 const fixed = (n: number) => () => n
@@ -380,6 +382,8 @@ const cut = (t: TechState, n: number) => (t.costCut = Math.min(0.6, t.costCut + 
 const boost = (t: TechState, n: number) => (t.boost = Math.min(1.5, t.boost + n))
 const once = (t: TechState, id: string): string | null => (done(t, id) ? 'Already done.' : null)
 const safe = (t: TechState, n: number) => (t.safety = Math.min(100, t.safety + n))
+/** Research in a capability is raised to at least `n`, never lowered. */
+const capAtLeast = (t: TechState, cap: CapId, n: number) => (t.caps[cap] = Math.max(t.caps[cap] ?? 0, n))
 const clampOdds = (p: number) => Math.max(0.05, Math.min(0.95, p))
 
 /** Countries under export controls for advanced chips, AI compute and quantum hardware. */
@@ -553,7 +557,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       id: 'agents', label: () => 'Autonomous Agents', emoji: '\u{1F916}', blurb: 'AI that does the work, not just the talking.',
       years: 2, cost: fixed(12_000_000), odds: fixed(0.6),
       gate: (t) => once(t, 'agents') ?? (t.stage < 2 ? 'Needs paying customers first.' : t.level < 50 ? 'Needs tech level 50+.' : null),
-      win: (x) => (prem(x.t, 0.2), boost(x.t, 0.3), hype(x.t, 20), lvl(x.t, 6), 'Your agents book meetings, fix bugs and file expenses. Customers are hooked.'),
+      win: (x) => (prem(x.t, 0.2), boost(x.t, 0.3), hype(x.t, 20), lvl(x.t, 6), capAtLeast(x.t, 'agents', 3), 'Your agents book meetings, fix bugs and file expenses. Customers are hooked.'),
       lose: (x) => (lvl(x.t, 2), 'The agents kept ordering 400 staplers. The launch was shelved.'),
     },
     {
@@ -567,7 +571,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       id: 'multimodal', label: () => 'Multimodal Models', emoji: '\u{1F441}\u{FE0F}', blurb: 'Models that see, hear and speak, not only read.',
       years: 2, cost: fixed(15_000_000), odds: fixed(0.65),
       gate: (t) => once(t, 'multimodal') ?? (t.stage < 1 ? 'Needs a trained model first.' : null),
-      win: (x) => (prem(x.t, 0.1), boost(x.t, 0.2), hype(x.t, 10), lvl(x.t, 5), 'Your models now read charts, hear meetings and describe photos. Usage doubled.'),
+      win: (x) => (prem(x.t, 0.1), boost(x.t, 0.2), hype(x.t, 10), lvl(x.t, 5), capAtLeast(x.t, 'vision', 2), capAtLeast(x.t, 'speech', 2), 'Your models now read charts, hear meetings and describe photos. Usage doubled.'),
       lose: (x) => (lvl(x.t, 2), 'The vision model kept calling every dog a muffin. The launch was pulled.'),
     },
     {
@@ -1277,6 +1281,36 @@ function nextGenDef(ind: DeepTechIndustry): ProgramDef {
   }
 }
 
+/**
+ * A capability research track (AI Lab 2.0): two years of work that adds one research level in one capability.
+ * Every model trained after it rates higher there. It has no `unlocks` flag and a lab's manager never starts one.
+ */
+export function capProgram(cap: CapId): ProgramDef {
+  const def = CAPS[cap]
+  const levels = (t: TechState) => t.caps[cap] ?? 0
+  return {
+    id: `cap.${cap}`,
+    label: (t) => `${def.label} research level ${levels(t) + 1}`,
+    emoji: def.emoji,
+    blurb: `Research ${def.label.toLowerCase()}. Each level lifts every model you train after it.`,
+    years: 2,
+    cost: (t) => 3_000_000 * 1.4 ** levels(t),
+    odds: fixed(0.65),
+    ipShare: 0.3,
+    track: cap,
+    gate: (t) => (levels(t) >= 20 ? 'Fully researched.' : t.models.some((m) => (m.rating?.[cap] ?? 0) > 0) ? null : 'Train a model that covers it first.'),
+    win: (x) => {
+      const n = levels(x.t) + 1
+      x.t.caps[cap] = n
+      // The first three levels of a capability also teach the lab something general; later ones don't pump the level.
+      if (n <= 3) lvl(x.t, 1)
+      hype(x.t, 4)
+      return `${def.label} research reached level ${n}. Your next model will use it.`
+    },
+    lose: (x) => (lvl(x.t, 1), `${def.label} research stalled. The same level costs the same again.`),
+  }
+}
+
 /** The lab's model family name: kept from its first model, else picked from the company name. */
 function modelFamily(t: TechState, company: string): string {
   const first = t.models[0]?.name ?? ''
@@ -1347,6 +1381,7 @@ export function nextQubits(q: number): number {
 }
 
 for (const ind of Object.keys(PROGRAMS) as DeepTechIndustry[]) PROGRAMS[ind].push(nextGenDef(ind))
+for (const cap of CAP_IDS) PROGRAMS.aiLab.push(capProgram(cap))
 
 export function programDef(ind: DeepTechIndustry, id: string): ProgramDef | undefined {
   return PROGRAMS[ind].find((p) => p.id === id)
