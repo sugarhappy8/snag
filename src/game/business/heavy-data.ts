@@ -398,6 +398,13 @@ export const BREAKTHROUGHS: Record<string, Breakthrough[]> = {
     { name: 'Ocean Alkalinity Enhancement', first: 2025, note: 'Crushed minerals added to seawater let the ocean absorb more carbon.' },
     { name: 'Megaton Removal Hub', first: 2035, note: 'A region of capture plants and wells that removes a million tonnes a year.' },
   ],
+  devices: [
+    { name: 'Pen-Input Pocket Computer', first: 1993, note: 'A handheld computer you write on with a pen, for notes and addresses.' },
+    { name: 'Pocket Music Player', first: 2001, note: 'A pocket player that holds hundreds of songs, with no tape or disc to carry.' },
+    { name: 'Touch Slate Computer', first: 2010, note: 'A flat computer with a touch screen and no keyboard, for reading and browsing.' },
+    { name: 'Foldable Display Phone', first: 2019, note: 'A phone with a screen that folds open to twice its size.' },
+    { name: 'Spatial Headset Computer', first: 2024, note: 'A headset that sets screens and apps in the room around you.' },
+  ],
 }
 
 const NONE: readonly Breakthrough[] = Object.freeze([])

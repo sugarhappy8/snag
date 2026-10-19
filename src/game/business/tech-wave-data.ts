@@ -35,13 +35,13 @@ export const WAVE_KINDS = {
   carbon: { label: 'Carbon removal', landed: 'a carbon removal leap', emoji: '\u{1F331}', core: ['carbonCapture'], supply: ['energy', 'construction'], disrupted: [] },
 
   // History: episodes with a company story the market events don't tell (history/tech-waves.ts).
-  // The game has no media or devices trade, so television's winner is advertising and the handset
-  // and phone waves are carried by telecom, software and chips.
+  // The game has no media trade, so television's winner is advertising. Device makers share the home
+  // computer and smartphone waves, and telecom carries the phone wave.
   transistor: { label: 'The transistor', landed: 'the transistor', emoji: '\u{1F4FB}', core: ['semiconductor'], supply: ['manufacturing', 'software'], disrupted: [] },
   television: { label: 'Television', landed: 'television', emoji: '\u{1F4FA}', core: ['marketing'], supply: ['manufacturing', 'telecom'], disrupted: ['entertainment', 'nightclub'] },
-  microcomputer: { label: 'Home computers', landed: 'home computers', emoji: '\u{1F5A5}\u{FE0F}', core: ['semiconductor', 'software'], supply: ['manufacturing', 'gameStudio'], disrupted: [] },
+  microcomputer: { label: 'Home computers', landed: 'home computers', emoji: '\u{1F5A5}\u{FE0F}', core: ['semiconductor', 'software', 'devices'], supply: ['manufacturing', 'gameStudio'], disrupted: [] },
   mobilephone: { label: 'Mobile phones', landed: 'mobile phones', emoji: '\u{1F4DE}', core: ['telecom'], supply: ['semiconductor', 'manufacturing', 'battery'], disrupted: [] },
-  smartphone: { label: 'Smartphones', landed: 'smartphones', emoji: '\u{1F4F1}', core: ['software'], supply: ['semiconductor', 'telecom', 'gameStudio', 'ecommerce', 'battery'], disrupted: [] },
+  smartphone: { label: 'Smartphones', landed: 'smartphones', emoji: '\u{1F4F1}', core: ['software', 'devices'], supply: ['semiconductor', 'telecom', 'gameStudio', 'ecommerce', 'battery'], disrupted: [] },
   cloud: { label: 'Cloud computing', landed: 'cloud computing', emoji: '\u{2601}\u{FE0F}', core: ['dataCenter'], supply: ['software', 'semiconductor', 'telecom', 'cybersecurity'], disrupted: [] },
   solarbattery: { label: 'Cheap solar and batteries', landed: 'cheap solar and batteries', emoji: '\u{2600}\u{FE0F}', core: ['solar', 'battery'], supply: ['electricVehicles', 'construction', 'manufacturing'], disrupted: ['energy'] },
   reusablerocket: { label: 'Reusable rockets', landed: 'reusable rockets', emoji: '\u{1F680}', core: ['spaceTech'], supply: ['manufacturing', 'semiconductor', 'telecom'], disrupted: [] },

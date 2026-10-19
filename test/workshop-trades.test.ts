@@ -21,6 +21,7 @@ describe('workshop: trades and inventions', () => {
     expect(categoriesOf('carbonCapture')).toEqual(['energy'])
     expect(categoriesOf('neurotech')).toEqual(['health'])
     expect(categoriesOf('drones')).toEqual(['gadget', 'transport'])
+    expect(categoriesOf('devices')).toEqual(['gadget', 'computing'])
   })
 
   it('leaves exactly the trades that never made inventions without a category', () => {
@@ -33,6 +34,7 @@ describe('workshop: trades and inventions', () => {
     expect(fieldFor('carbonCapture', undefined)).toBe('energy')
     expect(fieldFor('neurotech', undefined)).toBe('health')
     expect(fieldFor('drones', undefined)).toBe('transport')
+    expect(fieldFor('devices', undefined)).toBe('computing')
     // The older deep-tech trades keep the field they had.
     const was: Record<string, string> = { semiconductor: 'computing', aiLab: 'computing', robotics: 'computing', biotech: 'health', spaceTech: 'transport', electricVehicles: 'transport', quantum: 'computing', cybersecurity: 'computing' }
     for (const [id, field] of Object.entries(was)) expect(fieldFor(id, undefined), id).toBe(field)
