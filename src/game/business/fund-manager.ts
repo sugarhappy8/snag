@@ -4,12 +4,13 @@
 // booked cost for due diligence and the yearly campaign.
 import type { GameState } from '../types'
 import { brokerEra, firmKey, leaderSkill, quantBlock, styleBlock, STYLES } from './fund-model'
-import { bestFee, bestStrategy, bestStyle } from './fund-outlook'
+import { bestFee, feeOutlook, hedgeFeeOutlook, strategyOutlook, styleOutlook } from './fund-outlook'
 import { campaignCost } from './fund-actions'
-import { readFund, saveFund, type FundState } from './fund-state'
+import { readFund, saveFund, type FundState, type FundStyle, type HedgeStrategy, type MacroCall } from './fund-state'
 import { ddCost, investingFund, managerRead, newStartup, newVcFund, openPitches, proRata, raiseQuote, vcDeployed } from './fund-vc'
 import type { BizState } from './state'
 import { clampN } from './util'
+import { mandateDef, readBoard, type Mandate } from './board-state'
 
 /** Cash the firm keeps for a year of payroll and rent before any optional spending. */
 function reserveOf(b: BizState): number {
@@ -17,36 +18,145 @@ function reserveOf(b: BizState): number {
   return pay + b.employees * 60_000 + 100_000
 }
 
-export function fundAutopilot(g: GameState, b: BizState): void {
+function managerRisk(b: BizState, mandate: Mandate): number {
+  const base = mandate === 'growth' ? 2 : mandate === 'cash' ? 0 : 1
+  const tilt = b.manager?.finance?.risk === 'bold' ? 1 : b.manager?.finance?.risk === 'cautious' ? -1 : 0
+  return clampN(base + tilt, 0, 2)
+}
+
+function styleBias(b: BizState, style: FundStyle): number {
+  const approach = b.manager?.finance?.approach
+  if (approach === 'systematic') return style === 'index' ? .1 : 0
+  if (approach === 'fundamental') return style === 'value' ? .08 : 0
+  if (approach === 'growth') return style === 'growth' ? .1 : 0
+  if (approach === 'macro') return style === 'global' ? .08 : style === 'bonds' ? .03 : 0
+  if (approach === 'risk') return style === 'bonds' ? .1 : style === 'index' ? .06 : 0
+  if (approach === 'client') return style === 'index' || style === 'global' ? .04 : 0
+  return 0
+}
+
+function chooseAssetStyle(g: GameState, b: BizState, f: FundState, skill: number, mandate: Mandate): FundStyle {
+  const allowed = (Object.keys(STYLES) as FundStyle[]).filter(s => !styleBlock(s, b.countryId, g.year))
+  if (skill < 40) return allowed.includes('index') ? 'index' : allowed.includes('bonds') ? 'bonds' : 'value'
+  const risk = managerRisk(b, mandate)
+  const penalty = (mandate === 'cash' ? 1.4 : mandate === 'balanced' ? .75 : mandate === 'profit' ? .45 : .15) + (1 - risk) * .2
+  const score = (style: FundStyle): number => {
+    const o = styleOutlook(g, b, f, style, Math.min(f.fee, STYLES[style].normFee * 1.2))
+    const trial = { ...f, style }
+    const fee = bestFee(g, b, trial)
+    const yieldRate = feeOutlook(g, b, trial, fee).revenue / Math.max(1, f.aum)
+    const core = mandate === 'growth' ? o.flow * 1.6 + o.rank * .15
+      : mandate === 'profit' ? yieldRate * 24 + o.flow * .35 + o.rank * .1
+      : mandate === 'cash' ? yieldRate * 20 + o.flow * .2 + o.rank * .15
+      : o.flow * .75 + o.rank * .35
+    const safe = mandate === 'cash' && (style === 'bonds' || style === 'index') ? .06 : 0
+    return core - o.swing * penalty + styleBias(b, style) + safe
+  }
+  return [...allowed].sort((x, y) => score(y) - score(x))[0] ?? f.style
+}
+
+function strategyBias(b: BizState, strategy: HedgeStrategy): number {
+  const approach = b.manager?.finance?.approach
+  if (approach === 'systematic') return strategy === 'quant' ? .14 : 0
+  if (approach === 'fundamental') return strategy === 'longShort' ? .1 : 0
+  if (approach === 'macro') return strategy === 'macro' ? .18 : 0
+  if (approach === 'event') return strategy === 'event' ? .14 : 0
+  if (approach === 'risk') return strategy === 'longShort' ? .08 : strategy === 'event' ? .04 : 0
+  return 0
+}
+
+function chooseHedgeStrategy(g: GameState, b: BizState, f: FundState, skill: number, mandate: Mandate): HedgeStrategy {
+  if (skill < 50) return 'longShort'
+  const risk = managerRisk(b, mandate)
+  const drawdown = f.hwm > 0 ? clampN(1 - f.aum / f.hwm, 0, 1) : 0
+  const penalty = (mandate === 'cash' ? 1.1 : mandate === 'balanced' ? .55 : mandate === 'profit' ? .35 : .08)
+    + (2 - risk) * .15 + drawdown * (mandate === 'growth' ? .3 : 1.4) + (f.compliance < 40 ? .35 : 0)
+  const choices: HedgeStrategy[] = ['longShort', 'event']
+  if (!quantBlock(b.countryId, g.year)) choices.push('quant')
+  // Macro is a visible, risk-taking mandate choice. A default balanced CEO never quietly turns the
+  // whole fund into a leveraged directional bet.
+  if (mandate === 'growth' && skill >= 70) choices.push('macro')
+  const score = (strategy: HedgeStrategy): number => {
+    const o = strategyOutlook(g, b, f, strategy)
+    return o.expected - o.swing * penalty + strategyBias(b, strategy)
+  }
+  return choices.sort((x, y) => score(y) - score(x))[0] ?? 'longShort'
+}
+
+/** A macro CEO reads only already-booked markets: trend-following is a view, never foresight. */
+function macroCall(f: FundState, risk: number): MacroCall {
+  const recent = f.marks.slice(-3).map(m => m.m)
+  const trend = recent.length ? recent.reduce((t, x, i) => t + x * (i + 1), 0) / recent.reduce((t, _x, i) => t + i + 1, 0) : 0
+  if (Math.abs(trend) < (risk >= 2 ? .025 : .06)) return risk >= 2 ? 'bull' : 'flat'
+  return trend > 0 ? 'bull' : 'bear'
+}
+
+function hedgeTerms(g: GameState, b: BizState, f: FundState, mandate: Mandate): { mgmt: number; perf: number } {
+  let best = { mgmt: .02, perf: .2 }, value = -Infinity
+  for (let m = 0; m <= 12; m++) for (let p = 0; p <= 12; p++) {
+    const mgmt = m * .0025, perf = p * .025
+    const o = hedgeFeeOutlook(g, b, f, mgmt, perf)
+    const yieldRate = o.revenue / Math.max(1, f.aum)
+    const score = mandate === 'growth' ? o.flow * 4 + yieldRate * 20
+      : mandate === 'profit' ? yieldRate * 100 + o.flow * .5
+      : mandate === 'cash' ? yieldRate * 110 + o.flow * .25
+      : yieldRate * 65 + o.flow * 1.5
+    if (score > value) { value = score; best = { mgmt, perf } }
+  }
+  return best
+}
+
+/**
+ * Run the hired fund CEO. The returned lines are an honest owner letter after settled books; tests
+ * and detached group forecasts may ignore them. Decisions use only public history and expectations.
+ */
+export function fundAutopilot(g: GameState, b: BizState): string[] {
   const f = readFund(b)
   const skill = leaderSkill(g, b)
+  const mandate = readBoard(b.board).mandate
+  const lines: string[] = []
   // Spending decisions are made once a year, right after the books close.
   const afterBooks = f.lastYear >= g.year - 1
   if (f.type === 'asset') {
-    const best = bestStyle(g, b, f, s => !styleBlock(s, b.countryId, g.year))
     const poor = f.marks.slice(-2).every(m => m.k >= 0 && m.k < .3) && f.marks.length >= 2
-    if (skill < 40 && !styleBlock('index', b.countryId, g.year)) f.style = 'index'
-    else if (best && (poor || skill >= 70 || styleBlock(f.style, b.countryId, g.year))) f.style = best.style
-    const target = skill >= 60 ? bestFee(g, b, f) : STYLES[f.style].normFee
+    const chosen = chooseAssetStyle(g, b, f, skill, mandate)
+    if (poor || skill >= 60 || styleBlock(f.style, b.countryId, g.year)) f.style = chosen
+    const optimum = skill >= 60 ? bestFee(g, b, f) : STYLES[f.style].normFee
+    const target = mandate === 'growth' ? optimum * .9 : mandate === 'profit' || mandate === 'cash' ? optimum * 1.08 : optimum
     f.fee = clampN(target, .0005, .02)
+    lines.push(`Set a ${STYLES[f.style].label.toLowerCase()} strategy and a ${(f.fee * 100).toFixed(2)}% management fee.`)
   } else if (f.type === 'hedge') {
-    f.strategy = skill >= 50 ? bestStrategy(g, b, f).strategy : 'longShort'
+    f.strategy = chooseHedgeStrategy(g, b, f, skill, mandate)
     if (f.strategy === 'quant' && quantBlock(b.countryId, g.year)) f.strategy = 'longShort'
-    f.lev = 1; f.call = 'flat'
-    f.mgmt = .02; f.perf = .2
-    f.coinvest = skill >= 70 ? Math.max(0, Math.round((b.cash - reserveOf(b) * 2) * .25)) : 0
+    const risk = managerRisk(b, mandate)
+    if (f.strategy === 'macro') {
+      f.call = macroCall(f, risk)
+      f.lev = f.compliance < 40 ? 1 : clampN(1 + risk * .5 + (risk >= 2 && skill >= 90 ? .5 : 0), 1, 2.5)
+    } else { f.lev = 1; f.call = 'flat' }
+    const terms = skill >= 55 ? hedgeTerms(g, b, f, mandate) : { mgmt: .02, perf: .2 }
+    f.mgmt = terms.mgmt; f.perf = terms.perf
+    const share = mandate === 'cash' ? 0 : mandate === 'growth' ? .25 : mandate === 'profit' ? .15 : .1
+    const riskShare = b.manager?.finance?.risk === 'cautious' ? .5 : b.manager?.finance?.risk === 'bold' ? 1.25 : 1
+    f.coinvest = skill >= 70 ? Math.max(0, Math.round((b.cash - reserveOf(b) * 2) * share * riskShare)) : 0
+    lines.push(`Set ${f.strategy === 'longShort' ? 'long/short' : f.strategy === 'event' ? 'event-driven' : f.strategy} strategy${f.strategy === 'macro' ? `, ${f.call} at ${f.lev.toFixed(1)}\u{00D7}` : ''}; fees ${(f.mgmt * 100).toFixed(2)}% plus ${Math.round(f.perf * 100)}% above the high-water mark.`)
+    lines.push(f.coinvest > 0 ? `Kept ${Math.round(f.coinvest).toLocaleString('en-US')} of company cash invested alongside clients.` : 'Kept company cash outside the client portfolio.')
   } else if (f.type === 'broker') {
     const era = brokerEra(b.countryId, g.year)
-    f.commission = clampN(era.normCommission * (skill >= 70 ? .95 : 1.05), 0, .02)
+    const tilt = mandate === 'growth' ? .9 : mandate === 'profit' || mandate === 'cash' ? 1.05 : skill >= 70 ? .95 : 1.05
+    f.commission = clampN(era.normCommission * tilt, 0, .02)
+    lines.push(`Set commissions at ${(f.commission * 100).toFixed(2)}% in the ${era.label.toLowerCase()}.`)
   } else if (afterBooks) vcAutopilot(g, b, f, skill)
-  if (afterBooks && f.type !== 'vc' && f.campaign < g.year && skill >= 55) {
+  if (afterBooks && f.type !== 'vc' && f.campaign < g.year && skill >= (mandate === 'growth' ? 45 : 55) && mandate !== 'cash') {
     const cost = campaignCost(b, f)
-    if (b.cash - cost > reserveOf(b) * 2) {
+    if (b.cash - cost > reserveOf(b) * (mandate === 'growth' ? 1.5 : 2)) {
       b.cash -= cost; b.yearCosts += cost
       f.campaign = g.year; f.boost = Math.min(.3, f.boost + (f.type === 'broker' ? .06 : .05))
+      lines.push(`Approved a client campaign costing ${Math.round(cost).toLocaleString('en-US')}.`)
     }
   }
+  if (afterBooks) lines.unshift(`Worked to the ${mandateDef(mandate).label.toLowerCase()} mandate; effective finance leadership ${Math.round(skill)}/100.`)
   saveFund(b, f)
+  return afterBooks ? lines : []
 }
 
 function vcAutopilot(g: GameState, b: BizState, f: FundState, skill: number): void {

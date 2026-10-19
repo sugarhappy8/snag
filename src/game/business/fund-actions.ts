@@ -23,8 +23,14 @@ export function liveFund(g: GameState, assetId: string): { a: Asset; b: BizState
   return { a, b, f: readFund(b) }
 }
 
-export function setStyle(g: GameState, assetId: string, style: FundStyle): boolean {
+/** Direct portfolio controls belong to the hired CEO; owners steer them through the CEO mandate. */
+function operatedFund(g: GameState, assetId: string): ReturnType<typeof liveFund> {
   const x = liveFund(g, assetId)
+  return x && x.b.ceo !== 'manager' ? x : null
+}
+
+export function setStyle(g: GameState, assetId: string, style: FundStyle): boolean {
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'asset' || !(style in STYLES) || styleBlock(style, x.b.countryId, g.year)) return false
   x.f.style = style
   saveFund(x.b, x.f)
@@ -32,7 +38,7 @@ export function setStyle(g: GameState, assetId: string, style: FundStyle): boole
 }
 
 export function setFee(g: GameState, assetId: string, fee: number): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'asset' || !Number.isFinite(fee)) return false
   x.f.fee = clampN(fee, .0005, .02)
   saveFund(x.b, x.f)
@@ -40,7 +46,7 @@ export function setFee(g: GameState, assetId: string, fee: number): boolean {
 }
 
 export function setStrategy(g: GameState, assetId: string, strategy: HedgeStrategy): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'hedge' || !(strategy in STRATEGIES)) return false
   if (strategy === 'quant' && quantBlock(x.b.countryId, g.year)) return false
   x.f.strategy = strategy
@@ -50,7 +56,7 @@ export function setStrategy(g: GameState, assetId: string, strategy: HedgeStrate
 }
 
 export function setCall(g: GameState, assetId: string, call: MacroCall, lev?: number): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'hedge' || !(call in CALLS)) return false
   x.f.strategy = 'macro'
   x.f.call = call
@@ -60,7 +66,7 @@ export function setCall(g: GameState, assetId: string, call: MacroCall, lev?: nu
 }
 
 export function setHedgeTerms(g: GameState, assetId: string, key: 'mgmt' | 'perf' | 'lev' | 'coinvest', value: number): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'hedge' || !Number.isFinite(value)) return false
   if (key === 'mgmt') x.f.mgmt = clampN(value, 0, .03)
   else if (key === 'perf') x.f.perf = clampN(value, 0, .3)
@@ -71,7 +77,7 @@ export function setHedgeTerms(g: GameState, assetId: string, key: 'mgmt' | 'perf
 }
 
 export function setCommission(g: GameState, assetId: string, commission: number): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'broker' || !Number.isFinite(commission)) return false
   x.f.commission = clampN(commission, 0, .02)
   saveFund(x.b, x.f)
@@ -93,7 +99,7 @@ export function campaignBlock(g: GameState, assetId: string, b: BizState, f: Fun
 }
 
 export function runCampaign(g: GameState, assetId: string): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || campaignBlock(g, assetId, x.b, x.f) || !useYearAction(g, `fund.campaign.${assetId}`, 1)) return false
   const cost = campaignCost(x.b, x.f)
   x.b.cash -= cost; x.b.yearCosts += cost
