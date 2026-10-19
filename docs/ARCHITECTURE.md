@@ -68,7 +68,7 @@ src/
     data/locales.ts      Per-country culture (school naming, exams, emergency number, holidays, food,
                          sports, transport, snow, landmarks...); data in data/locales/<region>.ts.
                          Player-facing text must use localPick/fillLocal/localTerm, never US defaults
-    business.ts business/*.ts   Start/buy/run companies in 51 industries; yearly sim + Annual Report.
+    business.ts business/*.ts   Start/buy/run companies in 55 industries; yearly sim + Annual Report.
                          Actions that spend/earn company cash move b.cash AND add to yearCosts/
                          yearIncome (for the P&L); simulateYear must not move that cash twice.
                          Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt).
@@ -92,6 +92,12 @@ src/
     business/product-market.ts product-data.ts  Product lines that compete head to head: kinds of
                          product with real-history demand curves, line quality vs the rivals'
                          versions, rivals' offerings, stacking, who loses customers (see "Business growth")
+    business/heavy-rd.ts heavy-data.ts  Heavy R&D: five breakthroughs per trade that a product company
+                         can pioneer, kept as records in g.flags['heavy.<trade>|<market>'] (see
+                         "Heavy R&D" below)
+    business/tech-waves.ts tech-wave-factors.ts tech-wave-data.ts history/tech-waves.ts  Tech waves:
+                         breakthrough-class events that move whole company markets together, in flags
+                         techWaves and techBase and BizState.wave (see "Tech waves" below)
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
     business/share-classes.ts share-classes-menu.ts  Share classes of the player's company: the votes
@@ -370,7 +376,7 @@ booms and busts. In history years `economy.exchangeMove` is the real index retur
 companies move with the real market. Nothing is invented for the future, and 2026 lifts only
 AI-exposed markets. When an event first hits a country hard, the yearly pass announces it once
 (`market.events` flag, deterministic notice id) with each company's exposure; the Annual Report
-and Market & Competition list the year's events.
+and Market & Competition list the year's events. Tech waves (below) add the same read-only lines.
 
 `history/markets*.ts` overlays real historical index/sector crashes, gold, housing, inflation,
 rates, exchange closures and expropriation on `invest/engine.ts`. Procedural markets start in
@@ -496,6 +502,92 @@ tariffs, red tape, currency exposure, capacity and saturation constrain them. Pu
 `market-regional.ts` derives country shares and antitrust exposure; `market-view.ts` provides the
 screen's concentration, leaderboard, segments, regions, history and profiles. Optional fields in
 `MarketState` keep old saves valid.
+
+### Heavy R&D (business/heavy-rd.ts, heavy-data.ts)
+
+Each product trade has five breakthroughs (`heavy-data.ts`, for example a liquid-cooled GPU hall or
+an autonomous agent platform) that a company can spend years and a fixed, large budget on. A hit is a
+`HeavyRecord` (catalogue name, launch year, years taken, quality, cost, the pioneer's asset id) stored
+as a list in `g.flags['heavy.<trade>|<market>']`; it is read through `readHeavy` (validated, clamped,
+bounded) and written through `addHeavy`. The record drives the kind's demand curve (`heavyLevel`),
+and `heavyPulse` lifts the market's potential in `marketCtxFor` (at most +40%, building over three
+years, holding eight, then fading). Rivals follow on `heavyArrival` (later for smaller tiers) and the
+first one to follow is reported once in the life log; the pioneer's launch is announced in
+`market.news`, and `heavyWorldFlags` carries both the records and the news to the heirs. Only product companies take part: `heavyEligible` leaves out deep
+tech, finance firms and game studios, which keep their own kind of R&D.
+
+### Tech waves (business/tech-waves.ts, tech-wave-data.ts, history/tech-waves.ts)
+
+A tech wave is a breakthrough big enough to move whole company markets together, as the real ones did:
+demand for the trade that sells it, cheaper inputs, higher valuations, deep-tech investors chasing it,
+rivals following, and the companies it replaces losing customers. It applies to every company the same
+way (player, NPC, deep tech, rivals); listed stocks are untouched until release 1b.
+
+Records. A `TechWave` (`kind`, `name`, `source`, `year`, `market`, `size`, `hype`, `delivery`, `last`,
+optional `origin`, `home`, `skip`, `mature`) lives in the list `g.flags.techWaves`, at most 64, always
+replaced and never edited in place. The 23 kinds are in `tech-wave-data.ts` (`WAVE_KINDS`): each names
+the trades that play three roles, **core** (sells the breakthrough), **supply** (suppliers and
+complements) and **disrupted** (the incumbents it replaces), read through `roleOf`. A static table of
+11 real waves (`history/tech-waves.ts`, the transistor and television through mRNA and GLP-1) covers
+1946-2024 with control points for hype and delivery and its own reach abroad; it needs no stored
+record and is quiet in 1962-1974, 2001-2005 and from 2025 on, where only written waves speak.
+
+Five writers, all through one idempotent `announceWave` (id from source, kind, year and a hash of the
+origin, so a second call returns the stored wave and writes nothing): a Heavy R&D launch listed in
+`HEAVY_WAVES` (a hook in `advanceHeavy`, the pioneer only and only soon after the catalogue's real
+date; `skip` names the one trade whose demand term is left out in that market, because `heavyPulse`
+already lifts it); a deep-tech milestone in `DEEPTECH_WAVES`, an approved drug with a big peak, or a
+lab's first model at the frontier (`afterResearch`); a Workshop first (`WORKSHOP_WAVES`, source
+`workshop`) or a future Workshop win (source `race`); and a seeded rival landing (`landRivalWaves`, a
+`YEARLY_HOOKS` entry for years after 2026 only, so history years never get an invented rival wave).
+`announceWave` refuses an unknown kind, a 65th wave, a third non-rival wave in one year, and a heavy,
+Workshop or race wave of a kind a history row already covers that year. Costs are never skipped.
+
+Hype and delivery. A new wave starts at hype `0.3 + 0.7 size` and delivery 0. `advanceTechWaves`
+runs once a year at the end of `yearlyBusinessImpl` (and on its no-company return), behind the `last`
+marker. Delivery moves toward what really sold (a heavy record's adoption curve, a deep-tech lab's
+share against a quarter of its market), by at most 0.25 a year; a Workshop, race or rival wave, or one
+whose company or record is gone, gains `0.08 + 0.22 u` from a seeded draw with a 25% stall year.
+Hype closes on delivery (faster when it lags), so a premium unwinds only when the breakthrough did not
+ship, never just because a year went by. Five mature years settle a wave into `techBase` (permanent
+demand and cost factors per `trade|market`, folded at the wave's own market); a wave still under 0.1
+delivery after six years is dropped. A delivery gain also feeds the home economy a small `innovation`
+amount (never for Workshop or race waves).
+
+One formula. `waveFactors(trade, market, year, waves, base, worldMarket)` is pure and returns
+`{ demand, costs, value }` per trade, multiplied over every live wave and history row and clamped to
+`FACTOR_BOUNDS` (value 0.3-3, demand 0.45-1.8, costs 0.75-1.5), with one shared frozen neutral when
+nothing applies. Reach: market `world` reaches every country in full; a country wave is 1 at home and
+`0.35 + 0.4 x delivery` elsewhere; history rows carry their own. World-scope trades take history
+demand at a third, because their size curves already carry their booms. `waveFactorsFor(g, ...)` adds
+`techBase`. The readers (`tech-wave-factors.ts`, a leaf module so the low-level market code can import
+it without the company economy) are `readTechWaves` and `readTechBase`: they validate every field,
+drop damage, clamp, cap lengths, never throw and never write, and cache by the raw stored array or
+object (every writer replaces it), with a memo per trade, market and year on the validated list.
+
+Where each reader applies its factor, once and with its own clamp: demand only in
+`economy.marketCtxFor` (on the spread copy after `buildCtx`, whose cache stays free of game state,
+together with the heavy pulse: `clampN(heavyPulse x demand, 0.45, 1.8)`); costs only in
+`dynamics.nationalMarket` (`clampN(events.costs x costs, 0.75, 1.5)`); value in `economy.valuationOf`,
+through `BizState.wave` (`{ v, y }`, stamped by `stampWave` when a classic company's year is booked,
+never for deep tech or a listed company, and validated on read) with history waves read directly, and
+for deep tech in `deeptech-core.industryCycle`'s `wave` echo (value only); rivals in
+`economic-actors.advanceRivals`, which passes the factors to `advanceActor` for non-real rivals;
+fast-follower entrants through `waveNewcomers` (competition.ts, one per delivery level crossed, never for
+a heavy wave, which has rivals follow on `heavyArrival`);
+and regulators through `waveScrutiny`, which multiplies `antitrustOf`'s chance (`antitrustChance`
+itself is unchanged).
+
+What the player reads. `waveLines` is pure: at most one line in the Annual Report and three rows in
+Market Overview, two short sentences with the demand, cost and value changes, and any line the era
+check flags for that country and year is skipped. Deep-tech and rival waves post a `wave-<id>`
+`MarketNews` item only when they touch a player company's trade or came from the player.
+
+Heirs and saves. `waveWorldFlags` hands the validated waves and settled factors to the next generation
+(never `market.news`, which `heavyWorldFlags` already carries). Draws come from `seeded(...)` keyed by
+`familyId(g.lifeId)` plus `outcomeTag(g, year)`, never `g.rng`, so heirs share them and a Time Machine
+fork rerolls only the unfinished year. `techWaves`, `techBase` and `BizState.wave` are optional,
+bounded and validated on read, `SAVE_SCHEMA` stays 2, and a life with no company writes none of them.
 
 ### Nepotism, succession and family employment
 
