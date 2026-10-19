@@ -289,7 +289,7 @@ two callers in `deeptech-core.ts` (`techPlan`, `sellable`) have `g`.
 ```
 best = bestModel(t)                       // unheld; rated models outrank unrated, then by rating strength
 no best -> 0;  best has no rating or year < 2012 -> today's formula, exactly (frontierScore line)
-else lead = labStanding(fam, t, year).lead
+else lead = labStanding(fam, t, max(year - 1, best.year)).lead   // the last closed benchmark year: a model trained in Y first sells in Y + 1
      competitiveness = clamp(1 + lead / 190, 0.05, 1.6)
 techPremium: 1 + 0.15 x clamp(lead / 150, 0, 1)   for a rated best model (unrated: today's x1.15 test)
 ```
@@ -348,7 +348,7 @@ is at or before the benchmark year; until then the row says it is open.
   `benchYear(g)` (new) is `Math.round(g.year) - 1`, the last closed fiscal year, which is also what
   `trainWin` stamps and what `MarketState.history` records. The release popup, the training line, claims
   and the derived series use the model's `m.year`. Menus, the Annual Report note and the profile line use
-  `benchYear(g)` and say "as of 2026". Demand uses the plan year that `techPlan` already passes. So
+  `benchYear(g)` and say "as of 2026". Demand takes the plan year that `techPlan` already passes and reads the board of the year before it (never older than the best model's own year): a model trained in Y is rated on Y's board and first sells in Y + 1, so it is read against the board it was rated on. So
   "state of the art at training" and "solid at release" can no longer disagree. The family seed is
   `familyId(g.lifeId)`, as the rosters use, so rival rows match the Market & Competition screens.
 

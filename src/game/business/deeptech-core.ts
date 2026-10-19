@@ -11,12 +11,12 @@ import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
 import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, marketCtxFor, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
-import { LEAD_DIVISOR } from './ai-bench'
+import { LEAD_DIVISOR, benchYear } from './ai-bench'
 import { labLead } from './ai-bench-market'
 import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
 import { familyId } from './competition-roster'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, satUnits, vcDepth } from './deeptech-data'
-import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
+import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type AiModel, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
 import { hedgeProfitIn, hedgeResultFor } from './hedge-record'
 import { industryDef } from './industries'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
@@ -181,13 +181,26 @@ export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number,
 // The commercial model
 
 /**
+ * AI: a rated best model's lead over the best rival lab for the plan year `year`, null for an unrated model or a
+ * year before 2012. A model is rated on the board of the fiscal year it was trained in and first sells the year
+ * after, so demand reads the last closed benchmark year (`year - 1`, the board the menus show) and never a board
+ * older than the model's own. Reading the plan year's own board would charge every model a year of drift
+ * before it sold anything.
+ */
+function planLead(t: Pick<TechState, 'models'>, best: AiModel, year: number, fam: string): number | null {
+  if (!best.rating || year < 2012) return null
+  return labLead(fam, t, Math.max(benchYear({ year }), best.year))
+}
+
+/**
  * AI: how competitive the best model is (0.05 - 1.6). A rated model reads its lead over the best rival lab on
- * the year's board (lead 0 is 1.0); an unrated model, or a year before 2012, reads the old frontier line.
+ * the board of the last closed benchmark year (lead 0 is 1.0); an unrated model, or a year before 2012, reads
+ * the old frontier line.
  */
 export function competitiveness(t: Pick<TechState, 'models'>, year: number, fam: string): number {
   const best = bestModel(t)
   if (!best) return 0
-  const lead = best.rating && year >= 2012 ? labLead(fam, t, year) : null
+  const lead = planLead(t, best, year, fam)
   if (lead !== null) return clampN(1 + lead / LEAD_DIVISOR, 0.05, 1.6)
   const f = frontierScore(year)
   return clampN((best.score - (f - 25)) / 25, 0.05, 1.6)
@@ -266,7 +279,7 @@ export function techPremium(b: BizState, t: TechState, year: number, calm: boole
   if (ind === 'semiconductor') p *= 1 + 0.12 * t.node
   if (ind === 'aiLab') {
     const best = bestModel(t)
-    const lead = best?.rating && year >= 2012 ? labLead(familyId(g.lifeId), t, year) : null
+    const lead = best ? planLead(t, best, year, familyId(g.lifeId)) : null
     if (lead !== null) p *= 1 + 0.15 * clampN(lead / 150, 0, 1)
     else if (best && best.score >= frontierScore(year)) p *= 1.15
   }

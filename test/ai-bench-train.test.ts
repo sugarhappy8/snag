@@ -75,4 +75,21 @@ describe('competitiveness, premium and demand from the lead', () => {
     const typical = at({}), maxed = at({ level: 100, plant: 6, rented: 0, models: priors(7) }), weak = at({ level: 40, plant: 0, rented: 2, models: priors(3) })
     expect([typical >= 0.95 && typical <= 1.25, maxed >= 1.25 && maxed <= 1.6, weak >= 0.2 && weak <= 0.5]).toEqual([true, true, true])
   })
+  it('keeps the calibration in real play: a model trained in year Y first sells in Y + 1, against the board it was rated on', () => {
+    // Training ends fiscal year Y (the model is stamped Y) and the first yearly that sells it plans for Y + 1.
+    for (const Y of [2016, 2020, 2022, 2024, 2025, 2026, 2030]) {
+      const t = T({ stage: 3 }); win(t, { year: Y })
+      const first = competitiveness(t, Y + 1, FAM)
+      expect([Y, first >= 0.9 && first <= 1.25]).toEqual([Y, true]); expect(first).toBeCloseTo(competitiveness(t, Y, FAM), 9)
+    }
+    const t = T({ stage: 3 }); win(t, { year: 2026 })
+    expect(competitiveness(t, 2028, FAM)).toBeLessThan(competitiveness(t, 2027, FAM))   // it still ages one board a year after that
+  })
+  it('keeps a lead of +150 worth the full premium in the first sales year, and the first-year demand near the old formula\'s', () => {
+    const { g, b, fam } = lab({ stage: 3 }, 2027)
+    expect(techPremium(b, withLead(150, fam), 2027, true, g)).toBeCloseTo(1.15, 2)
+    const typical = T({ stage: 3 }); win(typical, { year: 2026 })
+    const legacy = T({ stage: 3 }); win(legacy, { fam: undefined, rival: undefined, year: 2026 })
+    expect(demandScale(b, typical, 2027, FAM) / demandScale(b, legacy, 2027, FAM)).toBeGreaterThan(0.85)
+  })
 })
