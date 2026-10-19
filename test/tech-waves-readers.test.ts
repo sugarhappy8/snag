@@ -10,6 +10,8 @@ import { readTech, type TechState } from '../src/game/business/deeptech-state'
 import { nationalMarket } from '../src/game/business/dynamics'
 import { advanceRivals } from '../src/game/business/economic-actors'
 import { bestPlan, marketCtxFor, valuationOf } from '../src/game/business/economy'
+import { formGroup } from '../src/game/business/conglomerate-actions'
+import { groupsOf, groupValue, liveGroup, saveGroup, syncMembers } from '../src/game/business/conglomerate-state'
 import { createBusinessAsset, initialProduction, newBiz } from '../src/game/business/founding'
 import { addHeavy } from '../src/game/business/heavy-rd'
 import { breakthroughsFor } from '../src/game/business/heavy-data'
@@ -33,6 +35,9 @@ const near = (n: number) => expect.closeTo(n, 6)
 /** The Task 2 `W`: kind ai, size .5, hype .8, delivery .6 (r = .36, size x delivery = .3). */
 const AI = (o: Partial<TechWave> = {}): TechWave => ({ id: 'deeptech:ai:2031:x', kind: 'ai', name: 'Frontier AI', source: 'deeptech', year: 2031, market: 'world', size: 0.5, hype: 0.8, delivery: 0.6, last: 2031, ...o })
 const put = (g: GameState, ...w: TechWave[]) => { g.flags.techWaves = J(w) }
+/** The record a company carries as a division of a group that is listed on an exchange (conglomerate-state.ts Membership). */
+const listedGroup = (): Json => ({ id: 'grp1', joined: 2030, own: 1, integrated: 2030, fx: null, core: { id: 'grp1', mult: 1, listing: { exchange: 'NYSE', ipoYear: 2030, sharesOut: 1e6, sharePrice: 10 } } })
+const privateGroup = (): Json => ({ id: 'grp1', joined: 2030, own: 1, integrated: 2030, fx: null, core: { id: 'grp1', mult: 1, listing: null } })
 
 describe('company demand and costs (marketCtxFor, nationalMarket)', () => {
   it('multiplies the potential by the wave demand and is bit-identical with no wave', () => {
@@ -74,6 +79,36 @@ describe('valuation: the stamp, history and the clamp', () => {
     expect(valuationOf({ ...b, public: true, wave: { v: 2, y: 2033 } })).toBe(valuationOf({ ...b, public: true }))
     const wv = waveFactorsFor(g, 'software', 'world', 2011).value, s = book(g, 'software', 2011)   // no stamp: history is read directly; a stamp overrides and already includes it
     expect(wv).toBeGreaterThan(1.1); expect(Math.abs(valuationOf(s) / valuationOf({ ...s, wave: { v: wv, y: 2011 } }) - 1)).toBeLessThan(1e-9); expect(valuationOf({ ...s, wave: { v: 1, y: 2011 } })).toBeLessThan(valuationOf(s))
+  })
+  it('a division of a listed group is valued wave-free (the group price is the sum of its divisions): no stamp, no history row, a private group still gets both', () => {
+    const g = makeTestGame(1), b = book(g, 'dataCenter', 2033), base = valuationOf(b)
+    put(g, AI({ year: 2030, last: 2033 }))
+    for (const [group, wave] of [[privateGroup(), true], [listedGroup(), false]] as const) {
+      const m = { ...b, group }; stampWave(g, m, 2033)
+      expect('wave' in m).toBe(wave); expect(valuationOf({ ...m, wave: { v: 1.3, y: 2033 } }) === valuationOf({ ...m, wave: undefined })).toBe(!wave)
+    }
+    expect(valuationOf({ ...b, group: listedGroup(), wave: { v: 1.3, y: 2033 } })).toBe(base); expect(valuationOf({ ...b, group: privateGroup(), wave: { v: 1.3, y: 2033 } })).toBeGreaterThan(base)
+    const s = book(g, 'software', 2011), noWave = valuationOf({ ...s, wave: { v: 1, y: 2011 } })   // history rows are read directly when there is no stamp
+    expect(valuationOf({ ...s, group: listedGroup() })).toBe(noWave); expect(valuationOf({ ...s, group: privateGroup() })).toBeGreaterThan(noWave)
+  })
+  it('the price of a real listed group does not move with a wave, while the same group unlisted does', () => {
+    const g = makeTestGame(123, { age: 45, money: 1e9 }); g.year = 2034
+    for (const [i, industry] of (['dataCenter', 'dataCenter'] as const).entries()) {
+      const b = newBiz(g, industry, 'us', 'Chicago', { cash: 50e6, founded: g.year - 5, valuation: 220e6 })
+      b.history = [2032, 2033, 2034].map((y) => ({ year: y, revenue: 50e6, profit: 10e6, tax: 0, units: 1e4, price: 5000, staff: 50, valuation: 0, outlets: 1 }))
+      g.assets.push(createBusinessAsset(g, `Division ${i}`, b, 1e6))
+    }
+    expect(formGroup(g, g.assets.map((a) => a.id), 'Atlas')).toBe(true); g.queue = []
+    const id = groupsOf(g)[0].core.id
+    const value = (listed: boolean, wave: boolean): number => {
+      const grp = liveGroup(g, id)!; grp.core.listing = listed ? { exchange: 'NYSE', ipoYear: 2030, sharesOut: 1e6, sharePrice: 10 } : null
+      syncMembers(grp); saveGroup(g, grp)
+      if (wave) put(g, AI({ year: 2030, last: 2034 })); else delete g.flags.techWaves
+      for (const x of grp.members) { stampWave(g, x.b, 2034); x.b.valuation = valuationOf(x.b) }
+      return groupValue(grp)
+    }
+    const quiet = value(true, false); expect(value(true, true)).toBe(quiet)
+    expect(value(false, true)).toBeGreaterThan(value(false, false))
   })
   it('yearlyBusinessImpl stamps the booked year, deletes a neutral stamp, writes none without a wave, and never stamps a listed company', () => {
     const g = adult(5, 2033, 'us'); const a = company(g, 'dataCenter'); put(g, AI({ year: 2030, last: 2033 })); nextYear(g)
@@ -128,6 +163,22 @@ describe('deep tech: industryCycle', () => {
     const rng = g.rng; refreshTechValue(g, b, t); const v0 = valuationOf(b), pre0 = makeTermSheet(g, a, b, t).pre   // a term sheet draws its roll from g.rng, so both sheets start from the same stream
     put(g, AI({ year: 2030 })); g.rng = rng; refreshTechValue(g, b, t); expect(valuationOf(b)).toBeGreaterThan(v0); expect(makeTermSheet(g, a, b, t).pre).toBeGreaterThan(pre0)
     stampWave(g, b, g.year - 1); expect(b.wave).toBeUndefined(); expect(valuationOf({ ...b, wave: { v: 2, y: g.year - 1 } })).toBe(valuationOf(b))
+  })
+})
+
+describe('deep tech: listed companies stay wave-free', () => {
+  const dtCompany = (g: GameState): { b: BizState; t: TechState } => {
+    const c = g.character, b = newBiz(g, 'aiLab', c.countryId, c.city, { cash: 0, ceo: 'owner', manager: null })
+    const t = readTech(undefined); Object.assign(t, { level: 80, stage: 3, ipBook: 20_000_000 }); b.tech = JSON.parse(JSON.stringify(t)) as Json
+    const a = createBusinessAsset(g, 'Test aiLab', b, 0); g.assets.push(a)
+    const live = bizOf(g, a); return { b: live, t: techOf(live) }
+  }
+  it('a public lab and a lab in a listed group get no wave in their tech value, and with no wave nothing changes; a private lab still does', () => {
+    const g = adultIn('us', 5e9, 3, 90, 2034), { b, t } = dtCompany(g), val = () => { refreshTechValue(g, b, t); return valuationOf(b) }
+    const none = val(); put(g, AI({ year: 2030 })); const waved = val(); expect(waved).toBeGreaterThan(none)
+    b.public = true; const pubWave = val(); delete g.flags.techWaves; const pubNone = val(); expect(pubWave).toBe(pubNone)
+    b.public = false; b.group = listedGroup(); put(g, AI({ year: 2030 })); const grpWave = val(); delete g.flags.techWaves; expect(grpWave).toBe(val())
+    b.group = privateGroup(); put(g, AI({ year: 2030 })); expect(val()).toBe(waved)
   })
 })
 

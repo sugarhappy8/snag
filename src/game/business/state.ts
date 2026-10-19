@@ -416,7 +416,7 @@ export interface BizState {
   /**
    * Tech-wave valuation mood stamped when a year was booked (business/tech-waves.ts stampWave): v = the
    * value factor (0.3-3), y = the fiscal year it was booked for. Missing: none. Never set on a deep-tech
-   * or listed company. Validate it before use: bizOf does not re-normalize a current-version record.
+   * or quoted company (listed, or a division of a listed group: isQuoted). Validate it before use: bizOf does not re-normalize a current-version record.
    */
   wave?: WaveStamp
 }
@@ -811,6 +811,20 @@ export function groupMultOf(b: Pick<BizState, 'group'>): number {
   const core = d.core
   const m = core && typeof core === 'object' && !Array.isArray(core) ? core.mult : undefined
   return typeof m === 'number' && Number.isFinite(m) ? clampN(m, 0.3, 3) : 1
+}
+
+/**
+ * True when the company's worth is a stock price: it is listed itself, or a division of a listed group
+ * (the group's share price is the sum of its divisions' valuations, conglomerate-state.groupValue). Reads
+ * the raw group record as groupMultOf does, with readListing's test for a listing, and needs no import of
+ * the group code. The tech waves keep out of such a company (release 1b prices stocks).
+ */
+export function isQuoted(b: Pick<BizState, 'public' | 'group'>): boolean {
+  if (b.public) return true
+  const d = rec(b.group), core = rec(d?.core), id = str(d?.id)
+  if (!d || !core || !id || str(core.id, id) !== id) return false
+  const l = rec(core.listing)
+  return !!l && Math.round(num(l.sharesOut)) > 0 && num(l.sharePrice) > 0
 }
 
 /**

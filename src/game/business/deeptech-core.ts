@@ -17,7 +17,7 @@ import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustr
 import { hedgeProfitIn, hedgeResultFor } from './hedge-record'
 import { industryDef } from './industries'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
-import { runsIt, totalOutlets, type BizState } from './state'
+import { isQuoted, runsIt, totalOutlets, type BizState } from './state'
 import { waveFactorsFor } from './tech-wave-factors'
 import { clampN, round2, toJson } from './util'
 import { LEADERSHIP } from './leadership'
@@ -155,13 +155,14 @@ function cycleZ(g: GameState, ind: DeepTechIndustry, year: number): number {
   return (s.next() + s.next() + s.next() - 1.5) * 2
 }
 
-export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number): IndustryCycle {
+/** `withWave` false leaves the tech waves out (a quoted company's value is wave-free until release 1b): `wave` is then 1. */
+export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number, withWave = true): IndustryCycle {
   const amp = DEEP_TECH[ind].cycle.amp
   const z = 0.65 * cycleZ(g, ind, year) + 0.35 * cycleZ(g, ind, year - 1)
   const c = DEEP_TECH[ind].cycle
   // Tech waves add their value factor only (the seed, demand, price, z and label are untouched): wave demand
   // and costs reach a deep-tech company through marketCtxFor and nationalMarket, which techPlan already reads.
-  const wave = waveFactorsFor(g, ind, 'world', year).value
+  const wave = withWave ? waveFactorsFor(g, ind, 'world', year).value : 1
   const value = clampN(1 + 1.5 * amp * z, 0.6, 1.6)
   return {
     demand: clampN(1 + amp * z, 0.6, 1.5),
@@ -501,7 +502,7 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   const d = DEEP_TECH[ind]
   // The sector's own hype cycle, times the real booms and busts in their years (market-events.ts).
   // With a tech wave live the product is held to the same value bounds as everywhere else; otherwise it is what it was.
-  const ic = industryCycle(g, ind, g.year), ev = marketEventFactors(ind, b.countryId, g.year).value
+  const ic = industryCycle(g, ind, g.year, !isQuoted(b)), ev = marketEventFactors(ind, b.countryId, g.year).value
   const cyc = ic.wave === 1 ? ic.value * ev : clampN(ic.value * ev, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
   const hypeMult = (0.6 + t.hype / 150) * cyc
   const years = bookedYears(b)

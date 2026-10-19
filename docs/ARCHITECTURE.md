@@ -570,8 +570,11 @@ Where each reader applies its factor, once and with its own clamp: demand only i
 together with the heavy pulse: `clampN(heavyPulse x demand, 0.45, 1.8)`); costs only in
 `dynamics.nationalMarket` (`clampN(events.costs x costs, 0.75, 1.5)`); value in `economy.valuationOf`,
 through `BizState.wave` (`{ v, y }`, stamped by `stampWave` when a classic company's year is booked,
-never for deep tech or a listed company, and validated on read) with history waves read directly, and
-for deep tech in `deeptech-core.industryCycle`'s `wave` echo (value only); rivals in
+never for deep tech or a quoted company, and validated on read) with history waves read directly, and
+for deep tech in `deeptech-core.industryCycle`'s `wave` echo (value only). A quoted company is one listed
+itself or a division of a listed group (`state.isQuoted`), because a group's share price is the sum of its
+divisions' valuations: its valuation reads no stamp and no history row, and `operatingValue` asks
+`industryCycle` without the wave, so listed stocks stay wave-free until release 1b; rivals in
 `economic-actors.advanceRivals`, which passes the factors to `advanceActor` for non-real rivals;
 fast-follower entrants through `waveNewcomers` (competition.ts, one per delivery level crossed, never for
 a heavy wave, which has rivals follow on `heavyArrival`);

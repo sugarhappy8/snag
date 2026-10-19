@@ -30,7 +30,7 @@ import { historyFactors, waveFactorsFor } from './tech-wave-factors'
 import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
 import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
-import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
+import { isQuoted, normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
 import { classFactor } from './share-classes'
 import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
@@ -899,8 +899,9 @@ export function valuationOf(b: BizState): number {
   // Tech waves (business/tech-waves.ts): the mood stamped when that year was booked, else the history
   // table read directly. A stamp only counts for the last record's year and is validated here (bizOf
   // does not re-normalize a current-version record). Deep tech reads waves through industryCycle and
-  // classicPart spreads b, so it never uses either; a listed company's price is release 1b.
-  if (last && !isDeepTech(b) && !b.public) {
+  // classicPart spreads b, so it never uses either; a quoted company's price (listed itself, or a division
+  // of a listed group, whose price sums its divisions' valuations) is release 1b.
+  if (last && !isDeepTech(b) && !isQuoted(b)) {
     const ws = b.wave
     const wv = ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && ws.y === last.year ? clampN(ws.v, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]) : historyFactors(b.industry, marketKey(b), last.year).value
     if (wv !== 1) mood = clampN(events * wv, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])

@@ -28,7 +28,7 @@ import { familyId } from './competition-roster'
 import { isDeepTech } from './deeptech-state'
 import { heavyLevel, readHeavy } from './heavy-rd'
 import { hashOf } from './product-market'
-import { businessAssets, readBiz, type BizState } from './state'
+import { businessAssets, isQuoted, readBiz, type BizState } from './state'
 import { isWaveKind, WAVE_KINDS, type WaveKind } from './tech-wave-data'
 import {
   BASE_KEY, cleanWave, effectsOf, MAX_ID, MAX_WAVES, noBase, readTechBase, readTechWaves, roleOf, storedBase, storedWave, waveFactorsFor, WAVES_KEY,
@@ -72,10 +72,11 @@ const round4 = (n: number): number => Math.round(n * 1e4) / 1e4
  * the waves and the history rows for its trade and market, with the fiscal year it was booked for
  * (`valuationOf` takes it only when the last record is that year). A neutral factor deletes the stamp
  * (a world with no wave stores nothing). Never on a deep-tech company (it reads waves through
- * `industryCycle`, so a stamp would count twice) or a listed one (stocks stay wave-free until release 1b).
+ * `industryCycle`, so a stamp would count twice) or a quoted one, a listed company or a division of a listed
+ * group, whose price is a sum of divisions' valuations (stocks stay wave-free until release 1b).
  */
 export function stampWave(g: GameState, b: BizState, fiscal: number): void {
-  if (isDeepTech(b) || b.public) { delete b.wave; return }
+  if (isDeepTech(b) || isQuoted(b)) { delete b.wave; return }
   const v = waveFactorsFor(g, b.industry, marketKey(b), fiscal).value
   if (Math.abs(v - 1) < 0.005) delete b.wave
   else b.wave = { v: round4(v), y: fiscal }
