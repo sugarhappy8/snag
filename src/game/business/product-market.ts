@@ -16,7 +16,7 @@ import type { FieldRival, MarketCtx } from './competition-core'
 import { heavyArrival, heavyFringeArrival, heavyLevel, heavyLevelFor, heavyVersionQuality, type HeavyRecord } from './heavy-rd'
 import { industryDef } from './industries'
 import { demandLevel, demandSize, demandTrend, PERIOD_CLASSICS, type DemandLevel } from './product-data'
-import { styleOf, TIMELESS } from './products'
+import { ageStyleOf, TIMELESS } from './products'
 import type { Product } from './state'
 
 // ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ const MAX_AGE_LOSS = 30
 export function effectiveQuality(p: Pick<Product, 'quality' | 'boost' | 'launched'>, industry: string, year: number): number {
   const q = lineQuality(p)
   const age = Math.max(0, year - p.launched - 1)
-  return q - Math.min(MAX_AGE_LOSS, AGE_RATE[styleOf(industry)] * age)
+  return q - Math.min(MAX_AGE_LOSS, AGE_RATE[ageStyleOf(industry)] * age)
 }
 
 // ---------------------------------------------------------------------------

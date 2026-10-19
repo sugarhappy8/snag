@@ -505,6 +505,27 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   travel: sector('marketing', 'travel', 'Travel Services', '🧳', 'Plan and sell holidays, tours and corporate travel.', ['Local Tours', 'Group Travel', 'Adventure Holidays', 'Business Travel', 'Ski Holidays', 'Cruise Bookings', 'Study Abroad Trips'], .7, 1.25),
 }
 
+/** How much technology a trade's R&D can reach (R&D 3.0): breakthrough is exactly the deep-tech trades. */
+export type RdTier = 'low' | 'mid' | 'high' | 'breakthrough'
+
+export const RD_TIER = {
+  foodTruck: 'low', restaurant: 'low', cafe: 'low', bakery: 'low', bar: 'low', grocery: 'low', salon: 'low', gym: 'low',
+  realEstate: 'low', marketing: 'low', hotel: 'low', entertainment: 'low', bank: 'low', investmentFirm: 'low', casino: 'low',
+  nightclub: 'low', stripClub: 'low', education: 'low', petCare: 'low', homeCare: 'low', travel: 'low',
+  brewery: 'mid', fashion: 'mid', beauty: 'mid', autoShop: 'mid', construction: 'mid', logistics: 'mid', manufacturing: 'mid',
+  farm: 'mid', energy: 'mid', water: 'mid', recycling: 'mid', packaging: 'mid', furniture: 'mid',
+  software: 'high', gameStudio: 'high', ecommerce: 'high', clinic: 'high', onlineBank: 'high', solar: 'high', battery: 'high',
+  telecom: 'high', dataCenter: 'high',
+  semiconductor: 'breakthrough', aiLab: 'breakthrough', robotics: 'breakthrough', biotech: 'breakthrough', spaceTech: 'breakthrough',
+  electricVehicles: 'breakthrough', quantum: 'breakthrough', cybersecurity: 'breakthrough', fusion: 'breakthrough',
+  neurotech: 'breakthrough', drones: 'breakthrough', carbonCapture: 'breakthrough',
+} as const satisfies Record<Industry, RdTier>
+
+/** A trade's tier; an id that is not a trade reads 'mid'. */
+export function rdTierOf(industry: string): RdTier {
+  return Object.hasOwn(RD_TIER, industry) ? RD_TIER[industry as Industry] : 'mid'
+}
+
 /**
  * Industries that make goods can add production capacity without opening another outlet
  * (business/manage.ts "Build Capacity"): each unit adds half of one site's capacity at the home

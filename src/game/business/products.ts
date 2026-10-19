@@ -5,6 +5,7 @@
 // packaging, shelf space, stock, support). What a line sells is product-market.ts (its kind's real
 // demand, its quality against the rivals' versions). Pure: no RNG, no state changes; names respect
 // the era (no apps in 1975) and each kind of product's real first year (product-data.ts).
+import type { Industry } from '../data/markets'
 import type { GameState } from '../types'
 import { marketKey } from './competition-core'
 import { eraFits } from './era'
@@ -71,6 +72,27 @@ const STYLE: Record<string, Style> = {
 
 export function styleOf(industry: string): Style {
   return STYLE[industry] ?? 'service'
+}
+
+/**
+ * How fast a trade's lines age against rivals' versions (R&D 3.0). The 26 trades in STYLE keep their
+ * style; the other 29 get a deliberate one (STYLE and styleOf stay because they choose idea templates).
+ */
+export const AGEING: Record<Industry, Style> = {
+  foodTruck: 'food', restaurant: 'food', cafe: 'food', bakery: 'food', bar: 'food', brewery: 'food', grocery: 'food',
+  fashion: 'goods', beauty: 'goods', manufacturing: 'goods', farm: 'goods', ecommerce: 'goods',
+  autoShop: 'goods', construction: 'goods', logistics: 'goods', energy: 'goods', water: 'goods', recycling: 'goods', packaging: 'goods', furniture: 'goods', clinic: 'goods',
+  software: 'tech', gameStudio: 'tech', semiconductor: 'tech', aiLab: 'tech', robotics: 'tech', biotech: 'tech', spaceTech: 'tech',
+  electricVehicles: 'tech', quantum: 'tech', cybersecurity: 'tech', fusion: 'tech', neurotech: 'tech', drones: 'tech', carbonCapture: 'tech',
+  telecom: 'tech', dataCenter: 'tech', battery: 'tech', solar: 'tech', onlineBank: 'tech',
+  salon: 'service', gym: 'service', realEstate: 'service', marketing: 'service', hotel: 'service', entertainment: 'service',
+  education: 'service', petCare: 'service', homeCare: 'service', travel: 'service', casino: 'service', nightclub: 'service',
+  stripClub: 'service', investmentFirm: 'service', bank: 'service',
+}
+
+/** The style a trade's lines age by; an id that is not a trade reads styleOf. */
+export function ageStyleOf(industry: string): Style {
+  return Object.hasOwn(AGEING, industry) ? AGEING[industry as Industry] : styleOf(industry)
 }
 
 const BUNDLE: Record<Style, string> = { food: 'Combo', goods: 'Bundle', service: 'Package', tech: 'Suite' }
