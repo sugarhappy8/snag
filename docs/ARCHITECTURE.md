@@ -1085,6 +1085,34 @@ them. Design: `docs/superpowers/specs/2026-10-13-politics-2-governing-corruption
 - **Balance** is checked by `test/nation-balance.test.ts` (a few seeded lives per strategy) and the
   opt-in `FUZZ=1 npx vitest run test/fuzz-politics.test.ts` (many), both through `test/politics-kit.ts`.
 
+## Music 2.0 (special/music-*.ts)
+
+A label deal with a recoupment ledger, format eras, a seeded chart against named rival acts, a touring P&L, six
+events plus a claim dispute, and a master buy-back an heir can inherit, on the career kit. Design:
+`docs/superpowers/specs/2026-10-19-music2-design.md`.
+
+- **Files.** `music-data` (tables, era helpers), `music-job` (profile and job moved out of `music.ts`, `signDeal`),
+  `music-state` (the record), `music-market` (format mix, waterfall, chart, `bookRelease`, `stepCatalogue`),
+  `music-label` (roster, negotiation, deal year, exits, Release Plan), `music-tour` (`tourModel`, settlement),
+  `music-events` (six crises, the dispute, awards), `music-menu`, and `music-sim` (the one `settleYear` entry,
+  registered in `kit/careers.ts`). `music-rights.ts` keeps its legacy calls and gains `adoptMaster`. New modules
+  never import `music.ts` (a grep test pins it).
+- **Record.** `special.music.sim` (key `music.sim`, version 1) is owner-stamped, normalized by its reader and
+  bounded (ledger 40, history 8, tours 8, mods 6, awards 24). The legacy `special.music` profile and `Job.data`
+  are never converted or rewritten: the migration is pure and `view` of a legacy life is the legacy state plus a
+  derived record. `SAVE_SCHEMA` stays 2.
+- **Grandfathering.** A labelled legacy solo becomes a `legacy` deal: the old advance salary pays once a year, a
+  release keeps the legacy `sold` and $1 a copy, nothing is recouped, and the renewal comes at the tier's base
+  royalty plus 0.02 with nothing carried.
+- **Identities.** `waterfall`: `gross = costs + kept + recoup + bandCut + paid`, cash moves by `paid`, `recoup` is
+  `min(unrecouped, round(0.8 x pool))` and a repayment to the label, never income. Tour: `gate + merch + absorbed =
+  promoter + crew + travel + production + cogs + playerNet + bandCut`, taxed on net.
+- **Order in `music-sim.ts`.** The first tick adopts and returns; then `stepDeal` and `stepDispute` (or `endDeal` with
+  the job gone), `stepCatalogue`, the standing and the statement; the kit offers the generic crisis last.
+  `yearlyMusic` has two guards: once adopted it skips only the solo deal year and the awards block.
+- **Money.** Cash moves only through `c.earn`, `c.pay` or `Effects.money` with a named source or sink
+  (`test/career-money-scan.test.ts` scans every `music-*.ts` but `music-rights.ts`).
+
 ## Built-in tasks (offline resolution)
 
 `ModalItem` of kind `aiTask` (the historical name, kept so saves with a queued task still load)
