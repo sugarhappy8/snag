@@ -1001,11 +1001,13 @@ export function yearlyAstronaut(g: GameState): void {
   const p = astroProfile(g)
   earnIncome(g, job.salary)
   const flew = d.lastMissionAge === c.age - 1
-  bump(job, randInt(g, -4, 3) + (job.level >= 1 && !flew ? -3 : 0) + (c.stats.health < 40 ? -4 : 0))
+  // Administrators (rank 6 and 7 of a corps record) fly nothing by design: the no-flight penalty and the performance firing are not theirs.
+  const admin = astronautStore.has(g) && job.level >= 6
+  bump(job, randInt(g, -4, 3) + (job.level >= 1 && !flew && !admin ? -3 : 0) + (c.stats.health < 40 ? -4 : 0))
   fameToward(g, Math.min(60, 4 + job.level * 3 + p.moonLandings * 6 + p.marsLandings * 12 + p.planets.length * 3), 2)
 
-  // Mandatory retirement or medical grounding. Administrators (rank 6 and 7 of a corps record) serve to 68.
-  const retireAge = astronautStore.has(g) && job.level >= 6 ? 68 : 60
+  // Mandatory retirement or medical grounding. Administrators serve to 68.
+  const retireAge = admin ? 68 : 60
   if (c.age >= retireAge || c.stats.health < 20) {
     const title = job.title
     leave(g, 'retired')
@@ -1015,7 +1017,7 @@ export function yearlyAstronaut(g: GameState): void {
     return
   }
 
-  if (job.performance < 20 && chance(g, 0.5)) {
+  if (!admin && job.performance < 20 && chance(g, 0.5)) {
     leave(g, 'fired')
     log(g, `${TheAgency(agency)} let me go.`, 'bad')
     say(g, 'Fired', `${TheAgency(agency)} cut you from the astronaut corps. ${pick(g, ['Your locker was emptied before you got back from lunch.', 'They said you were "a risk to the mission". And the snacks.'])}`, '\u{1F4C9}', 'bad')

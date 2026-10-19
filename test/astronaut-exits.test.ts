@@ -169,7 +169,6 @@ describe('astronaut exits: administrator', () => {
     for (let i = 0; i < 9 && g.character.job; i++) {
       nextYear(g, yearlySpecial)
       g.queue = []
-      g.character.job && (g.character.job.performance = 80)
       if (g.character.age < 68) expect(g.character.job, `age ${g.character.age}`).not.toBeNull()
     }
     expect(g.character.age).toBeGreaterThanOrEqual(67)
@@ -184,6 +183,25 @@ describe('astronaut exits: administrator', () => {
     expect(yearActionsUsed(f.g, 'astro.mission')).toBe(0)
     nextYear(f.g, yearlySpecial)
     expect(astronautStore.view(f.g).mark.groundedYear).toBe(f.g.year) // still no flights next year
+  })
+
+  it('keeps a Deputy or Administrator in post to 68 whatever the performance drifts to, over many seeds', () => {
+    const lost: string[] = []
+    for (let seed = 1; seed <= 24; seed++) {
+      const { g } = adminReady(seed)
+      g.character.age = 46
+      action(g, 'astro.admin').run(g)
+      g.queue = []
+      for (let i = 0; i < 25 && g.character.job; i++) {
+        nextYear(g, yearlySpecial)
+        g.queue = []
+        if (g.character.age < 68 && !g.character.job) lost.push(`seed ${seed} age ${g.character.age}`)
+      }
+      // the retire-at-68 exit is the one that ends it
+      expect(g.character.job, `seed ${seed}`).toBeNull()
+      expect(g.character.age, `seed ${seed}`).toBeGreaterThanOrEqual(68)
+    }
+    expect(lost).toEqual([])
   })
 
   it('asks for one push, safety or hold choice a year and records the stance', () => {
