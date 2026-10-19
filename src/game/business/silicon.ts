@@ -124,7 +124,7 @@ export function afterYearSilicon(g: GameState, a: Asset, b: BizState, t: TechSta
     if (gap <= 3) s.lead = year
     else if (!readTechWaves(g).some((w) => w.kind === 'chips' && !!w.origin?.startsWith(`${a.id}#`) && year - w.year < 3)) {
       // A refusal (the wave caps) leaves `lead` alone, so the next year tries again.
-      const wave = announceWave(g, { kind: 'chips', source: 'deeptech', origin: `${a.id}#leap`, name: 'Record-speed chips', size: 0.35, market: 'world', home: b.countryId })
+      const wave = announceWave(g, { kind: 'chips', source: 'deeptech', origin: `${a.id}#leap`, name: 'Record-speed chips', size: 0.35, market: 'world', home: b.countryId, by: a.id })
       if (wave) {
         s.lead = year
         log(g, `${a.name}'s chips are the fastest on the market.`, 'good')

@@ -653,8 +653,9 @@ price blends half its last price and half a fundamental that now carries the wav
 booked year while peers jump at once. That lag is deliberate: own buys pay `max(price, fundamental) x 1.03`, so the lag is
 no cheap entry, and own-listing keeps spec D12 as written.
 
-The insider rule. `announceWave` takes an optional `by` (the originating asset id), passed by the Heavy R&D launch and the
-deep-tech milestone writers; for a new wave it calls `waveInsiderCases` after the news. In the announcement year, for a
+The insider rule. `announceWave` takes an optional `by` (the originating asset id), passed by the Heavy R&D launch and every
+deep-tech writer (program wins, drugs, the lab's first frontier model, the AI firsts of `claimFirsts` and the chip leap
+of `afterYearSilicon`); for a new wave it calls `waveInsiderCases` after the news. In the announcement year, for a
 founder (`founderName`, not acquired) or CEO of the player's own company (a hired CEO or a plain owner is no insider),
 each listed stock on the player's exchange that is core or supply for the wave's kind, with shares bought in that year
 or the year before (`insiderPositions(..., { freshOnly: true })`: open calls, longs, index calls), becomes a case when the

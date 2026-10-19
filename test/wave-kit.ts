@@ -14,9 +14,9 @@ export type Row = { cause: string; role?: string; note?: string; via: string; se
 export const rows = (g: GameState): Row[] => (g.flags['special.politics'] as unknown as { abuse?: { cases: Row[] } } | undefined)?.abuse?.cases ?? []
 export const founder = (seed = 5, year = 2033): { g: GameState; a: Asset } => { const g = adult(seed, year, 'us'), a = company(g, 'software', { cash: 80_000_000 }); g.queue = []; return { g, a } }
 export const warp = (g: GameState, year: number) => { g.character.age += year - g.year; g.year = year; g.yearActions = {} }
-const roleFor = (kind: 'smartphone' | 'ai', secId: string) => { const s = sectorOfSec(secId), t = s ? SECTOR_TRADE[s] : null; return t ? roleOf(kind, t) : null }
+const roleFor = (kind: 'smartphone' | 'ai' | 'chips', secId: string) => { const s = sectorOfSec(secId), t = s ? SECTOR_TRADE[s] : null; return t ? roleOf(kind, t) : null }
 /** Core or supply stocks of a kind that are listed under one id in every year given (as holdable() of test/insider-fairness.test.ts). */
-export function holdable(g: GameState, years: number[], kind: 'smartphone' | 'ai' = 'smartphone'): BetTarget[] {
+export function holdable(g: GameState, years: number[], kind: 'smartphone' | 'ai' | 'chips' = 'smartphone'): BetTarget[] {
   const inf = exchangeInfo(g.character.countryId)
   return listedTargets(g).filter((t) => { const r = roleFor(kind, t.secId); return (r === 'core' || r === 'supply') && years.every((y) => exchangeYear(fam(g), anchor(g), inf, y).stocks[t.slot]?.id === t.secId) })
 }

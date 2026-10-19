@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { businessAssetView } from '../src/game/business'
+import { claimFirsts } from '../src/game/business/ai-bench-claims'
+import { siliconOf, techOf } from '../src/game/business/deeptech-core'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { advanceHeavy } from '../src/game/business/heavy-rd'
 import { breakthroughByName } from '../src/game/business/heavy-data'
 import { deepWaveFor, HEAVY_WAVE_WINDOW, HEAVY_WAVES, heavyStartsWave, INSIDER_WARNING } from '../src/game/business/tech-wave-data'
 import { announceWave, readTechWaves, type TechWave } from '../src/game/business/tech-waves'
 import { readTech } from '../src/game/business/deeptech-state'
+import { afterYearSilicon } from '../src/game/business/silicon'
 import { bizOf } from '../src/game/business/state'
 import { waveInsiderCases } from '../src/game/business/wave-insider'
 import { moneyState } from '../src/game/computer/money-common'
@@ -18,6 +21,8 @@ import { politicianJob } from '../src/game/special/politics'
 import type { Asset, GameState, Json, MenuAction } from '../src/game/types'
 import { adultIn } from './deeptech-kit'
 import { allNodes } from './market-kit'
+import { lab, rated } from './ai-bench-kit'
+import { chipLab } from './silicon-kit'
 import { exposedIn, founder, holdable, project, rows, warp } from './wave-kit'
 
 const launch = (g: GameState, a: Asset, extra: Partial<Parameters<typeof announceWave>[1]> = {}): TechWave => announceWave(g, { kind: 'smartphone', source: 'deeptech', origin: `${a.id}#frontier`, name: 'Smartphones', size: 0.5, market: 'world', by: a.id, ...extra })!
@@ -102,6 +107,16 @@ describe('the writers and the existing case code', () => {
       advanceHeavy(twin, twin.assets[0], bizOf(twin, twin.assets[0]), project(twin, 'Autonomous Agent Platform', 0.98), twin.year); expect(rows(twin)).toEqual([])
     }
     expect(won).toBeGreaterThan(0)
+  })
+  it('the AI firsts and the chip leap of the player lab pass the asset too, so a founder who bought the stocks first is an insider', () => {
+    const L = lab(), [ai] = holdable(L.g, [L.g.year], 'ai'); expect(ai, 'no ai-supply stock listed').toBeDefined(); expect(buySecurity(L.g, ai.secId, 200_000)).toBe(true)
+    L.t.models = [rated(L.fam, 1, L.g.year, { language: 1320 })]
+    expect(claimFirsts(L.g, L.a, bizOf(L.g, L.a), techOf(bizOf(L.g, L.a)), techOf(bizOf(L.g, L.a)).models[0])).toEqual(['language.1'])
+    expect(rows(L.g)).toHaveLength(1); expect(rows(L.g)[0]).toMatchObject({ cause: 'wave', note: 'Frontier language', secId: ai.secId, status: 'open' })
+    const C = chipLab({ year: 2031, patch: { stage: 4, plant: 1, level: 100, node: 6, yieldRate: 0.97 } }), [chip] = holdable(C.g, [2031], 'chips'); expect(chip, 'no chips stock listed').toBeDefined(); expect(buySecurity(C.g, chip.secId, 200_000)).toBe(true)
+    Object.assign(siliconOf(C.t), { lead: 0, applied: 0, last: { year: 2030, index: 1, served: 1, depth: 0, win: 0, step: 0, perf: 0, quality: 0 } })
+    afterYearSilicon(C.g, C.a, C.b, C.t)
+    expect(rows(C.g)).toHaveLength(1); expect(rows(C.g)[0]).toMatchObject({ cause: 'wave', note: 'Record-speed chips', secId: chip.secId, status: 'open' })
   })
   it('the press story, the choices and the end of the case run through the existing code', () => {
     let seen = 0

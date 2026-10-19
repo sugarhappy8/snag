@@ -74,8 +74,8 @@ export function claimFirsts(g: GameState, a: Asset, b: BizState, t: TechState, m
       b.brand = clampN(b.brand + 4, 0, 100)
       t.premium = clampN(t.premium + 0.01, 0, 1)
       log(g, `${a.name} reached ${capMilestone(c, k)} in ${CAPS[c].label.toLowerCase()} before any rival.`, 'good')
-      // The claim stands even when the wave is refused (a third non-rival wave in a year).
-      announceWave(g, { kind: 'ai', source: 'deeptech', origin: `${a.id}#first.${key}`, name: `Frontier ${CAPS[c].label.toLowerCase()}`, size: 0.2 + 0.1 * k, market: 'world', home: b.countryId })
+      // The claim stands even when the wave is refused (a third non-rival wave in a year). `by` makes it a deep-tech wave of the player's own company for the insider rule (wave-insider.ts).
+      announceWave(g, { kind: 'ai', source: 'deeptech', origin: `${a.id}#first.${key}`, name: `Frontier ${CAPS[c].label.toLowerCase()}`, size: 0.2 + 0.1 * k, market: 'world', home: b.countryId, by: a.id })
       claimed.push(key)
     }
   }
