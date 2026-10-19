@@ -35,6 +35,7 @@ import { heavyOf } from './heavy-rd'
 import { bestRdIdea, pullValue, rdOf, retireLines, retireOrder } from './rd'
 import { fieldFor, lineInfo, productPull } from './product-market'
 import { bestRole, hireValue, interviewFee, maxKeyStaff } from './staff'
+import { sectorTurn } from './sector-ceo'
 import { classFactor } from './share-classes'
 import { totalOutlets, type BizState, type KeyStaff, type Manager, type Supplier } from './state'
 import { clampN, money, plural, priceCapOf, round2, unitMoney, units } from './util'
@@ -676,6 +677,8 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   policyTurn(t)
   resilienceTurn(t)
   productTurn(t)
+  // The Operations Desk of food, care and utility trades (business/sector-ceo.ts).
+  sectorTurn(t, MAX_PAYBACK[t.st.mandate])
   siteTurn(t)
   debtTurn(t)
   const plan = smartPlan(g, a, b, m.skill)

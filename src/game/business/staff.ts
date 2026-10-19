@@ -12,6 +12,7 @@ import { roleTitle, sameRole } from './era'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { familyStaffLine } from './nepo-staff-line'
 import { industryDef, type RoleDef } from './industries'
+import { sectorRoleBlurb } from './sector-data'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
 import { clampN, markBest, money, num, rec, str, toJson } from './util'
 import { leadershipPower, leadershipSummary, LEADERSHIP } from './leadership'
@@ -34,6 +35,8 @@ export function roleBlurb(b: Pick<BizState, 'industry'>, role: RoleDef): string 
     }
     return FINANCE[role.focus][bank ? 0 : 1]
   }
+  const own = sectorRoleBlurb(b.industry, role.title)
+  if (own) return own
   return role.focus === 'quality' ? 'Raises quality' : role.focus === 'sales' ? 'Brings in customers' : role.focus === 'finance' ? 'Cuts costs and keeps the books clean' : 'More capacity, lower unit costs'
 }
 
