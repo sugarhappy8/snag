@@ -17,15 +17,15 @@ interface Agency {
   retainer: number
 }
 
-const AGENCIES: Agency[] = [
+export const AGENCIES: Agency[] = [
   { name: 'Hometown Faces', tier: 0, looks: 45, headshot: 20, retainer: 15_000 },
   { name: 'Silhouette Models', tier: 1, looks: 60, headshot: 40, retainer: 32_000 },
   { name: 'Prestige Model Management', tier: 2, looks: 72, headshot: 60, retainer: 60_000 },
   { name: 'Icon Elite', tier: 3, looks: 85, headshot: 75, retainer: 110_000 },
 ]
 
-const RANKS = ['New Face', 'Model', 'Professional Model', 'Elite Model', 'Supermodel']
-const RANK_MULT = [1, 1.5, 2.5, 4, 8]
+export const RANKS = ['New Face', 'Model', 'Professional Model', 'Elite Model', 'Supermodel']
+export const RANK_MULT = [1, 1.5, 2.5, 4, 8]
 
 const COUTURE = [
   'Aquarelle Silk Sweatshirt',
@@ -48,7 +48,7 @@ const COUTURE = [
   'Thunderstorm Cape',
 ]
 
-const DESIGNERS = ['Maison Lumière', 'Casa Vellutto', 'Oskar Grünwald', 'Atelier Noir', 'Haus of Ziggy', 'Delacroix & Fils', 'Studio Kintsugi']
+export const DESIGNERS = ['Maison Lumière', 'Casa Vellutto', 'Oskar Grünwald', 'Atelier Noir', 'Haus of Ziggy', 'Delacroix & Fils', 'Studio Kintsugi']
 const FASHION_CITIES = ['Paris', 'Milan', 'New York', 'London', 'Tokyo']
 
 interface ModelProfile {
@@ -96,7 +96,7 @@ function modelProfile(g: GameState): ModelProfile {
   return p
 }
 
-function viewModel(g: GameState): ModelProfile {
+export function viewModel(g: GameState): ModelProfile {
   return normalizedModel(peek<ModelProfile>(g, 'model'))
 }
 
@@ -120,12 +120,12 @@ function masterModeling(g: GameState): void {
   masterFlagSkill(g, 'modeling', 'stage', 'modeling', ageCeiling(g.character.age, { from: 12, full: 18, floor: 45 }))
 }
 
-function modelingSkill(g: GameState): number {
+export function modelingSkill(g: GameState): number {
   return clamp100(flagSkill(g, 'modeling') + (hasTalent(g, 'Modeling') ? 10 : 0))
 }
 
 /** Modeling talent: agencies forgive a few points of looks (they see the "it" factor). */
-function looksBar(g: GameState, a: Agency): number {
+export function looksBar(g: GameState, a: Agency): number {
   return a.looks - (hasTalent(g, 'Modeling') ? 8 : 0)
 }
 
@@ -140,7 +140,7 @@ function marketability(g: GameState): number {
 // ---------------------------------------------------------------------------
 // Headshots
 
-const PHOTOGRAPHERS = [
+export const PHOTOGRAPHERS = [
   { id: 'budget', label: 'Budget photographer', cost: 150, base: 0, mult: 0.5, spread: 20 },
   { id: 'pro', label: 'Professional photographer', cost: 1_200, base: 20, mult: 0.6, spread: 20 },
   { id: 'celebrity', label: 'Celebrity photographer', cost: 7_500, base: 30, mult: 0.7, spread: 15 },
@@ -291,7 +291,7 @@ const agencyScript = defineScript('special.model.agency', (g, choice) => {
 })
 
 /** Modeling talent hint: the most prestigious agency you comfortably qualify for (no randomness). */
-function bestAgency(g: GameState): string | null {
+export function bestAgency(g: GameState): string | null {
   const c = g.character
   const p = viewModel(g)
   const ok = AGENCIES.filter(
