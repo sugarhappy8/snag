@@ -10,6 +10,7 @@ import { ageCeiling } from '../mastery'
 // The model-*.ts files are used inside function bodies only: they import this file back.
 import { freelanceBlock } from './model-agency'
 import { bookFreelance, modelRows, modelStanding, offerSabotage } from './model-board'
+import { modelExitRows, retireModel } from './model-exit'
 import { addFame, blocked, bump, claimYearly, clamp100, fameOf, fameToward, flagSkill, hire, leave, masterFlagSkill, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, tell, view, withHint, yearlyList } from './common'
 
 interface Agency {
@@ -438,21 +439,15 @@ const sabotageScript = defineScript('special.model.sabotage', (g, choice) => {
   say(g, 'Sabotage', `${text} Nobody suspects a thing... yet.`, '\u{1F608}')
 })
 
+// Retire: leaves for good with a summary of the career (model-exit.ts), where the legacy row only quit.
 const quitModel: MenuAction = {
   type: 'action',
   id: 'model.quit',
-  label: 'Quit',
+  label: 'Retire',
   emoji: '\u{1F6AA}',
-  subtitle: 'Leave your agency',
-  confirm: () => 'Quit modeling?',
-  run: (g) => {
-    const job = modelJob(g)
-    if (!job) return
-    const agency = job.company
-    leave(g, 'quit')
-    log(g, `I quit modeling at ${agency}.`)
-    say(g, 'Quit Modeling', `You left ${agency} and retired from modeling. Your cheekbones will be remembered.`, '\u{1F6AA}')
-  },
+  subtitle: 'Leave modeling for good',
+  confirm: () => 'Retire from modeling?',
+  run: (g) => retireModel(g),
 }
 
 function wardrobeMenu(): MenuGroup {
@@ -478,6 +473,7 @@ export function modelJobNodes(g: GameState): MenuNode[] {
     // the Season Board (model.board) replaces the one-roll 'Book a Gig' row
     ...modelRows(g),
     modelStanding,
+    ...modelExitRows(g),
     freelanceAction,
     {
       type: 'action',
@@ -518,7 +514,7 @@ export const modelCareerMenu: MenuGroup = {
   },
   children: (g): MenuNode[] => {
     if (modelJob(g)) return [{ type: 'info', id: 'model.already', text: 'You are already signed with an agency. Manage your career from your job.', emoji: '\u{1F483}' }]
-    return [headshotAction, freelanceAction, agencyAction, ...modelRows(g), modelStanding, wardrobeMenu()]
+    return [headshotAction, freelanceAction, agencyAction, ...modelRows(g), modelStanding, ...modelExitRows(g), wardrobeMenu()]
   },
 }
 

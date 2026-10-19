@@ -13,6 +13,8 @@ import { settleYear, careerLog, careerSay, type CareerCtx } from './kit/year'
 import { modelJob } from './model'
 import { adoptJob, contractEnd, saveContract } from './model-agency'
 import { buildBoard } from './model-board'
+import { modelCrises } from './model-events'
+import { protegeIncome, unlockExits } from './model-exit'
 import { MODEL_SPEC, bookAfter, lookValue, rankingOf, scoreOf, settleFee, strainNext } from './model-core'
 import { FOCUS, KINDS, TIER_PRESTIGE } from './model-data'
 import { modelStore, payOut, readContract, type MdOffer, type ModelState } from './model-state'
@@ -55,9 +57,11 @@ function settleBooked(c: CareerCtx<ModelState>, job: ReturnType<typeof modelJob>
     if (o.status !== 'booked') continue
     o.status = 'paid'
     const t = o.terms ?? { agency: '', commission: 0, mother: 0 }
-    const split = settleFee(o.fee, t.commission, t.mother, unrecouped)
+    // a full likeness licence cuts digital fees 5% for the three years of castings it covers
+    const fee = o.kind === 'digital' && (s.cool.licence ?? -1) >= c.year - 1 ? Math.round(o.fee * 0.95) : o.fee
+    const split = settleFee(fee, t.commission, t.mother, unrecouped)
     const cover = Math.min(floorLeft, split.net)
-    payOut(c, o.house || 'Client', o.fee, { agency: split.agency, mother: split.mother, recoup: split.recoup + cover })
+    payOut(c, o.house || 'Client', fee, { agency: split.agency, mother: split.mother, recoup: split.recoup + cover })
     unrecouped -= split.recoup
     floorLeft -= cover
     out.n += 1
@@ -87,6 +91,7 @@ function run(c: CareerCtx<ModelState>, live: boolean): string | void {
   if (!job) {
     for (const a of s.agencies) if (a.to === 0) a.to = year // the stint ended when the job did
     s.floor = 0 // with the job gone only the booked rows settle
+    protegeIncome(c) // and the desk, when there is one
     return paid.n > 0 ? `Kept ${short(paid.kept)}.` : undefined
   }
 
@@ -134,6 +139,9 @@ function run(c: CareerCtx<ModelState>, live: boolean): string | void {
   if (held && k && !k.guarantee) held.salary = 0
   s.floor = held && k?.guarantee ? Math.max(0, Math.round(fin(held.salary))) : 0
   if (worked && held) s.board = { year, items: buildBoard(g, s) }
+  // the exits you have earned are announced once, and a desk pays its proteges
+  unlockExits(c)
+  protegeIncome(c)
   return note
 }
 
@@ -144,6 +152,7 @@ const hook = settleYear({
   active: (g) => !!modelJob(g),
   run,
   peers: { spec: MODEL_SPEC, score: (g, s) => scoreOf(lookValue(g, s), s.book, s.buzz, s.rep) },
+  crises: modelCrises,
 })
 
 export const modelSim: CareerSim = { id: 'model', key: 'model.sim', yearly: hook }
