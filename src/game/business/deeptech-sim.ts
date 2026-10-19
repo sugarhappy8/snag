@@ -5,6 +5,7 @@
 import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
+import { shortageIntensity } from '../history/market-events'
 import { benchYear } from './ai-bench'
 import { claimFirsts } from './ai-bench-claims'
 import { firstToLead } from './ai-bench-market'
@@ -35,6 +36,7 @@ import {
   runwayYears,
   sellable,
   sideRevenue,
+  siliconOf,
   techFunds,
   techOf,
   techPlan,
@@ -43,7 +45,7 @@ import {
 import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
 import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
-import { afterYearSilicon, bookSilicon, pendingBrandStep } from './silicon'
+import { afterYearSilicon, bookSilicon, chipPerformance, launchDiscounts, launchOptions, leadsField, pendingBrandStep, type LaunchId } from './silicon'
 import { CHIP_LANES, laneOpen } from './silicon-data'
 import { reportLine } from './silicon-text'
 import { marketViewOf, shareText } from './competition'
@@ -297,6 +299,9 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
       tone: t.stage > stageBefore ? 'good' : 'neutral',
     })
   }
+  // A new accelerator, or a faster node that puts the chips ahead, opens the pricing choice while the squeeze lasts (Silicon 2.0).
+  const booked = b.last?.year ?? g.year - 1
+  if ((won.includes('aiChip') || (won.includes('node') && leadsField(g, b, t))) && shortageIntensity(b.countryId, booked + 1) > 0) queueLaunch(g, a, b, t, booked)
   if (newModel > 0) queueRelease(g, a, t, newModel)
 }
 
@@ -362,6 +367,56 @@ function revalueQuiet(g: GameState, a: Asset, b: BizState, t: TechState): void {
   if (!b.public) b.valuation = valuationOf(b)
   a.value = stakeValue(b)
 }
+
+// ---------------------------------------------------------------------------
+// Chip launches (Silicon 2.0)
+
+/** The choice a chip lab gets for its new chips: what to charge against the market in the next year. `year` is the fiscal year just booked. */
+function queueLaunch(g: GameState, a: Asset, b: BizState, t: TechState, year: number): void {
+  const options = launchOptions(g, b, t, year + 1)
+  // The Business talent marks the option that earns the most next year, when it clearly does (profit only: goodwill isn't counted).
+  const ranked = [...options].sort((x, y) => y.profit - x.profit)
+  const delta = ranked.length > 1 ? ranked[0].profit - ranked[1].profit : 0
+  const best = delta > 1 ? ranked[0].id : null
+  const hint = best ? talentHint(g, 'Business', `Earns the most next year, about ${money(delta)} more than the rest. It doesn't count goodwill.`) : ''
+  const look: Record<LaunchId, { label: string; emoji: string }> = {
+    undercut: { label: 'Undercut the market', emoji: '\u{1F4C9}' },
+    match: { label: 'Match the market', emoji: '\u{2696}\u{FE0F}' },
+    keep: { label: 'Keep my prices', emoji: '\u{1F4B5}' },
+  }
+  const choices: ChoiceOption[] = options.map((o) => ({ id: o.id, label: look[o.id].label, emoji: look[o.id].emoji, ...(hint && o.id === best ? { hint } : {}) }))
+  const rival = Math.max(0, ...marketViewOf(g, b).rivals.map((r) => r.tech))
+  scriptChoice(
+    g,
+    LAUNCH,
+    'Price the new chips?',
+    `${a.name}'s new chips are ready. The best rival scores ${rival}. Yours scores ${chipPerformance(t)}. What will you do?`,
+    choices,
+    { emoji: DEEP_TECH[dtInd(b)].screen.emoji, data: { assetId: a.id, year: year + 1 } },
+  )
+}
+
+const LAUNCH_NOTICE: Record<LaunchId, string> = {
+  undercut: 'New chips priced at 90% of the market. Goodwill moves with orders shipped, and only in squeeze years.',
+  match: 'New chips priced at the market. Goodwill stays where it is.',
+  keep: 'Prices unchanged. The new chips sell at your current price.',
+}
+
+const LAUNCH = defineScript('deeptech.launch', (g, choice, data) => {
+  const d = rec(data)
+  const a = findBusiness(g, str(d?.assetId))
+  if (!a || !d) return
+  const b = bizOf(g, a)
+  const year = d.year
+  if (b.industry !== 'semiconductor' || !(choice === 'undercut' || choice === 'match' || choice === 'keep') || typeof year !== 'number' || !Number.isInteger(year)) return
+  const t = techOf(b)
+  if (choice !== 'keep') {
+    siliconOf(t).lanes = launchDiscounts(g, b, t, choice, year)
+    log(g, `${a.name} ${choice === 'undercut' ? 'undercut' : 'matched'} the market on its new chips.`)
+  }
+  notice(g, 'Chips Priced', LAUNCH_NOTICE[choice], { emoji: DEEP_TECH[dtInd(b)].screen.emoji })
+  revalueQuiet(g, a, b, t)
+})
 
 // ---------------------------------------------------------------------------
 // After evolve(): tech level drift, hype, depreciation, the board, IPO readiness
@@ -676,4 +731,4 @@ export function formatRunway(years: number): string {
 }
 
 /** Exported for tests: the yearly report and release scripts. */
-export const simInternals = { RELEASE, LAB_REPORT, TECH_REPORT, queueRelease }
+export const simInternals = { RELEASE, LAB_REPORT, TECH_REPORT, LAUNCH, queueRelease, queueLaunch }
