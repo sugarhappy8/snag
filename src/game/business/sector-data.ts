@@ -101,3 +101,22 @@ export const CARE: Readonly<Record<'clinic' | 'education' | 'gym' | 'salon' | 'p
 }
 
 // ---- util (Task 7)
+
+/**
+ * `wear` is the condition points lost a year (the one calibration knob), `hits` what bad weather takes
+ * (capacity or unit cost) by `amp`, `floor` the regulated share of sales, `spot` the share sold at spot
+ * at the start with price swing `vol`, `disc` the premium for moving off that mix, `fuel` the share of
+ * cost that follows fuel, `overhaul` the cost of an overhaul as a share of a normal year's sales, `sla`
+ * whether an outage pays a service penalty (spec 4.4).
+ */
+export interface UtilRow { wear: number; hits: 'capacity' | 'cost'; amp: number; floor: number; spot: number; vol: number; disc: number; fuel: number; overhaul: number; sla: boolean }
+
+export const UTIL: Readonly<Record<'energy' | 'solar' | 'water' | 'telecom' | 'dataCenter' | 'farm' | 'logistics', UtilRow>> = {
+  energy: { wear: 5, hits: 'capacity', amp: .03, floor: .50, spot: .50, vol: .18, disc: .04, fuel: .45, overhaul: .020, sla: false },
+  solar: { wear: 3, hits: 'capacity', amp: .07, floor: .30, spot: .40, vol: .12, disc: .05, fuel: 0, overhaul: .020, sla: false },
+  water: { wear: 4, hits: 'capacity', amp: .06, floor: .80, spot: 0, vol: 0, disc: 0, fuel: .10, overhaul: .025, sla: false },
+  telecom: { wear: 5, hits: 'capacity', amp: .02, floor: .30, spot: 0, vol: 0, disc: 0, fuel: 0, overhaul: .020, sla: true },
+  dataCenter: { wear: 4, hits: 'cost', amp: .04, floor: 0, spot: .30, vol: .15, disc: .05, fuel: .30, overhaul: .025, sla: true },
+  farm: { wear: 3, hits: 'capacity', amp: .22, floor: 0, spot: .80, vol: .20, disc: .05, fuel: .20, overhaul: .025, sla: false },
+  logistics: { wear: 6, hits: 'capacity', amp: .05, floor: 0, spot: .50, vol: .15, disc: .05, fuel: .40, overhaul: .020, sla: true },
+}
