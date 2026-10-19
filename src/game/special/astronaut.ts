@@ -59,7 +59,7 @@ const AGENCIES: Agency[] = [
 ]
 
 /** The player's own government space agency, where one exists (NASA, ISRO, JAXA, ESA...). */
-const SPACE_AGENCIES: Record<string, string> = {
+export const SPACE_AGENCIES: Record<string, string> = {
   us: 'NASA', ru: 'Roscosmos', cn: 'CNSA', jp: 'JAXA', in: 'ISRO', fr: 'CNES', de: 'DLR', it: 'Italian Space Agency',
   gb: 'UK Space Agency', ca: 'Canadian Space Agency', kr: 'Korea AeroSpace Administration', ae: 'UAE Space Agency',
   br: 'Brazilian Space Agency', il: 'Israel Space Agency', ir: 'Iranian Space Agency', ua: 'State Space Agency of Ukraine',
