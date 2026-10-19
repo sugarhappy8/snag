@@ -6,6 +6,7 @@
 // Disrupted lists are short on purpose: a trade is only there when the loss was real (or is a
 // well-known risk) and the effect is meant to be light.
 import type { Industry } from '../data/markets'
+import type { Category, IdeaDef } from '../workshop/catalog'
 
 export interface WaveKindDef {
   /** Plain noun phrase used in news and report lines ("Frontier AI wave: ..."). */
@@ -52,4 +53,131 @@ export type WaveKind = keyof typeof WAVE_KINDS
 /** True for a real kind. Own keys only: a saved "constructor" or "__proto__" must not pass an `in` test. */
 export function isWaveKind(k: unknown): k is WaveKind {
   return typeof k === 'string' && Object.hasOwn(WAVE_KINDS, k)
+}
+
+// ---------------------------------------------------------------------------
+// What writes a wave (Task 5). Flat records, looked up with Object.hasOwn so a saved or typed
+// "constructor" finds nothing. Every key is checked against its catalogue by test/tech-wave-data.test.ts.
+
+/** A heavy launch that ripples: the kind it starts and how disruptive it is. */
+export interface HeavyWave {
+  kind: WaveKind
+  size: number
+}
+
+/** A heavy pioneer counts as a wave only this many years after the catalogue's first date (a late launch of an old technology is a follower). */
+export const HEAVY_WAVE_WINDOW = 10
+
+/** Heavy R&D catalogue entries that start a wave: key `trade|Catalogue Name`, heavy-eligible trades only. */
+export const HEAVY_WAVES: Readonly<Record<string, HeavyWave>> = {
+  'dataCenter|Liquid-Cooled GPU Hall': { kind: 'ai', size: 0.35 },
+  'dataCenter|Hyperscale Cloud Region': { kind: 'cloud', size: 0.5 },
+  'software|Autonomous Agent Platform': { kind: 'ai', size: 0.5 },
+  'software|Hosted Subscription Platform': { kind: 'cloud', size: 0.4 },
+  'energy|Fusion Pilot Plant': { kind: 'fusion', size: 0.6 },
+  'energy|Grid-Scale Battery Plant': { kind: 'solarbattery', size: 0.35 },
+  'battery|Lithium-Ion Cell Line': { kind: 'solarbattery', size: 0.5 },
+  'battery|Solid-State Cell Line': { kind: 'ev', size: 0.5 },
+  'solar|Photovoltaic Power Plant': { kind: 'solarbattery', size: 0.4 },
+  'solar|Perovskite Tandem Panels': { kind: 'solarbattery', size: 0.35 },
+  'manufacturing|Industrial Robot Cell': { kind: 'automation', size: 0.4 },
+  'logistics|Driverless Truck Lanes': { kind: 'automation', size: 0.45 },
+  'ecommerce|Robotic Warehouse Floor': { kind: 'automation', size: 0.3 },
+  'ecommerce|Drone Delivery Hub': { kind: 'drones', size: 0.25 },
+  'telecom|Satellite-to-Phone Service': { kind: 'space', size: 0.3 },
+  'telecom|Cell Tower Network': { kind: 'mobilephone', size: 0.45 },
+  'clinic|AI Scan Reading': { kind: 'ai', size: 0.3 },
+  'clinic|Robotic Surgery Theater': { kind: 'automation', size: 0.3 },
+  'education|AI Tutor Platform': { kind: 'ai', size: 0.3 },
+}
+
+export function heavyWaveFor(trade: string, name: string): HeavyWave | null {
+  const key = `${trade}|${name}`
+  return Object.hasOwn(HEAVY_WAVES, key) ? HEAVY_WAVES[key] : null
+}
+
+/** A deep-tech program (or derived milestone) that starts a wave. */
+export interface DeepWave {
+  kind: WaveKind
+  size: number
+  /** The short name the news and report lines use. */
+  name: string
+  /** Only the first completion of a repeatable program counts. */
+  first?: true
+  /** Only once the lab's autonomy level is at least this after the win. */
+  autonomy?: number
+}
+
+/**
+ * Deep-tech programs that are breakthrough-class: key `trade:programId` (the PROGRAMS ids). Routine
+ * `nextgen` programs never appear. Two more kinds of milestone are derived in code, not listed here:
+ * the first frontier model of an AI lab and an approved drug with a big peak.
+ */
+export const DEEPTECH_WAVES: Readonly<Record<string, DeepWave>> = {
+  'semiconductor:euv': { kind: 'chips', size: 0.45, name: 'Leading-edge chips' },
+  'semiconductor:aiChip': { kind: 'ai', size: 0.3, name: 'AI accelerators' },
+  'aiLab:frontier': { kind: 'ai', size: 0.6, name: 'A new AI architecture' },
+  'aiLab:agents': { kind: 'automation', size: 0.3, name: 'AI agents' },
+  'robotics:humanoid': { kind: 'automation', size: 0.45, name: 'Humanoid robots' },
+  'robotics:brain': { kind: 'ai', size: 0.3, name: 'Robot foundation models' },
+  'biotech:platform': { kind: 'drug', size: 0.35, name: 'Platform medicine' },
+  'spaceTech:reuse': { kind: 'space', size: 0.5, name: 'Reusable rockets' },
+  'spaceTech:crew': { kind: 'space', size: 0.3, name: 'Commercial crewed flight' },
+  'electricVehicles:solidState': { kind: 'ev', size: 0.5, name: 'Solid-state batteries' },
+  'electricVehicles:selfdrive': { kind: 'automation', size: 0.4, name: 'Self-driving cars', autonomy: 3 },
+  'quantum:qec': { kind: 'quantum', size: 0.35, name: 'Error-corrected qubits', first: true },
+  'quantum:advantage': { kind: 'quantum', size: 0.6, name: 'Quantum advantage' },
+  'cybersecurity:aiSec': { kind: 'security', size: 0.25, name: 'AI security copilots' },
+  'fusion:netGain': { kind: 'fusion', size: 0.5, name: 'Fusion net energy gain' },
+  'fusion:pilot': { kind: 'fusion', size: 0.6, name: 'Fusion on the grid' },
+  'neurotech:firstHuman': { kind: 'neuro', size: 0.4, name: 'Thought-controlled implants' },
+  'neurotech:approval': { kind: 'neuro', size: 0.55, name: 'Approved brain implants' },
+  'drones:bvlos': { kind: 'drones', size: 0.3, name: 'Beyond-sight drone flights' },
+  'drones:typeCert': { kind: 'drones', size: 0.5, name: 'Air taxis' },
+  'carbonCapture:demo': { kind: 'carbon', size: 0.25, name: 'Direct air capture' },
+  'carbonCapture:storage': { kind: 'carbon', size: 0.3, name: 'Carbon turned to rock' },
+}
+
+export function deepWaveFor(trade: string, programId: string): DeepWave | null {
+  const key = `${trade}:${programId}`
+  return Object.hasOwn(DEEPTECH_WAVES, key) ? DEEPTECH_WAVES[key] : null
+}
+
+/**
+ * Workshop ideas that ripple, by IdeaDef id. Future-race ideas write 'race' waves, history-race ideas
+ * 'workshop' waves. A missing size is 0.1 + 0.1 d (0.2 to 0.6). Four future novelties (the floating
+ * skateboard, the force-field umbrella, calorie-free chocolate, never-wash clothes) write nothing.
+ */
+export const WORKSHOP_WAVES: Readonly<Record<string, { kind: WaveKind; size?: number }>> = {
+  'fut-fusion-cell': { kind: 'fusion', size: 0.6 },
+  'fut-superwire': { kind: 'fusion', size: 0.4 },
+  'fut-dream-recorder': { kind: 'neuro', size: 0.4 },
+  'fut-pocket-quantum': { kind: 'quantum', size: 0.6 },
+  'fut-organ-printer': { kind: 'drug', size: 0.5 },
+  'fut-cold-cure': { kind: 'drug', size: 0.4 },
+  'fut-tooth-gel': { kind: 'drug', size: 0.3 },
+  'fut-plastic-bin': { kind: 'carbon', size: 0.3 },
+  'fut-robot-chef': { kind: 'automation', size: 0.4 },
+  'hist-picture-box': { kind: 'television' },
+  'hist-crystal-switch': { kind: 'transistor' },
+  'hist-thinking-machine': { kind: 'microcomputer' },
+  'hist-pocket-telephone': { kind: 'mobilephone' },
+  'hist-touch-telephone': { kind: 'smartphone' },
+  'hist-touch-slate': { kind: 'smartphone', size: 0.3 },
+}
+
+/** History-race ideas with no entry of their own ripple by their category. */
+export const CATEGORY_WAVES: Readonly<Partial<Record<Category, WaveKind>>> = {
+  computing: 'microcomputer',
+  energy: 'solarbattery',
+  transport: 'ev',
+  health: 'drug',
+}
+
+/** The wave a Workshop first starts, or null: the idea's own entry, else (history ideas only) its category. */
+export function workshopWaveFor(def: Pick<IdeaDef, 'id' | 'cat' | 'd' | 'future' | 'real'>): { kind: WaveKind; size: number } | null {
+  const own = Object.hasOwn(WORKSHOP_WAVES, def.id) ? WORKSHOP_WAVES[def.id] : null
+  const kind = own ? own.kind : def.real !== undefined && Object.hasOwn(CATEGORY_WAVES, def.cat) ? CATEGORY_WAVES[def.cat] : undefined
+  if (!kind) return null
+  return { kind, size: own?.size ?? Math.min(0.6, Math.max(0.2, 0.1 + 0.1 * def.d)) }
 }

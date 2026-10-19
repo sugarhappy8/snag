@@ -14,7 +14,7 @@ import { ceoSkill, citySaturation, cycleOf, densityRent, headOffice, insurancePr
 import { executiveEdge } from './dynamics'
 import { LEADERSHIP } from './leadership'
 import { complexityCost } from './products'
-import { DEEP_TECH, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
+import { DEEP_TECH, DRUG_AREAS, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
 import {
   PACES,
   bestTechPlan,
@@ -35,10 +35,12 @@ import {
   techPriceBounds,
 } from './deeptech-core'
 import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
-import { milestoneListingBlock, SERIES, type Pace, type TechState } from './deeptech-state'
+import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
 import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
+import { deepWaveFor } from './tech-wave-data'
+import { announceWave } from './tech-waves'
 import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJson, units } from './util'
 import { allocatedCorporateTax } from './tax'
 import { bookSupply, saveSupply, supplyProfile } from './supply'
@@ -214,11 +216,39 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   b.last = stmt
 
   // Tell the CEO what the lab did; managed companies just get a line in the log.
-  afterResearch(g, a, b, t, rd0.headlines, rd0.newModel, stageBefore, runs)
+  afterResearch(g, a, b, t, rd0.headlines, rd0.newModel, stageBefore, runs, rd0.won, rd0.approved)
   return { stmt, inventoryEnd, wantedStaff: employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay), market: plan.market ? { ...plan.market, capacity: plan.capacity } : null }
 }
 
-function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headlines: string[], newModel: number, stageBefore: number, runs: boolean): void {
+/**
+ * Breakthrough-class results move the whole trade once (business/tech-waves.ts): a listed program that
+ * worked (DEEPTECH_WAVES, keyed by trade and program id), an approved drug with a big peak, and a lab's
+ * first model at the frontier. Routine program wins never write one. Draws nothing.
+ */
+function announceBreakthroughs(g: GameState, a: Asset, b: BizState, t: TechState, won: readonly string[], approved: readonly Drug[], newModel: number): void {
+  const home = b.countryId
+  for (const id of won) {
+    const w = deepWaveFor(b.industry, id)
+    if (!w || (w.first && timesDone(t, id) !== 1) || (w.autonomy !== undefined && t.autonomy < w.autonomy)) continue
+    announceWave(g, { kind: w.kind, source: 'deeptech', origin: `${a.id}#${id}`, name: w.name, size: w.size, market: 'world', home })
+  }
+  if (b.industry === 'biotech') {
+    for (const d of approved) {
+      if (d.peak < 4) continue
+      const label = DRUG_AREAS.find((x) => x.id === d.area)?.label ?? 'disease'
+      announceWave(g, { kind: 'drug', source: 'deeptech', origin: `${a.id}#drug${d.id}`, name: `A new drug for ${label}`, size: clampN(0.2 + 0.04 * d.peak, 0.2, 0.5), market: 'world', home })
+    }
+  }
+  if (b.industry === 'aiLab' && newModel > 0) {
+    // Only the lab's first model at the frontier: a strong lab beats it most years, and that is not a new wave each time.
+    const m = t.models.find((x) => x.gen === newModel)
+    if (m && m.score >= frontierScore(m.year) && !t.models.some((x) => x.gen !== m.gen && x.score >= frontierScore(x.year))) {
+      announceWave(g, { kind: 'ai', source: 'deeptech', origin: `${a.id}#model${m.gen}`, name: 'Frontier AI', size: 0.4, market: 'world', home })
+    }
+  }
+}
+
+function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headlines: string[], newModel: number, stageBefore: number, runs: boolean, won: readonly string[], approved: readonly Drug[]): void {
   const ind = dtInd(b)
   if (t.stage > stageBefore) {
     const name = stageName(ind, t.stage)
@@ -232,6 +262,8 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
       b.production = best.production
     }
   }
+  // Before the early returns below, so a hired-manager lab counts too.
+  announceBreakthroughs(g, a, b, t, won, approved, newModel)
   if (headlines.length === 0 && newModel === 0) return
   if (!runs) {
     for (const h of headlines.slice(0, 3)) log(g, `${a.name}: ${h}`, 'neutral')

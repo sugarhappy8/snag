@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { INDUSTRY_IDS } from '../src/game/data/markets'
+import { programDef } from '../src/game/business/deeptech-data'
+import type { DeepTechIndustry } from '../src/game/business/deeptech-state'
+import { breakthroughsFor } from '../src/game/business/heavy-data'
+import { heavyEligible } from '../src/game/business/heavy-rd'
+import { DEEPTECH_WAVES, HEAVY_WAVES, WAVE_KINDS, WORKSHOP_WAVES, deepWaveFor, heavyWaveFor, isWaveKind, workshopWaveFor } from '../src/game/business/tech-wave-data'
+import { DEEP_TECH_IDS, INDUSTRY_IDS } from '../src/game/data/markets'
 import { COUNTRIES } from '../src/game/world'
-import { WAVE_KINDS, isWaveKind } from '../src/game/business/tech-wave-data'
+import { ALL_IDEAS } from '../src/game/workshop/catalog'
 import { HISTORY_WAVES, historyKindActive, historyWaveStates, waveAt } from '../src/game/history/tech-waves'
 
 const TRADES: ReadonlySet<string> = new Set(INDUSTRY_IDS)
@@ -47,5 +52,41 @@ describe('HISTORY_WAVES', () => {
     expect(historyWaveStates('us', 1950).map((x) => x.kind).sort()).toEqual(['television', 'transistor']); expect(s('us', 1950, 'television').name.length).toBeGreaterThan(0)
     expect([s('us', 1950, 'television').reach, s('br', 1950, 'television').reach]).toEqual([1, 0.25]); expect(s('br', 2012, 'cloud').reach).toBeCloseTo(0.35 + 0.4 * 0.65, 2)
     for (const x of historyWaveStates('world', 2011)) expect(x.reach).toBe(1)
+  })
+})
+
+describe('the writer tables', () => {
+  it('HEAVY_WAVES: 15-25 entries, each a real catalogue entry of a heavy-eligible trade, size 0.2-0.6, real kind', () => {
+    const keys = Object.keys(HEAVY_WAVES); expect(keys.length).toBeGreaterThanOrEqual(15); expect(keys.length).toBeLessThanOrEqual(25)
+    for (const k of keys) {
+      const trade = k.slice(0, k.indexOf('|')), name = k.slice(k.indexOf('|') + 1), w = HEAVY_WAVES[k]
+      expect(breakthroughsFor(trade).some((x) => x.name === name)).toBe(true); expect(heavyEligible({ industry: trade })).toBe(true)
+      expect(isWaveKind(w.kind)).toBe(true); expect(w.size).toBeGreaterThanOrEqual(0.2); expect(w.size).toBeLessThanOrEqual(0.6); expect(EM_DASH.test(name)).toBe(false)
+    }
+    expect(heavyWaveFor('dataCenter', 'Liquid-Cooled GPU Hall')).toEqual({ kind: 'ai', size: 0.35 }); expect(heavyWaveFor('software', 'Autonomous Agent Platform')!.kind).toBe('ai')
+    expect(heavyWaveFor('restaurant', 'Open Kitchen Theater')).toBeNull(); expect(heavyWaveFor('constructor', 'x')).toBeNull(); expect(heavyWaveFor('__proto__', 'x')).toBeNull()
+  })
+  it('DEEPTECH_WAVES: all 12 deep-tech trades, real program ids, no nextgen, size 0.2-0.6, short names', () => {
+    expect([...new Set(Object.keys(DEEPTECH_WAVES).map((k) => k.split(':')[0]))].sort()).toEqual([...DEEP_TECH_IDS].sort())
+    for (const [k, w] of Object.entries(DEEPTECH_WAVES)) {
+      const [t, id] = k.split(':'); expect(programDef(t as DeepTechIndustry, id)).toBeDefined(); expect(id).not.toBe('nextgen')
+      expect(isWaveKind(w.kind)).toBe(true); expect(w.size).toBeGreaterThanOrEqual(0.2); expect(w.size).toBeLessThanOrEqual(0.6); expect(w.name.length).toBeLessThanOrEqual(60); expect(EM_DASH.test(w.name)).toBe(false)
+    }
+    expect(deepWaveFor('fusion', 'netGain')).toMatchObject({ kind: 'fusion', size: 0.5, name: 'Fusion net energy gain' }); expect(deepWaveFor('quantum', 'qec')!.first).toBe(true); expect(deepWaveFor('electricVehicles', 'selfdrive')!.autonomy).toBe(3)
+    expect(deepWaveFor('fusion', 'nextgen')).toBeNull(); expect(deepWaveFor('constructor', 'x')).toBeNull(); expect(deepWaveFor('__proto__', 'x')).toBeNull()
+  })
+  it('WORKSHOP_WAVES: real idea ids, nine of the thirteen future ideas mapped, four novelties silent, sizes 0.2-0.6', () => {
+    const ids = new Set(ALL_IDEAS.map((i) => i.id)); for (const [id, w] of Object.entries(WORKSHOP_WAVES)) { expect(ids.has(id)).toBe(true); expect(isWaveKind(w.kind)).toBe(true) }
+    const fut = ALL_IDEAS.filter((i) => i.future); expect(fut).toHaveLength(13); expect(fut.filter((i) => workshopWaveFor(i)).length).toBe(9)
+    for (const id of ['fut-float-board', 'fut-air-umbrella', 'fut-free-chocolate', 'fut-clean-clothes']) expect(workshopWaveFor(ALL_IDEAS.find((i) => i.id === id)!)).toBeNull()
+    for (const i of ALL_IDEAS) { const w = workshopWaveFor(i); if (w) { expect(w.size).toBeGreaterThanOrEqual(0.2); expect(w.size).toBeLessThanOrEqual(0.6) } }
+  })
+  it('workshopWaveFor: the id entry first (its own size or 0.1 + 0.1 d), then the category for a history idea only, never for a plain or future idea', () => {
+    const idea = (id: string) => ALL_IDEAS.find((i) => i.id === id)!
+    expect(workshopWaveFor(idea('hist-pocket-telephone'))).toEqual({ kind: 'mobilephone', size: 0.6 }); expect(workshopWaveFor(idea('hist-touch-slate'))).toEqual({ kind: 'smartphone', size: 0.3 })
+    expect(workshopWaveFor(idea('fut-tooth-gel'))).toEqual({ kind: 'drug', size: 0.3 }); expect(workshopWaveFor(idea('fut-cold-cure'))).toEqual({ kind: 'drug', size: 0.4 })
+    expect(workshopWaveFor(idea('hist-light-beam'))).toEqual({ kind: 'microcomputer', size: 0.6 }); expect(workshopWaveFor(idea('hist-bandage'))).toEqual({ kind: 'drug', size: 0.2 })
+    expect(workshopWaveFor(idea('hist-color-cube'))).toBeNull()
+    expect(workshopWaveFor({ id: 'idea-x', cat: 'computing', d: 5 })).toBeNull(); expect(workshopWaveFor({ id: 'constructor', cat: 'toy', d: 1, real: 1900 })).toBeNull()
   })
 })

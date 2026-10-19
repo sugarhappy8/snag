@@ -24,6 +24,8 @@ import { fieldFor, fieldOf, hashOf, mix, productPull } from './product-market'
 import { classicIdeas } from './products'
 import { baseYears, DISCOUNT, HORIZON, launchP, projectQuality, pullValue, rdCost, rdOf, rdProjects, rdQuality, rdReserve, retiredReason, roundBudget } from './rd'
 import { MAX_STORED_PROJECTS, retiredOf, type BizState, type Product, type RdProject } from './state'
+import { HEAVY_WAVE_WINDOW, heavyWaveFor } from './tech-wave-data'
+import { announceWave } from './tech-waves'
 import { clampN, money } from './util'
 
 /** A breakthrough that worked, in the market it was launched in. */
@@ -518,7 +520,16 @@ export function advanceHeavy(g: GameState, a: Asset | null, b: BizState, p: RdPr
   const rec: HeavyRecord = { family: p.name, year: year + 1, years: p.years, quality, cost: spent, by: a?.id ?? '' }
   addHeavy(g, b.industry, market, rec)
   log(g, `${name} launched ${p.name}.`, 'good')
-  if (pioneer && a) announceLaunch(g, a, b, rec, market)
+  if (pioneer && a) {
+    announceLaunch(g, a, b, rec, market)
+    // A listed launch is a platform the neighbouring trades feel too (tech-waves.ts). Only the pioneer, and only soon after the
+    // real date: an old technology launched late is a follower, not a wave. The launch notice above is the only news.
+    const hw = heavyWaveFor(b.industry, p.name)
+    const def = breakthroughByName(p.name)
+    if (hw && def && rec.year - def.first <= HEAVY_WAVE_WINDOW) {
+      announceWave(g, { kind: hw.kind, source: 'heavy', origin: `${heavyKey(b.industry, market)}#${p.name}`, name: p.name, size: hw.size, market, year: rec.year, home: b.countryId })
+    }
+  }
   const how = hit ? 'is a smash hit' : 'launches'
   const after = pioneer ? `No rival sells one yet. The first can follow from about ${heavyLead(rec)}.` : 'The kind is already on the market.'
   return { won: true, line: `${hit ? '\u{1F525}' : '\u{1F680}'} ${p.name} ${how}: quality ${quality}. ${after}` }

@@ -141,6 +141,10 @@ export interface RdResult {
   newModel: number
   /** The stage moved up this year. */
   stageUp: boolean
+  /** Ids of the programs (not trials) that worked this year, in order (tech waves read the breakthrough-class ones). */
+  won: string[]
+  /** Drugs approved this year. */
+  approved: Drug[]
 }
 
 function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): number {
@@ -160,7 +164,7 @@ function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechPro
 export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechState, year: number): RdResult {
   const ind = dtInd(b)
   const pace = paceOf(t.pace)
-  const out: RdResult = { spend: 0, notes: [], headlines: [], wins: 0, losses: 0, newModel: 0, stageUp: false }
+  const out: RdResult = { spend: 0, notes: [], headlines: [], wins: 0, losses: 0, newModel: 0, stageUp: false, won: [], approved: [] }
   const stageBefore = t.stage
   const keep: TechProgram[] = []
   const finished: TechProgram[] = []
@@ -188,6 +192,7 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
       // endless next-generation work mostly pays through better products, not the books.
       const nominal = programCost(b, t, def) * def.years
       t.done.push(p.id)
+      out.won.push(p.id)
       const line = def.win(ctx)
       out.wins += 1
       out.notes.push(`\u{2705} ${line}`)
@@ -222,6 +227,7 @@ function resolveTrial(g: GameState, b: BizState, t: TechState, p: TechProgram, o
     out.wins += 1
     if (d.phase >= 4) {
       d.approved = g.year
+      out.approved.push(d)
       t.hype = Math.min(100, t.hype + 25)
       const line = `${regulator.charAt(0).toUpperCase()}${regulator.slice(1)} approved ${d.name}! It goes on sale this year.`
       out.notes.push(`\u{1F389} ${line}`)
