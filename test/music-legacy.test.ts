@@ -47,7 +47,12 @@ function firstRelease(seed: number): ReleaseGolden {
  */
 function fiveYears(seed: number, hit = false): YearsGolden {
   const g = legacyLife(seed, hit ? { popularity: 80, skill: 100 } : {})
-  if (hit) runScript(g, 'special.music.title', 'Night Bus', { type: 'studio', subgenre: 'Dance' }, g.queue[0])
+  if (hit) {
+    runScript(g, 'special.music.title', 'Night Bus', { type: 'studio', subgenre: 'Dance' }, g.queue[0])
+    // A release now draws one more number, the chart noise, after the legacy draws (plan S8). Step the generator
+    // back that one draw so the five years below still pin the legacy yearly hook from the position it had at HEAD.
+    g.rng = (g.rng - 0x6d2b79f5) | 0
+  }
   for (let i = 0; i < 5; i++) {
     g.year += 1
     g.character.age += 1
@@ -141,7 +146,7 @@ const GOLDEN: Golden = {
       "popularity": 72,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":770173,\"earned\":770173,\"cert\":\"Gold\",\"quality\":79,\"royalty\":3611}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 770,173 copies and was certified Gold! Fans seem to love it. You earned $770,173. Your popularity is now 92%.",
+        "Your dance studio album \"Night Bus\" sold 770,173 copies and was certified Gold! Reviews were warm. You earned $770,173. Your popularity is now 92%. It peaked at #10.",
         "Your contract with Garage Door Records is up. They're offering a new 2-year deal worth $692,000."
       ]
     },
@@ -151,7 +156,7 @@ const GOLDEN: Golden = {
       "popularity": 72,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":2016818,\"earned\":2016818,\"cert\":\"Double Platinum\",\"quality\":87,\"royalty\":9454}],\"burnedLabels\":[],\"awards\":[\"Golden Record Award for Album of the Year \u2014 \\\"Night Bus\\\" (age 26)\"],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 2,016,818 copies and was certified Double Platinum! Critics are calling it a masterpiece. You earned $2,016,818. Your popularity is now 93%.",
+        "Your dance studio album \"Night Bus\" sold 2,016,818 copies and was certified Double Platinum! Critics are calling it a masterpiece. You earned $2,016,818. Your popularity is now 93%. It peaked at #12.",
         "\"Night Bus\" won the Golden Record Award for Album of the Year! You thanked your mom and nearly tripped on the way off stage.",
         "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $1,966,000."
       ]
@@ -162,7 +167,7 @@ const GOLDEN: Golden = {
       "popularity": 68,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":3353483,\"earned\":3353483,\"cert\":\"Double Platinum\",\"quality\":78,\"royalty\":15720}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 3,353,483 copies and was certified Double Platinum! Reviews were warm. You earned $3,353,483. Your popularity is now 92%.",
+        "Your dance studio album \"Night Bus\" sold 3,353,483 copies and was certified Double Platinum! Fans seem to love it. You earned $3,353,483. Your popularity is now 92%. It peaked at #17.",
         "\"Night Bus\" was nominated for the Golden Record Award for Album of the Year, but lost to an AI-generated lullaby.",
         "Your contract with Garage Door Records is up. They're offering a new 2-year deal worth $920,000."
       ]
@@ -173,7 +178,7 @@ const GOLDEN: Golden = {
       "popularity": 72,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":573025,\"earned\":573025,\"cert\":\"Gold\",\"quality\":71,\"royalty\":2687}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 573,025 copies and was certified Gold! Fans seem to love it. You earned $573,025. Your popularity is now 90%.",
+        "Your dance studio album \"Night Bus\" sold 573,025 copies and was certified Gold! Reviews were warm. You earned $573,025. Your popularity is now 90%. It peaked at #10.",
         "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $2,172,000."
       ]
     },
@@ -183,7 +188,7 @@ const GOLDEN: Golden = {
       "popularity": 64,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":532400,\"earned\":532400,\"cert\":\"Gold\",\"quality\":50,\"royalty\":2496}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 532,400 copies and was certified Gold! A few tracks are growing on people. You earned $532,400. Your popularity is now 86%.",
+        "Your dance studio album \"Night Bus\" sold 532,400 copies and was certified Gold! A few tracks are growing on people. You earned $532,400. Your popularity is now 86%. It peaked at #15.",
         "Your contract with Garage Door Records is up. They're offering a new 3-year deal worth $901,000."
       ]
     },
@@ -193,7 +198,7 @@ const GOLDEN: Golden = {
       "popularity": 69,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":2010987,\"earned\":2010987,\"cert\":\"Double Platinum\",\"quality\":56,\"royalty\":9427}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 2,010,987 copies and was certified Double Platinum! Reviews were mixed. You earned $2,010,987. Your popularity is now 87%.",
+        "Your dance studio album \"Night Bus\" sold 2,010,987 copies and was certified Double Platinum! A few tracks are growing on people. You earned $2,010,987. Your popularity is now 87%.",
         "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $1,231,000."
       ]
     }

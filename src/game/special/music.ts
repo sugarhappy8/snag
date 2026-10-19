@@ -7,6 +7,9 @@ import { defineScript } from '../scripts'
 import { crowdedField } from '../mastery'
 import { musicMastersMenu, yearlyMusicRights } from './music-rights'
 import { CERTS, GENRES, RELEASE_TYPES, genresAt, subgenresAt } from './music-data'
+import { bookRelease } from './music-market'
+import { musicStore } from './music-state'
+import { careerCtx, emitBooks } from './kit/year'
 import {
   type ContractOffer,
   type MusicProfile,
@@ -367,19 +370,22 @@ function release(g: GameState, job: Job, typeId: string, subgenre: string, title
   const synergy = d.mode === 'band' ? avgBandRelationship(g, job) / 10 : 0
   // Riding this year's trending sound helps anyone; Music talent knows which one it is.
   const onTrend = subgenre === trendingSubgenre(g, d.genre)
-  const quality = clamp100(skill * 0.5 + randInt(g, 0, 40) + synergy + (musicTalent(g) ? 10 : 0) + (onTrend ? 6 : 0))
+  let quality = clamp100(skill * 0.5 + randInt(g, 0, 40) + synergy + (musicTalent(g) ? 10 : 0) + (onTrend ? 6 : 0))
   const pop = d.popularity
-  const sold = Math.max(50, Math.round(((pop ** 3) * 3 + quality * 800 + 200) * type.mult * (0.3 + rand(g) * 1.7) * (quality / 60) * (onTrend ? 1.3 : 1) * talentMult(g, 'Music', 1.2)))
-  const perUnit = 1 * type.pay
-  const gross = Math.round(sold * perUnit)
-  const share = d.mode === 'band' ? Math.round(gross / Math.max(1, d.members)) : gross
+  let sold = Math.max(50, Math.round(((pop ** 3) * 3 + quality * 800 + 200) * type.mult * (0.3 + rand(g) * 1.7) * (quality / 60) * (onTrend ? 1.3 : 1) * talentMult(g, 'Music', 1.2)))
+  // The ledger prices and pays the release: the legacy quality and sold above are drawn first and unchanged.
+  const c2 = careerCtx(g, 'music', musicStore.mut(g))
+  const before = c.money
+  const booked = bookRelease(c2, job, { typeId: type.id, title, subgenre, quality, sold, onTrend })
+  sold = booked.sold
+  quality = booked.quality
+  const share = booked.paid
   const cert = CERTS.find(([min]) => sold >= min)?.[1] ?? null
-  earnIncome(g, share)
   d.recordedAge = c.age
   d.lastRelease = c.age
   const popDelta = Math.round((quality - 50) / 5 + (cert ? 4 : 0) + (type.id === 'studio' ? 2 : 0))
   d.popularity = clamp100(d.popularity + popDelta)
-  const r: Release = { title, type: type.label, genre: d.genre, subgenre, age: c.age, sold, earned: share, cert, quality, royalty: Math.round(share * 0.15) }
+  const r: Release = { title, type: type.label, genre: d.genre, subgenre, age: c.age, sold, earned: share, cert, quality, royalty: booked.royalty }
   p.discography.push(r)
   if (type.id === 'studio' || type.id === 'single') count(g, 'albums')
   if (cert === 'Diamond') g.flags['special.music.diamond'] = true
@@ -402,10 +408,11 @@ function release(g: GameState, job: Job, typeId: string, subgenre: string, title
   say(
     g,
     title,
-    `Your ${subgenre.toLowerCase()} ${type.label.toLowerCase()} "${title}" sold ${sold.toLocaleString('en-US')} copies${cert ? ` and was certified ${cert}!` : '.'} ${verdict} You earned ${money(share)}${d.mode === 'band' ? ' as your share' : ''}. ${d.mode === 'band' ? 'Band' : 'Your'} popularity is now ${d.popularity}%.`,
+    `Your ${subgenre.toLowerCase()} ${type.label.toLowerCase()} "${title}" sold ${sold.toLocaleString('en-US')} copies${cert ? ` and was certified ${cert}!` : '.'} ${verdict} You earned ${money(share)}${d.mode === 'band' ? ' as your share' : ''}. ${d.mode === 'band' ? 'Band' : 'Your'} popularity is now ${d.popularity}%.${booked.peak > 0 ? ` It peaked at #${booked.peak}.` : ''}`,
     type.emoji,
     cert || quality >= 60 ? 'good' : quality < 40 ? 'bad' : 'neutral',
   )
+  emitBooks(c2, 'music.release', before)
 }
 
 function avgBandRelationship(g: GameState, job: Job): number {

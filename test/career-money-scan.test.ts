@@ -9,8 +9,8 @@ import { describe, expect, it } from 'vitest'
 const DIR = fileURLToPath(new URL('../src/game/special/', import.meta.url))
 const FORBIDDEN = /\b(earnIncome|spend|addMoney|payForAction)\s*\(/
 
-/** A career file added by slice 1: actor-*.ts, astronaut-*.ts, model-*.ts. */
-const scanned = (name: string): boolean => /^(actor|astronaut|model)-[\w-]+\.ts$/.test(name)
+/** A career file added by slice 1: actor-*.ts, astronaut-*.ts, model-*.ts, and Music 2.0's music-*.ts (music-rights.ts keeps its legacy calls). */
+const scanned = (name: string): boolean => /^(actor|astronaut|model|music)-[\w-]+\.ts$/.test(name) && name !== 'music-rights.ts'
 
 /** The source with block and line comments blanked (newlines kept), so a mention in a comment is not a call. */
 function code(src: string): string {
@@ -35,8 +35,8 @@ describe('careers move money only through the ledger', () => {
   })
 
   it('scans the new career files and leaves the legacy files and the kit alone', () => {
-    for (const yes of ['actor-sim.ts', 'actor-pipeline.ts', 'astronaut-flight.ts', 'model-core.ts', 'model-exit.ts']) expect(scanned(yes)).toBe(true)
-    for (const no of ['actor.ts', 'astronaut.ts', 'model.ts', 'author-career.ts', 'actors-x.ts', 'year.ts', 'actor-sim.test.ts', 'actor-.ts']) expect(scanned(no)).toBe(false)
+    for (const yes of ['actor-sim.ts', 'actor-pipeline.ts', 'astronaut-flight.ts', 'model-core.ts', 'model-exit.ts', 'music-sim.ts']) expect(scanned(yes)).toBe(true)
+    for (const no of ['actor.ts', 'astronaut.ts', 'model.ts', 'music.ts', 'music-rights.ts', 'author-career.ts', 'actors-x.ts', 'year.ts', 'actor-sim.test.ts', 'actor-.ts']) expect(scanned(no)).toBe(false)
   })
 
   it('flags a stray call and passes the ledger, comments and look-alike names', () => {
