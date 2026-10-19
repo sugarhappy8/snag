@@ -51,7 +51,8 @@ function settleBooked(c: CareerCtx<ModelState>, job: ReturnType<typeof modelJob>
   const out: Settled = { n: 0, kept: 0, days: 0, trips: 0, wins: [] }
   const k = job ? readContract(job, g) : null
   let unrecouped = k?.unrecouped ?? 0
-  let floorLeft = Math.max(0, fin(s.floor))
+  // the retainer the legacy hook paid is only there to cover while a job holds it: with the job gone no retainer was paid
+  let floorLeft = job ? Math.max(0, fin(s.floor)) : 0
   const f = FOCUS[s.focus] ?? FOCUS.editorial
   for (const o of s.board.items) {
     if (o.status !== 'booked') continue

@@ -3,11 +3,12 @@ import { allBrands, brandAvailable } from '../src/game/data/brands'
 import { rand } from '../src/game/rng'
 import { runScript } from '../src/game/scripts'
 import { yearlySpecial } from '../src/game/special'
-import { hire, ownerKey } from '../src/game/special/common'
+import { hire, leave, ownerKey } from '../src/game/special/common'
 import { CAREER_SIMS } from '../src/game/special/kit/careers'
 import { setCareerAudit, type AuditEvent } from '../src/game/special/kit/year'
 import { modelJobNodes, yearlyModel } from '../src/game/special/model'
 import { agencyRows, ensureContract, RENEWAL_SCRIPT } from '../src/game/special/model-agency'
+import { retireModel } from '../src/game/special/model-exit'
 import { buildBoard, boardOf, modelRows } from '../src/game/special/model-board'
 import { CIRCUITS, agencyOpen, FACE_AGENCIES, homeCircuit } from '../src/game/special/model-data'
 import { modelSim } from '../src/game/special/model-sim'
@@ -127,6 +128,35 @@ describe('model yearly settle', () => {
     expect(thin.character.money).toBe(10_000)
     // the rewritten floor is next tick's retainer
     expect(modelStore.view(thin).floor).toBe(10_000)
+  })
+
+  it('pays the whole net of a booked fee once the job is gone: a stale floor covers nothing', () => {
+    const ends: [string, (g: GameState) => void][] = [
+      ['retire', (g) => retireModel(g)],
+      ['walk away or fired', (g) => leave(g, 'fired')],
+      ['quit', (g) => leave(g, 'quit')],
+    ]
+    for (const [name, end] of ends) {
+      const g = handLife()
+      book(g, [100_000], { agency: 'Test Agency', commission: 20, mother: 0 })
+      expect(modelStore.view(g).floor, name).toBe(10_000) // the guarantee's retainer, owed by the next legacy tick
+      end(g)
+      expect(g.character.job, name).toBeNull()
+      const cash = g.character.money
+      nextYear(g)
+      yearlySpecial(g)
+      // no job, so the legacy tick paid no retainer: nothing of the 80,000 net is covered
+      expect(g.character.money - cash, name).toBe(80_000)
+      expect(modelStore.view(g).ledger.at(-1), name).toMatchObject({ gross: 100_000, agency: 20_000, recoup: 0, net: 80_000 })
+      expect(modelStore.view(g).floor, name).toBe(0)
+    }
+    // a model who stays still gets the max(floor, net) total
+    const stay = handLife()
+    book(stay, [100_000], { agency: 'Test Agency', commission: 20, mother: 0 })
+    const before = stay.character.money
+    nextYear(stay)
+    yearlySpecial(stay)
+    expect(stay.character.money - before).toBe(80_000)
   })
 
   it('sets a commission-only salary to 0 and offsets nothing', () => {
