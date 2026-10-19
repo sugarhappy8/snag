@@ -8,6 +8,7 @@ import { INDUSTRIES } from '../src/game/business/industries'
 import { industryEraBlock, MARKETS } from '../src/game/business/competition-data'
 import { relatedness } from '../src/game/business/conglomerate-econ'
 import { bestPlan, startupCost } from '../src/game/business/economy'
+import { listingsForSale } from '../src/game/business/founding'
 import { goodsShare } from '../src/game/business/market-trade'
 import { segmentNames } from '../src/game/business/market-view'
 import { lineInfo } from '../src/game/business/product-market'
@@ -84,6 +85,21 @@ describe('the devices trade registration', () => {
     expect(lineInfo('Smartphone Pro', 'devices')).toMatchObject({ family: 'Smartphone', kind: 'premium' })
     expect(lineInfo('Laptop Lite', 'devices')).toMatchObject({ family: 'Laptop', kind: 'value' })
     expect(lineInfo('Smartphone Mk II', 'devices')).toMatchObject({ family: 'Smartphone', kind: 'next', gen: 2 })
+  })
+
+  it('leaves devices out of the companies for sale, so the classic listings stay as they were', () => {
+    // A bought device company would have no fabs or chip supply, and adding the trade to the weighted
+    // pool shifted every seed's list (test/fuzz-regressions.test.ts pins one).
+    let seen = 0
+    for (const country of ['us', 'in', 'jp', 'de']) {
+      for (let seed = 1; seed <= 60; seed++) {
+        for (const l of listingsForSale(adult(seed, 2026, country))) {
+          seen++
+          expect(l.biz.industry, `${country} ${seed}`).not.toBe('devices')
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(300)
   })
 
   it('gates by era', () => {
