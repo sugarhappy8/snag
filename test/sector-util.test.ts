@@ -9,8 +9,8 @@ import { staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { localEcon, type Worth } from '../src/game/business/economy'
 import { nationalMarket } from '../src/game/business/dynamics'
 import { bizHas, eraFits } from '../src/game/business/era'
-import { prepareSectorYear, SECTOR_BOUNDS, seedSector } from '../src/game/business/sector-core'
-import { SECTOR_ROLES, UTIL } from '../src/game/business/sector-data'
+import { prepareSectorYear, SECTOR_BOUNDS, seedSector, sectorValue } from '../src/game/business/sector-core'
+import { SECTOR_ROLES, UTIL, type UtilRow } from '../src/game/business/sector-data'
 import { choiceValue, eventProblems, SECTOR_EVENT_SCRIPT } from '../src/game/business/sector-events'
 import { copyLines, modelOf, registerFamily, sectorCtx, sectorText, seasonIndex, type Branch, type FamilyModel, type LeverDef, type SectorCtx, type SectorEvent, type SectorFx } from '../src/game/business/sector-kit'
 import { applyLever, deskLines, leverValue, sectorMenu } from '../src/game/business/sector-menu'
@@ -69,6 +69,18 @@ const draw = (s: Setup, year: number, salt: string): number => (seasonIndex(s.g,
 
 /** A copy template turned back into what the voice report measures: every named hole becomes "${...}". */
 const template = (text: string): string => text.replace(/\$\{\w+\}/g, '${...}')
+
+/** What 'expected' counts for weather: the mean of the one-sided draw, a quarter of a bad year and a quarter of a good one. */
+const MEAN_WX = .25
+
+/** The unit-cost factor of the mean weather: capacity trades gain half the amplitude on a good year, cost trades pay the cooling bill on a bad one. */
+const expectedWx = (row: UtilRow): number => (row.hits === 'capacity' ? 1 - .5 * row.amp * MEAN_WX : 1 + row.amp * MEAN_WX)
+
+/** The output 'expected' loses in a year: the mean weather and an outage at its odds, combined as 1 - (1 - w) * (1 - o). */
+function expectedLoss(row: UtilRow, condition: number, skill = 0, cover = 0): number {
+  const w = row.hits === 'capacity' ? row.amp * MEAN_WX * (1 - .5 * cover) : 0
+  return 1 - (1 - w) * (1 - outageP(condition, MEAN_WX, skill) * outageSize(condition))
+}
 
 describe('util math', () => {
   it('seeds', () => {
@@ -171,8 +183,8 @@ describe('util math', () => {
     // An overhaul year uses condition + 12 for the odds and the size, then wears from that.
     const plain = run(s, { ...s.seed, condition: 60 })
     const done = run(s, { ...s.seed, condition: 60, overhaul: s.g.year })
-    expect(plain.capLoss).toBeCloseTo(outageP(60, 0, 0) * outageSize(60), 12)
-    expect(done.capLoss).toBeCloseTo(outageP(72, 0, 0) * outageSize(72), 12)
+    expect(plain.capLoss).toBeCloseTo(expectedLoss(UTIL.energy, 60), 12)
+    expect(done.capLoss).toBeCloseTo(expectedLoss(UTIL.energy, 72), 12)
     expect(util(plain.next).condition).toBeCloseTo(60 - wear, 9)
     expect(util(done.next).condition).toBeCloseTo(72 - wear, 9)
     // An overhaul of another year lifts nothing.
@@ -222,17 +234,17 @@ describe('util math', () => {
   })
 
   it('expected mode takes the odds, not the draw', () => {
-    // Every draw at its mean: the loss is P times its size, the repair and SLA costs are P times theirs, and nothing reads a hash.
+    // Every draw at its mean: the loss is P times its size (with the mean weather beside it), the repair and SLA costs are P times theirs, and nothing reads a hash.
     const s = setup('telecom')
     const row = UTIL.telecom
     const st: UtilState = { ...s.seed, condition: 50 }
-    const p = outageP(50, 0, 0)
+    const p = outageP(50, MEAN_WX, 0)
     const fx = run(s, st, 'expected')
-    expect(fx.capLoss).toBeCloseTo(p * outageSize(50), 12)
+    expect(fx.capLoss).toBeCloseTo(expectedLoss(row, 50), 12)
     expect(fx.randCosts).toBeCloseTo(p * (.8 * overhaulCost(s.b, row, s.ctx) + .015 * BASE), 6)
     expect(fx.randIncome).toBe(0)
     expect(util(fx.next).outages).toBe(0)
-    // The same in any year of the past or future, because no hash is read (the weather and spot draws are 0 too).
+    // The same in any year of the past or future, because no hash is read (the weather is its mean and the spot draw 0).
     for (const y of [1950, 2024, 2300]) expect(run(s, st, 'expected', y).capLoss).toBeCloseTo(fx.capLoss, 12)
   })
 
@@ -251,7 +263,7 @@ describe('util math', () => {
     const cut: number[] = []
     const lossOf = (condition: number, lifted: boolean): { loss: number; next: number } => {
       const cond = lifted ? condition + 12 : condition
-      return { loss: outageP(cond, 0, 0) * outageSize(cond), next: cond - row.wear }
+      return { loss: expectedLoss(row, cond), next: cond - row.wear }
     }
     let by = 60
     let withIt = 60
@@ -369,9 +381,11 @@ describe('util math', () => {
         expect(fx.cost).toBeCloseTo(1 - .5 * row.amp * good, 12)
         expect(fx.capLoss).toBe(0)
       }
-      // Expected mode has no weather.
-      expect(run(s, st, 'expected', badYear).capLoss).toBeCloseTo(outageP(100, 0, 0) * outageSize(100), 12)
-      expect(run(s, st, 'expected', goodYear).cost).toBe(1)
+      // Expected mode has the mean weather in any year, and cover halves its hit there too.
+      expect(run(s, st, 'expected', badYear).capLoss).toBeCloseTo(expectedLoss(row, 100), 12)
+      expect(run(s, st, 'expected', goodYear).cost).toBeCloseTo(1 - .5 * row.amp * MEAN_WX, 12)
+      expect(run(s, { ...st, cover: 1 }, 'expected', badYear).capLoss).toBeCloseTo(expectedLoss(row, 100, 0, 1), 12)
+      expect(run(s, { ...st, cover: 1 }, 'expected', badYear).capLoss).toBeLessThan(run(s, st, 'expected', badYear).capLoss)
     }
 
     // The data center takes the weather as a cooling bill, never as lost capacity.
@@ -387,6 +401,10 @@ describe('util math', () => {
     const mild = findYear((y) => wx(y) >= .6 && calm(y))
     expect(run(dc, st, 'book', mild).cost).toBe(1)
     expect(run(dc, st, 'book', mild).capLoss).toBe(0)
+    // Expected mode: the cooling bill at its mean, halved by cover, and no capacity lost to weather.
+    expect(run(dc, st, 'expected', hot).cost).toBeCloseTo(1 + row.amp * MEAN_WX, 12)
+    expect(run(dc, { ...st, cover: 1 }, 'expected', hot).cost).toBeCloseTo(1 + row.amp * MEAN_WX * .5, 12)
+    expect(run(dc, st, 'expected', hot).capLoss).toBeCloseTo(outageP(100, MEAN_WX, 0) * outageSize(100), 12)
 
     // The capacity lost to weather and to an outage combine as 1 - (1 - w) * (1 - o).
     const t = setup('telecom')
@@ -466,19 +484,20 @@ describe('util math', () => {
     expect(factor(1974)).toBeCloseTo(1.18, 2)
     expect(factor(2015)).toBeCloseTo(.92, 2)
     expect(factor(2030)).toBeCloseTo(1, 12)
-    // cost = 1 - hedge * fuel * (f - 1): it offsets a spike and pays for being wrong in a glut.
+    // cost = 1 - hedge * fuel * (f - 1): it offsets a spike and pays for being wrong in a glut (times the mean weather, which 'expected' carries).
+    const wx = expectedWx(UTIL.logistics)
     const at = (year: number, hedge: UtilState): SectorFx => run(s, hedge, 'expected', year)
-    expect(at(1974, st).cost).toBeCloseTo(1 - .8 * .4 * (factor(1974) - 1), 12)
-    expect(Math.abs(at(1974, st).cost - .9424)).toBeLessThan(.001)
-    expect(at(1974, st).cost).toBeLessThan(1)
-    expect(Math.abs(at(2015, st).cost - 1.0256)).toBeLessThan(.001)
-    expect(at(2015, st).cost).toBeGreaterThan(1)
-    expect(at(1974, { ...st, hedge: .5 }).cost).toBeCloseTo(1 - .5 * .4 * (factor(1974) - 1), 12)
+    expect(at(1974, st).cost).toBeCloseTo(wx * (1 - .8 * .4 * (factor(1974) - 1)), 12)
+    expect(Math.abs(at(1974, st).cost - .9424 * wx)).toBeLessThan(.001)
+    expect(at(1974, st).cost).toBeLessThan(wx)
+    expect(Math.abs(at(2015, st).cost - 1.0256 * wx)).toBeLessThan(.001)
+    expect(at(2015, st).cost).toBeGreaterThan(wx)
+    expect(at(1974, { ...st, hedge: .5 }).cost).toBeCloseTo(wx * (1 - .5 * .4 * (factor(1974) - 1)), 12)
     // No hedge, no effect.
-    expect(at(1974, s.seed).cost).toBe(1)
+    expect(at(1974, s.seed).cost).toBeCloseTo(wx, 12)
     // A year with no oil move: no change on the cost, only the premium.
     s.g.year = 2030
-    expect(at(2030, st).cost).toBeCloseTo(1, 12)
+    expect(at(2030, st).cost).toBeCloseTo(wx, 12)
     expect(at(2030, st).costs).toBeCloseTo(.025 * .8 * .40 * BASE, 6)
     expect(at(2030, s.seed).costs).toBe(0)
     expect(at(2030, { ...st, hedge: .5 }).costs).toBeCloseTo(.025 * .5 * .40 * BASE, 6)
@@ -487,7 +506,7 @@ describe('util math', () => {
       const f = setup(trade)
       expect(UTIL[trade].fuel).toBe(0)
       const fx = run(f, { ...f.seed, hedge: .8 }, 'expected', 1974)
-      expect(fx.cost).toBe(1)
+      expect(fx.cost).toBeCloseTo(expectedWx(UTIL[trade]), 12)
       expect(fx.costs).toBe(0)
     }
     // It reads no further than the year being lived: in 1973 the 1974 spike is unknown.
@@ -496,7 +515,7 @@ describe('util math', () => {
     const sameStock = { ...t.seed, hedge: .8 }
     expect(run(t, sameStock, 'expected', 1974).cost).toBeCloseTo(run(t, sameStock, 'expected', 1973).cost, 12)
     expect(run(t, sameStock, 'expected', 2030).cost).toBeCloseTo(run(t, sameStock, 'expected', 1973).cost, 12)
-    expect(run(t, sameStock, 'expected', 1973).cost).toBeCloseTo(1 - .8 * .4 * (nationalMarket(t.g, 'logistics', 'us', 1973).events.costs - 1), 12)
+    expect(run(t, sameStock, 'expected', 1973).cost).toBeCloseTo(wx * (1 - .8 * .4 * (nationalMarket(t.g, 'logistics', 'us', 1973).events.costs - 1)), 12)
     // In a booked year the hedge and the weather multiply.
     const dc = setup('dataCenter')
     const hedged: UtilState = { ...dc.seed, hedge: .5, condition: 100 }
@@ -1197,6 +1216,32 @@ describe('util desk', () => {
     // The current setting is worth nothing against itself.
     expect(leverValue(s.g, s.a, s.b, s.seed, hedge, 0, worthOf(1), s.ctx)).toBe(0)
     expect(leverValue(s.g, s.a, s.b, s.seed, leverOf('cover'), 0, worthOf(1), s.ctx)).toBe(0)
+  })
+
+  it('prices weather cover at the mean of the weather it halves', () => {
+    // A farm that sells all it can make is better off with cover on (bad weather takes a quarter of its amplitude on average,
+    // and cover gives half of that back); one with spare capacity feels no loss and only pays for the cover.
+    const farm = setup('farm')
+    const cover = leverOf('cover')
+    const at = (s: Setup, util: number): number => leverValue(s.g, s.a, s.b, s.seed, cover, 1, worthOf(util), s.ctx)
+    expect(at(farm, 1)).toBeGreaterThan(0)
+    expect(at(farm, .7)).toBeLessThan(0)
+    // A data center's cooling bill is too small to be worth covering.
+    expect(at(setup('dataCenter'), 1)).toBeLessThan(0)
+
+    // The hint and the booked years agree: over 2000 hashed years at full use, cover on against off is worth the same in
+    // expected mode as it pays on average in book mode, cost of the cover included.
+    const w = worthOf(1)
+    const value = (st: UtilState, mode: 'book' | 'expected', year: number): number => sectorValue(farm.g, farm.b, w, run(farm, st, mode, year))
+    const on = { ...farm.seed, cover: 1 as const }
+    const hinted = value(on, 'expected', farm.g.year) - value(farm.seed, 'expected', farm.g.year)
+    let booked = 0
+    const years = 2000
+    for (let k = 0; k < years; k++) booked += value(on, 'book', 1000 + k) - value(farm.seed, 'book', 1000 + k)
+    booked /= years
+    expect(hinted).toBeGreaterThan(0)
+    expect(booked).toBeGreaterThan(0)
+    expect(Math.abs(hinted - booked)).toBeLessThan(.1 * hinted)
   })
 
   it('has no generic double', () => {

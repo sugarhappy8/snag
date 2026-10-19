@@ -3,7 +3,8 @@
 // overhaul; it sets the odds and the size of an outage. Weather, the spot and contract mix, the fuel
 // hedge and weather cover turn it into the generic channels (capacity, unit cost) and a few money
 // flows. Utilities write no demand multiplier. Pure: no g.rng, no state writes; outages, weather and
-// spot prices are hashed draws, and 'expected' sets them to their mean and never reads past g.year.
+// spot prices are hashed draws, and 'expected' sets them to their mean (the spot draw to 0, weather to
+// its one-sided mean) and never reads past g.year.
 // The levers, events and copy are in sector-util-play.ts, which registers UTIL_MODEL and adds
 // UTIL_NOTE_COPY to its copy table.
 import type { Asset, GameState } from '../types'
@@ -31,6 +32,8 @@ const ROLE_REPAIR = 4
 const REPAIR_SHARE = .8
 /** The service penalty of an outage for trades with an SLA, as a share of a normal year's sales. */
 const SLA_PENALTY = .015
+/** The mean of the one-sided weather draw max(0, +-index) over index in -1 to 1: what a bad year and a good year each count for in 'expected'. */
+const MEAN_WEATHER = .25
 /** Weather cover and the fuel hedge's premium, as shares of a normal year's sales (the premium also scales with the hedge and the fuel share). */
 const COVER_COST = .006
 const HEDGE_PREMIUM = .025
@@ -103,7 +106,8 @@ function note(a: Asset, outage: number | null, was: number, now: number): Sector
  * One fiscal year of the plant. The condition is read at the start of the year, lifted when an
  * overhaul was paid for this year, and the worn stock is written to `next`. An outage is a hashed draw
  * in 'book' mode and its expectation (odds times size, odds times the repair and the penalty) in
- * 'expected'; weather and spot draws are 0 in 'expected'; the hedge reads the engine's own fuel costs
+ * 'expected'; weather is a hashed draw in 'book' and its one-sided mean in 'expected' (so weather cover
+ * has its benefit there), the spot draw is 0 in 'expected'; the hedge reads the engine's own fuel costs
  * for the year being lived, never later.
  */
 export function utilFx(g: GameState, a: Asset, b: BizState, st: UtilState, fiscal: number, mode: FxMode, cx: SectorCtx): SectorFx {
@@ -114,10 +118,10 @@ export function utilFx(g: GameState, a: Asset, b: BizState, st: UtilState, fisca
   const role = Object.prototype.hasOwnProperty.call(SECTOR_ROLES, b.industry) ? SECTOR_ROLES[b.industry] : null
   const skill = role ? roleSkill(b, role.title) : 0
 
-  // Weather: one-sided, so its mean is the price of weather. Cover halves every hit.
+  // Weather: one-sided, so its mean is the price of weather. Cover halves every hit. 'expected' takes the mean of both sides, not no weather at all.
   const idx = booked ? seasonIndex(g, a, fiscal, 'wx') : 0
-  const bad = Math.max(0, -idx)
-  const good = Math.max(0, idx)
+  const bad = booked ? Math.max(0, -idx) : MEAN_WEATHER
+  const good = booked ? Math.max(0, idx) : MEAN_WEATHER
   const hit = row.amp * bad * (1 - .5 * st.cover)
   const weatherLoss = row.hits === 'capacity' ? hit : 0
   const weatherCost = row.hits === 'capacity' ? 1 - .5 * row.amp * good : 1 + hit
