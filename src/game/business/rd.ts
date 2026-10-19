@@ -17,15 +17,17 @@ import { industryDef } from './industries'
 import { demandSize } from './product-data'
 import { advanceHeavy, heavyArrivals, heavyOf, type HeavyRecord } from './heavy-rd'
 import { breakthroughByName } from './heavy-data'
+import { TEAM_ODDS } from './lab-data'
+import { readLab, teamPower, teamSlots } from './lab-state'
 import { advanceLab } from './lab-year'
 import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, kindLevel, kindTrend, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
 import { complexityShare } from './products'
 import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
 import { clampN, money, plural } from './util'
 
-/** Chance a project at a normal budget works: whoever runs it, quality, the quality team. */
+/** Chance a project at a normal budget works: whoever runs it, quality, the quality team, the research team (lab-state.ts teamPower). */
 export function launchP(g: GameState, b: BizState): number {
-  return clampN(0.25 + ceoSkill(g, b) / 250 + b.quality / 300 + 0.1 * staffPower(b, 'quality'), 0.1, 0.9)
+  return clampN(0.25 + ceoSkill(g, b) / 250 + b.quality / 300 + 0.1 * staffPower(b, 'quality') + TEAM_ODDS * teamPower(readLab(b).team.length), 0.1, 0.9)
 }
 
 /** A hit (15% of the products that work) launches 10 quality points better and adds 8 brand instead of 3. */
@@ -96,10 +98,10 @@ export function rdRange(b: Pick<BizState, 'industry' | 'countryId' | 'city'>, id
   return { min: Math.max(500, roundBudget(normal * RD_MIN)), max: roundBudget(normal * RD_MAX), normal }
 }
 
-/** Projects the team runs at once without strain: one more per doubling of the company's sites. */
-export function rdSlots(b: Pick<BizState, 'outlets'>): number {
+/** Projects the team runs at once without strain: one more per doubling of the company's sites, and a little room for a research team (lab-state.ts teamSlots). */
+export function rdSlots(b: Pick<BizState, 'outlets' | 'lab'>): number {
   const sites = b.outlets.reduce((s, o) => s + o.count, 0)
-  return 1 + Math.floor(Math.log2(1 + Math.max(0, sites)))
+  return 1 + Math.floor(Math.log2(1 + Math.max(0, sites))) + teamSlots(readLab(b).team.length)
 }
 
 /** Projects that use the team's slots: a running breakthrough (heavy-rd.ts) has a team of its own and doesn't count. */
@@ -108,7 +110,7 @@ export function ordinaryProjects(b: Pick<BizState, 'rd'>): RdProject[] {
 }
 
 /** How much a new project's budget is stretched by the ones already running (1 while slots are free). */
-export function rdCrowding(b: Pick<BizState, 'rd' | 'outlets'>): number {
+export function rdCrowding(b: Pick<BizState, 'rd' | 'outlets' | 'lab'>): number {
   return 1 + 0.15 * Math.max(0, ordinaryProjects(b).length + 1 - rdSlots(b))
 }
 

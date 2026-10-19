@@ -11,9 +11,9 @@ import { boardAllows } from './board'
 import { manageBlock } from './gate'
 import { heavyEligible } from './heavy-rd'
 import { labCreditRate, labGrantAmount, labTierOf, LAB_CREDIT_CAP, LAB_GRANT_GAP, LAB_GRANT_SITES, opsProgram } from './lab-data'
-import { opsBlock, opsOdds, opsPrice, opsValue, opsYears } from './lab-rules'
+import { opsBlock, opsOdds, opsPrice, opsValue, opsYears, teamBlock, teamFee, teamPay, teamValue } from './lab-rules'
 import { applyWin, draftLab, readLab, saveLab, type LabProgram, type LabRow, type LabState } from './lab-state'
-import { LAB_LOG, LAB_SAY } from './lab-text'
+import { LAB_LABEL, LAB_LOG, LAB_SAY } from './lab-text'
 import { rdProjects } from './rd'
 import { bizOf, findBusiness, runsIt, totalOutlets, type BizState } from './state'
 import { clampN, money, plural, rec } from './util'
@@ -45,6 +45,8 @@ function labMoves(_g: GameState, _a: Asset, b: BizState, d: LabState, fiscal: nu
   return [
     { key: 'credit', amount: labCredit(b.countryId, labSpendIn(b, fiscal)) },
     { key: 'grant', amount: Math.round(d.due.grant) },
+    // The research team's pay for the year: one salary for each scientist on the books (the team is never key staff).
+    { key: 'payroll', amount: d.team.length * teamPay(b) },
   ]
 }
 
@@ -166,4 +168,57 @@ export function doOps(g: GameState, a: Asset, id: string): boolean {
   const gain = Math.max(0, (opsValue(g, b, id) + price) / 5)
   if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: price, gain, label: `Fund ${def.label} (${money(price)})` })) return false
   return startOps(g, cur, b, id, true) !== null
+}
+
+/**
+ * The owner takes on a research scientist: the live company, the right to manage it, the team's own
+ * reason (teamBlock) and, past this year's capital budget, the board's vote (the gain is a fifth of what
+ * the next scientist adds a year, teamValue) are all checked here, so a direct call, a restored menu or an
+ * older save can't skip them. The fee leaves company cash now; the year's pay is booked with the year
+ * (bookLabYear). True when a scientist was hired.
+ */
+export function doHire(g: GameState, a: Asset): boolean {
+  const cur = findBusiness(g, a.id)
+  if (!cur || manageBlock(g, cur)) return false
+  const b = bizOf(g, cur)
+  const why = teamBlock(g, b, 'hire')
+  if (why) {
+    notice(g, 'R&D', why, { emoji: '\u{1F9EA}' })
+    return false
+  }
+  const fee = teamFee(b)
+  const gain = Math.max(0, teamValue(g, b).gain / 5)
+  if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: fee + teamPay(b), gain, label: LAB_LABEL.hireVote })) return false
+  b.cash -= fee
+  b.yearCosts += fee
+  const d = draftLab(b)
+  d.team.push(g.year)
+  saveLab(b, d)
+  log(g, LAB_LOG.hired(cur.name))
+  return true
+}
+
+/**
+ * The owner lets the longest-serving scientist go, after the three years' service the team owes: the same
+ * checks as doHire (the board is asked about the fee, which gains nothing), the fee leaves company cash.
+ * True when a scientist left.
+ */
+export function doRelease(g: GameState, a: Asset): boolean {
+  const cur = findBusiness(g, a.id)
+  if (!cur || manageBlock(g, cur)) return false
+  const b = bizOf(g, cur)
+  const why = teamBlock(g, b, 'release')
+  if (why) {
+    notice(g, 'R&D', why, { emoji: '\u{1F9EA}' })
+    return false
+  }
+  const fee = teamFee(b)
+  if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: fee, gain: 0, label: LAB_LABEL.releaseVote })) return false
+  b.cash -= fee
+  b.yearCosts += fee
+  const d = draftLab(b)
+  d.team.shift()
+  saveLab(b, d)
+  log(g, LAB_LOG.released(cur.name))
+  return true
 }

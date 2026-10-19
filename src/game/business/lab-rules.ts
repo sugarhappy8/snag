@@ -4,13 +4,14 @@
 // and rung (rd.ts rdSiteScale): nothing here reads the company's cash, sales or valuation, except the
 // cash a program needs to start and the worth it is judged against.
 import type { GameState } from '../types'
-import { bizWorth, type Worth } from './economy'
+import { bizWorth, localEcon, type Worth } from './economy'
 import { eraFits } from './era'
 import { heavyEligible } from './heavy-rd'
-import { LAB_LEVEL_MAX, LAB_FADE, labTierOf, OPS_COOLDOWN, OPS_MAX_RUNG, OPS_PROGRAMS, OPS_TIER, opsProgram, RUNG_PENALTY, RUNG_X, RUNG_YEARS, type OpsProgram } from './lab-data'
+import { LAB_LEVEL_MAX, LAB_FADE, labTierOf, OPS_COOLDOWN, OPS_MAX_RUNG, OPS_PROGRAMS, OPS_TIER, opsProgram, RUNG_PENALTY, RUNG_X, RUNG_YEARS, TEAM_CAP, TEAM_FEE_X, TEAM_MIN_YEARS, TEAM_PAY_X, type OpsProgram } from './lab-data'
 import { draftLab, levelOf, opsEffectsOf, readLab, saveLab, winLevel, type LabTrack } from './lab-state'
 import { LAB_LABEL, LAB_SAY } from './lab-text'
-import { baseYears, DISCOUNT, HORIZON, launchP, rdProjects, rdReserve, rdSiteScale, RD_BASE, roundBudget } from './rd'
+import { productIdeas } from './products'
+import { baseYears, bestRdIdea, DISCOUNT, HORIZON, launchP, rdProjects, rdReserve, rdSiteScale, RD_BASE, roundBudget } from './rd'
 import { MAX_STORED_PROJECTS, type BizState } from './state'
 import { clampN, money } from './util'
 
@@ -131,4 +132,70 @@ export function opsValue(g: GameState, b: BizState, id: string, w: Worth = bizWo
   }
   const value = opsOdds(g, b, p.rung) * sum - price
   return Number.isFinite(value) ? value : -price
+}
+
+/** Scientists this company can employ: by its trade's tier, none for a breakthrough trade or a company that runs its own kind of R&D. */
+export function teamCap(b: { industry: string }): number {
+  const tier = labTierOf(b.industry)
+  return tier && heavyEligible(b) ? TEAM_CAP[tier] : 0
+}
+
+/** What one scientist is paid a year: a multiple of a general employee's pay here, fixed per trade and place (never by the company's cash or sales). */
+export function teamPay(b: BizState): number {
+  return roundBudget(TEAM_PAY_X * localEcon(b.industry, b.countryId, b.city).wage)
+}
+
+/** What it costs to take a scientist on, and to let one go: a share of a year's pay, paid when it happens. */
+export function teamFee(b: BizState): number {
+  return Math.round(TEAM_FEE_X * teamPay(b))
+}
+
+/**
+ * Why a scientist can't be hired or let go now: one reason, or null when it can. In order: not a product
+ * company; the team is full (hire) or empty (release); cash (hire: the fee, a year's pay and the usual
+ * reserve; release: the fee and the reserve); the three years' service of the longest-serving scientist
+ * (release). Pure.
+ */
+export function teamBlock(g: GameState, b: BizState, kind: 'hire' | 'release'): string | null {
+  const cap = teamCap(b)
+  if (!cap) return LAB_SAY.teamNotEligible()
+  const team = readLab(b).team
+  if (kind === 'hire' && team.length >= cap) return LAB_SAY.teamFull(String(cap))
+  if (kind === 'release' && team.length === 0) return LAB_SAY.teamNone()
+  const need = teamFee(b) + (kind === 'hire' ? teamPay(b) : 0) + rdReserve(b)
+  if (!(b.cash >= need)) return (kind === 'hire' ? LAB_SAY.hireCash : LAB_SAY.releaseCash)(money(need), money(need - Math.max(0, b.cash)))
+  if (kind === 'release') {
+    // The stored team is oldest first. A hire year from the future is damage, not a wait.
+    const hired = team[0]
+    const served = g.year - hired
+    if (served >= 0 && served < TEAM_MIN_YEARS) return LAB_SAY.minService(String(hired), String(hired + TEAM_MIN_YEARS))
+  }
+  return null
+}
+
+/**
+ * What the next scientist is worth a year: the change in the best ordinary idea's value (the same
+ * bestRdIdea the Products rows and the hired CEO use, over the first four ideas) plus the change in the
+ * best Operations program's value, each recomputed with one more scientist (more odds and one more slot
+ * for every second one), and `value` that gain less a year's pay. Pure: the extra scientist lives on a
+ * throwaway copy of the company, and nothing here draws g.rng.
+ */
+export function teamValue(g: GameState, b: BizState, w: Worth = bizWorth(g, b)): { gain: number; pay: number; value: number } {
+  const pay = teamPay(b)
+  if (!teamCap(b)) return { gain: 0, pay, value: -pay }
+  const d = draftLab(b)
+  d.team.push(g.year)
+  const more: BizState = { ...b }
+  saveLab(more, d)
+  const room = Math.max(0, b.cash - rdReserve(b))
+  const ideas = productIdeas(g, b, 4)
+  const best = (x: BizState): { ordinary: number; ops: number } => ({
+    ordinary: bestRdIdea(g, x, ideas, room, w)?.value ?? 0,
+    ops: opsOffers(g, x).reduce((top, p) => Math.max(top, opsValue(g, x, p.id, w)), 0),
+  })
+  const now = best(b)
+  const next = best(more)
+  const gain = next.ordinary - now.ordinary + (next.ops - now.ops)
+  const safe = Number.isFinite(gain) ? gain : 0
+  return { gain: safe, pay, value: safe - pay }
 }

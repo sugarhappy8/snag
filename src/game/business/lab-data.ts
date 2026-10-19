@@ -116,6 +116,16 @@ export const OPS_COOLDOWN = 3
 export const LAB_GRANT_GAP = 3
 export const LAB_GRANT_SITES = 25
 
+/** Scientists a trade's tier can employ: more for the trades whose work is research. A breakthrough trade has none (its lab is its own). */
+export const TEAM_CAP: Record<LabTier, number> = { low: 2, mid: 4, high: 6 }
+
+/** Years a scientist must stay before the company can let them go; the odds a first scientist adds to every R&D project (the next adds TEAM_STEP times the last); a scientist's yearly pay as a multiple of a general employee's; and the hire or release fee as a share of that pay. */
+export const TEAM_MIN_YEARS = 3
+export const TEAM_ODDS = 0.03
+export const TEAM_STEP = 0.7
+export const TEAM_PAY_X = 2.2
+export const TEAM_FEE_X = 0.5
+
 /** A track's level never passes this, fades by this factor each year, and each win on a track is worth this much of the last. */
 export const LAB_LEVEL_MAX = 0.95
 export const LAB_FADE = 0.95

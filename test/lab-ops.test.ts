@@ -627,7 +627,8 @@ describe('the Research & Operations screen', () => {
     const group = labMenus(a, b)[0] as MenuGroup
     expect(group.disabledReason?.(g)).toBeNull()
     const children = group.children(g)
-    const actions = children.filter((n): n is MenuAction => n.type === 'action')
+    // the Operations rows (the research team's own rows are tested in lab-team.test.ts)
+    const actions = children.filter((n): n is MenuAction => n.type === 'action' && n.id.startsWith('biz.mkt.lab.ops.'))
     expect(actions.map((n) => n.id)).toEqual(opsOffers(g, b).map((p) => `biz.mkt.lab.ops.${p.id}.${a.id}`))
     expect(actions).toHaveLength(6)
     const effects = { cost: 'unit costs fall up to', yield: 'output rises up to', quality: 'demand rises up to' }

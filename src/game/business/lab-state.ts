@@ -7,7 +7,7 @@
 // normalized copy cached by the identity of the stored object. Writers take draftLab() (a mutable copy),
 // change it and hand it to saveLab(), which stores a NEW object, so a cached read can never go stale.
 import type { Json } from '../types'
-import { LAB_FADE, LAB_LEVEL_MAX, LAB_WIN_DECAY, labTierOf, OPS_PROGRAMS, OPS_TIER, opsProgram, RUNG_GAIN, type OpsProgram } from './lab-data'
+import { LAB_FADE, LAB_LEVEL_MAX, LAB_WIN_DECAY, labTierOf, OPS_PROGRAMS, OPS_TIER, opsProgram, RUNG_GAIN, TEAM_STEP, type OpsProgram } from './lab-data'
 import type { BizState } from './state'
 import { clampN, num, rec } from './util'
 
@@ -337,4 +337,21 @@ export function opsEffectsOf(b: Pick<BizState, 'lab' | 'industry'>, year: number
     capacity: cap.yield * levelOf(st, 'yield', year),
     demand: cap.quality * levelOf(st, 'quality', year),
   }
+}
+
+/**
+ * What `n` scientists add together, in units of the first one's lift: each is worth TEAM_STEP times the
+ * one before (1, 1.7, 2.19, 2.53, 2.77, 2.94). The team never holds more than LAB_LIMITS.team, so a
+ * larger count reads as a full team; a count that is not a number reads as none.
+ */
+export function teamPower(n: number): number {
+  const k = Number.isFinite(n) ? Math.min(LAB_LIMITS.team, Math.max(0, Math.floor(n))) : 0
+  let sum = 0
+  for (let i = 0; i < k; i++) sum += Math.pow(TEAM_STEP, i)
+  return sum
+}
+
+/** Extra R&D slots `n` scientists give the team: one for each two, at most two. */
+export function teamSlots(n: number): number {
+  return Number.isFinite(n) ? Math.min(2, Math.max(0, Math.floor(n / 2))) : 0
 }

@@ -1,16 +1,16 @@
-// The Research & Operations screen (R&D 3.0): what the country pays back, last year's lab ledger and the
-// Operations R&D programs, one row each. Menus are pure: they re-read the live company every time they
+// The Research & Operations screen (R&D 3.0): what the country pays back, last year's lab ledger, the
+// Operations R&D programs (one row each) and the research team. Menus are pure: they re-read the live company every time they
 // are built or tapped, never write state and never draw g.rng; a row that can't run carries the single
-// reason its rule gives (lab-rules.ts opsBlock), so a tap and a screen reader get the same words. The
+// reason its rule gives (lab-rules.ts opsBlock, teamBlock), so a tap and a screen reader get the same words. The
 // money moves in lab-year.ts, whose entry points check everything again.
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { manageBlock } from './gate'
 import { heavyEligible } from './heavy-rd'
-import { labCreditRate, labTierOf, OPS_MAX_RUNG, opsProgram, type OpsProgram } from './lab-data'
-import { opsBlock, opsGain, opsOdds, opsOffers, opsPrice, opsYears } from './lab-rules'
-import { readLab } from './lab-state'
+import { labCreditRate, labTierOf, OPS_MAX_RUNG, opsProgram, TEAM_MIN_YEARS, TEAM_ODDS, type OpsProgram } from './lab-data'
+import { opsBlock, opsGain, opsOdds, opsOffers, opsPrice, opsYears, teamBlock, teamCap, teamFee, teamPay } from './lab-rules'
+import { readLab, teamPower, teamSlots } from './lab-state'
 import { LAB_LABEL, LAB_TIP } from './lab-text'
-import { doOps } from './lab-year'
+import { doHire, doOps, doRelease } from './lab-year'
 import { live, mAct } from './market-menu-kit'
 import { readBiz, type BizState } from './state'
 import { money, plural } from './util'
@@ -33,7 +33,7 @@ function labGroup(a: Asset): MenuGroup {
     disabledReason: (g) => manageBlock(g, a),
     children: (g) => {
       const b = readBiz(g, live(g, a))
-      return [...headerRows(g, a, b), ...opsNodes(g, a, b)]
+      return [...headerRows(g, a, b), ...opsNodes(g, a, b), ...teamNodes(a, b)]
     },
   }
 }
@@ -90,6 +90,56 @@ function opsAction(a: Asset, p: OpsProgram): MenuAction {
     disabled: (g, b) => opsBlock(g, b, p.id),
     run: (g, cur) => {
       doOps(g, cur, p.id)
+    },
+  })
+}
+
+const TEAM_EMOJI = '\u{1F9D1}\u{200D}\u{1F52C}'
+
+/** The research team: what it is now (scientists, pay, the odds and slots they add), then the hire and release rows. */
+function teamNodes(a: Asset, b: BizState): MenuNode[] {
+  const n = readLab(b).team.length
+  const points = Math.round(100 * TEAM_ODDS * teamPower(n))
+  return [
+    { type: 'heading', id: `biz.labTeamH.${a.id}`, label: LAB_LABEL.team },
+    { type: 'info', id: `biz.labTeam.${a.id}`, emoji: TEAM_EMOJI, text: LAB_TIP.team(String(n), String(teamCap(b)), money(teamPay(b)), String(points), plural(teamSlots(n), 'more slot')) },
+    hireAction(a),
+    releaseAction(a),
+  ]
+}
+
+/** What a scientist costs, read from the live company. */
+function teamQuote(g: GameState, a: Asset): { fee: string; pay: string } {
+  const b = readBiz(g, live(g, a))
+  return { fee: money(teamFee(b)), pay: money(teamPay(b)) }
+}
+
+/** Hire a scientist: the fee now, the pay every year; greyed out with the one reason teamBlock gives. */
+function hireAction(a: Asset): MenuAction {
+  return mAct(a, 'lab.hire', LAB_LABEL.hire, TEAM_EMOJI, {
+    subtitle: (g) => {
+      const q = teamQuote(g, a)
+      return LAB_TIP.hire(q.fee, q.pay)
+    },
+    confirm: (g) => {
+      const q = teamQuote(g, a)
+      return LAB_TIP.hireConfirm(q.fee, q.pay, String(TEAM_MIN_YEARS))
+    },
+    disabled: (g, b) => teamBlock(g, b, 'hire'),
+    run: (g, cur) => {
+      doHire(g, cur)
+    },
+  })
+}
+
+/** Let the longest-serving scientist go (after the minimum service): the fee, and the same reason when it can't. */
+function releaseAction(a: Asset): MenuAction {
+  return mAct(a, 'lab.release', LAB_LABEL.release, TEAM_EMOJI, {
+    subtitle: (g) => LAB_TIP.release(teamQuote(g, a).fee, String(TEAM_MIN_YEARS)),
+    confirm: (g) => LAB_TIP.releaseConfirm(teamQuote(g, a).fee),
+    disabled: (g, b) => teamBlock(g, b, 'release'),
+    run: (g, cur) => {
+      doRelease(g, cur)
     },
   })
 }
