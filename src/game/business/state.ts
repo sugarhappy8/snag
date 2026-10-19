@@ -384,6 +384,8 @@ export interface BizState {
   closedInventions?: Json
   /** Owner conversations and licensed entertainment operations (venues.ts). */
   venueOwner?: Json
+  /** Operations Desk record (business/sector-state.ts readSector). Missing until the first yearly hook. Read it with readSector. */
+  sector?: Json
   /** Opt-in professionally reviewed automatic succession readiness policy. */
   successionReview?: Json
   /** Individually priced manufactured inventions, separate from industry-wide boosts. */
@@ -741,6 +743,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.financeFirm && typeof d.financeFirm === 'object' && !Array.isArray(d.financeFirm) ? { financeFirm: d.financeFirm } : {}),
     ...(Array.isArray(d.closedInventions) ? { closedInventions: d.closedInventions } : {}),
     ...(d.venueOwner && typeof d.venueOwner === 'object' && !Array.isArray(d.venueOwner) ? { venueOwner: d.venueOwner } : {}),
+    ...(d.sector && typeof d.sector === 'object' && !Array.isArray(d.sector) ? { sector: d.sector } : {}),
     ...(d.inventionProducts && typeof d.inventionProducts === 'object' ? { inventionProducts: d.inventionProducts } : {}),
     ...(typeof d.inventionStaff === 'number' ? { inventionStaff: Math.floor(clampN(num(d.inventionStaff), 0, 1e9)) } : {}),
     ...(Array.isArray(d.inventionLicenses) ? { inventionLicenses: d.inventionLicenses } : {}),

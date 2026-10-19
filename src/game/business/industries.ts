@@ -7,6 +7,7 @@
 // that scales well, energy ~$4M on a $35M plant. Tuned for gameplay, grounded in reality.
 import type { Industry, PriceCategory } from '../data/markets'
 import { FINANCE_INDUSTRIES } from './finance-firm-data'
+import { withSectorRoles } from './sector-data'
 import { VENUE_INDUSTRIES } from './venues-data'
 
 export type StaffFocus = 'quality' | 'sales' | 'finance' | 'ops'
@@ -487,7 +488,7 @@ function sector(base: keyof typeof BASE_INDUSTRIES, id: Industry, label: string,
     wage: Math.round(b.wage * Math.sqrt(scale)), rent: Math.round(b.rent * scale), needs: undefined }
 }
 
-export const INDUSTRIES: Record<Industry, IndustryDef> = {
+const RAW_INDUSTRIES: Record<Industry, IndustryDef> = {
   ...BASE_INDUSTRIES,
   ...FINANCE_INDUSTRIES,
   ...VENUE_INDUSTRIES,
@@ -504,6 +505,9 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   furniture: sector('manufacturing', 'furniture', 'Furniture', '🪑', 'Make furniture for homes, hotels and offices.', ['Modular Furniture', 'Office Desks', 'Hotel Furnishings', 'Custom Joinery', 'Outdoor Furniture', 'Kids’ Furniture', 'Sofa Beds'], .8, 1.1),
   travel: sector('marketing', 'travel', 'Travel Services', '🧳', 'Plan and sell holidays, tours and corporate travel.', ['Local Tours', 'Group Travel', 'Adventure Holidays', 'Business Travel', 'Ski Holidays', 'Cruise Bookings', 'Study Abroad Trips'], .7, 1.25),
 }
+
+/** The trades' operating data, with each sector trade's extra key role merged in once (business/sector-data.ts). */
+export const INDUSTRIES: Record<Industry, IndustryDef> = withSectorRoles(RAW_INDUSTRIES)
 
 /**
  * Industries that make goods can add production capacity without opening another outlet

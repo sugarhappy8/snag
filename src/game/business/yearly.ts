@@ -55,6 +55,7 @@ import { bookFranchiseYear, franchiseIncomeFor } from './franchise'
 import { bookHedgeYear } from './hedge-company'
 import { milestoneYear } from './milestones'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
+import { prepareSectorYear } from './sector-core'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, diluteBusinessEquity, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
@@ -500,6 +501,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     // Cash a company puts to work in a hedge fund, booked once through yearIncome or yearCosts (business/hedge-company.ts).
     bookHedgeYear(g, a, b, fiscal)
     prepareVenueYear(g, a, b, fiscal)
+    // The Operations Desk of food, care and utility trades writes the generic channels (business/sector-core.ts).
+    prepareSectorYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
     if (b.ceo === 'manager' && isFinanceFirm(b)) financeManagerTurn(g, b)
     const previousRevenue = b.last?.revenue ?? 0
