@@ -595,6 +595,25 @@ describe('model events: what each def does', () => {
     expect(c.s.windows).toHaveLength(1)
   })
 
+  it('injury: cancelling a casting you never booked costs the branch price only, with nothing more charged at the next tick', () => {
+    const def = defOf('injury')
+    const cancelled = fixture('injury')
+    const control = fixture('injury')
+    // the crisis is offered at the settle, when no job is booked yet: the cheapest open casting is the one to pull out of
+    expect(cancelled.s.board.items.every((o) => o.status === 'open')).toBe(true)
+    branch(cancelled.g, cancelled.s, def, 'safe', 'good')
+    expect(cancelled.s.rep).toBe(control.s.rep - 3)
+    for (const f of [cancelled, control]) {
+      f.g.queue = []
+      nextYear(f.g, yearlySpecial)
+    }
+    const after = modelStore.view(cancelled.g)
+    const base = modelStore.view(control.g)
+    // the next tick's cancelled-job charge (rep -8, mood -10) is for a job that was booked, not for an offer you declined
+    expect(after.rep).toBeCloseTo(base.rep - 3, 5)
+    expect(after.mood).toBeCloseTo(base.mood, 5)
+  })
+
   it('injury: cancelling forfeits the smallest job, easing the strain at a price; working through it costs health and builds strain', () => {
     const def = defOf('injury')
     const a = fixture('injury')
@@ -604,16 +623,19 @@ describe('model events: what each def does', () => {
     expect(a.s.strain).toBe(65)
     expect(a.s.rep).toBe(rep - 3)
     expect(a.g.character.stats.health).toBe(health - 1)
-    expect(a.s.board.items.map((o) => [o.id, o.status])).toEqual([['i1', 'open'], ['i2', 'passed'], ['i3', 'open']])
+    // no job is booked at the settle: the cheapest open casting comes off the board
+    expect(a.s.board.items.map((o) => [o.id, o.status])).toEqual([['i1', 'open'], ['i3', 'open']])
     // a booked job is the one forfeited, and the cheapest of the booked
     const b = fixture('injury')
     b.s.board.items[0].status = 'booked'
     b.s.board.items[2].status = 'booked'
     branch(b.g, b.s, def, 'safe', 'good')
     expect(b.s.board.items.map((o) => o.status)).toEqual(['passed', 'open', 'booked'])
-    // the next tick takes 8 reputation and 10 mood for the cancelled job, as the sim reads it
+    // the next tick takes 8 reputation and 10 mood for a cancelled booked job, as the sim reads it
     const c = fixture('injury')
+    c.s.board.items[0].status = 'booked'
     branch(c.g, c.s, def, 'safe', 'good')
+    expect(c.s.board.items[0].status).toBe('passed')
     const repBefore = c.s.rep
     c.g.queue = []
     const mood = c.s.mood

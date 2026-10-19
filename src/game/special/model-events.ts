@@ -63,7 +63,7 @@ function liveBoard(g: GameState, s: ModelState): MdOffer[] {
 
 const cheapest = (list: readonly MdOffer[]): MdOffer | undefined => [...list].sort((a, b) => a.fee - b.fee || (a.id < b.id ? -1 : 1))[0]
 
-/** The casting an injury costs you: the cheapest booked job, else the cheapest still open. Pure. */
+/** The casting an injury costs you: the cheapest booked job, else the cheapest still open (the crisis is offered at the settle, when none is booked yet). Pure. */
 function cancelTarget(list: readonly MdOffer[]): MdOffer | undefined {
   return cheapest(list.filter((o) => o.status === 'booked')) ?? cheapest(list.filter((o) => o.status === 'open'))
 }
@@ -226,8 +226,12 @@ const injury: Def<NoData> = {
         text: () => 'You pulled out of a job to recover. The client moved on, and the agency took note.',
         fx: { health: -1 },
         then: (s, g) => {
-          const target = cancelTarget(liveBoard(g, s))
-          if (target) target.status = 'passed'
+          const board = liveBoard(g, s)
+          const target = cancelTarget(board)
+          // The crisis is offered at the settle, before this year has a booking, so the target is usually a casting you
+          // never took: it just comes off the board. A booked job is closed as passed, and the next settle charges it.
+          if (target?.status === 'booked') target.status = 'passed'
+          else if (target) s.board.items = board.filter((o) => o !== target)
           bump(s, 'strain', -15)
           bump(s, 'rep', -3)
         },
