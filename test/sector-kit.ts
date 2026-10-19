@@ -72,8 +72,8 @@ function hire(b: BizState, skill: number, year: number): Manager {
 }
 
 /** A six-site company that has just been handed to a hired CEO of this skill (a copy of managed() in test/ceo.test.ts). */
-export function managedDesk(trade: Industry, skill: number, opts: { seed?: number; cash?: number } = {}): { g: GameState; a: Asset; b: BizState } {
-  const countryId = 'us'
+export function managedDesk(trade: Industry, skill: number, opts: { seed?: number; cash?: number; countryId?: string } = {}): { g: GameState; a: Asset; b: BizState } {
+  const countryId = opts.countryId ?? 'us'
   const g = createNewLife({ seed: opts.seed ?? 1, year: 1990, countryId })
   g.queue = []
   const c = g.character

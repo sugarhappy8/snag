@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { unitFlags } from '../scripts/voice/rules.mjs'
 import { boardOf } from '../src/game/business/board-state'
+import { capexBudget, reserveDollars } from '../src/game/business/board-vote'
 import { bizWorth, simulateYear } from '../src/game/business/economy'
 import { manageBlock } from '../src/game/business/gate'
 import { businessView } from '../src/game/business/manage'
@@ -13,6 +14,7 @@ import { applyLever, deskLines, leverValue, MENU_COPY, sectorMenu } from '../src
 import { blankRecord, readSector, saveSector, type FoodState, type SectorState } from '../src/game/business/sector-state'
 import type { BizState } from '../src/game/business/state'
 import { yearActionsUsed } from '../src/game/core'
+import { isIndustryLegal } from '../src/game/data/markets'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { deskGame, inert, jail, managedDesk, playYear } from './sector-kit'
 
@@ -233,6 +235,73 @@ describe('applyLever', () => {
     const { g, a, b } = deskGame('restaurant', { cash: 1000 })
     refused(g, a, 'audit', 1, 'owner', 'not enough cash')
     expect(b.cash).toBe(1000)
+  })
+
+  // The CEO's branch of applyLever carries its own checks, so a direct call cannot skip them (each case below is also
+  // the line that would let it through if it were deleted).
+  describe('a hired CEO', () => {
+    it('refuses a paid option over the budget, and takes it once there is room', () => {
+      const { g, a, b } = managedDesk('restaurant', 80)
+      boardOf(b).limits = { capex: 0, reserve: 0, pay: 1.5 }
+      refused(g, a, 'audit', 1, 'ceo', 'no capex budget')
+      expect(readSector(b)).toBeNull()
+      boardOf(b).limits = { capex: 1, reserve: 0, pay: 1.5 }
+      const cash = b.cash
+      expect(applyLever(g, a, 'audit', 1, 'ceo')).toEqual({ ok: true, paid: AUDIT_COST })
+      expect(b.cash).toBe(cash - AUDIT_COST)
+      expect(boardOf(b).spent).toBe(AUDIT_COST)
+    })
+
+    it('refuses a paid option one dollar above what is left of this year’s budget', () => {
+      const { g, a, b } = managedDesk('restaurant', 80)
+      const board = boardOf(b)
+      board.limits = { capex: 1, reserve: 0, pay: 1.5 }
+      const budget = capexBudget(b, board)
+      expect(budget).toBeGreaterThan(AUDIT_COST)
+      board.spentYear = g.year
+      board.spent = budget - AUDIT_COST + 1
+      refused(g, a, 'audit', 1, 'ceo', 'one dollar over what is left')
+      board.spent = budget - AUDIT_COST
+      expect(applyLever(g, a, 'audit', 1, 'ceo').ok).toBe(true)
+      expect(boardOf(b).spent).toBe(budget)
+    })
+
+    it('refuses a paid option that would take the cash below the reserve', () => {
+      const { g, a, b } = managedDesk('restaurant', 80)
+      const board = boardOf(b)
+      board.limits = { capex: 1, reserve: 3, pay: 1.5 }
+      const reserve = reserveDollars(b, board)
+      expect(reserve).toBeGreaterThan(2)
+      b.cash = reserve + AUDIT_COST - 1
+      refused(g, a, 'audit', 1, 'ceo', 'cash would end one dollar under the reserve')
+      b.cash = reserve + AUDIT_COST
+      expect(applyLever(g, a, 'audit', 1, 'ceo')).toEqual({ ok: true, paid: AUDIT_COST })
+      expect(b.cash).toBe(reserve)
+    })
+
+    it('refuses once the character has died', () => {
+      const { g, a, b } = managedDesk('restaurant', 80)
+      g.character.alive = false
+      refused(g, a, 'menu', 2, 'ceo', 'dead character')
+      expect(readSector(b)).toBeNull()
+      g.character.alive = true
+      expect(applyLever(g, a, 'menu', 2, 'ceo').ok).toBe(true)
+    })
+
+    it('refuses a trade that is illegal where it runs, for the owner too', () => {
+      // Cuba bans clinics (data/markets.ts): no record and no restored menu reaches a desk there.
+      const ceo = managedDesk('clinic', 80, { countryId: 'cu' })
+      expect(isIndustryLegal('cu', 'clinic', ceo.g)).toBe(false)
+      refused(ceo.g, ceo.a, 'intake', 2, 'ceo', 'illegal trade, ceo')
+      expect(readSector(ceo.b)).toBeNull()
+      const own = deskGame('clinic', { countryId: 'cu' })
+      expect(isIndustryLegal('cu', 'clinic', own.g)).toBe(false)
+      refused(own.g, own.a, 'intake', 2, 'owner', 'illegal trade, owner')
+      // The same call on a clinic where it is legal goes through.
+      const legal = managedDesk('clinic', 80)
+      expect(isIndustryLegal('us', 'clinic', legal.g)).toBe(true)
+      expect(applyLever(legal.g, legal.a, 'intake', 2, 'ceo').ok).toBe(true)
+    })
   })
 
   it('a hired CEO works while the owner is in jail', () => {
