@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { businessAssetView } from '../src/game/business'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { advanceHeavy } from '../src/game/business/heavy-rd'
-import { deepWaveFor, INSIDER_WARNING } from '../src/game/business/tech-wave-data'
+import { breakthroughByName } from '../src/game/business/heavy-data'
+import { deepWaveFor, HEAVY_WAVE_WINDOW, HEAVY_WAVES, heavyStartsWave, INSIDER_WARNING } from '../src/game/business/tech-wave-data'
 import { announceWave, readTechWaves, type TechWave } from '../src/game/business/tech-waves'
 import { readTech } from '../src/game/business/deeptech-state'
 import { bizOf } from '../src/game/business/state'
@@ -113,6 +114,31 @@ describe('the writers and the existing case code', () => {
     }
     expect(seen).toBeGreaterThan(0)
   }, 90_000)
+  it('the Heavy R&D warning is true: heavyStartsWave says yes exactly when announceWave writes the wave, for every listed launch in its window and beyond', () => {
+    const { g } = founder(), tried: string[] = []
+    for (const [key, hw] of Object.entries(HEAVY_WAVES)) {
+      const trade = key.slice(0, key.indexOf('|')), name = key.slice(key.indexOf('|') + 1), def = breakthroughByName(name)!
+      for (let y = def.first; y <= def.first + HEAVY_WAVE_WINDOW + 2; y++) {
+        g.flags.techWaves = []
+        const wrote = announceWave(g, { kind: hw.kind, source: 'heavy', origin: `heavy.${trade}|world#${name}`, name, size: hw.size, market: 'world', year: y }) !== null
+        const inside = y - def.first <= HEAVY_WAVE_WINDOW   // the window is the writer's own test in heavy-rd.ts, announceWave does not know it
+        expect(heavyStartsWave(trade, def, y), `${name} ${y}`).toBe(inside && wrote); if (inside && !wrote) tried.push(`${name} ${y}`)
+      }
+    }
+    expect(tried.length).toBeGreaterThan(0)   // a history row covers some launches inside the window (cloud 2006-2015, the Hosted Subscription Platform, ...)
+    expect([heavyStartsWave('dataCenter', breakthroughByName('Hyperscale Cloud Region')!, 2008), heavyStartsWave('dataCenter', breakthroughByName('Liquid-Cooled GPU Hall')!, 2028)]).toEqual([false, true])
+  })
+  it('the deep-tech warning follows the writer: a first-only program only on its first completion, a program that needs an autonomy level only when the win reaches it', () => {
+    const lab = (trade: 'quantum' | 'electricVehicles', patch: (t: ReturnType<typeof readTech>) => void) => {
+      const g = adultIn('us', 5e9, 3, 90, 2034), c = g.character, b = newBiz(g, trade, c.countryId, c.city, { cash: 0, ceo: 'owner', manager: null }), t = readTech(undefined)
+      Object.assign(t, { level: 80, stage: 3 }); patch(t); b.tech = JSON.parse(JSON.stringify(t)) as Json; const a = createBusinessAsset(g, `Test ${trade}`, b, 0); g.assets.push(a)
+      return (id: string): string | undefined => allNodes(g, businessAssetView(g, a)).find((n): n is MenuAction => n.type === 'action' && n.id.startsWith('dt.rd.') && n.id.slice(6).split('.')[0] === id)?.confirm?.(g) ?? ''
+    }
+    const warns = (text: string | undefined) => (text ?? '').includes(INSIDER_WARNING)
+    const first = (done: string[]) => warns(lab('quantum', (t) => { t.done = done })('qec')), drive = (autonomy: number) => warns(lab('electricVehicles', (t) => { t.autonomy = autonomy })('selfdrive'))
+    expect([first([]), first(['qec'])]).toEqual([true, false])
+    expect([drive(0), drive(1), drive(2)]).toEqual([false, false, true])
+  })
   it('shows the warning in the Heavy R&D confirm only for a wave that still lands inside the window, and in the deep-tech confirm only for a listed program', () => {
     const heavy = (x: { g: GameState; a: Asset }) => allNodes(x.g, businessAssetView(x.g, x.a)).filter((n): n is MenuAction => n.type === 'action' && n.id.startsWith('biz.heavy.')).map((n) => ({ id: n.id, text: n.confirm?.(x.g) ?? '' }))
     const early = heavy(founder(5, 2028)), late = heavy(founder(5, 2033))

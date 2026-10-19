@@ -39,7 +39,7 @@ import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type Te
 import { industryDef } from './industries'
 import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
-import { deepWaveFor } from './tech-wave-data'
+import { deepWaveIf } from './tech-wave-data'
 import { announceWave, waveLines } from './tech-waves'
 import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJson, units } from './util'
 import { allocatedCorporateTax } from './tax'
@@ -228,8 +228,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
 function announceBreakthroughs(g: GameState, a: Asset, b: BizState, t: TechState, won: readonly string[], approved: readonly Drug[], newModel: number): void {
   const home = b.countryId
   for (const id of won) {
-    const w = deepWaveFor(b.industry, id)
-    if (!w || (w.first && timesDone(t, id) !== 1) || (w.autonomy !== undefined && t.autonomy < w.autonomy)) continue
+    const w = deepWaveIf(b.industry, id, timesDone(t, id), t.autonomy)
+    if (!w) continue
     announceWave(g, { kind: w.kind, source: 'deeptech', origin: `${a.id}#${id}`, name: w.name, size: w.size, market: 'world', home, by: a.id })
   }
   if (b.industry === 'biotech') {
