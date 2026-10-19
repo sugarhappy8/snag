@@ -6,11 +6,13 @@ import { antitrustOf } from '../src/game/business/competition'
 import { techOf } from '../src/game/business/deeptech-core'
 import { techMarketNote } from '../src/game/business/deeptech-sim'
 import { readTech, type TechState } from '../src/game/business/deeptech-state'
+import { isFinanceFirm } from '../src/game/business/finance-firm-state'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { bizOf, readBiz, type BizState } from '../src/game/business/state'
-import { announceWave, waveLines, waveScrutiny, type TechWave } from '../src/game/business/tech-waves'
+import { WAVE_KINDS, type WaveKind } from '../src/game/business/tech-wave-data'
+import { announceWave, roleOf, waveLines, waveScrutiny, type TechWave } from '../src/game/business/tech-waves'
 import { reportData } from '../src/game/business/yearly'
-import type { Industry } from '../src/game/data/markets'
+import { INDUSTRY_IDS, type Industry } from '../src/game/data/markets'
 import { anachronismsIn } from '../src/game/events/era'
 import { readMarketNews } from '../src/game/history/market-events'
 import type { Asset, GameState, Json } from '../src/game/types'
@@ -50,6 +52,11 @@ describe('waveLines', () => {
     const g = makeTestGame(1); expect(waveLines(g, { industry: 'aiLab', countryId: 'us' })).toBe(waveLines(g, { industry: 'bakery', countryId: 'us' }))
     put(g, AI()); const before = JSON.stringify(g), rng = g.rng; for (const l of waveLines(g, { industry: 'aiLab', countryId: 'us' }, 2035)) expect(l).not.toMatch(/NaN|undefined|Infinity/)
     expect([JSON.stringify(g), g.rng]).toEqual([before, rng])
+  })
+  it('says Demand only where the wave demand applies: a game studio (through its market factor) and a lab do, and no finance firm has a role in any wave', () => {
+    expect(lines('gameStudio', { kind: 'smartphone' })).toEqual(['Frontier AI wave. Demand +8%, value +7%.'])   // supply: demand 1 + 0.2 x 0.5 x 0.8 reaches a studio through studioMarketFactor (pinned in tech-waves-readers.test.ts)
+    const finance = INDUSTRY_IDS.filter((id) => isFinanceFirm({ industry: id })); expect(finance).toHaveLength(3)   // their year is their own model, which reads no wave demand, so none may be given a role without a demand-free line
+    for (const kind of Object.keys(WAVE_KINDS) as WaveKind[]) for (const trade of finance) expect(roleOf(kind, trade), `${kind} ${trade}`).toBeNull()
   })
   it('skips a line the era filter flags and keeps the rest', () => {
     let skipped = 0

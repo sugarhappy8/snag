@@ -2,10 +2,11 @@
 // valuation stamp and the history rows (valuationOf, BizState.wave), deep-tech heat (industryCycle),
 // rivals (advanceRivals) and the fast-follower entrants (competition.ts), plus the hot path.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { marketOfBiz, saveMarket } from '../src/game/business/competition'
+import { marketOfBiz, saveMarket, studioMarketFactor } from '../src/game/business/competition'
 import * as competition from '../src/game/business/competition-core'
 import { marketStateOf } from '../src/game/business/competition-core'
-import { industryCycle, refreshTechValue, techOf } from '../src/game/business/deeptech-core'
+import { industryCycle, refreshTechValue, techOf, techPlan } from '../src/game/business/deeptech-core'
+import { frontierScore } from '../src/game/business/deeptech-data'
 import { makeTermSheet } from '../src/game/business/deeptech-funding'
 import { readTech, type TechState } from '../src/game/business/deeptech-state'
 import { nationalMarket } from '../src/game/business/dynamics'
@@ -45,6 +46,13 @@ describe('company demand and costs (marketCtxFor, nationalMarket)', () => {
     const g = adult(5, 2033, 'us'); const a = company(g, 'dataCenter'); nextYear(g); const b = readBiz(g, a), y = g.year, none = marketCtxFor(g, b, y).pot
     put(g, AI({ year: 2030, last: y })); expect(marketCtxFor(g, b, y).pot).toBeCloseTo(none * 1.06, 6)        // supply: 1 + 0.2 x 0.5 x 0.6
     delete g.flags.techWaves; expect(marketCtxFor(g, b, y).pot).toBe(none)
+  })
+  it('a game studio reads the wave demand through its market factor (studioMarketFactor reads marketCtxFor), so its wave line may say Demand; nationalMarket demand stays unmoved', () => {
+    const g = adult(5, 2033, 'us'); const a = company(g, 'gameStudio'); nextYear(g); const b = readBiz(g, a), y = g.year
+    const none = studioMarketFactor(g, b, y), pot = marketCtxFor(g, b, y).pot, n0 = nationalMarket(g, 'gameStudio', 'us', y).demand
+    put(g, AI({ kind: 'smartphone', source: 'workshop', year: 2030, last: y }))
+    expect(studioMarketFactor(g, b, y) / none).toBeCloseTo(1.06, 6); expect(marketCtxFor(g, b, y).pot / pot).toBeCloseTo(1.06, 6)   // supply: 1 + 0.2 x 0.5 x 0.6
+    expect(nationalMarket(g, 'gameStudio', 'us', y).demand).toBe(n0)
   })
   it('a heavy wave leaves its origin trade at exactly the heavyPulse potential but moves a disrupted neighbour', () => {
     const g = adult(5, 2030, 'us'); const a = company(g, 'software'), m = company(g, 'marketing'); nextYear(g); const y = g.year
@@ -164,6 +172,16 @@ describe('deep tech: industryCycle', () => {
     const rng = g.rng; refreshTechValue(g, b, t); const v0 = valuationOf(b), pre0 = makeTermSheet(g, a, b, t).pre   // a term sheet draws its roll from g.rng, so both sheets start from the same stream
     put(g, AI({ year: 2030 })); g.rng = rng; refreshTechValue(g, b, t); expect(valuationOf(b)).toBeGreaterThan(v0); expect(makeTermSheet(g, a, b, t).pre).toBeGreaterThan(pre0)
     stampWave(g, b, g.year - 1); expect(b.wave).toBeUndefined(); expect(valuationOf({ ...b, wave: { v: 2, y: g.year - 1 } })).toBe(valuationOf(b))
+  })
+})
+
+describe('deep tech: plan demand', () => {
+  it('a lab\'s plan demand carries the wave demand (techPlan reads marketCtxFor), so its wave line may say Demand', () => {
+    const g = adultIn('us', 5e9, 3, 90, 2034), c = g.character, b0 = newBiz(g, 'aiLab', c.countryId, c.city, { cash: 0, ceo: 'owner', manager: null })
+    const t0 = readTech(undefined); Object.assign(t0, { level: 80, stage: 3, hype: 60, models: [{ gen: 1, name: 'Nova 1', score: frontierScore(2034) + 3, open: false, year: 2034 }] }); b0.tech = JSON.parse(JSON.stringify(t0)) as Json
+    const a = createBusinessAsset(g, 'Test aiLab', b0, 0); g.assets.push(a); const b = bizOf(g, a), t = techOf(b)
+    const none = techPlan(g, b, t, g.year, { calm: true }).demand; expect(none).toBeGreaterThan(0)
+    put(g, AI({ year: 2030, last: g.year })); expect(techPlan(g, b, t, g.year, { calm: true }).demand / none).toBeCloseTo(1.09, 4)   // core: 1 + 0.3 x 0.5 x 0.6
   })
 })
 
