@@ -1877,19 +1877,29 @@ export interface InsiderCaseInput {
  * Open the insider case a launch of the player's own company starts on one stock they hold (release 1b, spec 5.7). Like the
  * inline builders in `announce` and `policyInsider` (which it does not replace) it tags the bets, costs karma and remembers
  * the trade; unlike them it has no office or approval, so the profile it creates makes no politician (the case says 'mayor',
- * the inert default `repairAbuse` already uses). Idempotent by id: false when any case, open or closed, already has it.
+ * the inert default `repairAbuse` already uses). Idempotent by id: false when any case, open or closed, already has it. A stock
+ * has one wave case a year that is not over: a second wave the same year adds to it (`foldInto`, false: no new case) rather than
+ * charging the same shares twice. The second wave's `mult` and `indexGain` are the year's whole lift, which already holds the
+ * first wave's step, so the case takes the larger gain instead of the sum.
  */
 export function openInsiderCase(g: GameState, input: InsiderCaseInput): boolean {
   const a = abuseData(g)
   const id = `wave-${input.key}`
   if (a.cases.some((c) => c.id === id)) return false
   const { target: t, pos } = input
+  const gain = Math.round(pos.shares * (input.mult - 1) + (Number.isFinite(input.indexGain) ? input.indexGain : 0))
+  const active = a.cases.find((c) => c.cause === 'wave' && c.status !== 'closed' && c.secId === t.secId && c.year === g.year)
+  if (active) {
+    foldInto(active, pos, pos.own + pos.crony + pos.shares + pos.index, input.mult, gain)
+    tagBets(g, pos.betIds, active.id)
+    return false
+  }
   const via = routeOf(pos)
   const cs: InsiderCase = {
     id, age: g.character.age, year: g.year, target: t.name, symbol: t.symbol, secId: t.secId, cause: 'wave',
     stake: Math.round(pos.own + pos.crony + pos.shares + pos.index), via, crony: pos.cronyName, evidence: POLICY_EVIDENCE[via], status: 'open',
     office: 'mayor', title: `${input.role === 'founder' ? 'Founder' : 'CEO'} of ${input.company}`, countryId: g.character.countryId, quiet: 0, extra: [],
-    gain: Math.round(pos.shares * (input.mult - 1) + (Number.isFinite(input.indexGain) ? input.indexGain : 0)), bullish: true, role: input.role, note: input.note,
+    gain, bullish: true, role: input.role, note: input.note,
   }
   a.cases.push(cs)
   tagBets(g, pos.betIds, cs.id)
@@ -1921,12 +1931,13 @@ function foldChanges(cs: InsiderCase, pos: InsiderPositions, stake: number): boo
  * been investigated and its money taken, so its gain stays); bets or index options in the player's own name
  * move the case up to that route; evidence rises to at least the level of the route the law brought. The
  * charge stays the first law's. New positions (a larger stake or gain, a new route, bets) start the case's
- * quiet years over, so they get a full exposure window. Returns whether the route moved up.
+ * quiet years over, so they get a full exposure window. Returns whether the route moved up. `whole`: a second launch the same year
+ * (openInsiderCase) hands the gain of the year's whole lift, which already holds the earlier step: the case takes the larger of the two.
  */
-function foldInto(cs: InsiderCase, pos: InsiderPositions, stake: number, mult: number): boolean {
+function foldInto(cs: InsiderCase, pos: InsiderPositions, stake: number, mult: number, whole?: number): boolean {
   const stake0 = cs.stake, gain0 = cs.gain
   cs.stake = Math.max(cs.stake, Math.round(stake))
-  if (cs.status === 'open') cs.gain = Math.min(HELD_MAX, cs.gain + Math.round(pos.shares * Math.max(0, mult - 1)))
+  if (cs.status === 'open') cs.gain = Math.min(HELD_MAX, whole === undefined ? cs.gain + Math.round(pos.shares * Math.max(0, mult - 1)) : Math.max(cs.gain, whole))
   const route = routeOf(pos)
   if (route !== 'shares') cs.evidence = Math.max(cs.evidence, POLICY_EVIDENCE[route])
   const up = upgradeOf(cs, pos)

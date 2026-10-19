@@ -25,7 +25,8 @@ const MIN_MOVE = 0.005
  * the positions are the ones bought this year or last (`freshOnly`), open calls and longs, and index calls on that exchange. A stock the
  * wave lifts by under half a percent, a stake of nothing and a gain under a thousand dollars (local) open nothing; the three largest
  * stakes become cases, and the index calls count once, in the largest one. Idempotent: the case id comes from the wave and the stock,
- * so a repeat opens nothing new.
+ * so a repeat opens nothing new. A stock that already has an open case from another wave of the same year gets no second one: that
+ * case takes the larger gain (openInsiderCase), and the return value counts only the cases opened.
  */
 export function waveInsiderCases(g: GameState, w: TechWave, assetId: string): number {
   const c = g.character
@@ -50,9 +51,9 @@ export function waveInsiderCases(g: GameState, w: TechWave, assetId: string): nu
   }
   // The index calls are one bet on the exchange, not one per stock: they join the largest stake only, and every later case keeps just its
   // own positions (and is judged on them), so one call is never charged, seized or arrested for more than once.
-  let opened = 0, indexTaken = false
+  let opened = 0, handled = 0, indexTaken = false
   for (const x of found.sort((p, q) => q.stake - p.stake)) {
-    if (opened >= MAX_CASES) break
+    if (handled >= MAX_CASES) break
     let input = x.input
     if (indexTaken) {
       const pos = { ...input.pos, index: 0, indexUnits: 0 }
@@ -60,6 +61,7 @@ export function waveInsiderCases(g: GameState, w: TechWave, assetId: string): nu
       input = { ...input, pos, indexGain: 0 }
     }
     indexTaken = true
+    handled++   // a stock whose case this wave only adds to (a second wave the year it opens) still takes one of the three places
     if (openInsiderCase(g, input)) opened++
   }
   return opened

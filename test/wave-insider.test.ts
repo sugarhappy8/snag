@@ -3,7 +3,7 @@ import { businessAssetView } from '../src/game/business'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { advanceHeavy } from '../src/game/business/heavy-rd'
 import { deepWaveFor, INSIDER_WARNING } from '../src/game/business/tech-wave-data'
-import { announceWave, type TechWave } from '../src/game/business/tech-waves'
+import { announceWave, readTechWaves, type TechWave } from '../src/game/business/tech-waves'
 import { readTech } from '../src/game/business/deeptech-state'
 import { bizOf } from '../src/game/business/state'
 import { waveInsiderCases } from '../src/game/business/wave-insider'
@@ -66,6 +66,23 @@ describe('who is an insider (S13)', () => {
     expect(rs).toHaveLength(3); expect(rs.filter((c) => c.via === 'own').map((c) => c.secId)).toEqual([ts[2].secId])
     expect([sum(rs, 'stake') - 100_000, sum(rs, 'gain') - once(g)]).toEqual([sum(rows(twin.g), 'stake'), expect.closeTo(sum(rows(twin.g), 'gain'), -1)])
     expect([waveInsiderCases(g, w, a.id), rows(g).length]).toEqual([0, 3])
+  })
+  it('a second wave in the same year adds to the open case on that stock instead of opening another: the stake once, the gain of the whole lift (S13)', () => {
+    const second = { name: 'Cheap phones', origin: 'biz#cheap', size: 0.4 }
+    const { g, a } = founder(), [t] = holdable(g, [2033]); buySecurity(g, t.secId, 200_000)
+    launch(g, a); const [one] = rows(g).map((c) => ({ ...c })); launch(g, a, { ...second, origin: `${a.id}#cheap` })
+    expect(readTechWaves(g)).toHaveLength(2); expect(rows(g)).toHaveLength(1); expect(rows(g)[0]).toMatchObject({ secId: t.secId, status: 'open', note: 'Smartphones', stake: one.stake, via: one.via })
+    expect(rows(g)[0].gain).toBeGreaterThan(one.gain)
+    // The same two waves with the shares bought after the first one: one case that holds the whole lift once.
+    const twin = founder(); launch(twin.g, twin.a); buySecurity(twin.g, t.secId, 200_000); launch(twin.g, twin.a, { ...second, origin: `${twin.a.id}#cheap` })
+    expect(rows(twin.g)).toHaveLength(1); expect(rows(g)[0].gain).toBeCloseTo(rows(twin.g)[0].gain, -1)
+    // The cap of three stocks a wave holds for the second wave too: the cases it adds to take their places, so no fourth stock is opened.
+    const many = founder(), ts = holdable(many.g, [2033]).slice(0, 5); expect(ts.length).toBeGreaterThanOrEqual(4)
+    ts.forEach((x, i) => buySecurity(many.g, x.secId, 40_000 + 20_000 * i)); launch(many.g, many.a); launch(many.g, many.a, { ...second, origin: `${many.a.id}#cheap` })
+    expect(rows(many.g).map((c) => c.secId).sort()).toEqual(ts.slice(-3).map((x) => x.secId).sort())
+    // A case that is already closed is not added to: the second wave opens its own.
+    const done = founder(), [u] = holdable(done.g, [2033]); buySecurity(done.g, u.secId, 200_000); launch(done.g, done.a); rows(done.g)[0].status = 'closed'
+    launch(done.g, done.a, { ...second, origin: `${done.a.id}#cheap` }); expect(rows(done.g).map((c) => c.status)).toEqual(['closed', 'open'])
   })
   it('a repeat opens nothing new', () => {
     const { g, a } = founder(), [t] = holdable(g, [2033]); buySecurity(g, t.secId, 200_000); const w = launch(g, a)
