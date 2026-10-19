@@ -1,19 +1,25 @@
 // Care, Education and Personal Services. 'care math': the client base, plans, payer mix, accreditation and
 // intake of the seven trades; careFx is called directly with a hand-made context, so no family model is
-// involved. (The 'care desk' block, with the levers, events and copy of the registered family, is added with
-// sector-care-play.ts.)
+// involved. 'care desk': the levers, the seven events and the copy of the registered family
+// (sector-care-play.ts), through applyLever, the event script and the voice rules.
 import { describe, expect, it } from 'vitest'
+import { staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { staffPower, localEcon, type Worth } from '../src/game/business/economy'
+import { eraFits } from '../src/game/business/era'
 import { accProgramCost, accTier, CARE_NOTE_COPY, careFx, careHeader, careRoleMoves, careRow, careSeed, clientsOf } from '../src/game/business/sector-care'
-import { SECTOR_BOUNDS, sectorValue } from '../src/game/business/sector-core'
+import { CARE_COPY, CARE_EVENTS, CARE_LEVERS, CARE_MODEL } from '../src/game/business/sector-care-play'
+import { prepareSectorYear, SECTOR_BOUNDS, sectorValue, seedSector } from '../src/game/business/sector-core'
 import { CARE, SECTOR_ROLES } from '../src/game/business/sector-data'
-import { seasonIndex, sectorHistoryLine, type SectorCtx, type SectorFx } from '../src/game/business/sector-kit'
-import type { CareState } from '../src/game/business/sector-state'
-import type { BizState, KeyStaff } from '../src/game/business/state'
+import { eventProblems, SECTOR_EVENT_SCRIPT } from '../src/game/business/sector-events'
+import { copyLines, modelOf, sectorCtx, sectorText, seasonIndex, sectorHistoryLine, type Branch, type LeverDef, type SectorCtx, type SectorEvent, type SectorFx } from '../src/game/business/sector-kit'
+import { applyLever, deskLines, leverValue, sectorMenu } from '../src/game/business/sector-menu'
+import { readSector, saveSector, type CareState } from '../src/game/business/sector-state'
+import { bizOf, type BizState, type KeyStaff } from '../src/game/business/state'
+import { money } from '../src/game/business/util'
 import type { Industry } from '../src/game/data/markets'
-import type { Asset, GameState } from '../src/game/types'
-import { unitFlags } from '../scripts/voice/rules.mjs'
-import { deskGame, frozen } from './sector-kit'
+import { runScript } from '../src/game/scripts'
+import type { Asset, GameState, MenuNode } from '../src/game/types'
+import { deskGame, frozen, playYear } from './sector-kit'
 
 const TRADES = ['clinic', 'education', 'gym', 'salon', 'petCare', 'homeCare', 'autoShop'] as const
 const PAYER_TRADES = ['clinic', 'education', 'gym', 'homeCare', 'autoShop'] as const
@@ -529,5 +535,548 @@ describe('care math', () => {
         expect(unitFlags(l, 'text')).toEqual([])
       }
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The desk: levers, events and copy of the family (sector-care-play.ts)
+
+const EVENT_IDS = ['accreditationReview', 'contractOffer', 'incident', 'payerAudit', 'rush', 'starLeaves', 'waitlist']
+
+function leverOf(id: string): LeverDef {
+  const l = modelOf('care')?.levers.find((x) => x.id === id)
+  if (!l) throw new Error(`no ${id} lever`)
+  return l
+}
+
+function eventOf(id: string): SectorEvent {
+  const e = modelOf('care')?.events.find((x) => x.id === id)
+  if (!e) throw new Error(`no ${id} event`)
+  return e
+}
+
+/** The branches of one choice of one event, in a state. */
+function branchesOf(s: ReturnType<typeof setup>, st: CareState, event: string, choice: string): Branch[] {
+  const c = eventOf(event).choices(s.g, s.b, st).find((x) => x.id === choice)
+  if (!c) throw new Error(`no ${choice} choice`)
+  return c.branches(s.g, s.b, st)
+}
+
+/** A state where every event of the family is live: payers in, a brand to trade on, clients that stay above the trade's retention. */
+function busy(s: ReturnType<typeof setup>): CareState {
+  s.b.brand = 60
+  return { ...s.seed, payer: CARE[s.b.industry as keyof typeof CARE].payer ? .4 : 0, loyal: CARE[s.b.industry as keyof typeof CARE].r0 + .05 }
+}
+
+/** The two long dashes the voice guide bans, built from their code points so that this file holds neither a dash nor an escape for one. */
+const DASHES = new RegExp(`[${String.fromCharCode(0x2014, 0x2013)}]`)
+
+describe('care desk', () => {
+  it('registers the care model', () => {
+    const model = modelOf('care')
+    expect(model).not.toBeNull()
+    expect(model).toBe(CARE_MODEL)
+    expect(model?.levers.map((l) => l.id)).toEqual(['plans', 'payer', 'intake', 'program'])
+    expect(model?.levers).toBe(CARE_LEVERS)
+    expect(model?.events).toBe(CARE_EVENTS)
+    expect(model?.events.map((e) => e.id).sort()).toEqual(EVENT_IDS)
+    expect(model?.events).toHaveLength(7)
+    expect(model?.copy).toBe(CARE_COPY)
+    expect(model?.levers.map((l) => l.paid)).toEqual([false, false, false, true])
+
+    // Salon and pet care bill no payers, so they offer no payer lever; the other five do.
+    for (const trade of ['salon', 'petCare'] as const) {
+      const s = setup(trade)
+      expect(leverOf('payer').options(s.g, s.b, s.seed), trade).toEqual([])
+    }
+    for (const trade of PAYER_TRADES) {
+      const s = setup(trade)
+      expect(leverOf('payer').options(s.g, s.b, s.seed).map((o) => o.value), trade).toEqual([0, .2, .4, .6])
+    }
+    const s = setup('clinic')
+    expect(leverOf('plans').options(s.g, s.b, s.seed).map((o) => o.value)).toEqual([0, .2, .4, .6])
+    expect(leverOf('intake').options(s.g, s.b, s.seed).map((o) => o.value)).toEqual([0, 1, 2])
+    expect(leverOf('program').options(s.g, s.b, s.seed).map((o) => o.value)).toEqual([1])
+    // The current setting of each lever reads from the record.
+    expect(leverOf('plans').current({ ...s.seed, planTarget: .4 }, s.g.year)).toBe(.4)
+    expect(leverOf('payer').current({ ...s.seed, payer: .2 }, s.g.year)).toBe(.2)
+    expect(leverOf('intake').current({ ...s.seed, intake: 2 }, s.g.year)).toBe(2)
+    expect(leverOf('program').current({ ...s.seed, program: s.g.year }, s.g.year)).toBe(1)
+    expect(leverOf('program').current({ ...s.seed, program: s.g.year - 1 }, s.g.year)).toBe(0)
+  })
+
+  it('hides the payer submenu of a trade that bills no payers', () => {
+    const ids = (trade: Industry): string[] => {
+      const s = setup(trade)
+      return sectorMenu(s.a).children(s.g)
+        .filter((n: MenuNode) => n.type === 'menu' && (n.visible?.(s.g) ?? true))
+        .map((n: MenuNode) => n.id)
+    }
+    expect(ids('salon').some((id) => id.startsWith('sector.lever.payer.'))).toBe(false)
+    expect(ids('clinic').some((id) => id.startsWith('sector.lever.payer.'))).toBe(true)
+    expect(ids('salon')).toHaveLength(3)
+    expect(ids('clinic')).toHaveLength(4)
+  })
+
+  it('shows the desk through deskLines', () => {
+    const s = setup('gym')
+    expect(deskLines(s.g, s.a).join(' ')).toContain('The desk opens at the next year end.')
+    expect(applyLever(s.g, s.a, 'intake', 1, 'owner')).toEqual({ ok: true, paid: 0 })
+    const lines = deskLines(s.g, s.a)
+    expect(lines.join(' ')).toContain('come back. Plans 0%. Accredited, score 62.')
+    expect(lines.join(' ')).toContain('Intake steady at 90%.')
+    expect(lines.at(-1)).toBe(`${s.g.year}: Intake now Steady 90%.`)
+  })
+
+  it('moves the levers through applyLever', () => {
+    const a1 = setup('gym')
+    const bA = (): BizState => bizOf(a1.g, a1.a)
+
+    // Plans set the target, and a free lever books nothing.
+    const cash = bA().cash
+    expect(applyLever(a1.g, a1.a, 'plans', .4, 'owner')).toEqual({ ok: true, paid: 0 })
+    expect(bA().cash).toBe(cash)
+    expect(readSector(bA())).toMatchObject({ planTarget: .4, plans: 0, since: a1.g.year - 1, lastYear: a1.g.year - 1 })
+    expect(applyLever(a1.g, a1.a, 'plans', .6, 'owner').ok).toBe(false)
+    expect(applyLever(a1.g, a1.a, 'plans', .3, 'owner').ok).toBe(false)
+    expect(applyLever(a1.g, a1.a, 'payer', .6, 'owner')).toEqual({ ok: true, paid: 0 })
+    expect(readSector(bA())).toMatchObject({ planTarget: .4, payer: .6 })
+
+    // The stock ramps by .10 a year toward the target; the payer share applies at once.
+    prepareSectorYear(a1.g, a1.a, bA(), a1.g.year)
+    const first = readSector(bA())
+    expect(first).toMatchObject({ plans: .1, planTarget: .4, payer: .6 })
+    const row = first?.ledger.at(-1)
+    expect(row?.year).toBe(a1.g.year)
+    expect(row?.demand).toBeCloseTo((1 + .35 * .6) * (1 + CARE.gym.amp * (1 - .6 * .1) * seasonIndex(a1.g, a1.a, a1.g.year, 'wx')), 6)
+    expect(row?.costs).toBeGreaterThan(0)
+    prepareSectorYear(a1.g, a1.a, bA(), a1.g.year + 1)
+    expect(readSector(bA())).toMatchObject({ plans: .2 })
+    prepareSectorYear(a1.g, a1.a, bA(), a1.g.year + 2)
+    prepareSectorYear(a1.g, a1.a, bA(), a1.g.year + 3)
+    expect(readSector(bA())).toMatchObject({ plans: .4 })
+
+    // The program: priced once, refused a second time, and it lifts the accreditation target for the year.
+    const clinic1 = setup('clinic')
+    const clinic2 = setup('clinic')
+    const cB = (k: typeof clinic1): BizState => bizOf(k.g, k.a)
+    const price = accProgramCost(cB(clinic1), sectorCtx(clinic1.g, cB(clinic1), clinic1.g.year))
+    expect(price).toBeGreaterThan(0)
+    const before = cB(clinic1).cash
+    const costs = cB(clinic1).yearCosts
+    expect(applyLever(clinic1.g, clinic1.a, 'program', 1, 'owner')).toEqual({ ok: true, paid: price })
+    expect(cB(clinic1).cash).toBe(before - price)
+    expect(cB(clinic1).yearCosts).toBe(costs + price)
+    expect(readSector(cB(clinic1))).toMatchObject({ program: clinic1.g.year })
+    expect(applyLever(clinic1.g, clinic1.a, 'program', 1, 'owner').ok).toBe(false)
+    expect(cB(clinic1).cash).toBe(before - price)
+
+    // The control run has the same record and no program; both books close for the year just lived.
+    expect(seedSector(clinic2.g, clinic2.a, cB(clinic2), clinic2.g.year - 1)).not.toBeNull()
+    prepareSectorYear(clinic1.g, clinic1.a, cB(clinic1), clinic1.g.year)
+    prepareSectorYear(clinic2.g, clinic2.a, cB(clinic2), clinic2.g.year)
+    const withProgram = readSector(cB(clinic1))
+    const without = readSector(cB(clinic2))
+    expect(withProgram?.family === 'care' && without?.family === 'care').toBe(true)
+    if (withProgram?.family !== 'care' || without?.family !== 'care') return
+    expect(Math.abs(withProgram.acc - without.acc - .3 * 20)).toBeLessThan(.05)
+  })
+
+  it('has valid events', () => {
+    const probes = (s: ReturnType<typeof setup>): CareState[] => [s.seed, busy(s), { ...s.seed, acc: 40 }]
+    let seen = 0
+    for (const trade of TRADES) {
+      const s = setup(trade)
+      for (const st of probes(s)) {
+        for (const ev of CARE_EVENTS) {
+          expect(eventProblems(ev, s.g, s.a, s.b, st), `${trade} ${ev.id} ${st.acc}`).toEqual([])
+          const shown = [ev.title, ev.scene(s.g, s.a, s.b, st)]
+          for (const c of ev.choices(s.g, s.b, st)) {
+            shown.push(c.label)
+            for (const br of c.branches(s.g, s.b, st)) shown.push(sectorText(CARE_COPY, br.text, br.vals))
+          }
+          for (const line of shown) {
+            expect(line.length, `${ev.id} has an empty line`).toBeGreaterThan(0)
+            expect(line, `${trade} ${ev.id}`).not.toMatch(/\$\{|NaN|undefined|Infinity/)
+          }
+          seen++
+        }
+      }
+    }
+    expect(seen).toBe(TRADES.length * 3 * 7)
+    // The tier lines of the yearly rule render too.
+    for (const key of Object.keys(CARE_NOTE_COPY)) {
+      const line = sectorText(CARE_COPY, key, { name: 'Test gym' })
+      expect(line).toContain('Test gym')
+      expect(line).not.toMatch(/\$\{|undefined/)
+    }
+  })
+
+  it('has the review odds', () => {
+    const s = setup('clinic')
+    const odds = (st: CareState, choice: string): number => branchesOf(s, st, 'accreditationReview', choice)[0].p
+    const want = (acc: number, bonus: number): number => Math.min(.97, Math.max(.1, acc / 110 + bonus))
+    expect(odds(s.seed, 'prepare')).toBeCloseTo(want(62, .15), 9)
+    expect(odds(s.seed, 'time')).toBeCloseTo(want(62, .05), 9)
+    expect(odds(s.seed, 'bluff')).toBeCloseTo(want(62, -.10), 9)
+    expect(odds(s.seed, 'prepare')).toBeGreaterThan(odds(s.seed, 'time'))
+    expect(odds(s.seed, 'time')).toBeGreaterThan(odds(s.seed, 'bluff'))
+    // The odds are held between .1 and .97.
+    expect(odds({ ...s.seed, acc: 0 }, 'bluff')).toBeCloseTo(.1, 9)
+    expect(odds({ ...s.seed, acc: 100 }, 'prepare')).toBeCloseTo(.97, 9)
+    for (const acc of [0, 30, 62, 90, 100]) for (const choice of ['prepare', 'time', 'bluff']) expect(odds({ ...s.seed, acc }, choice)).toBeCloseTo(want(acc, { prepare: .15, time: .05, bluff: -.10 }[choice] ?? 0), 9)
+    // A failed review takes 12 points off the score; a pass takes none.
+    for (const choice of ['prepare', 'time', 'bluff']) {
+      const branches = branchesOf(s, s.seed, 'accreditationReview', choice)
+      expect(branches).toHaveLength(2)
+      expect(branches[0].sec).toBeUndefined()
+      expect(branches[1].sec?.add).toEqual({ acc: -12 })
+      expect(branches[0].p + branches[1].p).toBeCloseTo(1, 12)
+    }
+    // Preparing the files costs the program price, once: a program already paid this year covers it.
+    const price = accProgramCost(s.b, sectorCtx(s.g, s.b, s.g.year))
+    expect(branchesOf(s, s.seed, 'accreditationReview', 'prepare')[0].fx.cash).toBe(-price)
+    expect(branchesOf(s, { ...s.seed, program: s.g.year }, 'accreditationReview', 'prepare')[0].fx.cash ?? 0).toBe(0)
+    expect(branchesOf(s, s.seed, 'accreditationReview', 'time')[0].fx.cash ?? 0).toBe(0)
+  })
+
+  it('has the star, payer, contract and waitlist outcomes', () => {
+    const s = setup('gym')
+    const st = busy(s)
+    // A counter-offer loses less of the client base than letting them go, and costs a raise.
+    const counter = branchesOf(s, st, 'starLeaves', 'counter')
+    const release = branchesOf(s, st, 'starLeaves', 'release')
+    const enforce = branchesOf(s, st, 'starLeaves', 'enforce')
+    expect(counter[0].sec?.add?.loyal).toBe(-.03)
+    expect(release[0].sec?.add?.loyal).toBe(-.08)
+    expect(enforce[0].sec?.add?.loyal).toBe(-.08)
+    expect(counter[0].fx.wage).toBe(.02)
+    expect(release[0].fx.wage ?? 0).toBe(0)
+    expect(enforce[0].fx.brand).toBe(-5)
+    expect(counter[0].fx.cash ?? 0).toBe(0)
+    // The retention shown in the outcome is the one the record ends with.
+    expect(release[0].vals?.pct).toBe(`${Math.round((st.loyal - .08) * 100)}%`)
+
+    // A payer audit: paying is certain, contesting is a gamble, dropping the contract takes 20 points of the payer mix.
+    const pay = branchesOf(s, st, 'payerAudit', 'pay')
+    const contest = branchesOf(s, st, 'payerAudit', 'contest')
+    const drop = branchesOf(s, st, 'payerAudit', 'drop')
+    expect(pay).toHaveLength(1)
+    expect(pay[0].fx.cash).toBeLessThan(0)
+    expect(contest).toHaveLength(2)
+    expect(contest[1].fx.cash).toBeLessThan(pay[0].fx.cash ?? 0)
+    expect(contest[0].fx.cash).toBeGreaterThan(pay[0].fx.cash ?? 0)
+    expect(drop[0].sec?.add).toEqual({ payer: -.2 })
+    expect(drop[0].fx.cash ?? 0).toBe(0)
+
+    // A contract offer adds plans and payers; negotiating is a chance at the same deal with no discount paid.
+    const sign = branchesOf(s, st, 'contractOffer', 'sign')
+    const negotiate = branchesOf(s, st, 'contractOffer', 'negotiate')
+    const decline = branchesOf(s, st, 'contractOffer', 'decline')
+    expect(sign[0].sec?.add).toEqual({ plans: .1, payer: .1 })
+    expect(sign[0].fx.cash).toBeLessThan(0)
+    expect(negotiate[0].sec?.add).toEqual({ plans: .1, payer: .1 })
+    expect(negotiate[0].fx.cash ?? 0).toBe(0)
+    expect(negotiate[0].p + negotiate[1].p).toBeCloseTo(1, 12)
+    expect(decline[0].sec).toBeUndefined()
+    // The plan target follows the new plans, so the next yearly update doesn't undo the deal.
+    const target = sign[0].sec?.set?.planTarget
+    expect(target).toBeGreaterThanOrEqual(st.plans + .1 - 1e-9)
+    // A trade that bills no payers adds plans only.
+    const salon = setup('salon')
+    const salonSign = branchesOf(salon, busy(salon), 'contractOffer', 'sign')
+    expect(salonSign[0].sec?.add).toEqual({ plans: .1 })
+
+    // A waiting list: more hours cost money and bring the clients back more often.
+    const hours = branchesOf(s, st, 'waitlist', 'hours')
+    expect(hours[0].sec?.add?.loyal).toBe(.04)
+    expect(hours[0].fx.cash).toBeLessThan(0)
+    expect(branchesOf(s, st, 'waitlist', 'small')[0].fx.cash ?? 0).toBe(0)
+
+    // A rush: temps beat riding it out by 12 points of odds, and capping intake sets the intake lever to at least Steady.
+    const temps = branchesOf(s, st, 'rush', 'temps')
+    const ride = branchesOf(s, st, 'rush', 'ride')
+    expect(temps[0].p).toBeCloseTo(Math.min(.9, ride[0].p + .12), 9)
+    expect(temps[0].fx.cash).toBeLessThan(0)
+    expect(ride[0].p).toBeGreaterThanOrEqual(.1)
+    expect(ride[0].p).toBeLessThanOrEqual(.85)
+    const cap = branchesOf(s, st, 'rush', 'cap')
+    expect(cap).toHaveLength(1)
+    expect(cap[0].sec?.set).toEqual({ intake: 1 })
+    expect(branchesOf(s, { ...st, intake: 2 }, 'rush', 'cap')[0].sec?.set).toEqual({ intake: 2 })
+  })
+
+  it('pays an incident from insurance at 15%', () => {
+    const plain = setup('clinic')
+    const covered = setup('clinic')
+    covered.b.insured = true
+    plain.b.insured = false
+    for (const choice of ['settle', 'fight', 'report']) {
+      const open = branchesOf(plain, plain.seed, 'incident', choice)
+      const shut = branchesOf(covered, covered.seed, 'incident', choice)
+      expect(shut).toHaveLength(open.length)
+      open.forEach((br, i) => {
+        const was = -(br.fx.cash ?? 0)
+        const now = -(shut[i].fx.cash ?? 0)
+        expect(was, `${choice} ${i}`).toBeGreaterThan(0)
+        expect(Math.abs(now - .15 * was), `${choice} ${i}`).toBeLessThanOrEqual(1)
+        expect(shut[i].p).toBeCloseTo(br.p, 12)
+      })
+    }
+    // The cost shown on the label is the cost paid.
+    const settle = eventOf('incident').choices(covered.g, covered.b, covered.seed).find((c) => c.id === 'settle')
+    const paid = -(branchesOf(covered, covered.seed, 'incident', 'settle')[0].fx.cash ?? 0)
+    expect(settle?.label).toBe(sectorText(CARE_COPY, 'care.ev.incident.settle.label', { cost: money(paid) }))
+  })
+
+  it('reads the era and names the trade', () => {
+    // Every scene of every trade fits every year the family can roll in.
+    for (const year of [1950, 1985, 2026]) {
+      for (const trade of TRADES) {
+        const s = setup(trade, year)
+        const st = busy(s)
+        for (const ev of CARE_EVENTS) expect(eraFits(s.g, s.b.countryId, ev.scene(s.g, s.a, s.b, st)), `${trade} ${year} ${ev.id}`).toBe(true)
+      }
+    }
+    // The star's job and the season of the rush come from the trade.
+    const person: Record<string, string> = { clinic: 'doctor', education: 'teacher', gym: 'trainer', salon: 'stylist', petCare: 'groomer', homeCare: 'carer', autoShop: 'mechanic' }
+    const season: Record<string, RegExp> = { gym: /January/, education: /Exam season/, clinic: /Flu season/, homeCare: /Flu season/, salon: /Holiday week/, petCare: /Holiday week/, autoShop: /first frost/ }
+    for (const trade of TRADES) {
+      const s = setup(trade)
+      expect(eventOf('starLeaves').scene(s.g, s.a, s.b, s.seed), trade).toContain(person[trade])
+      expect(eventOf('rush').scene(s.g, s.a, s.b, s.seed), trade).toMatch(season[trade])
+    }
+    // A shop that sold nothing yet still names a number of regulars.
+    const fresh = setup('salon')
+    fresh.b.last = null
+    expect(eventOf('starLeaves').scene(fresh.g, fresh.a, fresh.b, fresh.seed)).toMatch(/^Your lead stylist gave notice\. [1-9]\d* regulars/)
+  })
+
+  it('is gated by state', () => {
+    const s = setup('clinic')
+    const weight = (id: string, st: CareState): number => eventOf(id).weight(s.g, s.b, st)
+    expect(weight('payerAudit', s.seed)).toBe(0)
+    expect(weight('payerAudit', { ...s.seed, payer: .2 })).toBeGreaterThan(0)
+    s.b.brand = 29
+    expect(weight('contractOffer', s.seed)).toBe(0)
+    s.b.brand = 30
+    expect(weight('contractOffer', s.seed)).toBeGreaterThan(0)
+    expect(weight('waitlist', s.seed)).toBe(0)
+    expect(weight('waitlist', { ...s.seed, loyal: CARE.clinic.r0 - .01 })).toBe(0)
+    expect(weight('waitlist', { ...s.seed, loyal: CARE.clinic.r0 + .01 })).toBeGreaterThan(0)
+    for (const id of ['accreditationReview', 'starLeaves', 'rush', 'incident']) expect(weight(id, s.seed), id).toBeGreaterThan(0)
+    // The weights of spec 4.3.
+    expect(weight('accreditationReview', s.seed)).toBe(1)
+    expect(weight('starLeaves', s.seed)).toBe(.8)
+    expect(weight('payerAudit', { ...s.seed, payer: .2 })).toBe(.8)
+    expect(weight('rush', s.seed)).toBe(.6)
+    expect(weight('incident', s.seed)).toBe(.6)
+    expect(weight('contractOffer', s.seed)).toBe(.5)
+    expect(weight('waitlist', { ...s.seed, loyal: CARE.clinic.r0 + .01 })).toBe(.4)
+    // A trade with no payer row has no payer audit even with a payer share on file.
+    const salon = setup('salon')
+    expect(eventOf('payerAudit').weight(salon.g, salon.b, { ...salon.seed, payer: .4 })).toBe(0)
+  })
+
+  it('pins the choice ids', () => {
+    const s = setup('clinic')
+    const ids = (id: string): string[] => eventOf(id).choices(s.g, s.b, busy(s)).map((c) => c.id)
+    expect(ids('accreditationReview')).toEqual(['prepare', 'bluff', 'time'])
+    expect(ids('starLeaves')).toEqual(['counter', 'release', 'enforce'])
+    expect(ids('payerAudit')).toEqual(['pay', 'contest', 'drop'])
+    expect(ids('rush')).toEqual(['temps', 'cap', 'ride'])
+    expect(ids('incident')).toEqual(['settle', 'fight', 'report'])
+    expect(ids('contractOffer')).toEqual(['sign', 'negotiate', 'decline'])
+    expect(ids('waitlist')).toEqual(['hours', 'small'])
+  })
+
+  it('has no free lever', () => {
+    // With idle capacity a payer mix pays; with a full house it only discounts sales that were sold anyway.
+    const worth = (util: number): Worth => worthOf(.78, util)
+    for (const trade of ['clinic', 'gym'] as const) {
+      const s = setup(trade)
+      const lever = leverOf('payer')
+      const cx = s.ctx(.5)
+      const best = (util: number): { value: number; gain: number } => {
+        let top = { value: 0, gain: 0 }
+        for (const o of lever.options(s.g, s.b, s.seed)) {
+          const gain = leverValue(s.g, s.a, s.b, s.seed, lever, o.value, worth(util), cx)
+          if (gain > top.gain) top = { value: o.value, gain }
+        }
+        return top
+      }
+      expect(best(.7).value, `${trade} at .7`).toBeGreaterThan(0)
+      expect(best(.98).value, `${trade} at .98`).toBe(0)
+      // The current setting is worth nothing against itself.
+      expect(leverValue(s.g, s.a, s.b, s.seed, lever, 0, worth(.7), cx)).toBe(0)
+    }
+    // A program pays only near a tier: in a provisional tier (40) or just under the top one (75 to 80), not at the seed score.
+    const s = setup('clinic')
+    const program = leverOf('program')
+    const cx = s.ctx(.5)
+    const idle = worthOf(.78, .7)
+    const value = (acc: number): number => leverValue(s.g, s.a, s.b, { ...s.seed, acc }, program, 1, idle, cx)
+    expect(value(40)).toBeGreaterThan(0)
+    expect(value(80)).toBeGreaterThan(0)
+    expect(value(62)).toBeLessThan(0)
+    expect(value(70)).toBeLessThan(0)
+  })
+
+  it('has no generic double', () => {
+    let rolled = 0
+    let years = 0
+    for (const trade of ['clinic', 'gym'] as const) {
+      for (const seed of [1, 2, 3]) {
+        const { g, a } = deskGame(trade, { seed, talent: false })
+        for (let i = 0; i < 12; i++) {
+          const popups = playYear(g)
+          const events = popups.filter((m) => m.scriptId === SECTOR_EVENT_SCRIPT || m.scriptId?.startsWith('business.ev.'))
+          expect(events.length, `${trade} ${seed} year ${i}`).toBeLessThanOrEqual(1)
+          rolled += popups.filter((m) => m.scriptId === SECTOR_EVENT_SCRIPT).length
+          years++
+          const b = bizOf(g, a)
+          expect(Number.isFinite(b.cash), `${trade} ${seed} year ${i}`).toBe(true)
+          const st = readSector(b)
+          expect(st?.family).toBe('care')
+          if (st?.family === 'care') for (const v of [st.loyal, st.plans, st.planTarget, st.payer, st.acc]) expect(Number.isFinite(v)).toBe(true)
+        }
+      }
+    }
+    expect(years).toBe(72)
+    expect(rolled).toBeGreaterThan(0)
+    expect(rolled / years).toBeLessThanOrEqual(.30)
+  }, 300_000)
+
+  it('marks one best choice for the Business talent and plays every answer', () => {
+    let seen = 0
+    for (const trade of ['salon', 'education'] as const) {
+      for (const seed of [1, 2, 3, 4]) {
+        const { g, a } = deskGame(trade, { seed })
+        for (let i = 0; i < 12; i++) {
+          for (const m of playYear(g).filter((x) => x.scriptId === SECTOR_EVENT_SCRIPT)) {
+            seen++
+            expect(m.choices.filter((c) => c.hint), `${trade} ${seed} ${m.title}`).toHaveLength(1)
+          }
+        }
+        expect(deskLines(g, a).join(' ')).toContain('clients')
+        const st = readSector(bizOf(g, a))
+        expect(st?.family).toBe('care')
+        expect(st?.pending).toBeNull()
+        expect(st?.diary.length).toBeLessThanOrEqual(6)
+      }
+    }
+    expect(seen).toBeGreaterThan(0)
+  }, 300_000)
+
+  it('plays every choice of every event through the script', () => {
+    // Fire each event by hand: a pending token, then the script, once per choice and branch roll.
+    for (const trade of ['clinic', 'salon'] as const) {
+      for (const ev of CARE_EVENTS) {
+        const room = setup(trade)
+        for (const c of ev.choices(room.g, room.b, busy(room))) {
+          for (const seed of [3, 7, 11]) {
+            const s = setup(trade)
+            const st: CareState = { ...busy(s), since: s.g.year - 3, lastYear: s.g.year - 1, pending: { token: 'tok', id: ev.id, year: s.g.year } }
+            saveSector(s.b, st)
+            s.g.rng = seed
+            const cash = s.b.cash
+            runScript(s.g, SECTOR_EVENT_SCRIPT, c.id, { assetId: s.a.id, token: 'tok' } as never, { kind: 'notice', id: 'x', title: '', text: '' })
+            const after = readSector(bizOf(s.g, s.a))
+            expect(after?.pending, `${ev.id}.${c.id}`).toBeNull()
+            expect(after?.diary.at(-1), `${ev.id}.${c.id}`).toBe(`${s.g.year} ${ev.title}. ${c.label}.`.slice(0, 90))
+            expect(Number.isFinite(bizOf(s.g, s.a).cash), `${ev.id}.${c.id}`).toBe(true)
+            // The cash move is bounded by the event cap.
+            const cx = sectorCtx(s.g, s.b, s.g.year)
+            expect(Math.abs(bizOf(s.g, s.a).cash - cash), `${ev.id}.${c.id}`).toBeLessThanOrEqual(Math.max(.12 * cx.base, 3000 * cx.level) + 1)
+            const notice = s.g.queue.find((m) => m.kind === 'notice')
+            expect(notice && notice.kind === 'notice' ? notice.text : '', `${ev.id}.${c.id}`).not.toMatch(/\$\{|NaN|undefined/)
+            expect(notice && notice.kind === 'notice' ? notice.title : '').toBe(ev.title)
+            if (after?.family === 'care') {
+              expect(after.loyal).toBeGreaterThanOrEqual(.2)
+              expect(after.loyal).toBeLessThanOrEqual(1)
+              expect(after.payer).toBeLessThanOrEqual(.6)
+              expect(after.plans).toBeLessThanOrEqual(.6)
+            }
+          }
+        }
+      }
+    }
+  })
+
+  it('keeps every event inside its bounds for small and strong companies', () => {
+    const small = setup('salon')
+    small.b.last = { netRevenue: 12_000, wages: 3_000, sold: 400 } as unknown as BizState['last']
+    const strong = setup('clinic')
+    strong.b.quality = 100
+    strong.b.last = { netRevenue: 9_000_000, wages: 2_500_000, sold: 90_000 } as unknown as BizState['last']
+    for (const s of [small, strong]) {
+      const probes: CareState[] = [s.seed, busy(s), { ...s.seed, acc: 100, loyal: 1 }, { ...s.seed, acc: 0, loyal: .2 }]
+      for (const st of probes) for (const ev of CARE_EVENTS) expect(eventProblems(ev, s.g, s.a, s.b, st), `${s.b.industry} ${ev.id}`).toEqual([])
+    }
+  })
+
+  it('has every copy key', () => {
+    const lines = copyLines(CARE_COPY)
+    expect(lines.length).toBeGreaterThanOrEqual(40)
+    for (const l of lines) expect(l.key.startsWith('care.'), l.key).toBe(true)
+    const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(CARE_COPY, key)
+
+    // Every option of every lever, offered or not, has a label and a tip.
+    const s = setup('clinic')
+    for (const lever of CARE_LEVERS) {
+      expect(has(`care.lever.${lever.id}.label`), lever.id).toBe(true)
+      expect(lever.label).toBe(sectorText(CARE_COPY, `care.lever.${lever.id}.label`))
+      const options = lever.options(s.g, s.b, s.seed)
+      expect(options.length).toBeGreaterThan(0)
+      for (const o of options) {
+        expect(has(`care.lever.${lever.id}.${o.value}.label`), `${lever.id} ${o.value}`).toBe(true)
+        expect(has(`care.lever.${lever.id}.${o.value}.tip`), `${lever.id} ${o.value}`).toBe(true)
+        expect(o.label).toBe(sectorText(CARE_COPY, `care.lever.${lever.id}.${o.value}.label`))
+        expect(o.tip).toBe(sectorText(CARE_COPY, `care.lever.${lever.id}.${o.value}.tip`))
+      }
+    }
+    // Every event has a head and a scene (or its trade variants), and every choice a label, over every trade.
+    for (const trade of TRADES) {
+      const t = setup(trade)
+      const st = busy(t)
+      for (const ev of CARE_EVENTS) {
+        expect(has(`care.ev.${ev.id}.head`), ev.id).toBe(true)
+        expect(ev.title).toBe(sectorText(CARE_COPY, `care.ev.${ev.id}.head`))
+        const scenes = lines.filter((l) => new RegExp(`^care\\.ev\\.${ev.id}\\.(\\w+\\.)?scene$`).test(l.key))
+        expect(scenes.length, ev.id).toBeGreaterThan(0)
+        for (const c of ev.choices(t.g, t.b, st)) {
+          expect(has(`care.ev.${ev.id}.${c.id}.label`), `${ev.id}.${c.id}`).toBe(true)
+          c.branches(t.g, t.b, st).forEach((br, k) => {
+            expect(br.text, `${ev.id}.${c.id}`).toBe(`care.ev.${ev.id}.${c.id}.${k}.out`)
+            expect(has(br.text), br.text).toBe(true)
+          })
+        }
+      }
+    }
+    for (const trade of TRADES) {
+      expect(has(`care.ev.starLeaves.${trade}.scene`), trade).toBe(true)
+      expect(has(`care.ev.rush.${trade}.scene`), trade).toBe(true)
+    }
+  })
+
+  it('keeps the copy inside the voice guide', () => {
+    const roles = new Set<string>()
+    for (const { key, role, text } of copyLines(CARE_COPY)) {
+      roles.add(role)
+      const t = template(text)
+      expect(unitFlags(t, role), `${key}: ${text}`).toEqual([])
+      expect(text, key).not.toMatch(DASHES)
+      expect(text.trim(), key).toBe(text)
+      if (role === 'scene') {
+        expect(text.endsWith('What will you do?'), key).toBe(true)
+        expect(staticLength(t), key).toBeLessThanOrEqual(140)
+      }
+      if (role === 'outcome') expect(staticLength(t), key).toBeLessThanOrEqual(120)
+      if (role === 'log') expect(staticLength(t), key).toBeLessThanOrEqual(90)
+      if (role === 'tooltip') expect(staticLength(t), key).toBeLessThanOrEqual(120)
+      if (role === 'label') expect(t.trim().split(/\s+/).length, key).toBeLessThanOrEqual(5)
+      if (role === 'title') expect(text.length, key).toBeLessThanOrEqual(40)
+    }
+    expect([...roles].sort()).toEqual(['label', 'log', 'outcome', 'scene', 'title', 'tooltip'])
   })
 })

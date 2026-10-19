@@ -236,6 +236,11 @@ function leverMenu(a: Asset, lever: LeverDef): MenuGroup {
       if (!at) return copy('menu.lever.todo.tip')
       return copy(lever.paid ? 'menu.lever.done.tip' : 'menu.lever.now.tip', { setting: at.label })
     },
+    // A lever a trade can't use (no options) shows no row.
+    visible: (g) => {
+      const x = rowsOf(g)
+      return !!x && lever.options(g, x.d.b, x.st).length > 0
+    },
     disabledReason: (g) => manageBlock(g, a),
     children: (g): MenuNode[] => {
       const x = rowsOf(g)

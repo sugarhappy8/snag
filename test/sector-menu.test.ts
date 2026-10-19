@@ -155,9 +155,9 @@ describe('menus are pure', () => {
     expect(sectorMenu(a).visible?.(g)).toBe(true)
     const bar = deskGame('bar')
     expect(sectorMenu(bar.a).visible?.(bar.g)).toBe(false)
-    const cafe = deskGame('clinic')
-    // The stub registers only the food family: a care trade has no model yet.
-    expect(sectorMenu(cafe.a).visible?.(cafe.g)).toBe(false)
+    // The stub replaces only the food model; the care family registers its own when sector-core loads.
+    const clinic = deskGame('clinic')
+    expect(sectorMenu(clinic.a).visible?.(clinic.g)).toBe(true)
   })
 })
 
