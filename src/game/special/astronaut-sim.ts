@@ -9,6 +9,8 @@ import { chance, randInt, weightedPick } from '../rng'
 import { outcomeTag } from '../timeMachine'
 import type { GameState } from '../types'
 import { astronautJob } from './astronaut'
+import { astroCrises, forcedChoice, reportCard } from './astronaut-events'
+import { adminFallout, adminYear, hallOfFame, memoirTail, noteFirsts } from './astronaut-exits'
 import { crewNames, jobAccess, manifestOf } from './astronaut-flight'
 import { runBoard, classYear } from './astronaut-class'
 import { CAUSES, CAUSE_WEIGHT, COVERUP, FRACTURE_LINE, FRACTURE_ODDS, LOSS, MISSIONS, PEER_PREP, RECOVERY, STRAIN, BONE_LINE, type MissionId } from './astronaut-data'
@@ -24,6 +26,8 @@ const round1 = (n: number): number => Math.round(n * 10) / 10
 const list = (xs: readonly string[]): string => (xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
 
 const PARTNERS = new Set(['spouse', 'partner', 'fiance'])
+/** A stress fracture follows the flight after a 'Return early' answer this often. */
+const EARLY_FRACTURE = 0.15
 
 /** The legacy profile keeps counting landings and spacewalks the old scripts book; the tally never falls behind it. */
 function syncLegacy(s: AstroState, g: GameState): void {
@@ -51,20 +55,23 @@ function peerLoss(c: CareerCtx<AstroState>, type: MissionId, i: number): void {
   s.mood = clamp(s.mood - LOSS.mood, 0, 100)
   s.safety = clamp(s.safety - LOSS.safety, 15, 95)
   careerSay(c, 'Lost Crew', `A ${MISSIONS[type].label.toLowerCase()} was lost. ${list(lost)} didn't come home.`, '\u{1F4A5}', 'bad')
+  // An administrator who pushed the schedule last year can lose the post over a schedule cause.
+  if (cause === 'schedule') adminFallout(c)
 }
 
 /**
- * Inquiries age a year at a time (never in the year they open). Not involved, one year in: closed, safety +4. A
- * cover-up leaks 20% a year for 4 years after the loss (standing -8, mood -8). Still unanswered at 3 years it closes
- * as a recusal, with blame +1 when you were involved. The testimony choice for an involved or senior astronaut comes
- * with the astronaut events.
+ * Inquiries age a year at a time (never in the year they open). One year in, an inquiry you were not part of closes
+ * with safety +4, unless you hold rank 3 or more: then it waits for your testimony (the forced choice). A cover-up
+ * leaks 20% a year for 4 years after the loss (standing -8, mood -8). Still unanswered at 3 years it closes as a
+ * recusal, with blame +1 when you were involved.
  */
 function ageInquiries(c: CareerCtx<AstroState>): void {
   const { g, s, year } = c
+  const senior = (astronautJob(g)?.level ?? 0) >= 3
   for (const i of s.inquiries) {
     if (i.status === 'open' && i.year < year) {
       i.yearsOpen = Math.min(9, i.yearsOpen + 1)
-      if (i.yearsOpen === 1 && !i.involved) {
+      if (i.yearsOpen === 1 && !i.involved && !senior) {
         i.status = 'closed'
         s.safety = clamp(s.safety + 4, 15, 95)
       } else if (i.yearsOpen >= 3) {
@@ -85,9 +92,11 @@ function ageInquiries(c: CareerCtx<AstroState>): void {
 }
 
 function run(c: CareerCtx<AstroState>, live: boolean): string | void {
-  // Out of the corps (cadet, retired, no job) only what is already earned pays out; that tail comes with the exits.
-  if (!live) return
   const { g, s, year } = c
+  // The memoir tail pays whatever the corps says. Out of it (cadet, retired, no job) only what is already earned
+  // pays out, and a retirement at 60 or over enters the Hall of Fame.
+  memoirTail(c)
+  if (!live) return hallOfFame(c)
   const job = astronautJob(g)
   if (!job) return
   syncLegacy(s, g)
@@ -100,6 +109,7 @@ function run(c: CareerCtx<AstroState>, live: boolean): string | void {
   // 1. The world: funding from the line, the economy, the mood and the lobby (a pure read).
   const funding = fundingIndex(g, s, year)
   s.fund = cap([...s.fund, funding], 6)
+  s.lobby = Math.trunc(s.lobby / 2) + 0 // this year's funding counted the whole lobby; it halves toward zero for the next
 
   // 2. Mood: toward the era's target, the year's shock, clean flights up, aborts down. A lost crew of yours hit it when it happened.
   s.mood = clamp(Math.round(s.mood + Math.round(0.25 * (moodTarget(year) - s.mood)) + shock(year, g.character.countryId) + 2 * clean - 4 * aborts), 0, 100)
@@ -117,6 +127,11 @@ function run(c: CareerCtx<AstroState>, live: boolean): string | void {
   if (s.bone < FRACTURE_LINE && chance(g, FRACTURE_ODDS)) {
     addStat(g, 'health', -randInt(g, 5, 10))
     careerLog(c, 'I had a stress fracture.', 'bad')
+  }
+  // Returning early last year risks a stress fracture on the flight that followed (the flag covers that one year).
+  if (flew && (s.cool.early ?? -1) >= year - 1 && chance(g, EARLY_FRACTURE)) {
+    addStat(g, 'health', -randInt(g, 5, 10))
+    careerLog(c, 'I had a stress fracture after flying too soon.', 'bad')
   }
 
   // 5. Family strain: a year at home eases it, high strain costs the relationships at home.
@@ -144,8 +159,14 @@ function run(c: CareerCtx<AstroState>, live: boolean): string | void {
   s.standing = clamp(Math.round(s.standing + Math.round(0.25 * (job.performance - s.standing)) + 4 * clean + 2 * commands - (idle ? 2 : 0)), 0, 100)
   s.peak = Math.max(s.peak, s.standing)
 
-  // 9. Inquiries.
+  // 9. Inquiries, the firsts the record has earned, and an administrator's year (no flights, and the budget choice).
   ageInquiries(c)
+  noteFirsts(s, year)
+  if (astronautJob(g)) adminYear(c)
+
+  // 10. The report card, then the forced choices (the medical board, testimony, the budget): the kit offers a random crisis after.
+  reportCard(c)
+  forcedChoice(c)
 
   return `Funding ${funding}, mood ${s.mood}, safety ${s.safety}, bone ${Math.round(s.bone)}.`
 }
@@ -157,6 +178,7 @@ const hook = settleYear({
   active: (g) => !!astronautJob(g),
   run,
   peers: { spec: ASTRO_SPEC, score: (_g, s) => s.standing },
+  crises: astroCrises,
 })
 
 export const astronautSim: CareerSim = { id: 'astronaut', key: 'astronaut.sim', yearly: hook }

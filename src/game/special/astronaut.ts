@@ -13,6 +13,8 @@ import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../t
 import { ACADEMY_FROM } from './astronaut-data'
 import { astroBodyRows, astroPromotionOk, flightBoardRows, trainSkills } from './astronaut-flight'
 import { boardNotice, classBias, classYear, playerBackground, runBoard, type BoardResult } from './astronaut-class'
+import { astroLobbyRows } from './astronaut-events'
+import { astroPublicRows, corpsMenu } from './astronaut-exits'
 import { astronautStore, readAstro } from './astronaut-state'
 import { access, type Access } from './astronaut-world'
 import { honest } from './kit/crisis'
@@ -466,37 +468,21 @@ const trainAction: MenuAction = {
     ),
 }
 
-const researchAction: MenuAction = {
-  type: 'action',
-  id: 'astro.research',
-  label: 'Conduct Research',
-  emoji: '\u{1F52C}',
-  subtitle: (g) => `Research points: ${viewAstro(g).research}`,
-  disabledReason: (g) => blocked(g, 0),
-  run: (g) => {
-    const job = astronautJob(g)
-    if (!job) return
-    if (!useYearAction(g, 'astro.research', 1)) return tell(g, 'Research', "You've already run your experiments this year. The lab mice need a break.", '\u{1F42D}')
-    const c = g.character
-    const p = astroProfile(g)
-    const pts = Math.max(1, Math.round(2 + (c.stats.smarts - 40) / 10 + randInt(g, 0, 4)))
-    p.research += pts
-    bump(job, randInt(g, 2, 5))
-    addStat(g, 'smarts', randInt(g, 0, 2))
-    log(g, 'I conducted research for my space agency.')
-    say(
-      g,
-      'Research',
-      `${pick(g, [
-        'You studied how tomatoes grow in microgravity. They are confused but thriving.',
-        'You analyzed rock samples and found something that is definitely a rock.',
-        'You measured cosmic radiation levels and recommended thicker underwear for the crew.',
-        'You ran an experiment on how ants build tunnels in zero gravity. Badly, it turns out.',
-      ])} (+${pts} research points)`,
-      '\u{1F52C}',
-      'good',
-    )
-  },
+/** Lifetime research points the lab credits (the cap on the Conduct Research row). */
+const RESEARCH_MAX = 200
+
+/** The research points on the legacy profile, read without writing and tolerant of a damaged profile. */
+export function researchPoints(g: GameState): number {
+  return viewAstro(g).research
+}
+
+/** Credits research points to the legacy profile, up to the lifetime cap; returns what was credited. */
+export function addResearchPoints(g: GameState, points: number): number {
+  const p = astroProfile(g)
+  const have = int(p.research, 0, 0, RESEARCH_MAX)
+  const add = Math.max(0, Math.min(RESEARCH_MAX - have, Math.round(Number.isFinite(points) ? points : 0)))
+  p.research = have + add
+  return add
 }
 
 const articleAction: MenuAction = {
@@ -873,6 +859,7 @@ function spaceLogMenu(): MenuGroup {
         { type: 'info', id: 'astro.log.science', emoji: '\u{1F52C}', text: `Research points: ${p.research} · Articles published: ${p.articles}` },
       ]
       if (p.firstWords) nodes.push({ type: 'info', id: 'astro.log.words', emoji: '\u{1F463}', text: `First words on the Moon: "${p.firstWords}"` })
+      if (astronautStore.has(g)) nodes.push(corpsMenu())
       if (p.planets.length) {
         nodes.push({ type: 'heading', id: 'astro.log.h', label: 'Planets Discovered' })
         p.planets.forEach((pl, i) => nodes.push({ type: 'info', id: `astro.log.p${i}`, emoji: '\u{1FA90}', text: `${pl.name}, a ${pl.kind} (discovered at age ${pl.age})` }))
@@ -907,11 +894,12 @@ export function astronautJobNodes(g: GameState): MenuNode[] {
   const p = viewAstro(g)
   return [
     { type: 'info', id: 'astro.status', emoji: '\u{1F468}\u{200D}\u{1F680}', text: `${job.title} at the ${job.company} · Performance ${job.performance}% · ${p.missions} mission${p.missions === 1 ? '' : 's'}` },
-    ...flightBoardRows(g),
+    ...(job.level >= 6 ? [{ type: 'info', id: 'astro.admin.nofly', emoji: '\u{1F3DB}\u{FE0F}', text: "Administrators don't fly." } as MenuNode] : flightBoardRows(g)),
     trainAction,
     ...astroBodyRows(g),
-    researchAction,
+    ...astroLobbyRows(g),
     articleAction,
+    ...astroPublicRows(g),
     spaceLogMenu(),
     quitAstro,
   ]
@@ -934,6 +922,8 @@ export const astronautCareerMenu: MenuGroup = {
       nodes.push(...agenciesFor(g).map((a) => applyAgency(g, a)))
     }
     if (viewAstro(g).missions > 0) nodes.push(spaceLogMenu())
+    // A retired astronaut's lectures and books live here; a life with no corps record (an heir) has none.
+    if (astronautStore.has(g)) nodes.push(...astroPublicRows(g))
     return nodes
   },
 }
