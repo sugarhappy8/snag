@@ -98,6 +98,9 @@ src/
     business/tech-waves.ts tech-wave-factors.ts tech-wave-data.ts history/tech-waves.ts  Tech waves:
                          breakthrough-class events that move whole company markets together, in flags
                          techWaves and techBase and BizState.wave (see "Tech waves" below)
+    invest/wave-stocks.ts invest/clock.ts business/wave-insider.ts  Tech waves for listed stocks: the
+                         sector table and the level folded into the stock seam, the one market clock, and
+                         the founder's insider rule (see "Tech waves and stocks" below)
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
     business/share-classes.ts share-classes-menu.ts  Share classes of the player's company: the votes
@@ -521,7 +524,8 @@ tech, finance firms and game studios, which keep their own kind of R&D.
 A tech wave is a breakthrough big enough to move whole company markets together, as the real ones did:
 demand for the trade that sells it, cheaper inputs, higher valuations, deep-tech investors chasing it,
 rivals following, and the companies it replaces losing customers. It applies to every company the same
-way (player, NPC, deep tech, rivals); listed stocks are untouched until release 1b.
+way (player, NPC, deep tech, rivals); listed stocks take a sector price level from the same waves (see
+"Tech waves and stocks" below).
 
 Records. A `TechWave` (`kind`, `name`, `source`, `year`, `market`, `size`, `hype`, `delivery`, `last`,
 optional `origin`, `home`, `skip`, `mature`) lives in the list `g.flags.techWaves`, at most 64, always
@@ -573,8 +577,8 @@ through `BizState.wave` (`{ v, y }`, stamped by `stampWave` when a classic compa
 never for deep tech or a quoted company, and validated on read) with history waves read directly, and
 for deep tech in `deeptech-core.industryCycle`'s `wave` echo (value only). A quoted company is one listed
 itself or a division of a listed group (`state.isQuoted`), because a group's share price is the sum of its
-divisions' valuations: its valuation reads no stamp and no history row, and `operatingValue` asks
-`industryCycle` without the wave, so listed stocks stay wave-free until release 1b; rivals in
+divisions' valuations: its valuation reads a stock-grade stamp (`q`) and no history row, and `operatingValue`
+asks `industryCycle(..., 'stock')`, so it follows the sector level its peers show; rivals in
 `economic-actors.advanceRivals`, which passes the factors to `advanceActor` for non-real rivals;
 fast-follower entrants through `waveNewcomers` (competition.ts, one per delivery level crossed, never for
 a heavy wave, which has rivals follow on `heavyArrival`);
@@ -591,6 +595,88 @@ Heirs and saves. `waveWorldFlags` hands the validated waves and settled factors 
 `familyId(g.lifeId)` plus `outcomeTag(g, year)`, never `g.rng`, so heirs share them and a Time Machine
 fork rerolls only the unfinished year. `techWaves`, `techBase` and `BizState.wave` are optional,
 bounded and validated on read, `SAVE_SCHEMA` stays 2, and a life with no company writes none of them.
+
+### Tech waves and stocks (invest/wave-stocks.ts, invest/clock.ts, business/wave-insider.ts)
+
+Release 1b. When a breakthrough lands, listed stocks, index funds, fund returns, single-stock and index option
+settlements, the Investing talent's gut and the player's own listed company move with the wave's sector level, and
+a founder who trades ahead of their own launch is an insider. Spec `docs/superpowers/specs/2026-10-19-waves-stocks-design.md`;
+the plan's decisions P1 to P11 refine it and win where they differ.
+
+The trail and `nx`. Each `TechWave` keeps its last six steps (`trail`, `[year, hype, delivery]`, oldest first) and
+one projected next step (`nx`, `[hype, delivery, fork tag]`), both optional and validated by `readTechWaves`.
+`stepWave` is the delivery and `nextState` path `advanceTechWaves` runs, extracted so `projectWave` can run the
+same step at `last + 1` ahead of time (a wave about to drop projects neutral, P2). `stateAt` reads the trail for a
+year up to `last`, `nx` after it while its tag equals `nextStepTag` (the Time Machine fork tag of `outcomeTag`),
+else the current state. So a level read before the yearly step (funds, the gut) and after it (quotes) is the same
+number, and a jump to another timeline leaves `nx` ignored until the next step is written.
+
+The level. `stockLevelFor(g, trade, market, year)` is `clamp(S x Product over waves (1 + STOCK_BETA x (v_w - 1)), 0.3, 3)`
+with `STOCK_BETA = 1.5` and `v_w` one wave's own value factor from `effectsOf` (the per-wave product, P1: one wave
+gives the spec table, and a settle keeps the level with several waves live). A heavy wave never disrupts its pioneer
+trade at any exchange (P9, applied once in `waveLevels`). History rows count only from `PRESENT_YEAR`, because the
+stock tables already carry the real booms (S6). A settled wave leaves `TechBase.stock` (0.7 to 1.6, missing is 1)
+and no scheduled fade (S7); it keeps its reach (P4): the `|world` entry counts in full everywhere, a country entry
+in full at that country and at 0.75 of its strength in other countries, never in the `world` market. The reader is
+pure, memoized per validated list and returns exactly 1 with no wave and no settled factor.
+
+The sector table and the seam. `SECTOR_TRADE` maps the 35 `SectorId`s to one trade or none (23 mapped, 12 none: banks,
+insurance, mining, hotels, airlines, shipping, agri, property, supermarkets, fashion, cosmetics, leisure).
+`waveStockFactor(g, secId, year)` reads the sector of a company id or a `~B` share-class line (`companyKey`) and
+its exchange's home market; pennies, coins, bonds, savings, gold and property trusts never parse as engine companies
+and read 1. The level is folded into the two functions of `invest/shocks.ts`, `shockFactor` (times
+`waveStockFactor`) and `indexShockFactor` (times `waveIndexFactor`), so quotes, holdings, stock history, bet
+settlement, index options, `marketMove` (every fund strategy and the hedge funds) and the gut agree by construction.
+The index tilt is `1 + sum over the stocks listed that year of (L - 1) / n`, clamped 0.5 to 1.5 with
+`n = max(4, slotPlan(info).length)`; it reads the listing (`listedSectors`), never `slotPlan`, because a real
+company sits in a slot of another sector (P10). Option premiums (`optionPrice`, `indexLogSamples`) take no game
+state and are unchanged (S9). The gut's cache key gains `waveSignature(g)`.
+
+The clock. `invest/clock.ts` is a leaf (`marketYearOf`, `marketFamily`, `marketAnchor`, `bookedMarketMove`;
+`fund-model.ts` re-exports the first two). From `PRESENT_YEAR`, `economy.exchangeMove(g, c, fiscal)` is the engine's
+own move of market year `fiscal + 1`, the year the Stocks screen and the funds show at the birthday that books
+fiscal year `fiscal`, from the family seed (an heir's listed company sees the family's market). It carries no shock,
+macro or wave term; history years keep their old code. `conglomerate-year.ts` follows because it calls the same function.
+
+The quoted company. A company listed itself, or a division of a listed group, takes the wave through its fundamental
+with a stock-grade stamp: `stampWave` writes `{ v, y: fiscal, q: true }` with `v = stockLevelFor` read at
+`marketYearOf(fiscal)` (P5; `y` stays the fiscal year, the match key against the last booked record).
+`valuationOf` uses the stamp only when `q` is set and `y` equals the last booked year, else the mood is 1 (C-12); an
+unquoted company ignores a stock-grade stamp. `industryCycle(g, ind, year, 'stock')` gives deep tech the same grade,
+and `waveLines` says `price` instead of `value` for a quoted company. There is no second level on its price. The
+price blends half its last price and half a fundamental that now carries the wave, so it closes the gap by half each
+booked year while peers jump at once. That lag is deliberate: own buys pay `max(price, fundamental) x 1.03`, so the lag is
+no cheap entry, and own-listing keeps spec D12 as written.
+
+The insider rule. `announceWave` takes an optional `by` (the originating asset id), passed by the Heavy R&D launch and the
+deep-tech milestone writers; for a new wave it calls `waveInsiderCases` after the news. In the announcement year, for a
+founder (`founderName`, not acquired) or CEO of the player's own company (a hired CEO or a plain owner is no insider),
+each listed stock on the player's exchange that is core or supply for the wave's kind, with shares bought in that year
+or the year before (`insiderPositions(..., { freshOnly: true })`: open calls, longs, index calls), becomes a case when the
+wave lifts it by at least 0.5% and the gain tops `local(g, 1000)`; the three largest stakes win. `openInsiderCase` in
+`special/politics.ts` builds an `InsiderCase` (cause `wave`, optional `role` and `note`, id `wave-<hash>`, office `mayor`,
+the inert default) and applies the same hidden effects as the other two builders; exposure, the regulator, frozen bets,
+held money, give-back and the arrest are the existing code. The case lives in the owner-stamped politics profile, so an
+heir never inherits it, and it does not make the player a politician. `INSIDER_WARNING` (a constant in
+`tech-wave-data.ts`, so `manage.ts` and `deeptech-menu.ts` never import `politics.ts`) is shown in the Heavy R&D confirm
+when the launch would still fall inside the wave window (`heavyStartsWave`) and in the confirm of a deep-tech program
+that has a wave.
+
+The tag, the clause and the news. Pure reads of the same numbers: `Quote.wave` (set in `listing`, shown as one row
+after the sector row, "Frontier AI wave: sector +12%"), the clause on `marketLine` ("... wave: index +3%") and one news
+line a year (`waveNews`, the listed sector with the biggest wave-driven move, at least 3%). Each is dropped when it
+rounds to nothing or `anachronismsIn` flags it for a country that trades on the exchange.
+
+Priority 0 notes. C-03 (personal gains omit capital-gains tax): the three new files add no sell, realize or money path,
+only a bounded mark (at most 15% a step) that realizes through existing paths; a test reads them and asserts none
+calls `addMoney`, `earnIncome`, `realize` or `spend`. C-04 (bond maturity pays the marked price): bonds never reach
+a level, and a test holds one through maturity with a live wave. C-12 (stale booked marks): the stock-grade stamp
+counts only for the last booked year, and the level does not depend on the order of the yearly hooks.
+
+Not in this release: penny stocks, property trusts, coins, gold, bonds and savings (no wave term), option premiums
+that see waves, a per-stock beta (one `STOCK_BETA`), put-side insider cases on disrupted sectors, and Workshop,
+race and rival waves as insider origins. Heirs get the waves and the level through the existing validated readers
+(`waveWorldFlags`), and `trail`, `nx`, `stock` and `q` are optional, so an old save loads flat and `SAVE_SCHEMA` stays 2.
 
 ### Nepotism, succession and family employment
 
