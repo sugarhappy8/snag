@@ -45,7 +45,9 @@ import { bookSupply, saveSupply, supplyConditions, supplyInventoryValue, supplyP
 import { applyEconomicRivals } from './economic-actors'
 import { applyNpcRivals } from './npc-rivals'
 import { leadershipPower, individualLeadershipPower, LEADERSHIP } from './leadership'
-import { chipCostFactor, chipTerms, FAB_BASE, FAB_MAINT, FAB_STEP, readFabs } from './devices-data'
+import { chipCostFactor, chipTerms, DEVICE_NETWORK, FAB_BASE, FAB_MAINT, FAB_STEP, OS_BETA, OS_FAMILY, OS_PULL_CAP, readFabs } from './devices-data'
+import { networkPull } from './competition-roster'
+import { effectiveQuality, infoOf } from './product-market'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -474,7 +476,35 @@ export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx
   // (its cache stays free of game state), together with the heavy pulse under one clamp. With no wave the
   // factor is exactly 1 and this is what it always was.
   const wd = waveFactorsFor(g, b.industry, ctx.key, year).demand
-  return { ...ctx, pot: wd === 1 ? (heavy.length ? pot * pulse : pot) : pot * clampN(pulse * wd, FACTOR_BOUNDS.demand[0], FACTOR_BOUNDS.demand[1]), field }
+  const out: MarketCtx = { ...ctx, pot: wd === 1 ? (heavy.length ? pot * pulse : pot) : pot * clampN(pulse * wd, FACTOR_BOUNDS.demand[0], FACTOR_BOUNDS.demand[1]), field }
+  // A device company's operating system adds to its network pull (osPull). It is read from the product list, which
+  // buildCtx's cache key doesn't hold, so it lands on this copy and never on the cached context.
+  return b.industry === 'devices' ? { ...out, w: osPull(ctx.base, osStrength(b, year)) } : out
+}
+
+/**
+ * How strong a device company's operating system is, 0 to 1: its best OS line (a bundle or add-on doesn't count) against
+ * today's rivals, from quality 35 (nothing) to 80 (all of it). A line ages like any other, so a neglected OS fades.
+ */
+export function osStrength(b: Pick<BizState, 'industry' | 'products'>, year: number): number {
+  if (b.industry !== 'devices') return 0
+  let best = 0
+  for (const p of b.products) {
+    const info = infoOf(p, b.industry)
+    if (info.family !== OS_FAMILY || info.kind === 'bundle' || info.kind === 'addon') continue
+    const q = effectiveQuality(p, b.industry, year)
+    if (Number.isFinite(q) && q > best) best = q
+  }
+  return clampN((best - 35) / 45, 0, 1)
+}
+
+/**
+ * The network pull of an installed base with an operating system behind it: never below the plain pull, never above the
+ * cap (unless the plain pull already is), and growing with the OS's strength. Rivals keep their own, weaker pull.
+ */
+export function osPull(base: number, strength: number): number {
+  const s = clampN(strength, 0, 1)
+  return Math.max(networkPull(base, DEVICE_NETWORK), Math.min(OS_PULL_CAP, networkPull(base, DEVICE_NETWORK + OS_BETA * s)))
 }
 
 /**
