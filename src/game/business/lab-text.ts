@@ -42,8 +42,8 @@ export const LAB_SAY: Record<string, Say> = {
   releaseCash: (need, short) => `Letting a scientist go needs ${need} of company cash with the usual cushion kept back (${short} short).`,
   // The longest-serving scientist's hire year, and the first year they can go.
   minService: (hired, free) => `Your longest-serving scientist came in ${hired}. They can go from ${free}.`,
-  // The owner's notices for a patent filed ("Patent Filed": name, family, years of shield, fee) and a licence ("Licensed": family, first year rivals can sell, last year of royalties).
-  patented: (name, family, years, fee) => `${name} filed for a patent on ${family}. For ${years} years rivals can't sell one. The fee was ${fee}.`,
+  // The owner's notices for a patent filed ("Patent Filed": name, family, the years of shield left as text such as "5 years", fee) and a licence ("Licensed": family, first year rivals can sell, last year of royalties).
+  patented: (name, family, years, fee) => `${name} filed for a patent on ${family}. For ${years} rivals can't sell one. The fee was ${fee}.`,
   licensed: (family, from, until) => `Rivals can sell ${family} from ${from}. You earn royalties while they do, until ${until}.`,
   // The reasons a patent can't be filed or licensed: the same plain sentence a tap and a screen reader both get.
   patentNotEligible: () => 'Patents are for product companies. This one runs its own kind of R&D.',

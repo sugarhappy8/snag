@@ -204,15 +204,27 @@ export function teamValue(g: GameState, b: BizState, w: Worth = bizWorth(g, b)):
   return { gain: safe, pay, value: safe - pay }
 }
 
-/** Every family the company sells a line of that it developed itself (a rival bought out doesn't count) and launched at most PATENT_AGE years ago, with its newest launch. A line not on sale yet doesn't count. */
+/** A line the company developed itself (a rival bought out doesn't count), on sale, and launched at most PATENT_AGE years ago. */
+function recentOwn(g: GameState, p: BizState['products'][number]): boolean {
+  return !p.from && p.launched <= g.year && g.year - p.launched <= PATENT_AGE
+}
+
+/** Every family the company sells a line of that it developed itself and launched at most PATENT_AGE years ago, with its newest launch. A line not on sale yet doesn't count. */
 function ownRecent(g: GameState, b: BizState): Map<string, number> {
   const out = new Map<string, number>()
   for (const p of b.products) {
-    if (p.from || !(p.launched <= g.year) || g.year - p.launched > PATENT_AGE) continue
+    if (!recentOwn(g, p)) continue
     const family = infoOf(p, b.industry).family
     out.set(family, Math.max(out.get(family) ?? Number.NEGATIVE_INFINITY, p.launched))
   }
   return out
+}
+
+/** The year a family's patent term counts from: the oldest of its own recent lines (a later variant doesn't restart the clock), or now when it has none. */
+function termStart(g: GameState, b: BizState, family: string): number {
+  let at = g.year
+  for (const p of b.products) if (recentOwn(g, p) && infoOf(p, b.industry).family === family) at = Math.min(at, p.launched)
+  return at
 }
 
 /**
@@ -230,17 +242,20 @@ export function patentableFamilies(g: GameState, b: BizState): readonly string[]
 /**
  * What a patent on a family costs, shields and is worth on the books: fixed by the kind and the country,
  * never by the company's cash or sales. `plan` is the price the kind cost to develop (a breakthrough's own
- * record, else an ordinary idea's cost); the fee is a share of it plus the country's filing fee; the shield
- * lasts the tier's years times how well the country's courts enforce it (at least two); the book is a share
- * of the price. Pure.
+ * record, else an ordinary idea's cost); the fee is a share of it plus the country's filing fee; the term is
+ * the tier's years times how well the country's courts enforce it (at least two), counted from the launch
+ * of the company's own line of the family (from now when it has none), so filing later never stretches the
+ * shield and buys less of it; `until` is the first year without it, at least next year, and `years` what is
+ * left of it now; the book is a share of the price. Pure.
  */
 export function patentTerms(g: GameState, b: BizState, family: string): { plan: number; fee: number; years: number; until: number; book: number } {
   const law = patentLaw(b.countryId, g.year)
   const record = readHeavy(g, b.industry, marketKey(b)).find((r) => r.family === family)
   const plan = record && record.cost > 0 ? record.cost : rdCost(b, family)
   const fee = roundBudget(PATENT_FEE_X * plan) + law.fee
-  const years = Math.max(2, Math.round(SHIELD[labTierOf(b.industry) ?? 'mid'] * law.enforcement))
-  return { plan, fee, years, until: g.year + years, book: Math.round(IP_SHARE * plan) }
+  const term = Math.max(2, Math.round(SHIELD[labTierOf(b.industry) ?? 'mid'] * law.enforcement))
+  const until = Math.max(g.year + 1, termStart(g, b, family) + term)
+  return { plan, fee, years: until - g.year, until, book: Math.round(IP_SHARE * plan) }
 }
 
 /**

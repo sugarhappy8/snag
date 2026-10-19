@@ -284,7 +284,7 @@ export function fileLabPatent(g: GameState, a: Asset, b: BizState, family: strin
   d.filed = [...d.filed.filter((x) => x !== family), family].slice(-LAB_LIMITS.filed)
   saveLab(b, d)
   log(g, LAB_LOG.patented(a.name, family))
-  if (pay && runsIt(g, a) && g.character.alive) notice(g, 'Patent Filed', LAB_SAY.patented(a.name, family, String(t.years), money(t.fee)), { emoji: '\u{1F4DC}' })
+  if (pay && runsIt(g, a) && g.character.alive) notice(g, 'Patent Filed', LAB_SAY.patented(a.name, family, plural(t.years, 'year'), money(t.fee)), { emoji: '\u{1F4DC}' })
   return filed
 }
 

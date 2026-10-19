@@ -197,6 +197,80 @@ describe('terms', () => {
   })
 })
 
+describe('the shield counts from the launch', () => {
+  it('does not grow with a late filing: a real breakthrough, read at its launch and up to PATENT_AGE years after', () => {
+    for (const [trade, country] of [[PATENT_TRADE, PATENT_COUNTRY], ['brewery', 'ca']] as const) {
+      const { g, a, b } = labGame(95, trade, { country })
+      const fam = launchBreakthrough(g, a, b)
+      const launch = g.year
+      const nominal = Math.max(2, Math.round(SHIELD.mid * patentLaw(country, launch).enforcement))
+      const hold: number[] = []
+      for (let k = 0; k <= PATENT_AGE; k++) {
+        g.year = launch + k
+        const t = patentTerms(g, b, fam)
+        // the term is the line's, counted from its launch: the same last year whenever it is filed
+        expect(t.until, `${trade} +${k}`).toBe(launch + nominal)
+        expect(t.years, `${trade} +${k}`).toBe(t.until - g.year)
+        expect(patentBlock(g, b, fam), `${trade} +${k}`).toBeNull()
+        const v = patentValue(g, b, fam)
+        expect(v.fee, `${trade} +${k}`).toBe(t.fee)
+        hold.push(v.hold)
+      }
+      if (trade === 'brewery') {
+        // a shield that ends when the first rival can arrive adds nothing, filed at once or three years on
+        for (const [k, h] of hold.entries()) expect(h, `brewery +${k}`).toBe(0)
+      } else {
+        // a shield that outlasts the first rival is worth something at the launch, and waiting does not multiply it
+        expect(hold[0]).toBeGreaterThan(0)
+        for (let k = 1; k <= PATENT_AGE; k++) expect(hold[k], `${trade} +${k}`).toBeLessThan(2 * hold[0])
+      }
+    }
+  }, 120_000)
+
+  it('counts a classic line from its own launch, and always leaves a year to run', () => {
+    const { g, b } = labGame(96, 'brewery', { country: 'ca' })
+    const fam = soldKind(g, b)
+    const nominal = Math.max(2, Math.round(SHIELD.mid * patentLaw('ca', g.year).enforcement))
+    // no own line: nothing to count from, so from now
+    expect(patentTerms(g, b, fam).until).toBe(g.year + nominal)
+    for (let ago = 0; ago <= PATENT_AGE; ago++) {
+      b.products = [{ name: fam, launched: g.year - ago, boost: 0, quality: 70, family: fam, kind: 'core' }]
+      const t = patentTerms(g, b, fam)
+      expect(t.until, `${ago} years ago`).toBe(Math.max(g.year + 1, g.year - ago + nominal))
+      expect(t.years, `${ago} years ago`).toBe(t.until - g.year)
+      expect(t.years, `${ago} years ago`).toBeGreaterThanOrEqual(1)
+    }
+    // a later variant or a bought line does not restart the clock
+    b.products = [
+      { name: fam, launched: g.year - 2, boost: 0, quality: 70, family: fam, kind: 'core' },
+      { name: `${fam} Pro`, launched: g.year, boost: 0, quality: 70, family: fam, kind: 'premium' },
+      { name: `${fam} Bought`, launched: g.year - 3, boost: 0, quality: 70, family: fam, kind: 'core', from: 'A Rival' },
+    ]
+    expect(patentTerms(g, b, fam).until).toBe(Math.max(g.year + 1, g.year - 2 + nominal))
+    // a low-tech trade in a country that enforces little: two years from a launch three years ago is already over, and the patent still runs a year
+    const weak = labGame(96, 'restaurant', { country: 'af' })
+    expect(Math.max(2, Math.round(SHIELD.low * patentLaw('af', weak.g.year).enforcement))).toBe(2)
+    const kind = soldKind(weak.g, weak.b)
+    weak.b.products = [{ name: kind, launched: weak.g.year - PATENT_AGE, boost: 0, quality: 70, family: kind, kind: 'core' }]
+    const w = patentTerms(weak.g, weak.b, kind)
+    expect(w.until).toBe(weak.g.year + 1)
+    expect(w.years).toBe(1)
+  })
+
+  it('says one year when one is left', () => {
+    const { g, a, b } = labGame(97, 'restaurant', { country: 'af' })
+    const fam = launchBreakthrough(g, a, b)
+    g.year += PATENT_AGE
+    expect(patentTerms(g, b, fam).years).toBe(1)
+    const row = actionOf(g, a, `lab.patent.${slug(fam)}`)!
+    expect(row.subtitle && typeof row.subtitle === 'function' ? row.subtitle(g) : '').toContain("rivals can't sell one for 1 year")
+    g.queue = []
+    expect(doPatent(g, a, fam)).toBe(true)
+    const note = g.queue.find((m) => m.kind === 'notice' && m.title === 'Patent Filed')
+    expect(note && 'text' in note ? note.text : '').toContain("For 1 year rivals can't sell one.")
+  })
+})
+
 describe('extremes [RF4]', () => {
   it('every trade and a spread of years price, test and value a patent with finite numbers', () => {
     for (const trade of Object.keys(INDUSTRIES) as Industry[]) {
