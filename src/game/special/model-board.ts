@@ -245,6 +245,9 @@ const GIG_FAME: Record<Kind, number> = { catalogue: 0, commercial: 1, digital: 1
 
 const kindName = (g: GameState, o: MdOffer): string => kindLabel(g, o.kind).toLowerCase()
 
+/** The house a failure names: 'the client' for a registry brand (a lost or cancelled job never pins a real house), a fictional house by name. */
+const failHouse = (o: MdOffer): string => (o.brand ? 'the client' : o.house)
+
 /** One result as a log line (first person) and a popup (second person), the popup only while the notice budget lasts. */
 function report(c: CareerCtx<ModelState>, title: string, popup: string, line: string, emoji: string, tone: 'good' | 'bad' | 'neutral'): void {
   careerLog(c, line, tone === 'neutral' ? undefined : tone)
@@ -298,7 +301,7 @@ export function castOffer(c: CareerCtx<ModelState>, id: string): void {
   o.status = 'lost'
   const winner = named[0]
   if (winner) s.memory = noteRival(s.memory, winner, year, { met: 1, lost: 1 })
-  report(c, 'Passed Over', `${winner ? winner.name : 'Another model'} got the ${label} for ${o.house}.`, `I lost a ${label} for ${o.house}${winner ? ` to ${winner.name}` : ''}.`, KIND_EMOJI[o.kind], 'bad')
+  report(c, 'Passed Over', `${winner ? winner.name : 'Another model'} got the ${label} for ${failHouse(o)}.`, `I lost a ${label} for ${failHouse(o)}${winner ? ` to ${winner.name}` : ''}.`, KIND_EMOJI[o.kind], 'bad')
 }
 
 // ---------------------------------------------------------------------------
@@ -522,7 +525,7 @@ const STATUS_WORD: Record<MdOffer['status'], string> = { open: 'Open', booked: '
 
 /** One casting as a row you can take, or as a line once it is booked, lost or paid. */
 function boardRow(g: GameState, o: MdOffer): MenuNode {
-  if (o.status !== 'open') return info(`model.board.${o.id}`, `${STATUS_WORD[o.status]}: ${kindLabel(g, o.kind).toLowerCase()} for ${o.house}.`)
+  if (o.status !== 'open') return info(`model.board.${o.id}`, `${STATUS_WORD[o.status]}: ${kindLabel(g, o.kind).toLowerCase()} for ${o.status === 'lost' || o.status === 'passed' ? failHouse(o) : o.house}.`)
   return row({
     id: `model.cast.${o.id}`,
     label: boardLabel(g, o),

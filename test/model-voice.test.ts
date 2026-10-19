@@ -7,7 +7,7 @@ import { hire, ownerKey } from '../src/game/special/common'
 import { applyEffects, bestStance, defineCrises, type CrisisDef, type CrisisSet, type Stance } from '../src/game/special/kit/crisis'
 import { ACTION_BUDGET, careerCtx, setCareerAudit, type AuditEvent, type CareerCtx } from '../src/game/special/kit/year'
 import { ensureContract, signWith } from '../src/game/special/model-agency'
-import { boardOf, slotsUsed } from '../src/game/special/model-board'
+import { boardOf, castOffer, modelRows, slotsUsed } from '../src/game/special/model-board'
 import { shelf, strainRisk } from '../src/game/special/model-core'
 import { MODEL_DEFS, modelCrises } from '../src/game/special/model-events'
 import { modelSim } from '../src/game/special/model-sim'
@@ -446,6 +446,54 @@ describe('model events: voice', () => {
         expect(/\w/.test(before) || /\w/.test(after), `${name} named in: ${text}`).toBe(true)
       }
     }
+  })
+
+  it('names no registry brand when a casting is lost or passed: the popup, the log and the board row say the client', () => {
+    const names = allBrands()
+      .map((b) => b.name)
+      .filter((n) => n.length >= 3)
+    const standalone = (text: string, name: string): boolean => {
+      for (let at = text.indexOf(name); at >= 0; at = text.indexOf(name, at + 1)) {
+        const before = text[at - 1] ?? ' '
+        const after = text[at + name.length] ?? ' '
+        if (!/\w/.test(before) && !/\w/.test(after)) return true
+      }
+      return false
+    }
+    const texts: string[] = []
+    setCareerAudit((e) => {
+      if (e.t === 'text') texts.push(e.text)
+    })
+    let lost = 0
+    let passed = 0
+    let booked = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const { g, s } = base({ seed })
+      s.board = { year: g.year, items: watches.slice(0, 3).map((b, i) => offer({ id: `w${i}`, kind: 'editorial', brand: b.id, house: b.name, fee: 8_000 })) }
+      g.rng = seed
+      for (const o of [...s.board.items]) castOffer(ctxOf(g, s), o.id)
+      // a cancelled booking is closed as passed, which the board row words the same way
+      const open = s.board.items.find((o) => o.status === 'booked')
+      if (open && seed % 2 === 0) open.status = 'passed'
+      lost += s.board.items.filter((o) => o.status === 'lost').length
+      passed += s.board.items.filter((o) => o.status === 'passed').length
+      booked += s.board.items.filter((o) => o.status === 'booked').length
+      for (const m of g.queue) if (m.kind === 'notice') texts.push(m.title, m.text)
+      const board = modelRows(g).find((n) => n.type === 'menu' && n.id === 'model.board')
+      if (board?.type !== 'menu') throw new Error('no season board')
+      for (const n of board.children(g)) if (n.type === 'info') texts.push(typeof n.text === 'function' ? n.text(g) : n.text)
+    }
+    setCareerAudit(null)
+    expect(lost).toBeGreaterThan(10)
+    expect(passed).toBeGreaterThan(3)
+    expect(booked).toBeGreaterThan(10)
+    const failures = texts.filter((x) => /\b(lost|passed over|passed)\b/i.test(x))
+    expect(failures.length).toBeGreaterThan(20)
+    for (const text of failures) {
+      for (const name of names) expect(standalone(text, name), `${name} named in: ${text}`).toBe(false)
+    }
+    // a good line may still name the brand it booked
+    expect(texts.some((x) => /booked/i.test(x) && watches.some((b) => standalone(x, b.name)))).toBe(true)
   })
 
   it('keeps the offer scene and title in voice through the real yearly hook', () => {
