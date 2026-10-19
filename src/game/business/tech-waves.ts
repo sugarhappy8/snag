@@ -36,6 +36,7 @@ import {
   type TechBase, type TechWave, type WaveSource,
 } from './tech-wave-factors'
 import { clampN } from './util'
+import { waveInsiderCases } from './wave-insider'
 
 export { BASE_KEY, historyFactors, MAX_WAVES, readTechBase, readTechWaves, roleOf, waveFactors, waveFactorsFor, WAVES_KEY } from './tech-wave-factors'
 export { nextStepTag, STOCK_BETA, stateAt, stockLevelFor, TRAIL_POINTS, waveLevels, waveSignature, wavesAt } from './tech-wave-factors'
@@ -55,6 +56,8 @@ export interface WaveInput {
   /** The announcement year when it is not g.year (a heavy launch passes the record's launch year). */
   year?: number
   home?: string
+  /** The asset id of the company that wrote this wave (a heavy launch or a deep-tech milestone), for the insider rule. Never stored on the wave. */
+  by?: string
 }
 
 /** Always a NEW array of NEW objects: the read cache below is keyed on the array, so nothing is edited in place. */
@@ -144,6 +147,8 @@ export function announceWave(g: GameState, a: WaveInput): TechWave | null {
   writeWaves(g, [...list, first])
   const stored = readTechWaves(g).find((x) => x.id === w.id) ?? null
   if (stored) announceWaveNews(g, stored)
+  // A wave the player's own company wrote may be an insider case (a repeat returned above and never reaches here).
+  if (stored && a.by) waveInsiderCases(g, stored, a.by)
   return stored
 }
 

@@ -98,6 +98,14 @@ export function heavyWaveFor(trade: string, name: string): HeavyWave | null {
   return Object.hasOwn(HEAVY_WAVES, key) ? HEAVY_WAVES[key] : null
 }
 
+/** Whether a heavy launch in `launchYear` starts a wave: the entry is a listed wave and the launch is still inside the window (the writer's own test). */
+export function heavyStartsWave(trade: string, entry: { name: string; first: number }, launchYear: number): boolean {
+  return heavyWaveFor(trade, entry.name) !== null && launchYear - entry.first <= HEAVY_WAVE_WINDOW
+}
+
+/** What the Heavy R&D and deep-tech confirms say where a launch would move listed stocks (P6: a constant, so the menus never import politics). */
+export const INSIDER_WARNING = 'If it works, related stocks move. Buying them in the year before the launch can count as insider trading.'
+
 /** A deep-tech program (or derived milestone) that starts a wave. */
 export interface DeepWave {
   kind: WaveKind

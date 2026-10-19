@@ -50,6 +50,7 @@ import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } 
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, readBiz, runsIt, type BizState } from './state'
+import { deepWaveFor, INSIDER_WARNING } from './tech-wave-data'
 import { clampN, money, num, pct, plural, rec, str, toJson, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, t: TechState, input?: string) => void
@@ -133,7 +134,10 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
       const { b, t } = view(g, a)
       const cost = programCost(b, t, def)
       const funds = techFunds(b, t)
-      return funds < cost ? `${a.name} only has ${money(funds)} between its R&D account and cash, and this costs about ${money(cost)} a year at the planned budget. Start it anyway and find the money by year-end?` : null
+      const short = funds < cost ? `${a.name} only has ${money(funds)} between its R&D account and cash, and this costs about ${money(cost)} a year at the planned budget. Start it anyway and find the money by year-end?` : null
+      // A listed program ripples through stocks (tech-waves.ts), so the rule is stated where the work starts.
+      const text = [short, deepWaveFor(b.industry, def.id) ? INSIDER_WARNING : null].filter((x): x is string => x !== null).join(' ')
+      return text || null
     },
     // Fund it lean, as planned or flat out: faster and likelier, dearer in total (diminishing returns).
     input: {

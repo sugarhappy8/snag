@@ -24,7 +24,7 @@ import { fieldFor, fieldOf, hashOf, mix, productPull } from './product-market'
 import { classicIdeas } from './products'
 import { baseYears, DISCOUNT, HORIZON, launchP, projectQuality, pullValue, rdCost, rdOf, rdProjects, rdQuality, rdReserve, retiredReason, roundBudget } from './rd'
 import { MAX_STORED_PROJECTS, retiredOf, type BizState, type Product, type RdProject } from './state'
-import { HEAVY_WAVE_WINDOW, heavyWaveFor } from './tech-wave-data'
+import { heavyStartsWave, heavyWaveFor } from './tech-wave-data'
 import { announceWave } from './tech-waves'
 import { clampN, money } from './util'
 
@@ -526,8 +526,8 @@ export function advanceHeavy(g: GameState, a: Asset | null, b: BizState, p: RdPr
     // real date: an old technology launched late is a follower, not a wave. The launch notice above is the only news.
     const hw = heavyWaveFor(b.industry, p.name)
     const def = breakthroughByName(p.name)
-    if (hw && def && rec.year - def.first <= HEAVY_WAVE_WINDOW) {
-      announceWave(g, { kind: hw.kind, source: 'heavy', origin: `${heavyKey(b.industry, market)}#${p.name}`, name: p.name, size: hw.size, market, year: rec.year, home: b.countryId })
+    if (hw && def && heavyStartsWave(b.industry, def, rec.year)) {
+      announceWave(g, { kind: hw.kind, source: 'heavy', origin: `${heavyKey(b.industry, market)}#${p.name}`, name: p.name, size: hw.size, market, year: rec.year, home: b.countryId, by: a.id })
     }
   }
   const how = hit ? 'is a smash hit' : 'launches'

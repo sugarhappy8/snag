@@ -230,20 +230,20 @@ function announceBreakthroughs(g: GameState, a: Asset, b: BizState, t: TechState
   for (const id of won) {
     const w = deepWaveFor(b.industry, id)
     if (!w || (w.first && timesDone(t, id) !== 1) || (w.autonomy !== undefined && t.autonomy < w.autonomy)) continue
-    announceWave(g, { kind: w.kind, source: 'deeptech', origin: `${a.id}#${id}`, name: w.name, size: w.size, market: 'world', home })
+    announceWave(g, { kind: w.kind, source: 'deeptech', origin: `${a.id}#${id}`, name: w.name, size: w.size, market: 'world', home, by: a.id })
   }
   if (b.industry === 'biotech') {
     for (const d of approved) {
       if (d.peak < 4) continue
       const label = DRUG_AREAS.find((x) => x.id === d.area)?.label ?? 'disease'
-      announceWave(g, { kind: 'drug', source: 'deeptech', origin: `${a.id}#drug${d.id}`, name: `A new drug for ${label}`, size: clampN(0.2 + 0.04 * d.peak, 0.2, 0.5), market: 'world', home })
+      announceWave(g, { kind: 'drug', source: 'deeptech', origin: `${a.id}#drug${d.id}`, name: `A new drug for ${label}`, size: clampN(0.2 + 0.04 * d.peak, 0.2, 0.5), market: 'world', home, by: a.id })
     }
   }
   if (b.industry === 'aiLab' && newModel > 0) {
     // Only the lab's first model at the frontier: a strong lab beats it most years, and that is not a new wave each time.
     const m = t.models.find((x) => x.gen === newModel)
     if (m && m.score >= frontierScore(m.year) && !t.models.some((x) => x.gen !== m.gen && x.score >= frontierScore(x.year))) {
-      announceWave(g, { kind: 'ai', source: 'deeptech', origin: `${a.id}#model${m.gen}`, name: 'Frontier AI', size: 0.4, market: 'world', home })
+      announceWave(g, { kind: 'ai', source: 'deeptech', origin: `${a.id}#model${m.gen}`, name: 'Frontier AI', size: 0.4, market: 'world', home, by: a.id })
     }
   }
 }
