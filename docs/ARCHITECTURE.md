@@ -106,6 +106,8 @@ src/
     invest/wave-stocks.ts invest/clock.ts business/wave-insider.ts  Tech waves for listed stocks: the
                          sector table and the level folded into the stock seam, the one market clock, and
                          the founder's insider rule (see "Tech waves and stocks" below)
+    business/sector-*.ts  Sector families: the Operations Desk of 18 food, care and utility trades, kept in
+                         BizState.sector (see "Sector families" below)
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
     business/share-classes.ts share-classes-menu.ts  Share classes of the player's company: the votes
@@ -749,6 +751,37 @@ rivalPriceIndex` (Silicon 2.0), and price is negated so the cheapest ranks first
 and are modeled; no row names a rival. `devicesMenu` renders Devices & Chips with at most 12 rows (header, chip
 source, the fab action, one sister row, the platform row and up to seven kinds), reads `readBiz`, `marketCtxFor`
 and `fieldFor`, and never writes state or draws `g.rng`.
+
+### Sector families (business/sector-*.ts)
+
+The 18 trades of three families get an Operations Desk on top of the classic engine: food (restaurant, foodTruck,
+cafe, bakery), care (clinic, education, gym, salon, petCare, homeCare, autoShop) and util (energy, solar, water,
+telecom, dataCenter, farm, logistics). The layer is a sidecar, not a second simulator: `BizState.sector` is one
+optional plain-JSON record that `normalizeBiz` whitelists next to `venueOwner` and `wave`, read only through
+`readSector` (it clamps every number to its table range and never touches a record of another family or a newer
+version). `familyOf(trade)` in `sector-state.ts` is the only door: a trade with no family (devices, deep tech,
+finance, venues, the 17 generic trades whose families are still to come) returns null and every sector entry
+point returns at once, so the 56th trade needs nothing here.
+
+Four hook points. `prepareSectorYear` (`sector-core.ts`) runs in `yearlyBusinessImpl` right after
+`prepareVenueYear`: the first fiscal year only measures and saves the record, so that year books exactly as before;
+afterwards the family's `effects` move only `demandShock`, `costShock`, `capacityLoss` and `openFraction`, inside
+`SECTOR_BOUNDS`, and book money through `bookIncome` and `bookCost` (cash and `yearIncome` or `yearCosts` together,
+so `bookYear` counts it once). `maybeSectorEvent` runs before the generic owner events and takes the one event slot
+of the company-year; `sectorOwnsEvent` (called from `weightFor` in `events.ts`) switches off the generic inspection
+and critic for a food company with a live record. `sectorMenu` (`sector-menu.ts`) is the desk in `businessView`,
+and `applyLever` is the one write path for the owner and for a hired CEO: `sectorTurn` (`sector-ceo.ts`, called from
+`smartManagerTurn` in `board-ceo.ts`) works the desk above `SMART_SKILL`, at most two changes a year. Each trade also
+gets one extra key role through `withSectorRoles` (`sector-data.ts`), which wraps the raw trade table in
+`industries.ts` (`INDUSTRIES = withSectorRoles(RAW_INDUSTRIES)`) and returns every other trade untouched.
+
+Family files (`sector-food.ts`, `sector-care.ts`, `sector-util.ts` with their `-play` files) register a model in the
+registry of `sector-kit.ts` through the barrel `sector-families.ts`. `sectorEffects` has two modes: `book` reads the
+year's draws and `expected` never reads past the year being lived, so hints, previews and the CEO match what the
+resolver rolls. A draw is a hash of life, company, year and salt (`seasonIndex`), never `g.rng`; the only `g.rng`
+draws are the event roll and branch roll in `sector-events.ts`, never in a menu or a pure read. Real history that the
+engine's exposure map leaves out (the 2020 crash for clinics, schools, pets, home care and bakeries) is a row in
+`SECTOR_HISTORY`. Spec: `docs/superpowers/specs/2026-10-19-sector-families-design.md`.
 
 ### AI lab benchmarks (business/ai-bench*.ts, scorecard.ts, deeptech-bench.ts)
 
