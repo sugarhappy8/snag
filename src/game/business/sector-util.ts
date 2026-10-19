@@ -77,6 +77,35 @@ function seedContract(row: UtilRow): number {
   return Math.max(row.floor, 1 - row.spot)
 }
 
+/** What a plant at the neutral condition (80, a mean weather year) is expected to lose to an outage, as a share of a normal year's output. */
+const NEUTRAL_LOSS = outageP(80, MEAN_WEATHER, 0) * outageSize(80)
+
+/**
+ * What a spot share costs in margin and credit, per unit of its square, as a share of a normal year's
+ * sales. It is set so that the trade's own mix is the best one for a plant at the neutral condition:
+ * the cost of one more step of spot then equals the premium plus the buy-in it saves.
+ */
+function spotRisk(row: UtilRow): number {
+  return (row.disc + NEUTRAL_LOSS) / (2 * Math.max(.05, 1 - seedContract(row)))
+}
+
+/**
+ * What a contract share is worth a year against the trade's own mix, as a share of a normal year's sales
+ * (the spot draw is random and has no mean, so it is not in here). Three parts: the spot premium, less
+ * what the spot share costs in margin and credit, which grows with its square, less the contracted share
+ * of the output an outage takes (`lossShare`), which has to be bought in at the going price. So a plant
+ * that stays sound can hold more contract and one that wears down does better with more spot, and no
+ * option is the best one in every state. Water and telecom have no spot share to trade.
+ */
+function mixWorth(row: UtilRow, contract: number, lossShare: number): number {
+  if (!(row.vol > 0)) return 0
+  const seed = seedContract(row)
+  const premium = row.disc * (seed - contract)
+  const margin = spotRisk(row) * ((1 - contract) ** 2 - (1 - seed) ** 2)
+  const buyIn = (contract - seed) * lossShare
+  return premium - margin - buyIn
+}
+
 /** The neutral point: a plant of 80 that ages 2 a year (at most 25), the trade's own mix, no hedge, no cover. */
 export function utilSeed(_g: GameState, _a: Asset, b: BizState, since: number): UtilState {
   const blank = blankRecord('util', since)
@@ -136,9 +165,9 @@ export function utilFx(g: GameState, a: Asset, b: BizState, st: UtilState, fisca
   const sla = row.sla ? SLA_PENALTY * cx.base : 0
   const repair = REPAIR_SHARE * overhaulCost(b, row, cx)
 
-  // Spot settlement is random money (zero mean); moving off the seed mix earns or pays a premium every year.
+  // Spot settlement is random money (zero mean). The mix itself pays or costs a steady amount against the seed mix (mixWorth); the buy-in is priced at the year's odds, not at the draw.
   const spot = row.vol > 0 && booked ? spotSettlement(row, st, seasonIndex(g, a, fiscal, 'spot')) * cx.base : 0
-  const mixMove = (seedContract(row) - st.contract) * row.disc * cx.base
+  const mixMove = mixWorth(row, st.contract, p * size) * cx.base
 
   // Hedge: it offsets the engine's fuel-driven cost swing and pays for being wrong in a glut.
   const hedged = row.fuel > 0 && st.hedge > 0

@@ -76,6 +76,18 @@ const MEAN_WX = .25
 /** The unit-cost factor of the mean weather: capacity trades gain half the amplitude on a good year, cost trades pay the cooling bill on a bad one. */
 const expectedWx = (row: UtilRow): number => (row.hits === 'capacity' ? 1 - .5 * row.amp * MEAN_WX : 1 + row.amp * MEAN_WX)
 
+/**
+ * What a contract share is worth a year against the trade's own mix, as a share of a normal year's sales, worked out from the
+ * table: the spot premium, less margin and credit on the spot share (a square, set so that the trade's own mix is the best one for a
+ * plant at condition 80), less the contracted share of the output an outage takes, which is bought in.
+ */
+function mixShare(row: UtilRow, contract: number, condition: number, bad = MEAN_WX): number {
+  const seed = Math.max(row.floor, 1 - row.spot)
+  const risk = (row.disc + outageP(80, MEAN_WX, 0) * outageSize(80)) / (2 * (1 - seed))
+  const lost = outageP(condition, bad, 0) * outageSize(condition)
+  return row.disc * (seed - contract) - risk * ((1 - contract) ** 2 - (1 - seed) ** 2) - (contract - seed) * lost
+}
+
 /** The output 'expected' loses in a year: the mean weather and an outage at its odds, combined as 1 - (1 - w) * (1 - o). */
 function expectedLoss(row: UtilRow, condition: number, skill = 0, cover = 0): number {
   const w = row.hits === 'capacity' ? row.amp * MEAN_WX * (1 - .5 * cover) : 0
@@ -445,17 +457,48 @@ describe('util math', () => {
     expect(locked.randCosts).toBe(0)
     expect(run(e, st, 'expected', up).randIncome).toBe(0)
 
-    // Moving off the seed mix earns or pays (contract0 - contract) * disc * base every year.
+    // Moving off the seed mix pays or costs a steady amount every year (mixShare of a normal year), and nothing at the seed.
     expect(run(e, st).income).toBe(0)
     expect(run(e, st).costs).toBe(0)
     const more = run(e, { ...st, contract: .75 })
-    expect(more.costs).toBeCloseTo(.25 * .04 * BASE, 6)
     expect(more.income).toBe(0)
-    expect(run(e, { ...st, contract: 1 }).costs).toBeCloseTo(.5 * .04 * BASE, 6)
+    expect(more.costs).toBeCloseTo(-mixShare(UTIL.energy, .75, 100) * BASE, 6)
+    // By hand: premium -.01, margin and credit +.04935 * (.25 ^ 2 - .5 ^ 2), buy-in .25 * (.0425 * .15) of a normal year.
+    expect(Math.abs(more.costs - 20_129)).toBeLessThan(2)
+    const all = run(e, { ...st, contract: 1 })
+    expect(all.income).toBe(0)
+    expect(all.costs).toBeCloseTo(-mixShare(UTIL.energy, 1, 100) * BASE, 6)
+    expect(all.costs).toBeGreaterThan(more.costs)
+    // A trade below its own mix takes the premium, pays the margin on the bigger spot share, and buys in less.
     const s = setup('solar')
     const less = run(s, { ...s.seed, contract: .3 })
-    expect(less.income).toBeCloseTo((.6 - .3) * .05 * BASE, 6)
-    expect(less.costs).toBe(0)
+    expect(less.income - less.costs).toBeCloseTo(mixShare(UTIL.solar, .3, 80) * BASE, 6)
+    expect(less.income).toBe(0)
+    expect(less.costs).toBeGreaterThan(0)
+    // The buy-in follows the plant: the same mix earns more from a worn plant, which loses more output to outages.
+    const worn = run(s, { ...s.seed, condition: 20, contract: .3 })
+    expect(worn.income - worn.costs).toBeCloseTo(mixShare(UTIL.solar, .3, 20) * BASE, 6)
+    expect(worn.income - worn.costs).toBeGreaterThan(less.income - less.costs)
+    // The premium alone would have paid (.6 - .3) * .05 of a normal year; the margin on the spot share outweighs it for a sound plant.
+    expect(less.costs).toBeGreaterThan(0)
+    expect(-less.costs).toBeLessThan((.6 - .3) * .05 * BASE)
+    // A skilled key role halves the outage odds, so it halves the buy-in.
+    const staffed = setup('solar')
+    staffed.b.staff.push(holder('solar', 100))
+    const keen = run(staffed, { ...staffed.seed, contract: 1 })
+    const plain = run(s, { ...s.seed, contract: 1 })
+    expect(keen.costs).toBeLessThan(plain.costs)
+    // In a booked year the steady amount does not move with the spot draw; the year's own weather is in the odds the buy-in is priced at.
+    const book = (y: number): { got: number; want: number } => {
+      const fx = run(s, { ...s.seed, contract: .3 }, 'book', y)
+      const bad = Math.max(0, -seasonIndex(s.g, s.a, y, 'wx'))
+      return { got: fx.income - fx.costs, want: mixShare(UTIL.solar, .3, 80, bad) * BASE }
+    }
+    const calmY = findYear((y) => seasonIndex(s.g, s.a, y, 'wx') >= 0)
+    const stormY = findYear((y) => seasonIndex(s.g, s.a, y, 'wx') <= -.9)
+    expect(book(calmY).got).toBeCloseTo(book(calmY).want, 6)
+    expect(book(stormY).got).toBeCloseTo(book(stormY).want, 6)
+    expect(book(stormY).got).toBeGreaterThan(book(calmY).got)
     // Water and telecom are regulated: no spot flows and no premium whatever the record says.
     for (const trade of ['water', 'telecom'] as const) {
       const r = setup(trade)
@@ -1216,6 +1259,54 @@ describe('util desk', () => {
     // The current setting is worth nothing against itself.
     expect(leverValue(s.g, s.a, s.b, s.seed, hedge, 0, worthOf(1), s.ctx)).toBe(0)
     expect(leverValue(s.g, s.a, s.b, s.seed, leverOf('cover'), 0, worthOf(1), s.ctx)).toBe(0)
+  })
+
+  it('has no dominant contract option', () => {
+    const contract = leverOf('contract')
+    const states = [.6, .85, 1] as const
+    const best = (s: Setup, condition: number, util: number): number => {
+      const st: UtilState = { ...s.seed, condition }
+      const opts = contract.options(s.g, s.b, st)
+      const values = opts.map((o) => leverValue(s.g, s.a, s.b, st, contract, o.value, worthOf(util), s.ctx))
+      // Keeping the mix competes as "do nothing" when the seed sits between two steps.
+      return opts[values.indexOf(Math.max(...values, 0))]?.value ?? st.contract
+    }
+    for (const trade of ['solar', 'dataCenter', 'farm', 'logistics'] as const) {
+      const s = desk(trade)
+      const lowest = contractOptions(UTIL[trade].floor)[0]
+      for (const util of states) {
+        // A plant at its starting condition gains nothing by moving to the lowest option (the finding: it paid a yearly premium in every state).
+        const value = (condition: number): number => leverValue(s.g, s.a, s.b, { ...s.seed, condition }, contract, lowest, worthOf(util), s.ctx)
+        expect(value(80), `${trade} util ${util}`).toBeLessThan(0)
+        expect(value(95), `${trade} util ${util}`).toBeLessThan(0)
+        // The best option moves with the plant: a sound one holds more contract than a worn one, which can't deliver it.
+        const sound = best(s, 95, util)
+        const worn = best(s, 20, util)
+        expect(worn, `${trade} util ${util}`).toBeLessThan(sound)
+        expect(sound, `${trade} util ${util}`).toBeGreaterThan(lowest)
+      }
+    }
+    // The books agree: an all-spot plant that is sound pays more in margin and credit than the spot premium brings in, a run-down one earns it back.
+    for (const trade of ['solar', 'dataCenter', 'farm', 'logistics'] as const) {
+      const s = desk(trade)
+      const lowest = contractOptions(UTIL[trade].floor)[0]
+      const net = (condition: number): number => {
+        const fx = run(s, { ...s.seed, condition, contract: lowest })
+        return fx.income - fx.costs
+      }
+      expect(net(95), trade).toBeLessThan(0)
+      expect(net(20), trade).toBeGreaterThan(0)
+    }
+    // Energy sells nothing below its regulated floor, which is also its seed: nothing to gain from a lower option, and more contract only costs.
+    const energy = desk('energy')
+    for (const util of states) {
+      for (const condition of [20, 80, 95]) {
+        for (const o of contract.options(energy.g, energy.b, energy.seed)) {
+          if (o.value === energy.seed.contract) continue
+          expect(leverValue(energy.g, energy.a, energy.b, { ...energy.seed, condition }, contract, o.value, worthOf(util), energy.ctx), `energy ${o.value} at ${condition}`).toBeLessThan(0)
+        }
+      }
+    }
   })
 
   it('prices weather cover at the mean of the weather it halves', () => {
