@@ -19,6 +19,8 @@ import {
   citySaturation,
   densityRent,
   equipmentValue,
+  fabCost,
+  fabUpkeep,
   fxValue,
   insurancePremiumFor,
   LASTING_YEARS,
@@ -87,6 +89,7 @@ import { climateLine, dashboardRows } from './dashboard'
 import { franchiseMenu } from './franchise'
 import { milestonesMenu } from './milestones'
 import { tidyNationalStrategy } from './national-view'
+import { FAB_MAX, readFabs } from './devices-data'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -1279,6 +1282,61 @@ function sellLinesAction(a: Asset, b0: BizState): MenuAction {
       refreshValue(cur, b)
       log(g, `${cur.name} sold ${plural(n, line.one, line.many)}.`, 'neutral')
       notice(g, 'Equipment Sold', `${cur.name} sold ${plural(n, line.one, line.many)} for ${formatMoney(refund)}.`, { emoji: '\u{1F4E4}' })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Chip fabs (device companies): the one capex lever of the trade. Sunk cost, owner only, never sold.
+
+/** Next year's expected profit change from one more chip fab: the chip saving less the upkeep. The quality it lifts is not in it. */
+export function fabGain(g: GameState, a: Asset): number {
+  return cachedHint(g, a, 'fab.gain', () => {
+    const b = readBiz(g, a)
+    const base = cachedHint(g, a, 'payback.base', () => bestPlan(g, b, { fast: true }).profit)
+    return bestPlan(g, { ...b, fabs: Math.min(FAB_MAX, readFabs(b.fabs) + 1) }, { fast: true }).profit - base
+  })
+}
+
+/** Why a fab can't be built now, or null. The cash rule reads the live company. */
+function fabBlock(b: BizState): string | null {
+  if (b.industry !== 'devices') return 'Only a device company builds chip fabs.'
+  if (readFabs(b.fabs) >= FAB_MAX) return 'Three fabs is the most a company can run.'
+  const cost = fabCost(b)
+  return b.cash < cost ? `Not enough company cash. A fab costs ${money(cost)}.` : null
+}
+
+export function buildFabAction(a: Asset): MenuAction {
+  return act(a, 'fab', 'Build a Chip Fab', '\u{1F3ED}', {
+    subtitle: (g) => {
+      const b = readBiz(g, a)
+      const n = readFabs(b.fabs)
+      if (n >= FAB_MAX) return `Three fabs built · upkeep about ${money(fabUpkeep(b))} a year`
+      return `${money(fabCost(b))} · upkeep about ${money(fabUpkeep({ ...b, fabs: n + 1 }))} a year · fab ${n + 1} of ${FAB_MAX}`
+    },
+    hint: (g) => {
+      const cur = live(g, a)
+      const b = readBiz(g, cur)
+      if (!hinting(g, cur) || !priceAndOutput(b) || b.industry !== 'devices' || readFabs(b.fabs) >= FAB_MAX) return null
+      const cost = fabCost(b)
+      const gain = fabGain(g, cur)
+      if (gain > 0 && cost / gain <= PAYBACK_MAX) return talentHint(g, 'Business', `Cost savings alone repay it in ${yearsText(cost / gain)}. Quality gains are extra.`)
+      if (gain > 0) return talentHint(g, 'Business', `The savings alone take over ${PAYBACK_MAX} years to repay it.`)
+      return talentHint(g, 'Business', "The savings don't cover the upkeep.")
+    },
+    disabled: (_g, b) => fabBlock(b),
+    confirm: (g) => `Build a chip fab for ${money(fabCost(readBiz(g, a)))}? It can't be sold.`,
+    run: (g, cur, b) => {
+      const cost = fabCost(b)
+      if (b.cash < cost) return noCash(g, cur, cost, 'a chip fab')
+      const gain = fabGain(g, cur)
+      if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Build a chip fab for ${money(cost)}` })) return
+      b.cash -= cost
+      b.fabs = readFabs(b.fabs) + 1
+      b.valuation = valuationOf(b)
+      refreshValue(cur, b)
+      log(g, `${cur.name} built a chip fab.`, 'good')
+      notice(g, 'Fab Online', `${cur.name} paid ${money(cost)} for fab ${b.fabs} of ${FAB_MAX}. Upkeep for its fabs is about ${money(fabUpkeep(b))} a year.`, { emoji: '\u{1F3ED}', tone: 'good' })
     },
   })
 }

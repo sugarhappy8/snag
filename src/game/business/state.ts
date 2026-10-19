@@ -7,6 +7,7 @@ import type { Asset, GameState, Job, Json } from '../types'
 import { isDeepTechIndustry } from './deeptech-state'
 import { sameRole } from './era'
 import { breakthroughByName } from './heavy-data'
+import { readChips, readFabs, type ChipSupply } from './devices-data'
 import { companyHedgeField, type CompanyHedge } from './hedge-record'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
@@ -314,6 +315,10 @@ export interface BizState {
    * greenhouse blocks... (industries with IndustryDef.line). Missing on old saves (0).
    */
   lines?: number
+  /** Chip fabs a device company has built, 1 to 3 (devices only; missing on old saves and when none: read it with devices-data readFabs). */
+  fabs?: number
+  /** The chips a sister company supplies this fiscal year (devices only; written once a year by Group Services, read it with devices-data readChips). */
+  chips?: ChipSupply
   history: YearRecord[]
   last: Statement | null
   /** Equity value of the whole company (dollars). */
@@ -676,6 +681,9 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   const retired = readRetired(d.retired)
   // A year, or nothing: a damaged value must never leave Heavy R&D waiting for good.
   const heavyLast = typeof d.heavyLast === 'number' && Number.isFinite(d.heavyLast) && d.heavyLast >= 1800 && d.heavyLast <= 2300 ? Math.round(d.heavyLast) : null
+  // Chip fabs and the sister's chip record: devices only, and a damaged value is dropped, never repaired (devices-data.ts).
+  const fabs = readFabs(d.fabs)
+  const chips = readChips(d.chips)
   // The tech-wave mood stamp (tech-waves.ts stampWave): both numbers finite, the factor clamped; never kept on deep tech.
   const ws = rec(d.wave)
   const waveStamp: WaveStamp | null = ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && typeof ws.y === 'number' && Number.isFinite(ws.y) && !isDeepTechIndustry(industry)
@@ -715,6 +723,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(heavyLast !== null ? { heavyLast } : {}),
     outlets,
     ...(num(d.lines) >= 1 ? { lines: Math.round(clampN(num(d.lines), 0, 1e9)) } : {}),
+    ...(industry === 'devices' && fabs > 0 ? { fabs } : {}),
+    ...(industry === 'devices' && chips ? { chips } : {}),
     history,
     last: readStatement(d.last),
     valuation: Math.max(0, num(d.valuation)),

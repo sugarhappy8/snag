@@ -45,6 +45,7 @@ import { bookSupply, saveSupply, supplyConditions, supplyInventoryValue, supplyP
 import { applyEconomicRivals } from './economic-actors'
 import { applyNpcRivals } from './npc-rivals'
 import { leadershipPower, individualLeadershipPower, LEADERSHIP } from './leadership'
+import { chipCostFactor, chipTerms, FAB_BASE, FAB_MAINT, FAB_STEP, readFabs } from './devices-data'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -352,6 +353,27 @@ export function lineCost(b: BizState, n: number): number {
   return Math.round(Math.max(0, n) * home.capital * LINE_CAPEX)
 }
 
+/** What a unit of plant costs where this business sits: the local capital level against the trade's default. Never reads money. */
+export function capitalIndex(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number {
+  return localEcon(b.industry, b.countryId, b.city).capital / industryDef(b.industry).capital
+}
+
+/** The cost of the next chip fab (a device company's capex lever): a fixed price per plant, 35% dearer for each one built. `n` fabs in a row. */
+export function fabCost(b: BizState, n = 1): number {
+  const have = readFabs(b.fabs)
+  let steps = 0
+  for (let k = have; k < have + Math.max(0, Math.round(n)); k++) steps += 1 + FAB_STEP * k
+  return Math.round(FAB_BASE * capitalIndex(b) * steps)
+}
+
+/** The yearly upkeep of the chip fabs a device company runs (0 for every other trade). */
+export function fabUpkeep(b: BizState): number {
+  if (b.industry !== 'devices') return 0
+  let steps = 0
+  for (let k = 0; k < readFabs(b.fabs); k++) steps += 1 + FAB_STEP * k
+  return Math.round(FAB_MAINT * FAB_BASE * capitalIndex(b) * steps)
+}
+
 /** Price customers accept without flinching, given quality and brand. */
 export function premiumOf(b: BizState): number {
   return 1 + (b.quality - 50) / 250 + (b.brand - 50) / 500
@@ -556,7 +578,7 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
 export function costFactor(b: BizState, calm = false): number {
   const sup = b.supplier === 'budget' ? 0.86 : b.supplier === 'premium' ? 1.18 : 1
   const ops = 1 - LEADERSHIP.unitCost * staffPower(b, 'ops')
-  return sup * ops * (calm ? 1 : b.costShock)
+  return sup * ops * chipCostFactor(b) * (calm ? 1 : b.costShock)
 }
 
 /** The highest production the report allows (full capacity, ignoring one-off losses). */
@@ -690,6 +712,7 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
     rent += lines * home.rent * LINE_RENT
     upkeep += lines * home.capital * LINE_CAPEX * def.maint
   }
+  upkeep += fabUpkeep(b)
   wages *= k.licence
   const employees = Math.max(totalOutlets(b), Math.round(wanted))
   const netRevenue = revenue - salesTax
@@ -836,7 +859,7 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   // Quality: suppliers, quality staff, morale, leadership.
   const sup = b.supplier === 'budget' ? -12 : b.supplier === 'premium' ? 12 : 0
   const chef = def.food && ownerTalent(g, b, 'Cooking') ? TALENT_COOKING_QUALITY : 0
-  const qTarget = clampN(45 + sup + LEADERSHIP.quality * staffPower(b, 'quality') + (b.morale - 50) / 6 + (skill - 50) / 10 + chef, 5, 98)
+  const qTarget = clampN(45 + sup + LEADERSHIP.quality * staffPower(b, 'quality') + (b.morale - 50) / 6 + (skill - 50) / 10 + chef + chipTerms(b, year).lift, 5, 98)
   b.quality = clampN(Math.round(b.quality + (qTarget - b.quality) * 0.3), 0, 100)
 
   // Brand: quality, marketing, age, products, fame of the founder.
