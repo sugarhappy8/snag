@@ -10,9 +10,10 @@ import { randomFirstName, randomLastName } from '../world'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import { brandPool, pickBrand } from '../shops/everyday-brands'
 import { ageCeiling } from '../mastery'
+import type { Role } from './actor-state'
 import { actingSkill, addColleague, addFame, blocked, claimYearly, clamp100, dropList, fameOf, fameToward, hire, leave, masterFlagSkill, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, tell, view, yearlyList } from './common'
 
-type Role = 'Extra' | 'Supporting' | 'Lead'
+export type { Role }
 type Kind = 'film' | 'tv'
 
 interface Credit {
@@ -64,7 +65,7 @@ interface ActorJobData {
   project: Project | null
 }
 
-interface Listing {
+export interface Listing {
   title: string
   kind: Kind
   genre: string
@@ -138,7 +139,7 @@ function actorProfile(g: GameState): ActorProfile {
   return p
 }
 
-function viewActor(g: GameState): ActorProfile {
+export function viewActor(g: GameState): ActorProfile {
   return normalizedActor(peek<ActorProfile>(g, 'actor'))
 }
 
@@ -146,7 +147,7 @@ export function actorJob(g: GameState): Job | null {
   return myJob(g, 'actor')
 }
 
-function project(job: Job): Project | null {
+export function project(job: Job): Project | null {
   const data = view<ActorJobData>(job.data)
   const raw = data.project
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -212,7 +213,7 @@ function genTitle(g: GameState, genre: string): string {
   return chance(g, 0.12) ? `${base} ${randInt(g, 2, 4)}` : base
 }
 
-function genListings(g: GameState): Listing[] {
+export function genListings(g: GameState): Listing[] {
   const p = actorProfile(g)
   const f = fameOf(g)
   const hadSupporting = p.credits.some((x) => x.role !== 'Extra')
@@ -250,7 +251,7 @@ function genListings(g: GameState): Listing[] {
 const ROLE_DIFFICULTY: Record<Role, number> = { Extra: 0, Supporting: 25, Lead: 45 }
 
 /** The audition score before the approach and the luck roll (no randomness: safe in menus). */
-function auditionBase(g: GameState, l: Listing): number {
+export function auditionBase(g: GameState, l: Listing): number {
   const c = g.character
   const p = viewActor(g)
   return (
@@ -268,7 +269,7 @@ function auditionBase(g: GameState, l: Listing): number {
  * Acting talent: the listing that suits you best — the biggest part you'd most likely land
  * if you play it the way the casting director pictures it (still a roll of the dice).
  */
-function bestListing(g: GameState, listings: Listing[]): number {
+export function bestListing(g: GameState, listings: Listing[]): number {
   let best = -1
   let bestScore = -Infinity
   listings.forEach((l, i) => {
@@ -315,7 +316,7 @@ const FIT: Record<string, string> = {
 }
 
 /** Main Character Syndrome: acting for the first time (a lesson, an audition, a shoot) is already mastery for the age. */
-function masterActing(g: GameState): void {
+export function masterActing(g: GameState): void {
   masterFlagSkill(g, 'acting', 'stage', 'acting', ageCeiling(g.character.age, { from: 6, full: 17, floor: 30 }))
 }
 
