@@ -288,6 +288,9 @@ export interface MarketFactors {
   value: number
 }
 
+/** The most (and least) any combination of events and waves may move demand, costs and value. */
+export const FACTOR_BOUNDS = { demand: [0.45, 1.8], costs: [0.75, 1.5], value: [0.3, 3] } as const
+
 const NEUTRAL: MarketFactors = { demand: 1, costs: 1, value: 1 }
 const cache = new Map<string, MarketFactors>()
 
@@ -312,9 +315,9 @@ export function marketEventFactors(industry: string, country: string, year: numb
     value += s * fx.value
   }
   const out: MarketFactors = {
-    demand: clamp(1 + demand * (worldMarket ? 0.35 : 1), 0.45, 1.8),
-    costs: clamp(1 + costs, 0.75, 1.5),
-    value: clamp(1 + value, 0.3, 3),
+    demand: clamp(1 + demand * (worldMarket ? 0.35 : 1), FACTOR_BOUNDS.demand[0], FACTOR_BOUNDS.demand[1]),
+    costs: clamp(1 + costs, FACTOR_BOUNDS.costs[0], FACTOR_BOUNDS.costs[1]),
+    value: clamp(1 + value, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]),
   }
   if (cache.size > 4096) cache.clear()
   cache.set(key, out)
