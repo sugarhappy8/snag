@@ -413,7 +413,16 @@ export interface BizState {
   franchise?: Json
   /** Yearly dividend rule (business/dividend-policy.ts). Missing: none set. Read it with readDividend, never raw. */
   dividend?: DividendPolicy
+  /**
+   * Tech-wave valuation mood stamped when a year was booked (business/tech-waves.ts stampWave): v = the
+   * value factor (0.3-3), y = the fiscal year it was booked for. Missing: none. Never set on a deep-tech
+   * or listed company. Validate it before use: bizOf does not re-normalize a current-version record.
+   */
+  wave?: WaveStamp
 }
+
+/** The tech-wave valuation mood of a booked year (BizState.wave). */
+export type WaveStamp = { v: number; y: number }
 
 export const BIZ_VERSION = 2
 
@@ -667,6 +676,10 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   const retired = readRetired(d.retired)
   // A year, or nothing: a damaged value must never leave Heavy R&D waiting for good.
   const heavyLast = typeof d.heavyLast === 'number' && Number.isFinite(d.heavyLast) && d.heavyLast >= 1800 && d.heavyLast <= 2300 ? Math.round(d.heavyLast) : null
+  // The tech-wave mood stamp (tech-waves.ts stampWave): both numbers finite, the factor clamped; never kept on deep tech.
+  const ws = rec(d.wave)
+  const waveStamp: WaveStamp | null = ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && typeof ws.y === 'number' && Number.isFinite(ws.y) && !isDeepTechIndustry(industry)
+    ? { v: Math.round(clampN(ws.v, 0.3, 3) * 1e4) / 1e4, y: Math.round(clampN(ws.y, 1800, 2300)) } : null
   return {
     v: BIZ_VERSION,
     industry,
@@ -753,6 +766,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...companyHedgeField(d.hedge),
     ...(d.franchise && typeof d.franchise === 'object' && !Array.isArray(d.franchise) ? { franchise: d.franchise } : {}),
     ...dividendField(d.dividend),
+    ...(waveStamp ? { wave: waveStamp } : {}),
   }
 }
 

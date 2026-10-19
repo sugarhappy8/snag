@@ -2,7 +2,7 @@
 // TechState inside a BizState, local cost scales, founder and team skill, the industry boom/bust
 // cycles, the demand/capacity model (stage, tech level, R&D premiums, compute, plants) and the
 // valuation cache that economy.valuationOf reads through deepTechValue().
-import { marketEventFactors } from '../history/market-events'
+import { FACTOR_BOUNDS, marketEventFactors } from '../history/market-events'
 import { outcomeTag } from '../timeMachine'
 import { seeded } from '../assets'
 import { marketOf, industryDemand } from '../data/markets'
@@ -18,6 +18,7 @@ import { hedgeProfitIn, hedgeResultFor } from './hedge-record'
 import { industryDef } from './industries'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
 import { runsIt, totalOutlets, type BizState } from './state'
+import { waveFactorsFor } from './tech-wave-factors'
 import { clampN, round2, toJson } from './util'
 import { LEADERSHIP } from './leadership'
 
@@ -141,8 +142,10 @@ export function techSkill(g: GameState, a: Asset, b: BizState, t: TechState): nu
 export interface IndustryCycle {
   demand: number
   price: number
-  /** Multiplier on valuations (bubbles and winters). */
+  /** Multiplier on valuations (bubbles and winters), tech waves included. */
   value: number
+  /** The tech-wave value factor already inside `value` (1 with no wave; business/tech-waves.ts). */
+  wave: number
   z: number
   label: string
 }
@@ -156,10 +159,15 @@ export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number)
   const amp = DEEP_TECH[ind].cycle.amp
   const z = 0.65 * cycleZ(g, ind, year) + 0.35 * cycleZ(g, ind, year - 1)
   const c = DEEP_TECH[ind].cycle
+  // Tech waves add their value factor only (the seed, demand, price, z and label are untouched): wave demand
+  // and costs reach a deep-tech company through marketCtxFor and nationalMarket, which techPlan already reads.
+  const wave = waveFactorsFor(g, ind, 'world', year).value
+  const value = clampN(1 + 1.5 * amp * z, 0.6, 1.6)
   return {
     demand: clampN(1 + amp * z, 0.6, 1.5),
     price: ind === 'semiconductor' ? clampN(1 + 0.6 * amp * z, 0.8, 1.2) : 1,
-    value: clampN(1 + 1.5 * amp * z, 0.6, 1.6),
+    value: wave === 1 ? value : clampN(value * wave, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]),
+    wave,
     z,
     label: z > 0.8 ? c.up : z < -0.8 ? c.down : 'steady',
   }
@@ -492,7 +500,9 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   const def = industryDef(ind)
   const d = DEEP_TECH[ind]
   // The sector's own hype cycle, times the real booms and busts in their years (market-events.ts).
-  const cyc = industryCycle(g, ind, g.year).value * marketEventFactors(ind, b.countryId, g.year).value
+  // With a tech wave live the product is held to the same value bounds as everywhere else; otherwise it is what it was.
+  const ic = industryCycle(g, ind, g.year), ev = marketEventFactors(ind, b.countryId, g.year).value
+  const cyc = ic.wave === 1 ? ic.value * ev : clampN(ic.value * ev, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
   const hypeMult = (0.6 + t.hype / 150) * cyc
   const years = bookedYears(b)
   const cur = years[years.length - 1]

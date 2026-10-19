@@ -19,6 +19,7 @@ import { industryDef } from './industries'
 import { entryStrength, presenceIn } from './market-reach'
 import { regionalShares } from './market-regional'
 import { readBiz, type BizState } from './state'
+import { entrantsDue, lowerLead } from './tech-waves'
 import { clampN, money as moneyShort, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -92,6 +93,7 @@ export function refreshMarket(g: GameState, a: Asset, b: BizState, year: number,
   for (const [id, m] of Object.entries(st.mods)) if (m.until <= year) delete st.mods[id]
   st.year = year
   lureNewcomer(g, a, b, st, stmt, year)
+  waveNewcomers(g, b, st, year)
   saveMarket(b, st)
 }
 
@@ -113,6 +115,30 @@ function lureNewcomer(g: GameState, a: Asset, b: BizState, st: MarketState, stmt
   const x: ExtraRival = { id: `x${year}${s.int(10, 99)}`, name, hq, founded: year + 1, pot: (0.6 + 2 * s.next()) * (1 + 2 * st.share), ramp: s.int(3, 5), origin: 'entrant' }
   st.extra = [...st.extra.filter((e) => e.founded > year - 40), x].slice(-12)
   log(g, `${name} launched to grab a slice of ${a.name}'s ${d.noun} profits.`, 'neutral')
+}
+
+/**
+ * Fast followers a tech wave draws into the company's market (business/tech-waves.ts entrantsDue): one
+ * per delivery level the wave has crossed, never founded twice (the id is stable and the market state
+ * remembers it, bought out or not). Deterministic: the stream is keyed by the family and the entrant id.
+ */
+function waveNewcomers(g: GameState, b: BizState, st: MarketState, year: number): void {
+  const due = entrantsDue(g, b.industry, st.key)
+  if (!due.length) return
+  const fam = familyId(g.lifeId)
+  const d = marketDef(b.industry)
+  for (const { id, wave } of due) {
+    if (st.extra.some((e) => e.id === id) || st.gone.includes(id)) continue
+    const s = seeded(`${fam}|wave-entrant|${id}`)
+    const hq = d.scope === 'world' ? pickHub(s, d, 'world') : b.countryId
+    const taken = new Set(rosterOf(fam, b.industry, st.key).rivals.map((r) => r.name).concat(st.extra.map((x) => x.name)))
+    let name = ''
+    for (let i = 0; i < 8 && (!name || taken.has(name) || isRealName(name)); i++) name = rivalName(s, b.industry, d, hq)
+    if (taken.has(name) || isRealName(name)) continue
+    const x: ExtraRival = { id, name, hq, founded: year + 1, pot: 0.6 + 0.8 * wave.size, ramp: 3, origin: 'entrant' }
+    st.extra = [...st.extra.filter((e) => e.founded > year - 40), x].slice(-12)
+    log(g, `${name} launched to chase the ${lowerLead(wave.name)} wave.`, 'neutral')
+  }
 }
 
 // ---------------------------------------------------------------------------

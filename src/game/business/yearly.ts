@@ -44,7 +44,7 @@ import { marketDef } from './competition-data'
 import { groupsOf, liveGroup, sharePriceOf } from './conglomerate-state'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
-import { advanceTechWaves } from './tech-waves'
+import { advanceTechWaves, stampWave } from './tech-waves'
 import { maybeBusinessEvent } from './events'
 import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
@@ -529,6 +529,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
     if (tech) afterDeepTechYear(g, a, b)
+    // The tech-wave mood of the booked year, before anything values the company (business/tech-waves.ts).
+    stampWave(g, b, fiscal)
     const rec0 = recordYear(b, s)
     b.valuation = b.public ? updateSharePrice(g, b, fiscal) : valuationOf(b)
     rec0.valuation = b.valuation

@@ -8,7 +8,7 @@
 // brand, marketing, products, staff morale, the country's business cycle (shared by every firm
 // in that country), competition and market saturation. Costs follow local wages (never below
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
-import { marketEventFactors } from '../history/market-events'
+import { FACTOR_BOUNDS, marketEventFactors } from '../history/market-events'
 import { historicalIndexReturn } from '../history/markets'
 import { outcomeTag } from '../timeMachine'
 import { publicBusinessShockFactor } from '../invest/shocks'
@@ -26,6 +26,7 @@ import { franchiseFeesFor } from './franchise-state'
 import { hedgeProfitIn } from './hedge-record'
 import { studioValue } from './gamestudio-state'
 import { heavyPulse, readHeavy } from './heavy-rd'
+import { historyFactors, waveFactorsFor } from './tech-wave-factors'
 import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
 import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
@@ -446,7 +447,12 @@ export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx
   const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy)
   const pot = ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1)
   // A breakthrough wakes up demand for the whole trade in its market, rivals and the player alike.
-  return { ...ctx, pot: heavy.length ? pot * heavyPulse(heavy, year) : pot, field }
+  const pulse = heavy.length ? heavyPulse(heavy, year) : 1
+  // Tech waves (business/tech-waves.ts) move demand here and nowhere else, on this copy and after buildCtx
+  // (its cache stays free of game state), together with the heavy pulse under one clamp. With no wave the
+  // factor is exactly 1 and this is what it always was.
+  const wd = waveFactorsFor(g, b.industry, ctx.key, year).demand
+  return { ...ctx, pot: wd === 1 ? (heavy.length ? pot * pulse : pot) : pot * clampN(pulse * wd, FACTOR_BOUNDS.demand[0], FACTOR_BOUNDS.demand[1]), field }
 }
 
 /**
@@ -887,7 +893,18 @@ export function valuationOf(b: BizState): number {
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)
   // A dominant company's profits are safer (a moat): investors pay a little more for them. In a
   // boom or a bust (history/market-events.ts) they pay more or less for every dollar of it.
-  const mood = h.length ? marketEventFactors(b.industry, b.countryId, h[h.length - 1].year).value : 1
+  const last = h.length ? h[h.length - 1] : null
+  const events = last ? marketEventFactors(b.industry, b.countryId, last.year).value : 1
+  let mood = events
+  // Tech waves (business/tech-waves.ts): the mood stamped when that year was booked, else the history
+  // table read directly. A stamp only counts for the last record's year and is validated here (bizOf
+  // does not re-normalize a current-version record). Deep tech reads waves through industryCycle and
+  // classicPart spreads b, so it never uses either; a listed company's price is release 1b.
+  if (last && !isDeepTech(b) && !b.public) {
+    const ws = b.wave
+    const wv = ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && ws.y === last.year ? clampN(ws.v, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]) : historyFactors(b.industry, marketKey(b), last.year).value
+    if (wv !== 1) mood = clampN(events * wv, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
+  }
   const mult = def.multiple * (1 + growth * def.growth) * (0.85 + b.brand / 333) * (1 + MOAT * dominanceOf(b)) * mood
   const ev = Math.max(0, avg) * mult
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
