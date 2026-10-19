@@ -90,6 +90,7 @@ import { franchiseMenu } from './franchise'
 import { milestonesMenu } from './milestones'
 import { tidyNationalStrategy } from './national-view'
 import { FAB_MAX, readFabs } from './devices-data'
+import { devicesMenu } from './devices-menu'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -2253,7 +2254,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
     if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
     const franchise = franchiseMenu(a, health)
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...(health.industry === 'devices' ? [devicesMenu(a, buildFabAction(a))] : []), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(economicReportMenu(a))
