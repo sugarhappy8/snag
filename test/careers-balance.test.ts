@@ -40,7 +40,7 @@ for (const id of Object.keys(CAREER_SETUPS) as CareerId[]) {
     }
 
     it(
-      'idle leaves the sim record as it was, except the rows, the years and the kit bookkeeping',
+      'idle leaves the sim record as it was, except the rows, the years, the kit bookkeeping and the calendar the sim keeps itself',
       () => {
         const setup = CAREER_SETUPS[id]!
         const g = newCareerGame(id, SEEDS[0])
@@ -48,17 +48,22 @@ for (const id of Object.keys(CAREER_SETUPS) as CareerId[]) {
           const raw = g.flags[`special.${setup.stateKey}`]
           if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
           const copy: Record<string, unknown> = { ...raw }
-          for (const key of KIT_BOOKKEEPING) delete copy[key]
+          for (const key of [...KIT_BOOKKEEPING, ...(setup.idleMoves ?? [])]) delete copy[key]
           return JSON.parse(JSON.stringify(copy))
         }
         // The first year creates the record. Idle takes no menu action and answers no popup (the queue is simply dropped).
         nextYear(g)
         g.queue = []
         const first = record()
-        for (let i = 0; i < 5 && g.character.alive; i++) {
+        // A career whose setup has no sim record would compare null to null and pass for nothing.
+        expect(first, `${id} has a sim record after its first year`).not.toBeNull()
+        let years = 0
+        for (let i = 0; i < 5 && g.character.alive && g.character.job?.defId === setup.defId; i++) {
           nextYear(g)
           g.queue = []
+          years++
         }
+        expect(years, `${id} idles for the five years`).toBe(5)
         expect(record()).toEqual(first)
         drainCareer(g, 'idle', [], []) // an empty queue: nothing to answer
       },

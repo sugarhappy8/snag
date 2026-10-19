@@ -12,6 +12,7 @@ import { hasScript, runScript } from '../src/game/scripts'
 import { yearlySpecial } from '../src/game/special'
 import { actorCareerMenu, actorJobNodes } from '../src/game/special/actor'
 import { astronautCareerMenu, astronautJobNodes } from '../src/game/special/astronaut'
+import { astronautStore } from '../src/game/special/astronaut-state'
 import { modelCareerMenu, modelJobNodes } from '../src/game/special/model'
 import { actorStore, adoptLegacy } from '../src/game/special/actor-state'
 import { modelStore } from '../src/game/special/model-state'
@@ -147,6 +148,11 @@ export interface CareerSetup {
   roots: (g: GameState) => MenuNode[]
   /** Which actions each acting strategy runs, matched on the action id. */
   prefer: Record<'steady' | 'greedy' | 'reckless', RegExp>
+  /**
+   * The record keys the sim's own calendar moves in a year of no input (the idle check leaves them out). Everything
+   * else, such as flights, the tally and the body, must stay as it was: idle takes no action.
+   */
+  idleMoves?: readonly string[]
 }
 
 /** One entry per career, added by its task. */
@@ -162,21 +168,23 @@ export const CAREER_SETUPS: Partial<Record<CareerId, CareerSetup>> = {
     roots: (g) => [actorCareerMenu, ...actorJobNodes(g)],
     prefer: { steady: /^actor\.(audition|practice)$/, greedy: /^actor\.(audition|practice)$/, reckless: /^actor\.(audition|stunt|practice)$/ },
   },
-  // The Academy is the way in. Once an astronaut job is held the sim's world ticks every year (funding, mood and safety
-  // follow the calendar), so a year of no input changes the record: the idle check needs a sim that is quiet then. A
-  // strong cadet drills, graduates through the selection board and takes the first offer; the run ends at the hire.
-  // The Flight Board and the yearly sim are played by test/astronaut-flight.test.ts.
+  // A serving Mission Specialist with a record, so every year runs the real sim: the Flight Board, the crises, the
+  // inquiries, the funding and mood world, and the memoir tail once out. A year of no input still moves the world's
+  // calendar (funding, mood, safety, the class intake, the peers' inquiries and the standing), which `idleMoves` names;
+  // nothing the astronaut owns may move. The Academy leg (graduation, the selection board) is test/astronaut-class.test.ts.
   astronaut: {
-    defId: 'astronaut.cadet',
+    defId: 'astronaut',
     stateKey: 'astronaut.sim',
     hire: (g) => {
       g.character.stats.smarts = 95
       g.character.stats.health = 90
       g.character.hidden.athleticism = 80
-      hire(g, { defId: 'astronaut.cadet', title: 'Space Academy Cadet', company: 'Orion Space Academy', salary: 14_000, performance: 80, data: { training: 80, yearsLeft: 2 } })
+      hire(g, { defId: 'astronaut', title: 'Mission Specialist', company: 'Orbital Exploration Agency', salary: 100_000, level: 2, performance: 70, data: { agency: 'oea', lastMissionAge: -1 } })
+      astronautStore.mut(g)
     },
     roots: (g) => [astronautCareerMenu, ...astronautJobNodes(g)],
-    prefer: { steady: /^astro\.drill\./, greedy: /^astro\.drill\./, reckless: /^astro\.drill\./ },
+    prefer: { steady: /^astro\.(mission|rehab|family|train)$/, greedy: /^astro\.(mission|article)$/, reckless: /^astro\.mission$/ },
+    idleMoves: ['standing', 'fund', 'classes', 'mood', 'safety', 'inquiries', 'seq'],
   },
   // A Supermodel at the top of the ladder: the legacy hook has nothing left to promote, and fame, mood, buzz and strain
   // start at the level the sim holds them at, so a year of no input leaves the record as it was (the idle check). The
