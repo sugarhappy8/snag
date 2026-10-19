@@ -31,6 +31,7 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { countryLabel, getCountry, randomFirstName, randomLastName } from '../world'
+import { astroPoliticsEdge } from './astronaut-state'
 import {
   CELEBS,
   addFame,
@@ -667,6 +668,7 @@ defineScript(BUDGET_SCRIPT, (g, choice, data) => {
     (c.stats.smarts - 50) * 0.1 +
     (c.stats.looks - 50) * 0.08 +
     Math.min(12, fame * 0.15) +
+    astroPoliticsEdge(g) +
     budgetBoost +
     experience -
     convictions(g) * 5 -

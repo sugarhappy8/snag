@@ -2,13 +2,23 @@
 // kid helps), survive two years of training, join a space agency as an Astronaut Candidate and
 // climb to Chief Astronaut. Missions launch to the space station, the Moon, deep space or Mars;
 // steer through asteroid fields, take spacewalks, discover and name planets, publish research.
-import { addHidden, addStat, count, counter, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction } from '../core'
+import { addHidden, addStat, article, count, counter, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction } from '../core'
 import { killCharacter } from '../death'
 import { masterFirstTime } from '../mastery'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import { hasMainCharacter } from '../talents'
-import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+// The astronaut-*.ts files are used inside function bodies only: they import this file back.
+import { ACADEMY_FROM } from './astronaut-data'
+import { astroBodyRows, astroPromotionOk, flightBoardRows, trainSkills } from './astronaut-flight'
+import { boardNotice, classBias, classYear, playerBackground, runBoard, type BoardResult } from './astronaut-class'
+import { astroLobbyRows } from './astronaut-events'
+import { astroPublicRows, corpsMenu } from './astronaut-exits'
+import { astronautStore, readAstro } from './astronaut-state'
+import { access, type Access } from './astronaut-world'
+import { honest } from './kit/crisis'
+import { cap, int, rec, txt } from './kit/state'
 import {
   addFame,
   blocked,
@@ -40,7 +50,7 @@ import {
 // ---------------------------------------------------------------------------
 // Data
 
-interface Agency {
+export interface Agency {
   id: string
   name: string
   emoji: string
@@ -59,7 +69,7 @@ const AGENCIES: Agency[] = [
 ]
 
 /** The player's own government space agency, where one exists (NASA, ISRO, JAXA, ESA...). */
-const SPACE_AGENCIES: Record<string, string> = {
+export const SPACE_AGENCIES: Record<string, string> = {
   us: 'NASA', ru: 'Roscosmos', cn: 'CNSA', jp: 'JAXA', in: 'ISRO', fr: 'CNES', de: 'DLR', it: 'Italian Space Agency',
   gb: 'UK Space Agency', ca: 'Canadian Space Agency', kr: 'Korea AeroSpace Administration', ae: 'UAE Space Agency',
   br: 'Brazilian Space Agency', il: 'Israel Space Agency', ir: 'Iranian Space Agency', ua: 'State Space Agency of Ukraine',
@@ -79,7 +89,7 @@ function localAgency(g: GameState, a: Agency): Agency {
   return name ? { ...a, name, blurb: name === 'European Space Agency' ? 'Europe\'s space agency' : 'Your country\'s space agency' } : a
 }
 
-function agencyOf(id: string, g?: GameState): Agency {
+export function agencyOf(id: string, g?: GameState): Agency {
   const a = AGENCIES.find((x) => x.id === id) ?? AGENCIES[0]
   return g ? localAgency(g, a) : a
 }
@@ -129,8 +139,18 @@ function astroProfile(g: GameState): AstroProfile {
   return prof(g, 'astronaut', initAstro)
 }
 
+/** Read-only profile for menus and hints. A damaged save (a list that is not a list, a counter that is not a number) reads as plain: menus never throw on it. */
 function viewAstro(g: GameState): AstroProfile {
-  return peek<AstroProfile>(g, 'astronaut') ?? initAstro()
+  const raw = peek<AstroProfile>(g, 'astronaut')
+  if (!raw) return initAstro()
+  return {
+    ...raw,
+    ...readAstro(g),
+    planets: Array.isArray(raw.planets) ? raw.planets.filter((x) => !!x && typeof x === 'object') : [],
+    research: int(raw.research, 0, 0, 1e6),
+    articles: int(raw.articles, 0, 0, 1e6),
+    firstWords: typeof raw.firstWords === 'string' ? raw.firstWords : '',
+  }
 }
 
 interface CadetData {
@@ -138,7 +158,7 @@ interface CadetData {
   yearsLeft: number
 }
 
-interface AstroData {
+export interface AstroData {
   agency: string
   lastMissionAge: number
 }
@@ -155,11 +175,11 @@ function cdata(job: Job): CadetData {
   return view<CadetData>(job.data)
 }
 
-function adata(job: Job): AstroData {
+export function adata(job: Job): AstroData {
   return view<AstroData>(job.data)
 }
 
-function payFor(agency: Agency, level: number): number {
+export function payFor(agency: Agency, level: number): number {
   return Math.round((PAY[Math.min(level, PAY.length - 1)] * agency.pay) / 100) * 100
 }
 
@@ -170,6 +190,7 @@ function academyReason(g: GameState): string | null {
   const c = g.character
   const b = blocked(g, 18)
   if (b) return b
+  if (g.year < ACADEMY_FROM) return 'No agency trains astronaut candidates yet.'
   if (!hasCollegeDegree(g)) return 'The Space Academy only accepts university graduates.'
   if (c.age > 45) return 'The Space Academy says you are past the age limit for new cadets.'
   if (c.stats.health < 50) return 'You need to be in better health to pass the astronaut physical.'
@@ -312,38 +333,84 @@ function hireAstronaut(g: GameState, a: Agency): string {
   return quitNote(quit)
 }
 
-function applyAgency(a: Agency): MenuAction {
+/** The agency under the name its country and year know it (never before AGENCY_FROM), for a life that can reach it. */
+function shown(g: GameState, a: Agency, ac: Access | null = access(g).find((x) => x.id === a.id) ?? null): Agency {
+  return ac && a.id === 'oea' ? { ...a, name: ac.name } : a
+}
+
+/** Writes a selection board's result into the corps record. The record migrates from the job, so hire first. */
+function logClass(g: GameState, agency: string, r: Record<string, unknown>): void {
+  const s = astronautStore.mut(g)
+  const mates = (Array.isArray(r.mates) ? r.mates : []).flatMap((m) => (typeof m === 'string' ? [txt(m, 40)] : [])).filter(Boolean).slice(0, 6)
+  s.classes = cap([...s.classes, { year: g.year, agency: txt(agency, 24), seats: int(r.seats, 0, 0, 999), finalists: int(r.finalists, 0, 0, 9999), rank: int(r.rank, 0, 0, 9999), cut: int(r.cut, 0, 0, 100), mates }], 6)
+}
+
+/** A board result as modal data: plain JSON, nothing the record would have to trust. */
+const boardData = (r: BoardResult): Record<string, Json> => ({ rank: r.rank, finalists: r.finalists, seats: r.seats, cut: r.cut, passed: r.passed, mates: [...r.mates] })
+
+/** The legacy reasons plus the new ones: an agency that flies crews here, and a class year. */
+function applyReason(g: GameState, a: Agency): string | null {
+  const why = agencyReason(g, a)
+  if (why) return why
+  const open = access(g)
+  const ac = open.find((x) => x.id === a.id)
+  if (!ac) return open.length === 0 ? 'No agency here flies crews yet.' : `${TheAgency(a)} doesn't take candidates here yet.`
+  return classYear(ac.agency, g.year) ? null : 'No class is forming this year.'
+}
+
+function applySubtitle(g: GameState, a: Agency): string {
+  const ac = access(g).find((x) => x.id === a.id)
+  if (!ac || !classYear(ac.agency, g.year)) return `${a.blurb} · Starts at ${money(payFor(a, 0))}`
+  const r = runBoard(g, astronautStore.view(g), ac.id, g.year, { roll: 0 })
+  return `Class ${g.year}, ${r.seats} seats, ${r.finalists} finalists, cut about ${r.cut}`
+}
+
+function applyAgency(g: GameState, a: Agency): MenuAction {
+  const label = shown(g, a).name
   return {
     type: 'action',
     id: `astro.apply.${a.id}`,
-    label: a.name,
+    label,
     emoji: a.emoji,
-    subtitle: () => `${a.blurb} · Starts at ${money(payFor(a, 0))}`,
-    disabledReason: (g) => agencyReason(g, a),
-    confirm: (g) => (g.character.job ? `If hired, you'll quit your job as ${g.character.job.title}. Apply?` : null),
-    run: (g) => {
-      const why = agencyReason(g, a)
-      if (why) return tell(g, a.name, why, a.emoji)
-      if (!useYearAction(g, `astro.apply.${a.id}`, 1)) return tell(g, a.name, `You already applied to ${theAgency(a)} this year.`, '\u{1F4EC}')
-      const c = g.character
-      const odds = Math.max(0.1, Math.min(0.92, 0.55 + (c.stats.smarts - a.smarts) / 50 + (c.stats.health - 70) / 200))
-      if (!chance(g, odds)) {
-        log(g, `${TheAgency(a)} turned me down.`, 'bad')
-        return say(g, a.name, pick(g, [`${TheAgency(a)} said they had "more qualified candidates". You suspect nepotism.`, `You flubbed the panel interview at ${theAgency(a)} by calling Pluto a planet. Twice.`, `${TheAgency(a)} has a hiring freeze. Try again next year.`]), '\u{1F4ED}', 'bad')
+    subtitle: (h) => applySubtitle(h, a),
+    hint: (h) => {
+      const ac = access(h).find((x) => x.id === a.id)
+      if (!ac || !classYear(ac.agency, h.year)) return null
+      const you = playerBackground(h, astronautStore.view(h))
+      return honest(h, 'Academics', `This class wants ${classBias(h, ac.id, h.year)}s. You read as ${article(you)} ${you}.`).hint ?? null
+    },
+    disabledReason: (h) => applyReason(h, a),
+    confirm: (h) => (h.character.job ? `If hired, you'll quit your job as ${h.character.job.title}. Apply?` : null),
+    run: (h) => {
+      const why = applyReason(h, a)
+      if (why) return tell(h, label, why, a.emoji)
+      if (!useYearAction(h, `astro.apply.${a.id}`, 1)) return tell(h, label, `You already applied to ${theAgency(a)} this year.`, '\u{1F4EC}')
+      const ac = access(h).find((x) => x.id === a.id)
+      if (!ac) return
+      const board = runBoard(h, astronautStore.view(h), ac.id, h.year, { roll: randInt(h, -6, 6) })
+      if (!board.passed) {
+        log(h, `${TheAgency(shown(h, a, ac))} turned me down.`, 'bad')
+        return say(h, label, `${boardNotice(board)} You can try again at the next class.`, '\u{1F4ED}', 'bad')
       }
-      const note = hireAstronaut(g, a)
-      say(g, a.name, `${TheAgency(a)} hired you as an Astronaut Candidate! Your salary is ${money(payFor(a, 0))}. Train hard and you'll be on a launch pad soon.${note}`, '\u{1F468}\u{200D}\u{1F680}', 'good')
+      const hired = shown(h, a, ac)
+      const note = hireAstronaut(h, hired)
+      logClass(h, ac.id, boardData(board))
+      say(h, label, `${boardNotice(board)} ${TheAgency(hired)} hired you as an Astronaut Candidate at ${money(payFor(a, 0))}.${note}`, '\u{1F468}\u{200D}\u{1F680}', 'good')
     },
   }
 }
 
 const OFFER_SCRIPT = 'special.astro.offer'
 
-defineScript(OFFER_SCRIPT, (g, choice) => {
+defineScript(OFFER_SCRIPT, (g, choice, data) => {
   if (choice === 'decline') return say(g, 'Job Offers', 'You turned down every space agency. You can apply again later under Special Careers.', '\u{1F30D}')
-  const a = agenciesFor(g).find((x) => x.id === choice)
-  if (!a || agencyReason(g, a)) return
+  const base = agenciesFor(g).find((x) => x.id === choice)
+  if (!base || agencyReason(g, base)) return
+  const a = shown(g, base)
   const note = hireAstronaut(g, a)
+  // The selection board's result rides in the modal; a modal queued before the board existed carries none and hires with no class record.
+  const board = rec(rec(data)[a.id])
+  if (board.passed === true) logClass(g, a.id, board)
   say(g, a.name, `You accepted ${theAgency(a)}'s offer and became an Astronaut Candidate earning ${money(payFor(a, 0))}.${note}`, a.emoji, 'good')
 })
 
@@ -358,6 +425,7 @@ defineScript(TRAIN_SCRIPT, (g, choice) => {
   if (!useYearAction(g, 'astro.train', 2)) return tell(g, 'Training', "You've trained enough this year. The flight surgeon ordered you to rest.", '\u{1F971}')
   const gain = randInt(g, 3, 8)
   bump(job, gain)
+  trainSkills(g, choice, gain)
   let text: string
   if (choice === 'pool') {
     addHidden(g, 'athleticism', randInt(g, 1, 2))
@@ -400,37 +468,21 @@ const trainAction: MenuAction = {
     ),
 }
 
-const researchAction: MenuAction = {
-  type: 'action',
-  id: 'astro.research',
-  label: 'Conduct Research',
-  emoji: '\u{1F52C}',
-  subtitle: (g) => `Research points: ${viewAstro(g).research}`,
-  disabledReason: (g) => blocked(g, 0),
-  run: (g) => {
-    const job = astronautJob(g)
-    if (!job) return
-    if (!useYearAction(g, 'astro.research', 1)) return tell(g, 'Research', "You've already run your experiments this year. The lab mice need a break.", '\u{1F42D}')
-    const c = g.character
-    const p = astroProfile(g)
-    const pts = Math.max(1, Math.round(2 + (c.stats.smarts - 40) / 10 + randInt(g, 0, 4)))
-    p.research += pts
-    bump(job, randInt(g, 2, 5))
-    addStat(g, 'smarts', randInt(g, 0, 2))
-    log(g, 'I conducted research for my space agency.')
-    say(
-      g,
-      'Research',
-      `${pick(g, [
-        'You studied how tomatoes grow in microgravity. They are confused but thriving.',
-        'You analyzed rock samples and found something that is definitely a rock.',
-        'You measured cosmic radiation levels and recommended thicker underwear for the crew.',
-        'You ran an experiment on how ants build tunnels in zero gravity. Badly, it turns out.',
-      ])} (+${pts} research points)`,
-      '\u{1F52C}',
-      'good',
-    )
-  },
+/** Lifetime research points the lab credits (the cap on the Conduct Research row). */
+const RESEARCH_MAX = 200
+
+/** The research points on the legacy profile, read without writing and tolerant of a damaged profile. */
+export function researchPoints(g: GameState): number {
+  return viewAstro(g).research
+}
+
+/** Credits research points to the legacy profile, up to the lifetime cap; returns what was credited. */
+export function addResearchPoints(g: GameState, points: number): number {
+  const p = astroProfile(g)
+  const have = int(p.research, 0, 0, RESEARCH_MAX)
+  const add = Math.max(0, Math.min(RESEARCH_MAX - have, Math.round(Number.isFinite(points) ? points : 0)))
+  p.research = have + add
+  return add
 }
 
 const articleAction: MenuAction = {
@@ -472,7 +524,7 @@ const articleAction: MenuAction = {
 // ---------------------------------------------------------------------------
 // Missions
 
-interface Destination {
+export interface Destination {
   id: string
   label: string
   emoji: string
@@ -482,12 +534,14 @@ interface Destination {
   asteroids: number
 }
 
-const DESTINATIONS: Destination[] = [
+export const DESTINATIONS: Destination[] = [
   { id: 'station', label: 'Space Station resupply', emoji: '\u{1F6F0}\u{FE0F}', minLevel: 1, fame: 1, bonus: 0.06, asteroids: 0.35 },
   { id: 'satellite', label: 'Satellite repair', emoji: '\u{1F4E1}', minLevel: 1, fame: 1, bonus: 0.07, asteroids: 0.5 },
   { id: 'moon', label: 'The Moon', emoji: '\u{1F311}', minLevel: 2, fame: 6, bonus: 0.12, asteroids: 1 },
   { id: 'deep', label: 'Deep space survey', emoji: '\u{1F52D}', minLevel: 3, fame: 3, bonus: 0.12, asteroids: 1 },
   { id: 'mars', label: 'Mars', emoji: '\u{1F534}', minLevel: 4, fame: 10, bonus: 0.2, asteroids: 1 },
+  // The Flight Board's hop, orbit, orbiter and commercial flights: a generic arrival scene with no station, Moon or Mars in it.
+  { id: 'flight', label: 'Crewed flight', emoji: '\u{1F680}', minLevel: 1, fame: 1, bonus: 0.06, asteroids: 0.35 },
 ]
 
 function destOf(id: string): Destination {
@@ -517,11 +571,14 @@ interface Flight {
   round: number
   hull: number
   safe: string[]
+  /** The Flight Board already paid flight pay through the ledger: `arrive` adds no bonus. */
+  paid?: boolean
 }
 
 function asteroidPrompt(g: GameState, f: Flight, prefix: string): void {
   const safe = shuffle(g, DIRS.map((d) => d.id)).slice(0, 2)
-  const reliable = chance(g, 0.45 + g.character.stats.smarts / 200)
+  // A trained pilot reads the sensors better (no-op without a corps record).
+  const reliable = chance(g, 0.45 + g.character.stats.smarts / 200 + (astronautStore.peek(g)?.skills.pilot ?? 0) / 400)
   const hint = reliable ? pick(g, safe) : pick(g, DIRS.map((d) => d.id).filter((x) => !safe.includes(x)))
   const hintLabel = DIRS.find((d) => d.id === hint)?.label.toLowerCase() ?? 'steer left'
   const next: Flight = { ...f, safe }
@@ -555,16 +612,25 @@ defineScript(DEST_SCRIPT, (g, choice) => {
     'The engines roared and you were pinned to your seat. Moments later, the sky turned black.',
     'You waved at the camera, the countdown hit zero, and you were on your way to space!',
   ])
-  if (chance(g, dest.asteroids)) {
-    asteroidPrompt(g, { dest: dest.id, round: 1, hull: 100, safe: [] }, launch)
+  flyOn(g, dest.id, launch, false)
+})
+
+/**
+ * What follows a launch that went well: the asteroid field for the rougher flights, then the arrival. The legacy
+ * mission script calls it with `paid` false and nothing changes; the Flight Board calls it with `paid` true,
+ * because it already paid flight pay through the ledger, so `arrive` skips its own bonus and the sentence about it.
+ */
+export function flyOn(g: GameState, destId: string, launchText: string, paid: boolean): void {
+  if (chance(g, destOf(destId).asteroids)) {
+    asteroidPrompt(g, { dest: destId, round: 1, hull: 100, safe: [], paid }, launchText)
     return
   }
-  arrive(g, dest.id, 100, launch)
-})
+  arrive(g, destId, 100, launchText, paid)
+}
 
 defineScript(ASTEROID_SCRIPT, (g, choice, data) => {
   const raw = (data ?? {}) as Partial<Flight>
-  const f: Flight = { dest: str(raw.dest as Json, 'station'), round: num(raw.round as Json, 1), hull: num(raw.hull as Json, 100), safe: Array.isArray(raw.safe) ? raw.safe.map(String) : [] }
+  const f: Flight = { dest: str(raw.dest as Json, 'station'), round: num(raw.round as Json, 1), hull: num(raw.hull as Json, 100), safe: Array.isArray(raw.safe) ? raw.safe.map(String) : [], paid: raw.paid === true }
   if (!g.character.alive) return
   const job = astronautJob(g)
   const risk = job ? agencyOf(adata(job).agency, g).risk : 1
@@ -596,31 +662,37 @@ defineScript(ASTEROID_SCRIPT, (g, choice, data) => {
     asteroidPrompt(g, { ...f, round: f.round + 1 }, text)
     return
   }
-  arrive(g, f.dest, f.hull, `${text} You made it through the asteroid field!`)
+  arrive(g, f.dest, f.hull, `${text} You made it through the asteroid field!`, f.paid === true)
 })
 
 const PLANET_KINDS = ['gas giant', 'ice world', 'rocky planet', 'ocean world', 'lava planet', 'dwarf planet', 'super-Earth']
 const PLANET_PREFIX = ['Kepler', 'Nova', 'Zeta', 'Orion', 'Vega', 'Lyra', 'Draco', 'Cygnus']
 
-function arrive(g: GameState, destId: string, hull: number, prefix: string): void {
+function arrive(g: GameState, destId: string, hull: number, prefix: string, paid = false): void {
   const job = astronautJob(g)
   if (!job || !g.character.alive) return
   const dest = destOf(destId)
   const p = astroProfile(g)
   p.missions += 1
   count(g, 'spaceMissions')
-  const bonus = Math.round((job.salary * dest.bonus * (0.8 + rand(g) * 0.5)) / 100) * 100
-  earnIncome(g, bonus)
+  // Paid flights (the Flight Board) were already paid through the ledger: no bonus, and the draw is skipped.
+  const bonus = paid ? 0 : Math.round((job.salary * dest.bonus * (0.8 + rand(g) * 0.5)) / 100) * 100
+  if (!paid) earnIncome(g, bonus)
   bump(job, randInt(g, 8, 15) - (hull < 50 ? 5 : 0))
   addFame(g, dest.fame)
   addStat(g, 'happiness', randInt(g, 10, 18))
-  const pay = ` You earned a ${money(bonus)} mission bonus.`
+  const pay = paid ? '' : ` You earned a ${money(bonus)} mission bonus.`
   const lead = prefix ? `${prefix}\n\n` : ''
   switch (dest.id) {
     case 'station': {
       log(g, 'I flew a mission to the space station.', 'good')
       say(g, 'Space Station', `${lead}You docked with the space station and delivered supplies, experiments and ${pick(g, ['a birthday cake for the commander', 'three hundred pounds of freeze-dried lasagna', 'a very confused fruit fly colony'])}.${pay}`, '\u{1F6F0}\u{FE0F}', 'good')
       if (chance(g, 0.6)) spacewalkOffer(g, 'A solar panel on the station needs repairs. Your commander asks for a volunteer to go outside.')
+      return
+    }
+    case 'flight': {
+      log(g, 'I flew a crewed mission.', 'good')
+      say(g, 'Crewed Flight', `${lead}${pick(g, ['The crew did its work and came home on schedule.', 'You flew the plan and the landing was clean.', 'The flight ran to the minute. Mission control had little to say.'])}${pay}`, '\u{1F680}', 'good')
       return
     }
     case 'satellite': {
@@ -770,33 +842,6 @@ defineScript(PLANET_SCRIPT, (g, value, data) => {
   say(g, 'Planet Named', `The new ${kind} is officially named ${name}! ${pick(g, ['Textbooks are being updated as we speak.', 'Astronomers everywhere are mispronouncing it already.', 'Somewhere up there, it is waiting for visitors.'])}`, '\u{1FA90}', 'good')
 })
 
-const missionAction: MenuAction = {
-  type: 'action',
-  id: 'astro.mission',
-  label: 'Go on a Mission',
-  emoji: '\u{1F680}',
-  subtitle: (g) => {
-    const job = astronautJob(g)
-    if (!job) return ''
-    return job.level < 1 ? 'Candidates must finish training before flying' : 'One launch window per year'
-  },
-  disabledReason: (g) => {
-    const b = blocked(g, 0)
-    if (b) return b
-    const job = astronautJob(g)
-    if (job && job.level < 1) return 'Astronaut Candidates are not cleared for flight yet. Keep training to earn your wings.'
-    if (g.character.stats.health < 30) return 'The flight surgeon grounded you until your health improves.'
-    return null
-  },
-  run: (g) => {
-    const job = astronautJob(g)
-    if (!job) return
-    const options: ChoiceOption[] = DESTINATIONS.filter((d) => job.level >= minLevelFor(g, d)).map((d) => ({ id: d.id, label: d.label, emoji: d.emoji }))
-    options.push({ id: 'cancel', label: 'Not yet', emoji: '\u{274C}' })
-    scriptChoice(g, DEST_SCRIPT, 'Mission Briefing', 'Mission control has these missions available for you. Where do you want to go?', options, { emoji: '\u{1F680}' })
-  },
-}
-
 function spaceLogMenu(): MenuGroup {
   return {
     type: 'menu',
@@ -814,6 +859,7 @@ function spaceLogMenu(): MenuGroup {
         { type: 'info', id: 'astro.log.science', emoji: '\u{1F52C}', text: `Research points: ${p.research} · Articles published: ${p.articles}` },
       ]
       if (p.firstWords) nodes.push({ type: 'info', id: 'astro.log.words', emoji: '\u{1F463}', text: `First words on the Moon: "${p.firstWords}"` })
+      if (astronautStore.has(g)) nodes.push(corpsMenu())
       if (p.planets.length) {
         nodes.push({ type: 'heading', id: 'astro.log.h', label: 'Planets Discovered' })
         p.planets.forEach((pl, i) => nodes.push({ type: 'info', id: `astro.log.p${i}`, emoji: '\u{1FA90}', text: `${pl.name}, a ${pl.kind} (discovered at age ${pl.age})` }))
@@ -848,10 +894,12 @@ export function astronautJobNodes(g: GameState): MenuNode[] {
   const p = viewAstro(g)
   return [
     { type: 'info', id: 'astro.status', emoji: '\u{1F468}\u{200D}\u{1F680}', text: `${job.title} at the ${job.company} · Performance ${job.performance}% · ${p.missions} mission${p.missions === 1 ? '' : 's'}` },
-    missionAction,
+    ...(job.level >= 6 ? [{ type: 'info', id: 'astro.admin.nofly', emoji: '\u{1F3DB}\u{FE0F}', text: "Administrators don't fly." } as MenuNode] : flightBoardRows(g)),
     trainAction,
-    researchAction,
+    ...astroBodyRows(g),
+    ...astroLobbyRows(g),
     articleAction,
+    ...astroPublicRows(g),
     spaceLogMenu(),
     quitAstro,
   ]
@@ -871,9 +919,11 @@ export const astronautCareerMenu: MenuGroup = {
     const nodes: MenuNode[] = [academyAction]
     if (viewAstro(g).graduated) {
       nodes.push({ type: 'heading', id: 'astro.h.agencies', label: 'Space Agencies' })
-      nodes.push(...agenciesFor(g).map(applyAgency))
+      nodes.push(...agenciesFor(g).map((a) => applyAgency(g, a)))
     }
     if (viewAstro(g).missions > 0) nodes.push(spaceLogMenu())
+    // A retired astronaut's lectures and books live here; a life with no corps record (an heir) has none.
+    if (astronautStore.has(g)) nodes.push(...astroPublicRows(g))
     return nodes
   },
 }
@@ -903,20 +953,30 @@ function yearlyCadet(g: GameState, job: Job): void {
   if (d.training >= 60) {
     const p = astroProfile(g)
     p.graduated = true
+    // The selection board replaces the 75% offer roll: the Academy's own cohort sits it for every agency that flies
+    // crews here. It runs while the cadet job still holds the training score the board reads.
+    const boards = access(g).map((ac) => ({ ac, r: runBoard(g, astronautStore.view(g), ac.id, g.year, { cohort: true, roll: randInt(g, -6, 6) }) }))
     leave(g, 'graduated')
     addStat(g, 'happiness', 12)
     count(g, 'spaceAcademy')
     log(g, `I graduated from ${ACADEMY}!`, 'good')
     remember(g, `Graduated from ${ACADEMY}.`)
-    const offers = agenciesFor(g).filter(() => chance(g, 0.75))
-    if (!offers.length) offers.push(pick(g, agenciesFor(g)))
+    for (const { ac, r } of boards) say(g, ac.name, boardNotice(r), '\u{1F9D1}\u{200D}\u{1F680}', r.passed ? 'good' : 'bad')
+    const cleared = boards.filter((b) => b.r.passed)
+    if (cleared.length === 0) {
+      log(g, 'I graduated, but no agency took me.', 'bad')
+      say(g, 'Graduation Day', boards.length === 0 ? 'No agency here flies crews yet. You can apply when one does.' : 'No agency took you this time. You can apply when the next class forms.', '\u{1F393}')
+      return
+    }
+    // Academics reads the class's taste: the same classBias that added 3 to a matching finalist's score and to yours.
+    const offers = cleared.map(({ ac, r }) => ({ a: shown(g, agencyOf(ac.id, g), ac), taste: honest(g, 'Academics', `That class wanted ${r.bias}s. You read as ${article(r.you)} ${r.you}.`) }))
     scriptChoice(
       g,
       OFFER_SCRIPT,
       'Graduation Day',
-      `You graduated from ${ACADEMY} with a training score of ${d.training}%! Space agencies are lining up to recruit you. Which offer will you take?`,
-      [...offers.map((a) => ({ id: a.id, label: `${a.name} · ${money(payFor(a, 0))}`, emoji: a.emoji })), { id: 'decline', label: 'Decline them all', emoji: '\u{274C}' }],
-      { emoji: '\u{1F393}' },
+      `You graduated from ${ACADEMY} with a training score of ${d.training}%. These agencies took you. What will you do?`,
+      [...offers.map(({ a, taste }) => ({ id: a.id, label: `${a.name} · ${money(payFor(a, 0))}`, emoji: a.emoji, ...taste })), { id: 'decline', label: 'Decline them all', emoji: '\u{274C}' }],
+      { emoji: '\u{1F393}', data: Object.fromEntries(cleared.map(({ ac, r }) => [ac.id, boardData(r)])) },
     )
     return
   }
@@ -941,20 +1001,23 @@ export function yearlyAstronaut(g: GameState): void {
   const p = astroProfile(g)
   earnIncome(g, job.salary)
   const flew = d.lastMissionAge === c.age - 1
-  bump(job, randInt(g, -4, 3) + (job.level >= 1 && !flew ? -3 : 0) + (c.stats.health < 40 ? -4 : 0))
+  // Administrators (rank 6 and 7 of a corps record) fly nothing by design: the no-flight penalty and the performance firing are not theirs.
+  const admin = astronautStore.has(g) && job.level >= 6
+  bump(job, randInt(g, -4, 3) + (job.level >= 1 && !flew && !admin ? -3 : 0) + (c.stats.health < 40 ? -4 : 0))
   fameToward(g, Math.min(60, 4 + job.level * 3 + p.moonLandings * 6 + p.marsLandings * 12 + p.planets.length * 3), 2)
 
-  // Mandatory retirement or medical grounding.
-  if (c.age >= 60 || c.stats.health < 20) {
+  // Mandatory retirement or medical grounding. Administrators serve to 68.
+  const retireAge = admin ? 68 : 60
+  if (c.age >= retireAge || c.stats.health < 20) {
     const title = job.title
     leave(g, 'retired')
     log(g, `I retired from ${theAgency(agency)}.`, 'good')
     remember(g, `Retired as ${title} after ${p.missions} space missions.`)
-    say(g, 'Retired', c.age >= 60 ? `You reached the astronaut corps' retirement age and retired as ${title} after ${p.missions} mission${p.missions === 1 ? '' : 's'}. They gave you a cake shaped like a rocket.` : `The flight surgeon permanently grounded you for health reasons. You retired as ${title}.`, '\u{1F3D6}\u{FE0F}', c.age >= 60 ? 'good' : 'bad')
+    say(g, 'Retired', c.age >= retireAge ? `You reached the astronaut corps' retirement age and retired as ${title} after ${p.missions} mission${p.missions === 1 ? '' : 's'}. They gave you a cake shaped like a rocket.` : `The flight surgeon permanently grounded you for health reasons. You retired as ${title}.`, '\u{1F3D6}\u{FE0F}', c.age >= retireAge ? 'good' : 'bad')
     return
   }
 
-  if (job.performance < 20 && chance(g, 0.5)) {
+  if (!admin && job.performance < 20 && chance(g, 0.5)) {
     leave(g, 'fired')
     log(g, `${TheAgency(agency)} let me go.`, 'bad')
     say(g, 'Fired', `${TheAgency(agency)} cut you from the astronaut corps. ${pick(g, ['Your locker was emptied before you got back from lunch.', 'They said you were "a risk to the mission". And the snacks.'])}`, '\u{1F4C9}', 'bad')
@@ -963,7 +1026,7 @@ export function yearlyAstronaut(g: GameState): void {
 
   const next = job.level + 1
   const needMissions = Math.max(0, job.level)
-  if (next < RANKS.length && job.yearsInRole >= 1 && job.performance >= (job.level === 0 ? 50 : 62) && p.missions >= needMissions && chance(g, job.level === 0 ? 0.75 : 0.45)) {
+  if (next < RANKS.length && job.yearsInRole >= 1 && job.performance >= (job.level === 0 ? 50 : 62) && p.missions >= needMissions && astroPromotionOk(g, next) && chance(g, job.level === 0 ? 0.75 : 0.45)) {
     promote(g, job, RANKS[next], payFor(agency, next), next)
     addStat(g, 'happiness', 8)
     log(g, `I was promoted to ${RANKS[next]}.`, 'good')

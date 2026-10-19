@@ -6,13 +6,21 @@ import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPe
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { randomFirstName, randomLastName } from '../world'
+import { randomFirstName } from '../world'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import { brandPool, pickBrand } from '../shops/everyday-brands'
 import { ageCeiling } from '../mastery'
-import { actingSkill, addColleague, addFame, blocked, claimYearly, clamp100, dropList, fameOf, fameToward, hire, leave, masterFlagSkill, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, tell, view, yearlyList } from './common'
+import { BUDGETS, TYPE_IDS, TYPE_OF, type IndustryId } from './actor-data'
+import { auditionBlock, landProject, slotBlock } from './actor-pipeline'
+import { actorStore, type Role } from './actor-state'
+import { actorMenus, actorStanding } from './actor-menu'
+import { ACTOR_SPEC, industryOf, pressure, scaleOf } from './actor-world'
+import { applyEffects } from './kit/crisis'
+import { activeField } from './kit/rivals'
+import { ACTION_BUDGET, careerCtx, careerSay } from './kit/year'
+import { actingSkill, addFame, blocked, claimYearly, clamp100, dropList, fameOf, fameToward, leave, masterFlagSkill, money, myJob, peek, prof, say, setFlagSkill, setRole, short, syncTenure, tell, view, yearlyList } from './common'
 
-type Role = 'Extra' | 'Supporting' | 'Lead'
+export type { Role }
 type Kind = 'film' | 'tv'
 
 interface Credit {
@@ -64,7 +72,7 @@ interface ActorJobData {
   project: Project | null
 }
 
-interface Listing {
+export interface Listing {
   title: string
   kind: Kind
   genre: string
@@ -138,7 +146,7 @@ function actorProfile(g: GameState): ActorProfile {
   return p
 }
 
-function viewActor(g: GameState): ActorProfile {
+export function viewActor(g: GameState): ActorProfile {
   return normalizedActor(peek<ActorProfile>(g, 'actor'))
 }
 
@@ -146,7 +154,7 @@ export function actorJob(g: GameState): Job | null {
   return myJob(g, 'actor')
 }
 
-function project(job: Job): Project | null {
+export function project(job: Job): Project | null {
   const data = view<ActorJobData>(job.data)
   const raw = data.project
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -170,13 +178,6 @@ function project(job: Job): Project | null {
 
 function actorWord(g: GameState): string {
   return g.character.gender === 'female' ? 'Actress' : 'Actor'
-}
-
-function roleTitle(g: GameState, role: Role, kind: Kind): string {
-  if (role === 'Extra') return 'Extra'
-  if (role === 'Supporting') return `Supporting ${actorWord(g)}`
-  if (fameOf(g) >= 70) return kind === 'film' ? 'Movie Star' : 'TV Star'
-  return `Lead ${actorWord(g)}`
 }
 
 // ---------------------------------------------------------------------------
@@ -212,37 +213,58 @@ function genTitle(g: GameState, genre: string): string {
   return chance(g, 0.12) ? `${base} ${randInt(g, 2, 4)}` : base
 }
 
-function genListings(g: GameState): Listing[] {
-  const p = actorProfile(g)
+/** The genre each named industry is known for, and the kind it comes in: 40% of that industry's listings. */
+const SIGNATURE: Partial<Record<IndustryId, { genre: string; kind: Kind }>> = {
+  bollywood: { genre: 'Bollywood', kind: 'film' },
+  kdrama: { genre: 'K-Drama', kind: 'tv' },
+  nollywood: { genre: 'Nollywood Drama', kind: 'film' },
+  hongkong: { genre: 'Martial Arts', kind: 'film' },
+}
+
+export function genListings(g: GameState): Listing[] {
+  // A life the sim has taken over reads its record; any other life reads (and creates) the legacy profile, as before.
+  const sim = actorStore.peek(g)
+  const legacy = sim ? null : actorProfile(g)
+  const credits: { role: Role }[] = sim ? sim.credits : legacy!.credits
+  const agent: { quality: number } | null = sim ? sim.team.agent : legacy!.agent
   const f = fameOf(g)
-  const hadSupporting = p.credits.some((x) => x.role !== 'Extra')
-  const agentQ = p.agent?.quality ?? 0
+  const hadSupporting = credits.some((x) => x.role !== 'Extra')
+  const agentQ = agent?.quality ?? 0
+  const industry = industryOf(g)
+  const scale = scaleOf(g, industry)
+  const signature = industry === 'domestic' && LATIN.includes(g.character.countryId) ? { genre: 'Telenovela', kind: 'tv' as Kind } : SIGNATURE[industry]
   // Acting talent: casting directors call more often, offer bigger parts sooner (one tier up
   // the ladder), cast you in more blockbusters and pay a premium for you.
   const gifted = hasTalent(g, 'Acting')
-  const n = (p.agent ? 6 : 4) + (gifted ? 1 : 0)
-  const leadReady = hadSupporting || f >= (gifted ? 25 : 40) || (gifted && p.credits.length > 0)
+  const n = (agent ? 6 : 4) + (gifted ? 1 : 0) + ((sim?.team.manager?.quality ?? 0) >= 60 ? 1 : 0)
+  const leadReady = hadSupporting || f >= (gifted ? 25 : 40) || (gifted && credits.length > 0)
   const out: Listing[] = []
   for (let i = 0; i < n; i++) {
     let role: Role = 'Extra'
     const r = rand(g) + agentQ / 250 + (gifted ? 0.15 : 0)
     if (leadReady && r > 0.7) role = 'Lead'
-    else if ((p.credits.length > 0 || actingSkill(g) >= (gifted ? 35 : 45) || f >= 25) && r > 0.35) role = 'Supporting'
-    const kind: Kind = chance(g, 0.6) || !hasTech(g, 'tv') ? 'film' : 'tv'
+    else if ((credits.length > 0 || actingSkill(g) >= (gifted ? 35 : 45) || f >= 25) && r > 0.35) role = 'Supporting'
+    let kind: Kind = chance(g, 0.6) || !hasTech(g, 'tv') ? 'film' : 'tv'
     let genre = kind === 'film' ? pick(g, FILM_GENRES) : pick(g, TV_GENRES)
-    if (g.character.countryId === 'in' && kind === 'film' && chance(g, 0.5)) genre = 'Bollywood'
-    if (LATIN.includes(g.character.countryId) && kind === 'tv' && chance(g, 0.5)) genre = 'Telenovela'
-    const budget =
+    if (signature && chance(g, 0.4) && (signature.kind === 'film' || hasTech(g, 'tv'))) {
+      kind = signature.kind
+      genre = signature.genre
+    }
+    let budget =
       kind === 'film'
         ? pick(g, gifted && role !== 'Extra' ? ['indie', 'studio', 'blockbuster', 'blockbuster'] : ['indie', 'studio', 'studio', 'blockbuster'])
         : pick(g, gifted && role !== 'Extra' ? ['network', 'streaming', 'streaming'] : ['cable', 'network', 'streaming'])
+    // Nothing from the wrong era: blockbusters from 1975, cable from 1980, streaming once it exists.
+    if (budget === 'blockbuster' && g.year < (BUDGETS.blockbuster.from ?? 0)) budget = 'studio'
+    else if (budget === 'cable' && g.year < (BUDGETS.cable.from ?? 0)) budget = 'network'
+    else if (budget === 'streaming' && !hasTech(g, 'streaming')) budget = 'network'
     const budgetMult = budget === 'blockbuster' ? 2 : budget === 'indie' || budget === 'cable' ? 0.6 : 1
     const premium = talentMult(g, 'Acting', 1.25)
     let pay: number
     if (role === 'Extra') pay = randInt(g, 3, 30) * 100
     else if (role === 'Supporting') pay = Math.round((randInt(g, 15, 200) * 1_000 * (1 + f / 25) * budgetMult * premium) / 1_000) * 1_000
     else pay = Math.round((randInt(g, 80, 1_000) * 1_000 * (1 + (f * f) / 400) * budgetMult * premium) / 1_000) * 1_000
-    out.push({ title: genTitle(g, genre), kind, genre, role, studio: producer(g, kind, budget), pay, budget })
+    out.push({ title: genTitle(g, genre), kind, genre, role, studio: producer(g, kind, budget), pay: Math.max(1, Math.round(pay * scale)), budget })
   }
   return out
 }
@@ -250,25 +272,33 @@ function genListings(g: GameState): Listing[] {
 const ROLE_DIFFICULTY: Record<Role, number> = { Extra: 0, Supporting: 25, Lead: 45 }
 
 /** The audition score before the approach and the luck roll (no randomness: safe in menus). */
-function auditionBase(g: GameState, l: Listing): number {
+export function auditionBase(g: GameState, l: Listing): number {
   const c = g.character
   const p = viewActor(g)
-  return (
+  const sim = actorStore.peek(g)
+  let base =
     actingSkill(g) * 0.5 +
     (hasTalent(g, 'Acting') ? 15 : 0) +
     c.stats.looks * (l.role === 'Lead' ? 0.25 : 0.1) +
-    p.reputation * 0.1 +
-    (p.agent?.quality ?? 0) * 0.1 +
+    (sim ? sim.rep : p.reputation) * 0.1 +
+    (sim ? (sim.team.agent?.quality ?? 0) : (p.agent?.quality ?? 0)) * 0.1 +
     fameOf(g) * 0.15 -
     ROLE_DIFFICULTY[l.role]
-  )
+  if (sim) {
+    // Rivals in your type, scandal and typecast all weigh on the read, in the roll and in the hint alike.
+    const type = TYPE_OF[l.genre] ?? 'drama'
+    base -= pressure(g, sim, type, l.role) + sim.scandal / 10
+    if (sim.type[type] >= 50) base += 10
+    else if (TYPE_IDS.some((t) => sim.type[t] >= 50)) base -= 10
+  }
+  return base
 }
 
 /**
  * Acting talent: the listing that suits you best — the biggest part you'd most likely land
  * if you play it the way the casting director pictures it (still a roll of the dice).
  */
-function bestListing(g: GameState, listings: Listing[]): number {
+export function bestListing(g: GameState, listings: Listing[]): number {
   let best = -1
   let bestScore = -Infinity
   listings.forEach((l, i) => {
@@ -312,24 +342,42 @@ const FIT: Record<string, string> = {
   Superhero: 'intense',
   Musical: 'overTop',
   Bollywood: 'overTop',
+  'K-Drama': 'heartfelt',
+  'Nollywood Drama': 'heartfelt',
+  'Martial Arts': 'intense',
 }
 
 /** Main Character Syndrome: acting for the first time (a lesson, an audition, a shoot) is already mastery for the age. */
-function masterActing(g: GameState): void {
+export function masterActing(g: GameState): void {
   masterFlagSkill(g, 'acting', 'stage', 'acting', ageCeiling(g.character.age, { from: 6, full: 17, floor: 30 }))
 }
 
 const auditionScript = defineScript('special.actor.audition', (g, choice, data) => {
   const l = data as unknown as Listing
   masterActing(g)
-  const p = actorProfile(g)
+  // Until the sim takes the life over (its first tick, or an action that adopts) the legacy profile is the truth.
+  const sim = actorStore.peek(g)?.migrated === true
+  const p = sim ? null : actorProfile(g)
   let fit = 0
   if (choice === FIT[l.genre]) fit = 20
   else if (choice === 'overTop') fit = randInt(g, -15, 25)
   const score = auditionBase(g, l) + fit + randInt(g, -15, 15)
   if (score < 30) {
-    p.reputation = clamp100(p.reputation - 1)
+    if (p) p.reputation = clamp100(p.reputation - 1)
     log(g, `I auditioned for ${l.title} but didn't get the part.`, 'bad')
+    if (sim) {
+      // A life the sim has taken over loses the part to a named rival and remembers it.
+      const s = actorStore.mut(g)
+      s.rep = clamp100(s.rep - 1)
+      const type = TYPE_OF[l.genre] ?? 'drama'
+      const top = activeField(g, ACTOR_SPEC, s.memory).find((x) => x.rival.edge === type)?.rival
+      if (top) {
+        const c = careerCtx(g, 'actor', s, { ...ACTION_BUDGET })
+        applyEffects(c, { grudge: { id: top.id, name: top.name, by: 10 } }, 'Lost part')
+        careerSay(c, 'Audition', `You auditioned for "${l.title}". ${top.name} got the part.`, '\u{1F3AD}', 'bad')
+        return
+      }
+    }
     return say(
       g,
       'Audition',
@@ -348,11 +396,17 @@ const auditionScript = defineScript('special.actor.audition', (g, choice, data) 
 
 const pickRoleScript = defineScript('special.actor.pick', (g, choice) => {
   if (choice === 'cancel') return
+  // The rules live in the pipeline and are checked here too, so a stale row or a bypassed menu changes nothing.
+  const sim = actorStore.peek(g)
+  const barred = sim ? auditionBlock(g, sim) : null
+  if (barred) return tell(g, 'Auditions', barred, '\u{1F3AC}')
   const listings = yearlyList<Listing>(g, 'actor.roles', () => genListings(g))
   const idx = Number(choice)
   const l = listings[idx]
   if (!l) return
-  const limit = actorProfile(g).agent ? 5 : 3
+  const crowded = sim ? slotBlock(sim, { kind: l.kind, role: l.role }) : null
+  if (crowded) return tell(g, 'Auditions', crowded, '\u{1F3AC}')
+  const limit = ((sim ? sim.team.agent : actorProfile(g).agent) ? 5 : 3) + ((sim?.team.manager?.quality ?? 0) >= 60 ? 1 : 0)
   if (!useYearAction(g, 'actor.audition', limit)) return tell(g, 'Auditions', "You've been to so many auditions this year that casting directors recognize your headshot as a warning sign. Try again next year.", '\u{1F971}')
   listings.splice(idx, 1)
   scriptChoice(
@@ -368,6 +422,9 @@ const pickRoleScript = defineScript('special.actor.pick', (g, choice) => {
 function openAuditions(g: GameState): void {
   const job = actorJob(g)
   if (job && project(job)) return tell(g, 'Auditions', `You're already committed to "${project(job)?.title}". Finish it first.`, '\u{1F3AC}')
+  const sim = actorStore.peek(g)
+  const barred = sim ? auditionBlock(g, sim) : null
+  if (barred) return tell(g, 'Auditions', barred, '\u{1F3AC}')
   // Walking into the casting room is doing it: the hint below is computed after the lift.
   masterActing(g)
   const listings = yearlyList<Listing>(g, 'actor.roles', () => genListings(g))
@@ -391,51 +448,17 @@ function openAuditions(g: GameState): void {
   )
 }
 
+/** A role is landed by the pipeline: it takes the legacy record over, hires at once and queues the contract choice. */
 function landRole(g: GameState, l: Listing): void {
-  const title = roleTitle(g, l.role, l.kind)
-  const proj: Project = { title: l.title, kind: l.kind, genre: l.genre, role: l.role, studio: l.studio, pay: l.pay, budget: l.budget, developed: 0, buzz: 0, season: 1, costars: [] }
-  let job = actorJob(g)
-  let quit: string | null = null
-  if (!job) {
-    const hired = hire(g, { defId: 'actor', title, company: l.studio, salary: l.pay, data: { project: proj as unknown as Json } })
-    job = hired.job
-    quit = hired.quit
-  } else {
-    view<ActorJobData>(job.data).project = proj
-    job.company = l.studio
-    setRole(g, job, title, l.pay, l.role === 'Lead' ? 2 : l.role === 'Supporting' ? 1 : 0)
-  }
-  if (l.role !== 'Extra') {
-    const costarCount = randInt(g, 1, 2)
-    for (let i = 0; i < costarCount; i++) {
-      const p = addColleague(g, l.studio, chance(g, 0.5) ? 'Actor' : 'Actress', { ageOffset: [-12, 15], relationship: randInt(g, 35, 65) })
-      p.occupation = p.gender === 'female' ? 'Actress' : 'Actor'
-      p.money = randInt(g, 50, 5_000) * 1_000
-      if (chance(g, 0.35)) p.traits = ['arrogant', ...p.traits].slice(0, 3)
-      p.data.costarOf = l.title
-      proj.costars.push(p.id)
-    }
-  }
-  const p = actorProfile(g)
-  p.dryYears = 0
-  dropList(g, 'actor.roles')
-  addStat(g, 'happiness', l.role === 'Lead' ? 15 : 8)
-  if (l.role !== 'Extra') addFame(g, l.role === 'Lead' ? 3 : 1)
-  if (l.genre === 'Animated' && l.role === 'Extra') g.flags['special.actor.zombie'] = true
-  log(g, `I was cast as ${l.role === 'Extra' ? 'an extra' : l.role === 'Lead' ? 'the lead' : 'a supporting character'} in "${l.title}".`, 'good')
-  remember(g, `Cast in "${l.title}" (${l.genre}, ${l.role.toLowerCase()} role).`)
-  const flavor =
-    l.role === 'Extra'
-      ? pick(g, ['You\'ll be "Person in Background #4". Try not to look at the camera.', 'You\'ll be playing "Zombie #17". Method acting starts now.', 'Your big moment: walking past the main character holding a coffee.'])
-      : l.role === 'Lead'
-        ? pick(g, ['Your name goes above the title!', 'The director says the role was made for you.', 'Your face is going on every bus in the city.'])
-        : pick(g, ['It\'s a meaty part with real lines.', 'You get to steal at least two scenes.', 'Your character dies dramatically in act three. Perfect.'])
-  say(g, 'You Got the Part!', `You were cast as ${l.role === 'Extra' ? 'an extra' : l.role === 'Lead' ? 'the lead' : 'a supporting character'} in "${l.title}", a ${l.genre.toLowerCase()} ${l.kind === 'film' ? 'film' : 'series'} from ${l.studio}. You'll be paid ${money(l.pay)}${l.kind === 'tv' ? ' per season' : ''}. ${flavor}${quitNote(quit)}`, '\u{1F3AC}', 'good')
+  const role: Role = l.role === 'Lead' || l.role === 'Supporting' ? l.role : 'Extra'
+  landProject(careerCtx(g, 'actor', actorStore.mut(g), { ...ACTION_BUDGET }), l, role)
 }
 
 // ---------------------------------------------------------------------------
 // Agents
 
+// The agent rows live in actor-team.ts (`teamRows`); this script stays registered so a modal queued by an
+// old save still resolves against the legacy profile, which the first sim tick then lifts.
 interface AgentOffer {
   name: string
   firm: string
@@ -443,9 +466,7 @@ interface AgentOffer {
   cut: number
 }
 
-const FIRMS = ['Starlight Talent', 'Apex Artists Agency', 'Bluebird Management', 'Velvet Rope Talent', 'Marquee Partners', 'Spotlight & Co.', 'Hollow Hill Agency']
-
-const agentScript = defineScript('special.actor.agent', (g, choice, data) => {
+defineScript('special.actor.agent', (g, choice, data) => {
   if (choice === 'cancel') return
   const offers = data as unknown as AgentOffer[]
   const a = offers[Number(choice)]
@@ -460,59 +481,6 @@ const agentScript = defineScript('special.actor.agent', (g, choice, data) => {
   log(g, `I hired ${a.name} from ${a.firm} as my talent agent.`, 'good')
   say(g, 'Talent Agent', `${a.name} from ${a.firm} agreed to represent you for ${Math.round(a.cut * 100)}% of your earnings. Expect better auditions.`, '\u{1F574}\u{FE0F}', 'good')
 })
-
-const hireAgentAction: MenuAction = {
-  type: 'action',
-  id: 'actor.agent.hire',
-  label: 'Hire an Agent',
-  emoji: '\u{1F574}\u{FE0F}',
-  subtitle: 'Find a talent agent to land better roles',
-  visible: (g) => !viewActor(g).agent,
-  disabledReason: (g) => blocked(g, 16),
-  run: (g) => {
-    if (!useYearAction(g, 'actor.agentSearch', 2)) return tell(g, 'Talent Agent', "No agents are returning your calls this year.", '\u{1F574}\u{FE0F}')
-    const offers: AgentOffer[] = [0, 1, 2].map(() => {
-      const quality = randInt(g, 25, 95)
-      const gender = chance(g, 0.5) ? 'male' : 'female'
-      return {
-        name: `${randomFirstName(g, g.character.countryId, gender)} ${randomLastName(g, g.character.countryId)}`,
-        firm: pick(g, FIRMS),
-        quality,
-        cut: Math.round((0.08 + quality / 900 + rand(g) * 0.03) * 100) / 100,
-      }
-    })
-    scriptChoice(
-      g,
-      agentScript,
-      'Talent Agents',
-      'Which agent do you want to pitch yourself to?',
-      [...offers.map((o, i) => ({ id: String(i), label: `${o.name}, ${o.firm} · ${'\u{2B50}'.repeat(Math.max(1, Math.round(o.quality / 20)))} · ${Math.round(o.cut * 100)}% cut`, emoji: '\u{1F574}\u{FE0F}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
-      { emoji: '\u{1F574}\u{FE0F}', data: offers as unknown as Json },
-    )
-  },
-}
-
-const fireAgentAction: MenuAction = {
-  type: 'action',
-  id: 'actor.agent.fire',
-  label: 'Fire Your Agent',
-  emoji: '\u{1F525}',
-  subtitle: (g) => {
-    const a = viewActor(g).agent
-    return a ? `${a.name}, ${a.firm} (${Math.round(a.cut * 100)}% cut)` : ''
-  },
-  visible: (g) => !!viewActor(g).agent,
-  confirm: () => 'Fire your talent agent?',
-  run: (g) => {
-    const p = actorProfile(g)
-    if (!p.agent) return
-    const name = p.agent.name
-    p.agent = null
-    dropList(g, 'actor.roles')
-    log(g, `I fired my agent, ${name}.`)
-    say(g, 'Talent Agent', `You fired ${name}. They said you'd never work in this town again, which is what they say to everyone.`, '\u{1F525}')
-  },
-}
 
 // ---------------------------------------------------------------------------
 // Practice, classes, set life
@@ -688,6 +656,14 @@ function removeCostars(g: GameState, proj: Project): void {
   proj.costars = []
 }
 
+/** What the legacy menus show: the sim record once it owns the life (the legacy profile is frozen by then), the legacy profile before. Pure. */
+function shown(g: GameState): { credits: Credit[]; awards: string[]; reputation: number; agent: Agent | null } {
+  const s = actorStore.peek(g)
+  if (s?.migrated) return { credits: s.credits, awards: s.awards, reputation: s.rep, agent: s.team.agent }
+  const p = viewActor(g)
+  return { credits: p.credits, awards: p.awards, reputation: p.reputation, agent: p.agent }
+}
+
 function filmographyMenu(): MenuGroup {
   return {
     type: 'menu',
@@ -695,11 +671,11 @@ function filmographyMenu(): MenuGroup {
     label: 'Filmography',
     emoji: '\u{1F39E}\u{FE0F}',
     subtitle: (g) => {
-      const p = viewActor(g)
+      const p = shown(g)
       return `${p.credits.length} credit${p.credits.length === 1 ? '' : 's'} · ${p.awards.length} award${p.awards.length === 1 ? '' : 's'}`
     },
     children: (g): MenuNode[] => {
-      const p = viewActor(g)
+      const p = shown(g)
       const nodes: MenuNode[] = [
         { type: 'info', id: 'actor.f.stats', emoji: '\u{1F3AD}', text: `Acting skill ${actingSkill(g)}% · Reputation ${p.reputation}%${p.agent ? ` · Agent: ${p.agent.name}` : ''}` },
       ]
@@ -747,12 +723,12 @@ export const actorCareerMenu: MenuGroup = {
   emoji: '\u{1F3AC}',
   subtitle: 'Become a movie or TV star',
   header: (g) => {
-    const p = viewActor(g)
+    const p = shown(g)
     return `Acting skill: ${actingSkill(g)}% · Reputation: ${p.reputation}%. Start as an extra and work your way up to leading roles. Auditions open at 18.`
   },
   children: (g): MenuNode[] => {
     if (actorJob(g)) return [{ type: 'info', id: 'actor.already', text: 'You are already an actor. Manage your career from your job.', emoji: '\u{1F3AC}' }]
-    return [auditionAction, practiceAction, hireAgentAction, fireAgentAction, filmographyMenu()]
+    return [auditionAction, practiceAction, actorStanding, ...actorMenus(g), filmographyMenu()]
   },
 }
 
@@ -760,24 +736,30 @@ export function actorJobNodes(g: GameState): MenuNode[] {
   const job = actorJob(g)
   if (!job) return []
   const proj = project(job)
+  // Once the sim owns the life, actor-menu.ts offers the stunt and quit rows (same ids) for the projects in its pipeline.
+  const sim = actorStore.peek(g)?.migrated === true
+  // The sim keeps its shoots in its own pipeline: the job's legacy project is empty once it owns the life.
+  const shoot = sim ? actorStore.peek(g)?.pipeline.find((x) => x.stage === 'shoot') : undefined
   return [
     {
       type: 'info',
       id: 'actor.status',
       emoji: '\u{1F3AC}',
-      text: proj
-        ? `Filming "${proj.title}" (${proj.genre} ${proj.kind === 'film' ? 'film' : `series, season ${proj.season}`}) for ${proj.studio} · ${money(proj.pay)}`
-        : `Between roles. Audition to land your next part.`,
+      text: shoot
+        ? `Filming "${shoot.title}" (${shoot.genre} ${shoot.kind === 'film' ? 'film' : `series, season ${shoot.season}`}) for ${shoot.studio} · ${money(shoot.terms.fee)}`
+        : proj
+          ? `Filming "${proj.title}" (${proj.genre} ${proj.kind === 'film' ? 'film' : `series, season ${proj.season}`}) for ${proj.studio} · ${money(proj.pay)}`
+          : `Between roles. Audition to land your next part.`,
     },
     auditionAction,
     developAction,
     practiceAction,
     costarsAction,
-    stuntAction,
-    hireAgentAction,
-    fireAgentAction,
+    ...(sim ? [] : [stuntAction]),
+    actorStanding,
+    ...actorMenus(g),
     filmographyMenu(),
-    quitAction,
+    ...(sim ? [] : [quitAction]),
   ]
 }
 
@@ -793,8 +775,9 @@ const speechScript = defineScript('special.actor.speech', (g, choice) => {
     for (const p of g.people) if (p.alive && ['parent', 'spouse', 'child', 'sibling'].includes(p.relation)) addRelationship(p, 5)
     text = 'You thanked your family through tears. Your mom has watched the clip four hundred times.'
   } else if (choice === 'agent') {
-    const p = actorProfile(g)
-    text = p.agent ? `You thanked your agent, ${p.agent.name}, who immediately raised their commission.` : 'You thanked your agent, then remembered you don\'t have one. Awkward.'
+    const sim = actorStore.peek(g)
+    const agent = sim ? sim.team.agent : actorProfile(g).agent
+    text = agent ? `You thanked your agent, ${agent.name}, who immediately raised their commission.` : 'You thanked your agent, then remembered you don\'t have one. Awkward.'
   } else if (choice === 'political') {
     const good = chance(g, 0.5)
     addFame(g, good ? 2 : -1)
@@ -856,6 +839,8 @@ function verdictFor(g: GameState, popularity: number, kind: Kind): string {
 }
 
 export function yearlyActor(g: GameState): void {
+  // A life the sim has taken over is settled by the kit hook (actor-sim.ts); this one is for the rest.
+  if (actorStore.peek(g)?.migrated) return
   const c = g.character
   if (!c.alive) return
   const stored = peek<ActorProfile>(g, 'actor')

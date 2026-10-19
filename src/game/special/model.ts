@@ -7,6 +7,10 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { ageCeiling } from '../mastery'
+// The model-*.ts files are used inside function bodies only: they import this file back.
+import { freelanceBlock } from './model-agency'
+import { bookFreelance, modelRows, modelStanding, offerSabotage } from './model-board'
+import { modelExitRows, retireModel } from './model-exit'
 import { addFame, blocked, bump, claimYearly, clamp100, fameOf, fameToward, flagSkill, hire, leave, masterFlagSkill, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, tell, view, withHint, yearlyList } from './common'
 
 interface Agency {
@@ -17,15 +21,15 @@ interface Agency {
   retainer: number
 }
 
-const AGENCIES: Agency[] = [
+export const AGENCIES: Agency[] = [
   { name: 'Hometown Faces', tier: 0, looks: 45, headshot: 20, retainer: 15_000 },
   { name: 'Silhouette Models', tier: 1, looks: 60, headshot: 40, retainer: 32_000 },
   { name: 'Prestige Model Management', tier: 2, looks: 72, headshot: 60, retainer: 60_000 },
   { name: 'Icon Elite', tier: 3, looks: 85, headshot: 75, retainer: 110_000 },
 ]
 
-const RANKS = ['New Face', 'Model', 'Professional Model', 'Elite Model', 'Supermodel']
-const RANK_MULT = [1, 1.5, 2.5, 4, 8]
+export const RANKS = ['New Face', 'Model', 'Professional Model', 'Elite Model', 'Supermodel']
+export const RANK_MULT = [1, 1.5, 2.5, 4, 8]
 
 const COUTURE = [
   'Aquarelle Silk Sweatshirt',
@@ -48,7 +52,7 @@ const COUTURE = [
   'Thunderstorm Cape',
 ]
 
-const DESIGNERS = ['Maison Lumière', 'Casa Vellutto', 'Oskar Grünwald', 'Atelier Noir', 'Haus of Ziggy', 'Delacroix & Fils', 'Studio Kintsugi']
+export const DESIGNERS = ['Maison Lumière', 'Casa Vellutto', 'Oskar Grünwald', 'Atelier Noir', 'Haus of Ziggy', 'Delacroix & Fils', 'Studio Kintsugi']
 const FASHION_CITIES = ['Paris', 'Milan', 'New York', 'London', 'Tokyo']
 
 interface ModelProfile {
@@ -96,7 +100,7 @@ function modelProfile(g: GameState): ModelProfile {
   return p
 }
 
-function viewModel(g: GameState): ModelProfile {
+export function viewModel(g: GameState): ModelProfile {
   return normalizedModel(peek<ModelProfile>(g, 'model'))
 }
 
@@ -115,17 +119,34 @@ function mdata(job: Job): ModelJob {
   return view<ModelJob>(job.data)
 }
 
+/** What a won casting lifts performance by: the legacy booking's 4 to 9, taken at its middle so the board draws no extra number. */
+const GIG_BUMP = 6
+
+/**
+ * A casting the signed model won is a gig on the job, as the legacy booking was: the legacy yearly tick reads
+ * `gigsThisYear` for its performance drift (+3 with a gig, -4 without), and the gig itself lifts performance and
+ * fame. Without this the ladder, the retainer, the slots and the fame target never move, since the Season Board
+ * replaced the only row that counted gigs. A no-op without a job (an unsigned model has no ladder).
+ */
+export function noteGig(g: GameState, fame: number): void {
+  const job = modelJob(g)
+  if (!job) return
+  mdata(job).gigsThisYear += 1
+  bump(job, GIG_BUMP)
+  addFame(g, fame)
+}
+
 /** Main Character Syndrome: modeling for the first time (a casting, a booking, practice) is already mastery for the age. */
 function masterModeling(g: GameState): void {
   masterFlagSkill(g, 'modeling', 'stage', 'modeling', ageCeiling(g.character.age, { from: 12, full: 18, floor: 45 }))
 }
 
-function modelingSkill(g: GameState): number {
+export function modelingSkill(g: GameState): number {
   return clamp100(flagSkill(g, 'modeling') + (hasTalent(g, 'Modeling') ? 10 : 0))
 }
 
 /** Modeling talent: agencies forgive a few points of looks (they see the "it" factor). */
-function looksBar(g: GameState, a: Agency): number {
+export function looksBar(g: GameState, a: Agency): number {
   return a.looks - (hasTalent(g, 'Modeling') ? 8 : 0)
 }
 
@@ -140,7 +161,7 @@ function marketability(g: GameState): number {
 // ---------------------------------------------------------------------------
 // Headshots
 
-const PHOTOGRAPHERS = [
+export const PHOTOGRAPHERS = [
   { id: 'budget', label: 'Budget photographer', cost: 150, base: 0, mult: 0.5, spread: 20 },
   { id: 'pro', label: 'Professional photographer', cost: 1_200, base: 20, mult: 0.6, spread: 20 },
   { id: 'celebrity', label: 'Celebrity photographer', cost: 7_500, base: 30, mult: 0.7, spread: 15 },
@@ -217,6 +238,8 @@ function genFreelance(g: GameState): Gig[] {
 
 const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
   if (choice === 'cancel') return
+  const closed = freelanceBlock(g)
+  if (closed) return tell(g, 'Freelance Gigs', closed, '\u{1F4F8}')
   const gigs = yearlyList<Gig>(g, 'model.freelance', () => genFreelance(g))
   const idx = Number(choice)
   const gig = gigs[idx]
@@ -229,7 +252,7 @@ const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
     log(g, `I didn't book the ${gig.name.toLowerCase()} gig.`, 'bad')
     return say(g, 'Casting', pick(g, [`The casting director for the ${gig.name.toLowerCase()} said you weren't the look they wanted.`, `You showed up to the ${gig.name.toLowerCase()} casting and were told to "work on your angles".`, `You lost the ${gig.name.toLowerCase()} gig to someone's cousin.`]), gig.emoji, 'bad')
   }
-  earnIncome(g, gig.pay)
+  if (!bookFreelance(g, gig.name, gig.pay)) earnIncome(g, gig.pay)
   modelProfile(g).gigs += 1
   count(g, 'modelGigs')
   addStat(g, 'happiness', 4)
@@ -244,8 +267,10 @@ const freelanceAction: MenuAction = {
   label: 'Freelance Gigs',
   emoji: '\u{1F4F8}',
   subtitle: 'Audition for one-off modeling gigs',
-  disabledReason: (g) => blocked(g, 16),
+  disabledReason: (g) => blocked(g, 16) ?? freelanceBlock(g),
   run: (g) => {
+    const closed = freelanceBlock(g)
+    if (closed) return tell(g, 'Freelance Gigs', closed, '\u{1F4F8}')
     const gigs = yearlyList<Gig>(g, 'model.freelance', () => genFreelance(g))
     if (gigs.length === 0) return tell(g, 'Freelance Gigs', 'There are no more castings this year.', '\u{1F4F8}')
     scriptChoice(
@@ -291,7 +316,7 @@ const agencyScript = defineScript('special.model.agency', (g, choice) => {
 })
 
 /** Modeling talent hint: the most prestigious agency you comfortably qualify for (no randomness). */
-function bestAgency(g: GameState): string | null {
+export function bestAgency(g: GameState): string | null {
   const c = g.character
   const p = viewModel(g)
   const ok = AGENCIES.filter(
@@ -339,7 +364,7 @@ const BOOKINGS: { id: string; label: string; emoji: string; minRank: number; mul
   { id: 'campaign', label: 'Luxury brand campaign', emoji: '\u{1F48E}', minRank: 3, mult: 0.4, fame: 5 },
 ]
 
-const bookingScript = defineScript('special.model.booking', (g, choice) => {
+export const bookingScript = defineScript('special.model.booking', (g, choice) => {
   if (choice === 'cancel') return
   const job = modelJob(g)
   const b = BOOKINGS.find((x) => x.id === choice)
@@ -431,21 +456,15 @@ const sabotageScript = defineScript('special.model.sabotage', (g, choice) => {
   say(g, 'Sabotage', `${text} Nobody suspects a thing... yet.`, '\u{1F608}')
 })
 
+// Retire: leaves for good with a summary of the career (model-exit.ts), where the legacy row only quit.
 const quitModel: MenuAction = {
   type: 'action',
   id: 'model.quit',
-  label: 'Quit',
+  label: 'Retire',
   emoji: '\u{1F6AA}',
-  subtitle: 'Leave your agency',
-  confirm: () => 'Quit modeling?',
-  run: (g) => {
-    const job = modelJob(g)
-    if (!job) return
-    const agency = job.company
-    leave(g, 'quit')
-    log(g, `I quit modeling at ${agency}.`)
-    say(g, 'Quit Modeling', `You left ${agency} and retired from modeling. Your cheekbones will be remembered.`, '\u{1F6AA}')
-  },
+  subtitle: 'Leave modeling for good',
+  confirm: () => 'Retire from modeling?',
+  run: (g) => retireModel(g),
 }
 
 function wardrobeMenu(): MenuGroup {
@@ -468,22 +487,10 @@ export function modelJobNodes(g: GameState): MenuNode[] {
   if (!job) return []
   return [
     { type: 'info', id: 'model.status', emoji: '\u{1F483}', text: `${job.title} at ${job.company} · Performance ${job.performance}% · Modeling skill ${modelingSkill(g)}%` },
-    {
-      type: 'action',
-      id: 'model.book',
-      label: 'Book a Gig',
-      emoji: '\u{1F4C5}',
-      subtitle: 'Work a job your agency lined up',
-      disabledReason: (gg) => blocked(gg, 0),
-      run: (gg) => {
-        const j = modelJob(gg)
-        if (!j) return
-        const options = BOOKINGS.filter((b) => b.minRank <= j.level)
-        scriptChoice(gg, bookingScript, 'Bookings', 'Your agent has these jobs for you. Which one do you want?', [...options.map((b) => ({ id: b.id, label: b.label, emoji: b.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
-          emoji: '\u{1F4C5}',
-        })
-      },
-    },
+    // the Season Board (model.board) replaces the one-roll 'Book a Gig' row
+    ...modelRows(g),
+    modelStanding,
+    ...modelExitRows(g),
     freelanceAction,
     {
       type: 'action',
@@ -502,7 +509,10 @@ export function modelJobNodes(g: GameState): MenuNode[] {
       emoji: '\u{1F608}',
       subtitle: "Ruin a rival model's day",
       disabledReason: (gg) => blocked(gg, 0),
-      run: (gg) => scriptChoice(gg, sabotageScript, 'Sabotage', 'How do you want to get ahead?', SABOTAGE, { emoji: '\u{1F608}' }),
+      // one of the three rivals nearest above you; with none above, the legacy choice
+      run: (gg) => {
+        if (!offerSabotage(gg)) scriptChoice(gg, sabotageScript, 'Sabotage', 'How do you want to get ahead?', SABOTAGE, { emoji: '\u{1F608}' })
+      },
     },
     wardrobeMenu(),
     quitModel,
@@ -521,7 +531,7 @@ export const modelCareerMenu: MenuGroup = {
   },
   children: (g): MenuNode[] => {
     if (modelJob(g)) return [{ type: 'info', id: 'model.already', text: 'You are already signed with an agency. Manage your career from your job.', emoji: '\u{1F483}' }]
-    return [headshotAction, freelanceAction, agencyAction, wardrobeMenu()]
+    return [headshotAction, freelanceAction, agencyAction, ...modelRows(g), modelStanding, ...modelExitRows(g), wardrobeMenu()]
   },
 }
 

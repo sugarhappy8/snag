@@ -1474,6 +1474,50 @@ fields their modal kind requires (including valid choices, tasks, games, and fin
 This prevents damaged browser data from resuming into an unrenderable or unclosable popup.
 `LifeLog` and the death screen's journal draw any unknown tone as a plain line.
 
+## Careers 2.0 (special/kit and the three sims)
+
+Actor, astronaut and model run on one shared kit and a `<id>-sim.ts` each. Design:
+`docs/superpowers/specs/2026-10-19-careers-slice1-design.md`.
+
+- **State.** One optional record per career at `special.actor.sim`, `special.astronaut.sim` and
+  `special.model.sim` (store keys `actor.sim`, `astronaut.sim`, `model.sim`): owner-stamped, versioned,
+  normalized by its reader. `KIT_LIMITS` rows 12 / memory 16 / cool 24 / done 24 / line 90; a full record
+  stays under 6,000 JSON nodes and 40 KB (tested). `SAVE_SCHEMA` stays 2 and no `STEPS` entry exists.
+  The legacy flags `special.actor`, `special.astronaut` and `special.model` are never written by new code.
+- **Kit modules** (`special/kit/`, none imports a career file). `state`: `defineCareerState` (`view` is
+  pure, `mut` is for actions and yearly hooks), `claimSettle`, junk-tolerant readers. `rivals`: derived
+  rosters, `standingOf`, `noteRival` memory. `year`: `settleYear`, the `CareerCtx` ledger, the popup
+  budget. `crisis`: `defineCrises` with `odds()` as the only probability source. `menu`: `gatedAction`
+  and `standingMenu`. `careers`: the `CAREER_SIMS` registry and `yearlyCareerSims`.
+- **Money only through `c.earn` / `c.pay`.** `test/career-money-scan.test.ts` fails any `earnIncome`,
+  `spend`, `addMoney` or `payForAction` call in `actor-*.ts`, `astronaut-*.ts` and `model-*.ts`. Amounts
+  are shown through `money()`; text tables are functions, so nothing prices at module load.
+- **Derived rivals.** Peers come from the family seed (the lifeId without `-gN`), country and 5-year
+  cohort, so nothing is stored and an heir meets the same names with an empty record. Only `memory` rows
+  (who you met, beat or lost to) live in the record.
+- **Budget.** The yearly hook may queue 1 choice and 2 notices; an action or script, 3 and 6. At most 2
+  career choices (`career.*` scripts) wait in the queue; a notice over budget becomes a log line.
+- **Legacy guards.** `yearlyActor` returns at its top once `actorStore.peek(g)?.migrated`; the sim then
+  owns the project, residual, dry-year and agent steps, and `adoptLegacy` carries a legacy profile over
+  (the legacy flag is left as it was). `yearlyModel` is untouched: the sim pays only net above `s.floor`,
+  the retainer the legacy hook just paid. `astronaut.ts` gains only guarded edits that do nothing
+  without a record: (a) the Academy closes before 1959, (b) `yearlyCadet` runs the selection board
+  (the one deliberate behaviour change), (c) `astro.apply.<agency>` rows, (d) `astro.mission` is the
+  Flight Board, (e) `astroPromotionOk` and retirement at 68 from level 6, (f) `trainSkills`, (g) pilot
+  skill on asteroid sensors, (h) `flyOn(g, dest, text, paid)`, the bridge from `resolveFlight`.
+  Every legacy script and menu id stays registered, so a queued modal from an old save still resolves.
+- **Actor likeness.** The one thing an heir inherits: an Asset of kind other with
+  `details.actorLikeness` (v1), chained in `menus.ts` as `actorLikenessNodes` after `musicMasterNodes`.
+  It pays whoever holds it (`yearlyLikeness`, before the kit hook). Astronaut and model leave nothing.
+- **A new career in four lines.** One import and one `CAREER_SIMS` entry in `kit/careers.ts`, one child
+  in `specialCareersMenu`, one `...xJobNodes(g)` in `specialJobNodes`. Menus read `view` / `peek` only.
+- **Tuning** lives in one file per career: `actor-data.ts`, `astronaut-data.ts`, `model-data.ts`.
+- **Cut from slice 1:** Music 2.0, sector families, new minigames and screens (no `MinigameKind`, no
+  `src/ui` change; the report card is a notice plus info rows), business trades.
+- **Tests:** `test/career-kit.ts` (the playthrough kit), `career-*.test.ts` (kit),
+  `actor-*`, `astronaut-*` and `model-*` tests, `careers-balance.test.ts` (3 careers x steady and
+  reckless x 2 seeds x 10 years) and the opt-in `FUZZ=1 npx vitest run test/fuzz-careers.test.ts`.
+
 ## UI contract
 
 - `src/ui/store.ts`: `useApp(selector)`, `goTo(screen)`, `goBack()`, `startNewLife(opts)`,

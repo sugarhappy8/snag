@@ -10,6 +10,7 @@ import { businessCareerMenu, businessJobNodes } from './business'
 import { endJob, log, notice } from './core'
 import { actorCareerMenu, actorJobNodes, yearlyActor } from './special/actor'
 import { astronautCareerMenu, astronautJobNodes, yearlyAstronaut } from './special/astronaut'
+import { yearlyCareerSims } from './special/kit/careers'
 import { authorCareerMenu, authorJobNodes, yearlyAuthor } from './special/author'
 import { gameDevJobNodes, gameIndustryMenu, yearlyGameDev } from './special/gamedev'
 import { fameMenu, yearlyFame } from './special/fame'
@@ -35,6 +36,7 @@ const YEARLY: [string, (g: GameState) => void][] = [
   ['model', yearlyModel],
   ['politics', yearlyPolitics],
   ['astronaut', yearlyAstronaut],
+  ['careers2', yearlyCareerSims],
   ['hustler', yearlyHustler],
   ['social', yearlySocial],
   ['fame', yearlyFame],
