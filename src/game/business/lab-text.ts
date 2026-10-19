@@ -56,6 +56,10 @@ export const LAB_SAY: Record<string, Say> = {
   noPatent: (family) => `You hold no patent on ${family}.`,
   alreadyLicensed: (family) => `${family} is already licensed.`,
   tooLate: (family) => `The patent on ${family} runs out next year. There is nothing left to license.`,
+  // A hired CEO's letter bullets (12 words at most, so the long one has a short form): the program started, the patent filed (family), and the patent filed when the family's name is too long to say.
+  letterStarted: (program) => `Started ${program}.`,
+  letterFiled: (family) => `Filed a patent on ${family}.`,
+  letterFiledShort: () => 'Filed a patent.',
 }
 
 /** Tooltips: the rows and subtitles of the Research & Operations screen (cap 120). */
@@ -97,6 +101,12 @@ export const LAB_TIP: Record<string, Say> = {
   // The licence row: its subtitle and the confirm (first year rivals can sell).
   license: () => 'No fee. Rivals can sell one from next year.',
   licenseConfirm: (family, from) => `License ${family}? It can't be undone. Rivals can sell one from ${from}, and you earn royalties.`,
+  // The Business talent's hints: an expected value from the rule the action uses (never a roll). A program (value, years), a patent in the way that pays more (value), a scientist (what they add, a year's pay), and the row that does not pay.
+  opsHint: (value, years) => `Worth about ${value} on average over ${years} years.`,
+  patentHold: (value) => `Keep it exclusive. Worth about ${value} on average.`,
+  patentLicense: (value) => `License it. Worth about ${value} on average.`,
+  teamHint: (gain, pay) => `A scientist adds about ${gain} to your R&D against ${pay} a year.`,
+  noPay: () => "Doesn't pay back now.",
 }
 
 /** Labels of the screen's group, headings and team rows, the tier names, and the nouns for what a track changes. */

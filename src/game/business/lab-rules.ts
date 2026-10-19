@@ -311,3 +311,40 @@ export function patentValue(g: GameState, b: BizState, family: string, w: Worth 
   const value = Number.isFinite(best) ? best - t.fee : -t.fee
   return { value, mode: license > hold ? 'license' : 'hold', hold: Number.isFinite(hold) ? hold : 0, license: Number.isFinite(license) ? license : 0, fee: t.fee }
 }
+
+/** One move of the lab a hired CEO may make: an Operations program to start or a patent to file (in the way that pays more), its price and what it is worth to them. */
+export type LabMove =
+  | { kind: 'ops'; id: string; track: LabTrack; price: number; value: number }
+  | { kind: 'patent'; family: string; mode: 'hold' | 'license'; price: number; value: number }
+
+/**
+ * The best move of the lab within `avail` dollars: the program or patent with the highest expected value,
+ * as the same opsValue and patentValue the rows' hints show (null: nothing pays). A candidate is a program
+ * on offer, or a family on the patentable list, that its own block says can go ahead (the cash test skipped:
+ * `avail` is what the board's budget and reserve leave, and the price must fit in it). `judge` is the CEO's
+ * mistake model, applied to the gross win before the price; `costOnly` keeps cost-track programs only (a
+ * cost-cutter's extra move). Never a hire. Pure, and the only thing that can draw from g.rng is `judge`
+ * (the hired CEO's draws one number a call): a candidate whose exact value is not above 0 is dropped before
+ * `judge` sees it, so a CEO with nothing worth starting draws exactly what it drew before this existed.
+ */
+export function bestLabMove(g: GameState, b: BizState, avail: number, w: Worth, judge: (v: number) => number = (v) => v, costOnly = false): LabMove | null {
+  let best: LabMove | null = null
+  for (const p of opsOffers(g, b)) {
+    if (costOnly && p.track !== 'cost') continue
+    const price = opsPrice(b, p.rung)
+    if (!(price <= avail) || opsBlock(g, b, p.id, true) !== null) continue
+    const exact = opsValue(g, b, p.id, w)
+    if (!(exact > 0)) continue
+    const value = judge(exact + price) - price
+    if (value > 0 && (best === null || value > best.value)) best = { kind: 'ops', id: p.id, track: p.track, price, value }
+  }
+  if (costOnly) return best
+  for (const family of patentableFamilies(g, b)) {
+    if (!(patentTerms(g, b, family).fee <= avail) || patentBlock(g, b, family, true) !== null) continue
+    const pv = patentValue(g, b, family, w)
+    if (!(pv.value > 0)) continue
+    const value = judge(pv.value + pv.fee) - pv.fee
+    if (value > 0 && (best === null || value > best.value)) best = { kind: 'patent', family, mode: pv.mode, price: pv.fee, value }
+  }
+  return best
+}

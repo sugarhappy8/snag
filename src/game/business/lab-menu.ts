@@ -2,20 +2,43 @@
 // Operations R&D programs (one row each), the patents and the research team. Menus are pure: they re-read the live company every time they
 // are built or tapped, never write state and never draw g.rng; a row that can't run carries the single
 // reason its rule gives (lab-rules.ts opsBlock, patentBlock, licenseBlock, teamBlock), so a tap and a screen reader get the same words. The
-// money moves in lab-year.ts, whose entry points check everything again.
+// money moves in lab-year.ts, whose entry points check everything again. The start, patent and hire rows carry the
+// Business talent's purple hint: the expected value from the same rule the action uses (opsValue, patentValue,
+// teamValue), worked out once per company state (market-menu-kit cached) and never a roll.
+import { talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
+import { bizWorth, type Worth } from './economy'
 import { manageBlock } from './gate'
 import { heavyEligible } from './heavy-rd'
 import { labCreditRate, labTierOf, OPS_MAX_RUNG, opsProgram, PATENT_AGE, TEAM_MIN_YEARS, TEAM_ODDS, type OpsProgram } from './lab-data'
-import { licenseBlock, opsBlock, opsGain, opsOdds, opsOffers, opsPrice, opsYears, patentableFamilies, patentBlock, patentTerms, teamBlock, teamCap, teamFee, teamPay } from './lab-rules'
+import { licenseBlock, opsBlock, opsGain, opsOdds, opsOffers, opsPrice, opsValue, opsYears, patentableFamilies, patentBlock, patentTerms, patentValue, teamBlock, teamCap, teamFee, teamPay, teamValue } from './lab-rules'
 import { readLab, teamPower, teamSlots } from './lab-state'
 import { LAB_LABEL, LAB_TIP } from './lab-text'
 import { doHire, doLicense, doOps, doPatent, doRelease } from './lab-year'
-import { live, mAct } from './market-menu-kit'
+import { cached, hinting, live, mAct } from './market-menu-kit'
+import { HORIZON } from './rd'
 import { readBiz, type BizState } from './state'
 import { money, plural } from './util'
 
 const TRACK_EMOJI = { cost: '\u{1F4C9}', yield: '\u{1F3ED}', quality: '\u{2705}' } as const
+
+/** What the company is worth to a decision, worked out once for every hint on the screen (cached per company state). */
+function worthOf(g: GameState, cur: Asset): Worth {
+  return cached(g, cur, 'lab.worth', () => bizWorth(g, readBiz(g, cur)))
+}
+
+/**
+ * A purple hint for a row: `make` gives the sentence from the live company (null: say nothing), shown only
+ * to a Business-talented owner who can manage the company. It reads stored state and expected values only.
+ */
+function hintFor(a: Asset, make: (g: GameState, cur: Asset, b: BizState) => string | null): (g: GameState) => string | null {
+  return (g) => {
+    const cur = live(g, a)
+    if (!hinting(g, cur)) return null
+    const text = make(g, cur, readBiz(g, cur))
+    return text ? talentHint(g, 'Business', text) || null : null
+  }
+}
 
 /** The screen: one group for a product company, nothing for deep-tech, finance and studio companies, which keep their own R&D. */
 export function labMenus(a: Asset, b: BizState): MenuNode[] {
@@ -87,6 +110,12 @@ function opsAction(a: Asset, p: OpsProgram): MenuAction {
       const q = quote(g, a, p)
       return LAB_TIP.confirm(p.label, q.price, q.years, q.odds)
     },
+    // A program that can't go ahead (busy track, cooldown) says nothing: its reason is on the row. Cash alone doesn't hide it.
+    hint: hintFor(a, (g, cur, b) => {
+      if (opsBlock(g, b, p.id, true)) return null
+      const value = cached(g, cur, `lab.ops.${p.id}`, () => opsValue(g, b, p.id, worthOf(g, cur)))
+      return value > 0 ? LAB_TIP.opsHint(money(value), String(HORIZON)) : LAB_TIP.noPay()
+    }),
     disabled: (g, b) => opsBlock(g, b, p.id),
     run: (g, cur) => {
       doOps(g, cur, p.id)
@@ -128,6 +157,13 @@ function patentAction(a: Asset, family: string): MenuAction {
       const q = patentQuote(g, a, family)
       return LAB_TIP.patentConfirm(family, q.fee, q.years)
     },
+    // The better way to hold it, and what that is worth; nothing for a family that can't be filed (its reason is on the row).
+    hint: hintFor(a, (g, cur, b) => {
+      if (patentBlock(g, b, family, true)) return null
+      const pv = cached(g, cur, `lab.patent.${family}`, () => patentValue(g, b, family, worthOf(g, cur)))
+      if (!(pv.value > 0)) return LAB_TIP.noPay()
+      return (pv.mode === 'license' ? LAB_TIP.patentLicense : LAB_TIP.patentHold)(money(pv.value))
+    }),
     disabled: (g, b) => patentBlock(g, b, family),
     run: (g, cur) => {
       doPatent(g, cur, family)
@@ -178,6 +214,12 @@ function hireAction(a: Asset): MenuAction {
       const q = teamQuote(g, a)
       return LAB_TIP.hireConfirm(q.fee, q.pay, String(TEAM_MIN_YEARS))
     },
+    // What the next scientist adds against a year's pay; nothing when the trade has no team or it is full (the reason is on the row).
+    hint: hintFor(a, (g, cur, b) => {
+      if (readLab(b).team.length >= teamCap(b)) return null
+      const tv = cached(g, cur, 'lab.team', () => teamValue(g, b, worthOf(g, cur)))
+      return tv.value > 0 ? LAB_TIP.teamHint(money(tv.gain), money(tv.pay)) : LAB_TIP.noPay()
+    }),
     disabled: (g, b) => teamBlock(g, b, 'hire'),
     run: (g, cur) => {
       doHire(g, cur)
