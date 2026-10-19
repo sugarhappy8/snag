@@ -306,6 +306,10 @@ The demand weights are the composite weights, so one number drives `techPlan`, t
 which is 55.5%) stay the same code on a better input. No demand or valuation term is added: the AI boom
 event, the `aiLab` size curve and the seeded `industryCycle` already lift 2023 to 2030.
 
+`bestTechPlan` and `techPriceBounds` take the year the plan sells in (`g.year` by default). The yearly runs at
+`g.year = fiscal + 1` and sells the fiscal year, so the hired manager's re-plan inside it passes the fiscal year;
+planning one year ahead of the sale would read a board a year of drift further on than the one it sells against.
+
 ## 7. Firsts, world state and waves
 
 `claimFirsts(g, a, b, t, m)` (new, `business/ai-bench-claims.ts`) runs when a model is released, not

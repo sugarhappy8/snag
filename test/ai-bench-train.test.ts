@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { CAP_IDS, type CapMap } from '../src/game/business/ai-bench-data'
 import { capBest, compositeRating, modelRating, modelScore, modelSpec } from '../src/game/business/ai-bench'
 import { bestRival } from '../src/game/business/ai-bench-market'
-import { competitiveness, demandScale, techPremium } from '../src/game/business/deeptech-core'
+import { bestTechPlan, competitiveness, demandScale, techPlan, techPremium, techPriceBounds } from '../src/game/business/deeptech-core'
 import { frontierScore, programDef, type ProgCtx } from '../src/game/business/deeptech-data'
 import { readTech, type TechState } from '../src/game/business/deeptech-state'
+import { cycleOf } from '../src/game/business/economy'
 import { advancePrograms } from '../src/game/business/deeptech-rd'
+import { simulateDeepTechYearImpl } from '../src/game/business/deeptech-sim'
 import { act, lab, priors, rated } from './ai-bench-kit'
 
 const FAM = 'test-life', train = programDef('aiLab', 'train')!
@@ -91,5 +93,27 @@ describe('competitiveness, premium and demand from the lead', () => {
     const typical = T({ stage: 3 }); win(typical, { year: 2026 })
     const legacy = T({ stage: 3 }); win(legacy, { fam: undefined, rival: undefined, year: 2026 })
     expect(demandScale(b, typical, 2027, FAM) / demandScale(b, legacy, 2027, FAM)).toBeGreaterThan(0.85)
+  })
+})
+describe('the hired manager plans for the year the yearly sells', () => {
+  // A real yearly runs at g.year = fiscal + 1 and sells fiscal year F; the manager re-plans inside it.
+  const managed = (F: number) => {
+    const L = lab({ stage: 3, level: 70, plant: 1, rented: 2, models: priors(5) }, F + 1); L.g.character.job = null
+    win(L.t, { year: F - 1, fam: L.fam, rival: (y) => bestRival(L.fam, y, L.t.models) })   // trained in the previous yearly, first sells now
+    return L
+  }
+  it('bestTechPlan and techPriceBounds take the plan year, and default to g.year', () => {
+    const L = managed(2024), at = (year?: number) => bestTechPlan(L.g, L.b, L.t, undefined, year)
+    expect(at(2024)).not.toEqual(at(2025)); expect(at()).toEqual(at(2025)); expect(techPriceBounds(L.g, L.b, L.t, 2024).going).not.toBe(techPriceBounds(L.g, L.b, L.t).going)
+    const plan = at(2024), sold = techPlan(L.g, L.b, L.t, 2024, { price: plan.price, calm: true })
+    expect(plan.production).toBe(Math.round(Math.max(0, Math.min(sold.capacity, sold.demand))))
+  })
+  it('re-plans at the fiscal year, so what it makes meets the demand the yearly then sells at', () => {
+    for (const F of [2020, 2022, 2024, 2026, 2030]) {
+      const L = managed(F), { stmt } = simulateDeepTechYearImpl(L.g, L.a, L.b, F, 0)
+      // What the plan could expect at F (a manager of skill 50 reads last year's cycle), not the cycle's luck on the day.
+      const want = techPlan(L.g, L.b, L.t, F, { price: stmt.price, calm: true, cycle: cycleOf(L.g, L.b.countryId, F - 1) }).demand
+      expect([F, stmt.produced > 0.8 * want, stmt.produced < 1.3 * want]).toEqual([F, true, true])
+    }
   })
 })

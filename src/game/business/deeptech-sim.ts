@@ -64,7 +64,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   // A general manager plans with deep-tech numbers (the generic planner can't see the tech).
   if (!runs) {
     const skill = b.manager?.skill ?? 50
-    const best = bestTechPlan(g, b, t, cycleOf(g, b.countryId, skill >= 85 ? year : year - 1))
+    // At the year it sells (`year`, the fiscal year), not g.year, which is already the next one.
+    const best = bestTechPlan(g, b, t, cycleOf(g, b.countryId, skill >= 85 ? year : year - 1), year)
     const slop = (1 - skill / 100) * (skill >= 85 ? .025 : .12)
     if (best.production > 0) {
       b.price = round2(Math.max(0.01, best.price * (1 + (rand(g) - 0.5) * 2 * slop)))

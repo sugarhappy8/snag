@@ -366,22 +366,25 @@ export function sellable(g: GameState, b: BizState, t: TechState): boolean {
   return demandScale(b, t, g.year, familyId(g.lifeId)) > 0 && capacityUnits(b, t, g.year) > 0
 }
 
-/** Report bounds for the price (around the tech-adjusted going price). */
-export function techPriceBounds(g: GameState, b: BizState, t: TechState): { min: number; max: number; going: number } {
-  const going = techPlan(g, b, t, g.year, { calm: true }).going
+/** Report bounds for the price (around the tech-adjusted going price) in `year`, the year the plan sells in (the game's year by default). */
+export function techPriceBounds(g: GameState, b: BizState, t: TechState, year: number = g.year): { min: number; max: number; going: number } {
+  const going = techPlan(g, b, t, year, { calm: true }).going
   return { min: round2(Math.max(0.01, going * 0.25)), max: round2(Math.max(0.05, going * 4)), going }
 }
 
-/** The most profitable plan for next year (the Business talent's hint and the manager's plan). */
-export function bestTechPlan(g: GameState, b: BizState, t: TechState, cycle?: number): { price: number; production: number; profit: number } {
-  const bounds = techPriceBounds(g, b, t)
+/**
+ * The most profitable plan for the year it sells in (the Business talent's hint and the manager's plan). `year` is that
+ * year: the game's year by default, the fiscal year when the yearly itself re-plans (it runs a year ahead of what it sells).
+ */
+export function bestTechPlan(g: GameState, b: BizState, t: TechState, cycle?: number, year: number = g.year): { price: number; production: number; profit: number } {
+  const bounds = techPriceBounds(g, b, t, year)
   const def = industryDef(b.industry), materialShare = supplyProfile(b.industry)?.materialShare ?? 0
   let best = { price: bounds.going, production: 0, profit: -Infinity }
   for (let r = 0.6; r <= 2.01; r += 0.05) {
     const price = round2(clampN(bounds.going * r, bounds.min, bounds.max))
-    const plan = techPlan(g, b, t, g.year, { price, calm: true, cycle })
+    const plan = techPlan(g, b, t, year, { price, calm: true, cycle })
     const production = Math.round(Math.max(0, Math.min(plan.capacity, plan.demand - b.inventory)))
-    const supply = bookSupply(g, b, g.year, plan.equipmentCapacity, production, plan.unitCost)
+    const supply = bookSupply(g, b, year, plan.equipmentCapacity, production, plan.unitCost)
     const sold = Math.floor(Math.min(plan.demand, supply.produced + b.inventory))
     const ordinary = plan.unitCost * (def.perishable >= 1 ? sold * .7 + supply.produced * .3 : supply.produced)
     const cogs = ordinary * (1 - materialShare) + supply.materialsCost
