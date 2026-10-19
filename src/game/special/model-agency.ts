@@ -160,7 +160,8 @@ function sign(c: CareerCtx<ModelState>, agency: string, kind: Terms, carry: Carr
   const guarantee = kind === 'guarantee'
   const level = clamp(Math.round(fin(carry?.level)), 0, RANKS.length - 1)
   const salary = guarantee ? retainerFor(a.tier, level) : 0
-  const advance = g.character.age < 23 && s.book < 30 ? ADVANCE * (a.tier + 1) : 0
+  // a life's first signing only: an advance on every switch or re-signing would be money for changing desks
+  const advance = s.agencies.length === 0 && g.character.age < 23 && s.book < 30 ? ADVANCE * (a.tier + 1) : 0
   const { job } = hire(g, { defId: 'model', title: RANKS[level], company: agency, salary, level, performance: carry?.performance, data: { tier: a.tier, gigsThisYear: 0, sabotaged: Math.round(fin(carry?.sabotaged)) } })
   const booker = addColleague(g, agency, 'Booker', { ageOffset: [-4, 16] })
   const k: MdContract = {
@@ -189,8 +190,8 @@ function sign(c: CareerCtx<ModelState>, agency: string, kind: Terms, carry: Carr
 /**
  * Signs with an agency on one of two contracts. Guarantee: a retainer (the agency's retainer x the title multiplier),
  * exclusive, commission base + 3. Commission only: no retainer, not exclusive, base commission. The term runs 2 years
- * at tier 0, 3 at tiers 1 and 2, 4 at tier 3. Under 23 with a book under 30 the agency also advances 3,000 x (tier + 1),
- * booked as income and recouped from later fees. Actions and scripts only.
+ * at tier 0, 3 at tiers 1 and 2, 4 at tier 3. Under 23 with a book under 30 the agency also advances 3,000 x (tier + 1)
+ * on a life's first signing only, booked as income and recouped from later fees. Actions and scripts only.
  */
 export function signWith(c: CareerCtx<ModelState>, agency: string, kind: Terms): void {
   const k = sign(c, agency, kind, null)

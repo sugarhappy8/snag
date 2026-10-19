@@ -625,6 +625,41 @@ describe('model contracts', () => {
     expect(state(g)).toBe(again)
   })
 
+  it('grants the signing advance once a life, so switching agencies back and forth farms nothing', () => {
+    const g = openLife({ age: 21 })
+    const s = modelStore.mut(g)
+    s.book = 14
+    g.character.money = 13_000
+    signWith(ctxOf(g, s), 'Hometown Faces', 'guarantee')
+    expect(g.character.job!.company).toBe('Hometown Faces')
+    const first = g.character.money
+    expect(first).toBeGreaterThan(13_000) // the first signing carries the advance: under 23, book under 30
+    let switches = 0
+    for (let i = 0; i < 20; i++) {
+      const to = i % 2 === 0 ? 'Silhouette Models' : 'Hometown Faces'
+      switchAgency(ctxOf(g, s), to)
+      if (g.character.job?.company === to) switches++
+      // the advance of the new contract: none after the first signing
+      expect(readContract(g.character.job, g)?.advance ?? 0, `switch ${i}`).toBe(0)
+    }
+    expect(switches).toBeGreaterThan(10) // the gates let the loop run, so the cash below is the answer
+    expect(g.character.money).toBeLessThanOrEqual(first)
+  })
+
+  it('grants an advance on a first signing only, not on a re-signing after the job ends', () => {
+    const g = openLife({ age: 21 })
+    const s = modelStore.mut(g)
+    s.book = 10
+    signWith(ctxOf(g, s), 'Hometown Faces', 'commission')
+    expect(readContract(g.character.job, g)!.advance).toBe(3_000)
+    g.character.job = null
+    s.agencies.forEach((a) => (a.to = g.year))
+    const cash = g.character.money
+    signWith(ctxOf(g, s), 'Hometown Faces', 'commission')
+    expect(readContract(g.character.job, g)!.advance).toBe(0)
+    expect(g.character.money).toBe(cash)
+  })
+
   it('recoups an advance from later nets, then writes it off with no debt', () => {
     const g = openLife()
     const s = modelStore.mut(g)
