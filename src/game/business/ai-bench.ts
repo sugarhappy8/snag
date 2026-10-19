@@ -1,7 +1,7 @@
 // AI Lab 2.0, the roster-free layer: what the best lab in the world rates in each capability by year,
 // how hard each year's benchmark is, and the one formula that turns a lab into a model rating.
-// Everything takes the year it is about and never reads g.year (only benchYear derives one). Nothing
-// here draws g.rng; the drift past 2026 and a model's specialty are seeded from the family id.
+// Everything takes the year it is about and never reads the game's year (only benchYear derives one). Nothing
+// here draws from the game's random stream; the drift past 2026 and a model's specialty are seeded from the family id.
 // No roster code is imported, so deeptech-data.ts can use this file without an import cycle.
 import { seeded } from '../assets'
 import { PRESENT_YEAR, TECH } from '../history/timeline'
