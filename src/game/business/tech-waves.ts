@@ -14,12 +14,14 @@
 // economy, product-market); every use of those modules is inside a function.
 import { seeded } from '../assets'
 import { INDUSTRY_IDS, type Industry } from '../data/markets'
+import { recordEconomicActivity } from '../economy'
 import { FACTOR_BOUNDS, type MarketFactors } from '../history/market-events'
 import { HISTORY_WAVES, historyKindActive, historyWaveStates } from '../history/tech-waves'
+import { PRESENT_YEAR } from '../history/timeline'
 import { outcomeTag } from '../timeMachine'
 import type { GameState, Json } from '../types'
 import { COUNTRIES } from '../world'
-import { marketStateOf } from './competition-core'
+import { marketKey, marketStateOf } from './competition-core'
 import { familyId } from './competition-roster'
 import { heavyLevel, readHeavy } from './heavy-rd'
 import { hashOf } from './product-market'
@@ -479,6 +481,7 @@ export function advanceTechWaves(g: GameState): void {
     }
     const s = nextState(w, delivery, stall, year)
     if (s.fate === 'drop') continue
+    feedEconomy(g, w, s.delivery - w.delivery, year)
     const stepped: TechWave = { ...w, hype: s.hype, delivery: s.delivery, last: year }
     if (s.mature > 0) stepped.mature = s.mature
     else delete stepped.mature
@@ -498,6 +501,52 @@ export function advanceTechWaves(g: GameState): void {
   if (!changed) return
   writeWaves(g, next)
   if (base) writeBase(g, base)
+}
+
+/**
+ * The national economy hears about a breakthrough as it is delivered (D17): a small `innovation` amount
+ * for the wave's core trade in its home country, scaled by size and the year's delivery gain. Never
+ * 'world' (not a country, so the call would drop it), never for workshop or race waves (the Workshop
+ * already feeds innovation), at most 0.3 a call; one receipt per wave and year makes a second call a no-op.
+ */
+function feedEconomy(g: GameState, w: TechWave, gain: number, year: number): void {
+  if (w.source === 'workshop' || w.source === 'race' || !(gain > 0)) return
+  const country = w.home ?? (w.market !== 'world' ? w.market : undefined)
+  if (!country) return
+  recordEconomicActivity(g, `wave:${w.id}:${year}`, country, WAVE_KINDS[w.kind].core[0], { innovation: Math.min(0.3, 0.1 * w.size * gain) })
+}
+
+/** Distinct (trade, market) pairs of the player's companies looked at for a rival landing in one year. */
+const MAX_LANDING_PAIRS = 24
+/** A trade a live wave already cores is left alone for this many years. */
+const LANDING_GAP = 3
+
+/**
+ * The yearly hook: for each trade and market the player has a company in, a rival may land a
+ * breakthrough this year (`rivalWave`, a seeded draw keyed by the family id and the Time Machine tag).
+ * Only for years after the present one, so the real history is never invented over; none within three
+ * years of a wave that already cores the trade; a life with no company writes nothing. The wave is
+ * announced through `announceWave`, so a repeat in the same year is the stored wave.
+ */
+export function landRivalWaves(g: GameState): void {
+  const year = Math.round(g.year)
+  if (!Number.isFinite(year) || year <= PRESENT_YEAR) return
+  const assets = businessAssets(g)
+  if (!assets.length) return
+  const fam = `${familyId(g.lifeId)}${outcomeTag(g, year)}`
+  const seen = new Set<string>()
+  for (const a of assets) {
+    if (seen.size >= MAX_LANDING_PAIRS) break
+    const b = readBiz(g, a)
+    const market = marketKey(b)
+    const pair = `${b.industry}|${market}`
+    if (seen.has(pair)) continue
+    seen.add(pair)
+    if (readTechWaves(g).some((w) => w.year >= year - LANDING_GAP && (WAVE_KINDS[w.kind].core as readonly string[]).includes(b.industry))) continue
+    const landed = rivalWave(fam, b.industry, year)
+    if (!landed) continue
+    announceWave(g, { kind: landed.kind, source: 'rival', origin: pair, name: WAVE_KINDS[landed.kind].label, size: landed.size, market, home: b.countryId, year })
+  }
 }
 
 /**

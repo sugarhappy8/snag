@@ -44,6 +44,7 @@ import { marketDef } from './competition-data'
 import { groupsOf, liveGroup, sharePriceOf } from './conglomerate-state'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
+import { advanceTechWaves } from './tech-waves'
 import { maybeBusinessEvent } from './events'
 import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
@@ -476,7 +477,8 @@ export function yearlyBusinessImpl(g: GameState): void {
   // Last year's price promises end with the year that was just booked.
   prunePricePromises(g)
   const list = businessAssets(g)
-  if (list.length === 0) return
+  // Stored tech waves step even with no company (the unit is the game year, once, behind each wave's marker).
+  if (list.length === 0) { advanceTechWaves(g); return }
   announceMarketEvents(g, list)
   const fiscal = g.year - 1
   prepareInternalServices(g, fiscal)
@@ -608,6 +610,8 @@ export function yearlyBusinessImpl(g: GameState): void {
   yearlyConglomerates(g)
   groupRetentionYear(g)
   bundleCeoLetters(g, queued)
+  // Last, because a wave's delivery follows what its company booked this pass (business/tech-waves.ts).
+  advanceTechWaves(g)
 }
 
 const LETTER_SUFFIX = ': Letter from the CEO'
