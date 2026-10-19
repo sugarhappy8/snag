@@ -88,7 +88,7 @@ describe('wave news', () => {
   it('a rival wave posts news only when it touches a player company, with no notice; heavy, workshop and race post none', () => {
     const g = adult(5, 2033, 'us'); company(g, 'dataCenter'); ai(g, 'rival', 'aiLab|world')
     expect(readMarketNews(g)).toHaveLength(1); expect(g.queue.some((m) => String(m.id).startsWith('wave-'))).toBe(false)
-    expect(readMarketNews(g)[0].text).toBe('A rival landed frontier AI. Investors are watching. Delivery decides the rest.')
+    expect(readMarketNews(g)[0].text).toBe('A rival landed a frontier AI leap. Investors are watching. Delivery decides the rest.')
     const h = adult(6, 2033, 'us'); company(h, 'restaurant'); ai(h, 'rival', 'aiLab|world'); expect(readMarketNews(h)).toEqual([])
     const none = makeTestGame(2); none.year = 2033; ai(none, 'rival', 'aiLab|world'); expect(readMarketNews(none)).toEqual([])
     const o = adult(7, 2033, 'us'); company(o, 'aiLab'); for (const source of ['heavy', 'workshop'] as const) announceWave(o, { kind: 'ai', source, origin: source === 'heavy' ? 'heavy.software|world#x' : 'idea-1', name: 'Frontier AI', size: 0.4, market: 'world' })

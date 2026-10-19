@@ -11,6 +11,8 @@ import type { Category, IdeaDef } from '../workshop/catalog'
 export interface WaveKindDef {
   /** Plain noun phrase used in news and report lines ("Frontier AI wave: ..."). */
   label: string
+  /** What a rival or a fast follower lands or chases, as a phrase that reads after "landed" and "to chase" ('a breakthrough drug', 'electric cars at scale'). */
+  landed: string
   emoji: string
   core: readonly Industry[]
   supply: readonly Industry[]
@@ -19,33 +21,33 @@ export interface WaveKindDef {
 
 export const WAVE_KINDS = {
   // Deep tech: the twelve deep-tech trades' own breakthrough-class milestones.
-  ai: { label: 'Frontier AI', emoji: '\u{1F916}', core: ['aiLab'], supply: ['semiconductor', 'dataCenter'], disrupted: ['software', 'marketing', 'education'] },
-  chips: { label: 'Chip leap', emoji: '\u{1F4BE}', core: ['semiconductor'], supply: ['dataCenter', 'aiLab', 'robotics'], disrupted: [] },
-  drug: { label: 'Breakthrough drug', emoji: '\u{1F48A}', core: ['biotech'], supply: ['clinic'], disrupted: ['homeCare'] },
-  space: { label: 'Space leap', emoji: '\u{1F6F0}\u{FE0F}', core: ['spaceTech'], supply: ['manufacturing', 'semiconductor', 'telecom'], disrupted: [] },
-  ev: { label: 'Electric cars', emoji: '\u{1F697}', core: ['electricVehicles'], supply: ['battery', 'solar', 'semiconductor'], disrupted: ['autoShop', 'energy'] },
-  automation: { label: 'Automation', emoji: '\u{2699}\u{FE0F}', core: ['robotics'], supply: ['semiconductor', 'battery', 'manufacturing'], disrupted: [] },
-  quantum: { label: 'Quantum computing', emoji: '\u{269B}\u{FE0F}', core: ['quantum'], supply: ['semiconductor', 'dataCenter', 'cybersecurity'], disrupted: [] },
-  security: { label: 'Cybersecurity', emoji: '\u{1F6E1}\u{FE0F}', core: ['cybersecurity'], supply: ['software', 'dataCenter'], disrupted: [] },
-  fusion: { label: 'Fusion power', emoji: '\u{1F31F}', core: ['fusion'], supply: ['manufacturing', 'construction'], disrupted: ['energy', 'solar'] },
-  neuro: { label: 'Brain interfaces', emoji: '\u{1F9E0}', core: ['neurotech'], supply: ['semiconductor', 'clinic', 'aiLab'], disrupted: [] },
-  drones: { label: 'Drones', emoji: '\u{1F681}', core: ['drones'], supply: ['battery', 'semiconductor', 'manufacturing'], disrupted: ['logistics'] },
-  carbon: { label: 'Carbon removal', emoji: '\u{1F331}', core: ['carbonCapture'], supply: ['energy', 'construction'], disrupted: [] },
+  ai: { label: 'Frontier AI', landed: 'a frontier AI leap', emoji: '\u{1F916}', core: ['aiLab'], supply: ['semiconductor', 'dataCenter'], disrupted: ['software', 'marketing', 'education'] },
+  chips: { label: 'Chip leap', landed: 'a chip leap', emoji: '\u{1F4BE}', core: ['semiconductor'], supply: ['dataCenter', 'aiLab', 'robotics'], disrupted: [] },
+  drug: { label: 'Breakthrough drug', landed: 'a breakthrough drug', emoji: '\u{1F48A}', core: ['biotech'], supply: ['clinic'], disrupted: ['homeCare'] },
+  space: { label: 'Space leap', landed: 'a space leap', emoji: '\u{1F6F0}\u{FE0F}', core: ['spaceTech'], supply: ['manufacturing', 'semiconductor', 'telecom'], disrupted: [] },
+  ev: { label: 'Electric cars', landed: 'electric cars at scale', emoji: '\u{1F697}', core: ['electricVehicles'], supply: ['battery', 'solar', 'semiconductor'], disrupted: ['autoShop', 'energy'] },
+  automation: { label: 'Automation', landed: 'an automation leap', emoji: '\u{2699}\u{FE0F}', core: ['robotics'], supply: ['semiconductor', 'battery', 'manufacturing'], disrupted: [] },
+  quantum: { label: 'Quantum computing', landed: 'a quantum computing leap', emoji: '\u{269B}\u{FE0F}', core: ['quantum'], supply: ['semiconductor', 'dataCenter', 'cybersecurity'], disrupted: [] },
+  security: { label: 'Cybersecurity', landed: 'a cybersecurity leap', emoji: '\u{1F6E1}\u{FE0F}', core: ['cybersecurity'], supply: ['software', 'dataCenter'], disrupted: [] },
+  fusion: { label: 'Fusion power', landed: 'a fusion power leap', emoji: '\u{1F31F}', core: ['fusion'], supply: ['manufacturing', 'construction'], disrupted: ['energy', 'solar'] },
+  neuro: { label: 'Brain interfaces', landed: 'a brain interface leap', emoji: '\u{1F9E0}', core: ['neurotech'], supply: ['semiconductor', 'clinic', 'aiLab'], disrupted: [] },
+  drones: { label: 'Drones', landed: 'a drone leap', emoji: '\u{1F681}', core: ['drones'], supply: ['battery', 'semiconductor', 'manufacturing'], disrupted: ['logistics'] },
+  carbon: { label: 'Carbon removal', landed: 'a carbon removal leap', emoji: '\u{1F331}', core: ['carbonCapture'], supply: ['energy', 'construction'], disrupted: [] },
 
   // History: episodes with a company story the market events don't tell (history/tech-waves.ts).
   // The game has no media or devices trade, so television's winner is advertising and the handset
   // and phone waves are carried by telecom, software and chips.
-  transistor: { label: 'The transistor', emoji: '\u{1F4FB}', core: ['semiconductor'], supply: ['manufacturing', 'software'], disrupted: [] },
-  television: { label: 'Television', emoji: '\u{1F4FA}', core: ['marketing'], supply: ['manufacturing', 'telecom'], disrupted: ['entertainment', 'nightclub'] },
-  microcomputer: { label: 'Home computers', emoji: '\u{1F5A5}\u{FE0F}', core: ['semiconductor', 'software'], supply: ['manufacturing', 'gameStudio'], disrupted: [] },
-  mobilephone: { label: 'Mobile phones', emoji: '\u{1F4DE}', core: ['telecom'], supply: ['semiconductor', 'manufacturing', 'battery'], disrupted: [] },
-  smartphone: { label: 'Smartphones', emoji: '\u{1F4F1}', core: ['software'], supply: ['semiconductor', 'telecom', 'gameStudio', 'ecommerce', 'battery'], disrupted: [] },
-  cloud: { label: 'Cloud computing', emoji: '\u{2601}\u{FE0F}', core: ['dataCenter'], supply: ['software', 'semiconductor', 'telecom', 'cybersecurity'], disrupted: [] },
-  solarbattery: { label: 'Cheap solar and batteries', emoji: '\u{2600}\u{FE0F}', core: ['solar', 'battery'], supply: ['electricVehicles', 'construction', 'manufacturing'], disrupted: ['energy'] },
-  reusablerocket: { label: 'Reusable rockets', emoji: '\u{1F680}', core: ['spaceTech'], supply: ['manufacturing', 'semiconductor', 'telecom'], disrupted: [] },
-  evboom: { label: 'The EV boom', emoji: '\u{26A1}', core: ['electricVehicles'], supply: ['battery', 'semiconductor', 'solar'], disrupted: [] },
-  mrna: { label: 'mRNA vaccines', emoji: '\u{1F489}', core: ['biotech'], supply: ['clinic', 'logistics'], disrupted: [] },
-  glp1: { label: 'GLP-1 drugs', emoji: '\u{1F9EA}', core: ['biotech'], supply: ['clinic'], disrupted: ['bakery', 'brewery'] },
+  transistor: { label: 'The transistor', landed: 'the transistor', emoji: '\u{1F4FB}', core: ['semiconductor'], supply: ['manufacturing', 'software'], disrupted: [] },
+  television: { label: 'Television', landed: 'television', emoji: '\u{1F4FA}', core: ['marketing'], supply: ['manufacturing', 'telecom'], disrupted: ['entertainment', 'nightclub'] },
+  microcomputer: { label: 'Home computers', landed: 'home computers', emoji: '\u{1F5A5}\u{FE0F}', core: ['semiconductor', 'software'], supply: ['manufacturing', 'gameStudio'], disrupted: [] },
+  mobilephone: { label: 'Mobile phones', landed: 'mobile phones', emoji: '\u{1F4DE}', core: ['telecom'], supply: ['semiconductor', 'manufacturing', 'battery'], disrupted: [] },
+  smartphone: { label: 'Smartphones', landed: 'smartphones', emoji: '\u{1F4F1}', core: ['software'], supply: ['semiconductor', 'telecom', 'gameStudio', 'ecommerce', 'battery'], disrupted: [] },
+  cloud: { label: 'Cloud computing', landed: 'cloud computing', emoji: '\u{2601}\u{FE0F}', core: ['dataCenter'], supply: ['software', 'semiconductor', 'telecom', 'cybersecurity'], disrupted: [] },
+  solarbattery: { label: 'Cheap solar and batteries', landed: 'cheap solar and batteries', emoji: '\u{2600}\u{FE0F}', core: ['solar', 'battery'], supply: ['electricVehicles', 'construction', 'manufacturing'], disrupted: ['energy'] },
+  reusablerocket: { label: 'Reusable rockets', landed: 'reusable rockets', emoji: '\u{1F680}', core: ['spaceTech'], supply: ['manufacturing', 'semiconductor', 'telecom'], disrupted: [] },
+  evboom: { label: 'The EV boom', landed: 'the EV boom', emoji: '\u{26A1}', core: ['electricVehicles'], supply: ['battery', 'semiconductor', 'solar'], disrupted: [] },
+  mrna: { label: 'mRNA vaccines', landed: 'mRNA vaccines', emoji: '\u{1F489}', core: ['biotech'], supply: ['clinic', 'logistics'], disrupted: [] },
+  glp1: { label: 'GLP-1 drugs', landed: 'GLP-1 drugs', emoji: '\u{1F9EA}', core: ['biotech'], supply: ['clinic'], disrupted: ['bakery', 'brewery'] },
 } as const satisfies Record<string, WaveKindDef>
 
 export type WaveKind = keyof typeof WAVE_KINDS

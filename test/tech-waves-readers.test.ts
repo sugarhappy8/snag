@@ -227,7 +227,7 @@ describe('rivals, entrants and the hot path', () => {
   it('never founds a fast follower twice, even after 12 newer extras push it off the capped list, and a save from before the record still loads', () => {
     const g = adult(5, 2034, 'us'); const a = company(g, 'telecom'); put(g, AI({ kind: 'mobilephone', source: 'workshop', year: 2030, last: 2034, delivery: 0.9 }))
     const ids = () => marketOfBiz(readBiz(g, a)).extra.filter((x) => x.id.startsWith('xw-')).map((x) => x.id)
-    const chased = () => g.log.flatMap((y) => y.entries).filter((l) => l.text.includes('to chase the')).length
+    const chased = () => g.log.flatMap((y) => y.entries).filter((l) => l.text.endsWith(' launched to chase mobile phones.')).length
     nextYear(g); expect(ids()).toHaveLength(3); expect(chased()).toBe(3)
     const b = bizOf(g, a), st = marketOfBiz(b)
     for (let i = 0; i < 12; i++) st.extra.push({ id: `x2036${i}`, name: `Newer Rival ${i}`, hq: 'us', founded: 2036, pot: 1, ramp: 4, origin: 'entrant' })

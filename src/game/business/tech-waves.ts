@@ -155,9 +155,14 @@ function announceWaveNews(g: GameState, w: TechWave): void {
   const title = `${w.name} Wave`
   const text = w.source === 'deeptech'
     ? `Your lab landed ${lowerLead(w.name)}. Investors expect a lot. Delivery decides the rest.`
-    : `A rival landed ${lowerLead(w.name)}. Investors are watching. Delivery decides the rest.`
+    : `A rival landed ${def.landed}. Investors are watching. Delivery decides the rest.`
   const fresh = pushMarketNews(g, { id, year: w.year, industry: def.core[0], market: w.market, emoji: def.emoji, title, text })
   if (w.source === 'deeptech' && fresh && g.character.alive && !g.queue.some((m) => m.id === id)) g.queue.push({ kind: 'notice', id, title, text, emoji: def.emoji, tone: 'good' })
+}
+
+/** The life-log line for a fast follower founded to chase a wave of this kind (the name is the new company's). Pure. */
+export function entrantLine(name: string, kind: WaveKind): string {
+  return `${name} launched to chase ${WAVE_KINDS[kind].landed}.`
 }
 
 /** Lowercases a leading capital unless the next letter is a capital too, so a wave name reads inside a sentence ('Frontier AI' gives 'frontier AI', 'AI agents' stays). */

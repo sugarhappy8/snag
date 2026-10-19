@@ -19,7 +19,7 @@ import { industryDef } from './industries'
 import { entryStrength, presenceIn } from './market-reach'
 import { regionalShares } from './market-regional'
 import { readBiz, type BizState } from './state'
-import { entrantsDue, lowerLead, waveScrutiny } from './tech-waves'
+import { entrantLine, entrantsDue, waveScrutiny } from './tech-waves'
 import { clampN, money as moneyShort, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ function waveNewcomers(g: GameState, b: BizState, st: MarketState, year: number)
     const x: ExtraRival = { id, name, hq, founded: year + 1, pot: 0.6 + 0.8 * wave.size, ramp: 3, origin: 'entrant' }
     st.extra = [...st.extra.filter((e) => e.founded > year - 40), x].slice(-12)
     st.waveFounded = [...(st.waveFounded ?? []), id].slice(-MAX_WAVE_FOUNDED)
-    log(g, `${name} launched to chase the ${lowerLead(wave.name)} wave.`, 'neutral')
+    log(g, entrantLine(name, wave.kind), 'neutral')
   }
 }
 

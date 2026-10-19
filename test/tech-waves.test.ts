@@ -3,8 +3,8 @@ import { staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { seeded } from '../src/game/assets'
 import { addHeavy } from '../src/game/business/heavy-rd'
 import { hashOf } from '../src/game/business/product-market'
-import { DEEPTECH_WAVES, HEAVY_WAVES, WAVE_KINDS } from '../src/game/business/tech-wave-data'
-import { MAX_WAVES, advanceTechWaves, announceWave, lowerLead, nextState, readTechBase, readTechWaves, rivalWave, waveDraw, waveFactors, waveFactorsFor, waveWorldFlags, type TechBase, type TechWave } from '../src/game/business/tech-waves'
+import { DEEPTECH_WAVES, HEAVY_WAVES, WAVE_KINDS, type WaveKind } from '../src/game/business/tech-wave-data'
+import { MAX_WAVES, advanceTechWaves, announceWave, entrantLine, lowerLead, nextState, readTechBase, readTechWaves, rivalWave, waveDraw, waveFactors, waveFactorsFor, waveWorldFlags, type TechBase, type TechWave } from '../src/game/business/tech-waves'
 import { INDUSTRY_IDS } from '../src/game/data/markets'
 import { FACTOR_BOUNDS, marketEventFactors, readMarketNews } from '../src/game/history/market-events'
 import { HISTORY_WAVES } from '../src/game/history/tech-waves'
@@ -224,7 +224,7 @@ function template(text: string, values: readonly string[]): string {
 describe('voice', () => {
   const lines: [string, 'outcome' | 'text' | 'log' | 'title'][] = [
     ['Your lab landed ${...}. Investors expect a lot. Delivery decides the rest.', 'outcome'], ['A rival landed ${...}. Investors are watching. Delivery decides the rest.', 'outcome'],
-    ['${...} Wave', 'title'], ['${...} launched to chase the ${...} wave.', 'log'], ['Frontier AI wave. Demand +9%, costs \u22123%, value +13%.', 'text'],
+    ['${...} Wave', 'title'], ['${...} launched to chase ${...}.', 'log'], ['Frontier AI wave. Demand +9%, costs \u22123%, value +13%.', 'text'],
   ]
   const cap = (role: string) => (role === 'log' ? 90 : 120)
   it('every wave string passes unitFlags and its length cap', () => {
@@ -240,7 +240,23 @@ describe('voice', () => {
       expect(unitFlags(template(n.title, [n.title.replace(/ Wave$/, '')]), 'title')).toEqual([])
     }
   })
-  it('no wave label, history name or deep-tech name holds an em-dash', () => {
-    for (const s of [...Object.values(WAVE_KINDS).map((d) => d.label), ...HISTORY_WAVES.map((w) => w.name), ...Object.values(DEEPTECH_WAVES).map((w) => w.name)]) expect(s).not.toMatch(/\u2014|\u2013/)
+  it('every kind has a phrase that reads inside the rival news and the entrant log, and both lines pass the checks and caps', () => {
+    const SAID: Partial<Record<WaveKind, string>> = {
+      ai: 'a frontier AI leap', chips: 'a chip leap', drug: 'a breakthrough drug', space: 'a space leap', ev: 'electric cars at scale', automation: 'an automation leap',
+      quantum: 'a quantum computing leap', security: 'a cybersecurity leap', fusion: 'a fusion power leap', neuro: 'a brain interface leap', drones: 'a drone leap', carbon: 'a carbon removal leap',
+    }
+    for (const kind of Object.keys(WAVE_KINDS) as WaveKind[]) {
+      const def = WAVE_KINDS[kind], g = adult(5, 2033, 'us'); company(g, def.core[0])
+      announceWave(g, { kind, source: 'rival', origin: `${def.core[0]}|world`, name: def.label, size: 0.4, market: 'world', home: 'us' })
+      const [n] = readMarketNews(g), line = entrantLine('Orion Works', kind)
+      expect(n?.text, kind).toBe(`A rival landed ${def.landed}. Investors are watching. Delivery decides the rest.`); expect(line, kind).toBe(`Orion Works launched to chase ${def.landed}.`)
+      if (SAID[kind]) expect(def.landed, kind).toBe(SAID[kind])
+      for (const [text, role, max] of [[n.text, 'outcome', 120], [template(line, ['Orion Works']), 'log', 90]] as const) {
+        expect(unitFlags(text, role), `${kind}: ${text}`).toEqual([]); expect(staticLength(text), `${kind}: ${text}`).toBeLessThanOrEqual(max)
+      }
+    }
+  })
+  it('no wave label, kind phrase, history name or deep-tech name holds an em-dash', () => {
+    for (const s of [...Object.values(WAVE_KINDS).flatMap((d) => [d.label, d.landed]), ...HISTORY_WAVES.map((w) => w.name), ...Object.values(DEEPTECH_WAVES).map((w) => w.name)]) expect(s).not.toMatch(/\u2014|\u2013/)
   })
 })
