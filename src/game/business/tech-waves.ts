@@ -31,13 +31,14 @@ import { hashOf } from './product-market'
 import { businessAssets, isQuoted, readBiz, type BizState } from './state'
 import { isWaveKind, WAVE_KINDS, type WaveKind } from './tech-wave-data'
 import {
-  BASE_KEY, cleanWave, effectsOf, MAX_ID, MAX_WAVES, noBase, readTechBase, readTechWaves, roleOf, storedBase, storedWave, waveFactorsFor, WAVES_KEY,
+  BASE_KEY, cleanWave, effectsOf, MAX_ID, MAX_WAVES, nextStepTag, noBase, readTechBase, readTechWaves, roleOf, STOCK_BETA, storedBase, storedWave, TRAIL_POINTS, waveFactorsFor, WAVES_KEY,
   type TechBase, type TechWave, type WaveSource,
 } from './tech-wave-factors'
 import { clampN } from './util'
 
 export { BASE_KEY, historyFactors, MAX_WAVES, readTechBase, readTechWaves, roleOf, waveFactors, waveFactorsFor, WAVES_KEY } from './tech-wave-factors'
-export type { TechBase, TechWave, WaveSource } from './tech-wave-factors'
+export { nextStepTag, STOCK_BETA, stateAt, stockLevelFor, TRAIL_POINTS, waveLevels, waveSignature, wavesAt } from './tech-wave-factors'
+export type { TechBase, TechWave, WaveLevel, WaveSource } from './tech-wave-factors'
 
 /** At most this many waves from the player's side (anything but a rival) are announced in a year. */
 const MAX_PER_YEAR = 2
@@ -132,7 +133,10 @@ export function announceWave(g: GameState, a: WaveInput): TechWave | null {
     ...(a.source === 'heavy' ? { skip: a.origin.slice(6, a.origin.indexOf('|')) } : {}),
   })
   if (!w) return null
-  writeWaves(g, [...list, w])
+  // The first point of the trail and the projected next step, so a stock read before the first yearly step already sees it (release 1b).
+  const first = cleanWave({ ...w, trail: [[w.last, w.hype, w.delivery]], nx: projectWave(g, w) })
+  if (!first) return null
+  writeWaves(g, [...list, first])
   const stored = readTechWaves(g).find((x) => x.id === w.id) ?? null
   if (stored) announceWaveNews(g, stored)
   return stored
@@ -256,6 +260,45 @@ function deliveryTarget(g: GameState, w: TechWave, year: number): number | null 
   return null
 }
 
+/** One wave's step: its new hype, delivery and maturity, whether the year stalled, and what becomes of it. */
+export interface WaveStep {
+  hype: number
+  delivery: number
+  mature: number
+  stall: boolean
+  fate: 'live' | 'settle' | 'drop'
+}
+
+/**
+ * What `year` does to a wave, the path `advanceTechWaves` runs (and the Investing talent's stock level reads ahead
+ * of it, through `projectWave`). Delivery: a company-written wave moves toward what its record or lab has sold, at
+ * most 0.25 a year; every other case (workshop, race, rival, or a missing company or record) gains 0.08 + 0.22 u from
+ * the seeded draw, or nothing on a stall. Then `nextState`. Pure: no writes, no `g.rng`.
+ */
+export function stepWave(g: GameState, w: TechWave, year: number): WaveStep {
+  const target = deliveryTarget(g, w, year)
+  let delivery: number, stall = false
+  if (target !== null) delivery = w.delivery + clampN(target - w.delivery, -0.25, 0.25)
+  else {
+    const d = waveDraw(g, w.id, year)
+    stall = d.stall
+    delivery = w.delivery + (stall ? 0 : 0.08 + 0.22 * d.u)
+  }
+  return { ...nextState(w, delivery, stall, year), stall }
+}
+
+/**
+ * The next yearly step of a wave as `[hype, delivery, fork tag]`: `stepWave` at `last + 1`. A wave that is about to
+ * drop projects `[0, 0, tag]` (zero hype and delivery make every role neutral), so the level read before the dropping
+ * step equals the level read after the wave is gone (P2). The tag is `nextStepTag`, so a Time Machine jump that
+ * rerolls that year leaves the stored projection unread. Pure.
+ */
+export function projectWave(g: GameState, w: TechWave): readonly [number, number, string] {
+  const tag = nextStepTag(g, w)
+  const s = stepWave(g, w, w.last + 1)
+  return s.fate === 'drop' ? [0, 0, tag] : [s.hype, s.delivery, tag]
+}
+
 /**
  * Step every wave once a year, behind the `last` marker (a second call in a year, or a wave that
  * starts later than this year, writes nothing; a gap steps once). Delivery: a company-written wave
@@ -274,30 +317,25 @@ export function advanceTechWaves(g: GameState): void {
   for (const w of list) {
     if (w.last === year || year < w.year) { next.push(w); continue }
     changed = true
-    const target = deliveryTarget(g, w, year)
-    let delivery: number, stall = false
-    if (target !== null) delivery = w.delivery + clampN(target - w.delivery, -0.25, 0.25)
-    else {
-      const d = waveDraw(g, w.id, year)
-      stall = d.stall
-      delivery = w.delivery + (stall ? 0 : 0.08 + 0.22 * d.u)
-    }
-    const s = nextState(w, delivery, stall, year)
+    const s = stepWave(g, w, year)
     if (s.fate === 'drop') continue
     feedEconomy(g, w, s.delivery - w.delivery, year)
-    const stepped: TechWave = { ...w, hype: s.hype, delivery: s.delivery, last: year }
+    // The remembered path: this year's point (a trail point of the same or a later year than this step is dropped, so the years rise), the last TRAIL_POINTS kept.
+    const trail = [...(w.trail ?? [[w.last, w.hype, w.delivery] as const]).filter((p) => p[0] < year), [year, s.hype, s.delivery] as const].slice(-TRAIL_POINTS)
+    const stepped: TechWave = { ...w, hype: s.hype, delivery: s.delivery, last: year, trail }
     if (s.mature > 0) stepped.mature = s.mature
     else delete stepped.mature
-    if (s.fate === 'live') { next.push(stepped); continue }
-    // Settled: the wave's own demand and cost factors become permanent at its own market ('world' is read in every market).
+    if (s.fate === 'live') { next.push({ ...stepped, nx: projectWave(g, stepped) }); continue }
+    // Settled: the wave's own demand, cost and stock factors become permanent at its own market ('world' is read in every market).
     base ??= { ...readTechBase(g) }
     for (const kind of ['core', 'supply', 'disrupted'] as const) {
       for (const trade of WAVE_KINDS[stepped.kind][kind] as readonly string[]) {
         const e = effectsOf(trade, stepped.market, year, [stepped], false)[0]
-        if (!e || (e.demand === 1 && e.costs === 1)) continue
+        if (!e || (e.demand === 1 && e.costs === 1 && e.value === 1)) continue
         const k = `${trade}|${stepped.market}`
         const old = Object.hasOwn(base, k) ? base[k] : undefined
-        base[k] = { demand: clampN((old?.demand ?? 1) * e.demand, 0.8, 1.5), costs: clampN((old?.costs ?? 1) * e.costs, 0.8, 1.0) }
+        const stock = clampN((old?.stock ?? 1) * (1 + STOCK_BETA * (e.value - 1)), 0.7, 1.6)
+        base[k] = { demand: clampN((old?.demand ?? 1) * e.demand, 0.8, 1.5), costs: clampN((old?.costs ?? 1) * e.costs, 0.8, 1.0), ...(stock !== 1 ? { stock } : {}) }
       }
     }
   }
