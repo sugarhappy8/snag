@@ -89,18 +89,18 @@ describe('valuation: the stamp, history and the clamp', () => {
     const wv = waveFactorsFor(g, 'software', 'world', 2011).value, s = book(g, 'software', 2011)   // no stamp: history is read directly; a stamp overrides and already includes it
     expect(wv).toBeGreaterThan(1.1); expect(Math.abs(valuationOf(s) / valuationOf({ ...s, wave: { v: wv, y: 2011 } }) - 1)).toBeLessThan(1e-9); expect(valuationOf({ ...s, wave: { v: 1, y: 2011 } })).toBeLessThan(valuationOf(s))
   })
-  it('a division of a listed group is valued wave-free (the group price is the sum of its divisions): no stamp, no history row, a private group still gets both', () => {
+  it('a division of a listed group takes the stock-grade stamp, and only that grade counts for it', () => {
     const g = makeTestGame(1), b = book(g, 'dataCenter', 2033), base = valuationOf(b)
     put(g, AI({ year: 2030, last: 2033 }))
     for (const [group, wave] of [[privateGroup(), true], [listedGroup(), false]] as const) {
       const m = { ...b, group }; stampWave(g, m, 2033)
-      expect('wave' in m).toBe(wave); expect(valuationOf({ ...m, wave: { v: 1.3, y: 2033 } }) === valuationOf({ ...m, wave: undefined })).toBe(!wave)
+      expect('wave' in m).toBe(true); expect(m.wave!.q === true).toBe(!wave); expect(valuationOf({ ...m, wave: { v: 1.3, y: 2033 } }) === valuationOf({ ...m, wave: undefined })).toBe(!wave)
     }
     expect(valuationOf({ ...b, group: listedGroup(), wave: { v: 1.3, y: 2033 } })).toBe(base); expect(valuationOf({ ...b, group: privateGroup(), wave: { v: 1.3, y: 2033 } })).toBeGreaterThan(base)
     const s = book(g, 'software', 2011), noWave = valuationOf({ ...s, wave: { v: 1, y: 2011 } })   // history rows are read directly when there is no stamp
     expect(valuationOf({ ...s, group: listedGroup() })).toBe(noWave); expect(valuationOf({ ...s, group: privateGroup() })).toBeGreaterThan(noWave)
   })
-  it('the price of a real listed group does not move with a wave, while the same group unlisted does', () => {
+  it('the price of a real listed group moves with a wave, as the same group unlisted does', () => {
     const g = makeTestGame(123, { age: 45, money: 1e9 }); g.year = 2034
     for (const [i, industry] of (['dataCenter', 'dataCenter'] as const).entries()) {
       const b = newBiz(g, industry, 'us', 'Chicago', { cash: 50e6, founded: g.year - 5, valuation: 220e6 })
@@ -116,14 +116,14 @@ describe('valuation: the stamp, history and the clamp', () => {
       for (const x of grp.members) { stampWave(g, x.b, 2034); x.b.valuation = valuationOf(x.b) }
       return groupValue(grp)
     }
-    const quiet = value(true, false); expect(value(true, true)).toBe(quiet)
+    const quiet = value(true, false); expect(value(true, true)).toBeGreaterThan(quiet)
     expect(value(false, true)).toBeGreaterThan(value(false, false))
   })
-  it('yearlyBusinessImpl stamps the booked year, deletes a neutral stamp, writes none without a wave, and never stamps a listed company', () => {
+  it('yearlyBusinessImpl stamps the booked year, deletes a neutral stamp, writes none without a wave, and stamps a listed one at the stock grade', () => {
     const g = adult(5, 2033, 'us'); const a = company(g, 'dataCenter'); put(g, AI({ year: 2030, last: 2033 })); nextYear(g)
     expect(bizOf(g, a).wave).toEqual({ v: expect.closeTo(1.0612, 3), y: 2033 })
     delete g.flags.techWaves; nextYear(g); expect('wave' in bizOf(g, a)).toBe(false)
-    const pub = bizOf(g, a); pub.public = true; pub.wave = { v: 2, y: 2000 }; put(g, AI({ year: 2030, last: g.year })); stampWave(g, pub, g.year - 1); expect(pub.wave).toBeUndefined()
+    const pub = bizOf(g, a); pub.public = true; pub.wave = { v: 2, y: 2000 }; put(g, AI({ year: 2030, last: g.year })); stampWave(g, pub, g.year - 1); expect(pub.wave).toEqual({ v: expect.any(Number), y: g.year - 1, q: true })
   })
   it('a heavy pioneer whose trade its own wave would disrupt gets no stamp, while an unrelated disrupted trade still does', () => {
     const g = adult(5, 2033, 'us'); const a = company(g, 'software'), m = company(g, 'marketing')   // an AI platform from a software company: software is disrupted by the ai kind
@@ -185,18 +185,18 @@ describe('deep tech: plan demand', () => {
   })
 })
 
-describe('deep tech: listed companies stay wave-free', () => {
+describe('deep tech: listed companies take the stock-grade wave', () => {
   const dtCompany = (g: GameState): { b: BizState; t: TechState } => {
     const c = g.character, b = newBiz(g, 'aiLab', c.countryId, c.city, { cash: 0, ceo: 'owner', manager: null })
     const t = readTech(undefined); Object.assign(t, { level: 80, stage: 3, ipBook: 20_000_000 }); b.tech = JSON.parse(JSON.stringify(t)) as Json
     const a = createBusinessAsset(g, 'Test aiLab', b, 0); g.assets.push(a)
     const live = bizOf(g, a); return { b: live, t: techOf(live) }
   }
-  it('a public lab and a lab in a listed group get no wave in their tech value, and with no wave nothing changes; a private lab still does', () => {
+  it('a public lab and a lab in a listed group take the stock-grade wave in their tech value, with no wave nothing changes, and a private lab keeps the private grade', () => {
     const g = adultIn('us', 5e9, 3, 90, 2034), { b, t } = dtCompany(g), val = () => { refreshTechValue(g, b, t); return valuationOf(b) }
     const none = val(); put(g, AI({ year: 2030 })); const waved = val(); expect(waved).toBeGreaterThan(none)
-    b.public = true; const pubWave = val(); delete g.flags.techWaves; const pubNone = val(); expect(pubWave).toBe(pubNone)
-    b.public = false; b.group = listedGroup(); put(g, AI({ year: 2030 })); const grpWave = val(); delete g.flags.techWaves; expect(grpWave).toBe(val())
+    b.public = true; const pubWave = val(); delete g.flags.techWaves; const pubNone = val(); expect(pubWave).toBeGreaterThan(pubNone)
+    b.public = false; b.group = listedGroup(); put(g, AI({ year: 2030 })); const grpWave = val(); delete g.flags.techWaves; expect(grpWave).toBeGreaterThan(val())
     b.group = privateGroup(); put(g, AI({ year: 2030 })); expect(val()).toBe(waved)
   })
 })

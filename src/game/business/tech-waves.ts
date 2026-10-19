@@ -18,9 +18,10 @@
 import { seeded } from '../assets'
 import { recordEconomicActivity } from '../economy'
 import { anachronismsIn } from '../events/era'
-import { pushMarketNews, signed } from '../history/market-events'
+import { FACTOR_BOUNDS, pushMarketNews, signed } from '../history/market-events'
 import { HISTORY_WAVES, historyKindActive } from '../history/tech-waves'
 import { PRESENT_YEAR } from '../history/timeline'
+import { marketYearOf } from '../invest/clock'
 import { outcomeTag } from '../timeMachine'
 import type { GameState, Json } from '../types'
 import { marketKey, marketStateOf } from './competition-core'
@@ -31,7 +32,7 @@ import { hashOf } from './product-market'
 import { businessAssets, isQuoted, readBiz, type BizState } from './state'
 import { isWaveKind, WAVE_KINDS, type WaveKind } from './tech-wave-data'
 import {
-  BASE_KEY, cleanWave, effectsOf, MAX_ID, MAX_WAVES, nextStepTag, noBase, readTechBase, readTechWaves, roleOf, STOCK_BETA, storedBase, storedWave, TRAIL_POINTS, waveFactorsFor, WAVES_KEY,
+  BASE_KEY, cleanWave, effectsOf, MAX_ID, MAX_WAVES, nextStepTag, noBase, readTechBase, readTechWaves, roleOf, STOCK_BETA, stockLevelFor, storedBase, storedWave, TRAIL_POINTS, waveFactorsFor, WAVES_KEY,
   type TechBase, type TechWave, type WaveSource,
 } from './tech-wave-factors'
 import { clampN } from './util'
@@ -73,14 +74,18 @@ const round4 = (n: number): number => Math.round(n * 1e4) / 1e4
  * the waves and the history rows for its trade and market, with the fiscal year it was booked for
  * (`valuationOf` takes it only when the last record is that year). A neutral factor deletes the stamp
  * (a world with no wave stores nothing). Never on a deep-tech company (it reads waves through
- * `industryCycle`, so a stamp would count twice) or a quoted one, a listed company or a division of a listed
- * group, whose price is a sum of divisions' valuations (stocks stay wave-free until release 1b).
+ * `industryCycle`, so a stamp would count twice). A quoted company, a listed one or a division of a listed
+ * group, gets the stock grade instead (`q: true`): the sector's price level read at the market year its
+ * fiscal year is booked into (P5; `y` stays the fiscal year, the key `valuationOf` matches).
  */
 export function stampWave(g: GameState, b: BizState, fiscal: number): void {
-  if (isDeepTech(b) || isQuoted(b)) { delete b.wave; return }
-  const v = waveFactorsFor(g, b.industry, marketKey(b), fiscal).value
+  if (isDeepTech(b)) { delete b.wave; return }
+  const quoted = isQuoted(b)
+  const v = quoted
+    ? clampN(stockLevelFor(g, b.industry, marketKey(b), marketYearOf(fiscal)), FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
+    : waveFactorsFor(g, b.industry, marketKey(b), fiscal).value
   if (Math.abs(v - 1) < 0.005) delete b.wave
-  else b.wave = { v: round4(v), y: fiscal }
+  else b.wave = quoted ? { v: round4(v), y: fiscal, q: true } : { v: round4(v), y: fiscal }
 }
 
 /** Delivery levels at which one fast follower enters a wave's core market. */
@@ -414,22 +419,26 @@ const NO_LINES: string[] = Object.freeze([]) as unknown as string[]
  * one per live wave or history row the trade has a role in, as two sentences (`Frontier AI wave. Demand
  * +12%, costs \u22124%, value +14%.`; costs only when they move), the biggest value change first. The numbers
  * are the factors the market applies (a world-scope trade takes history demand at a third, as waveFactors
- * does). A line the era check flags for the company's country and year is skipped. Pure: no writes, no
- * draws, and one shared empty array when there is nothing to say. Callers cap the count.
+ * does). A quoted company (listed, or a division of a listed group) is priced, not valued, so its line says
+ * `price` with the stock grade, `1 + STOCK_BETA x (value - 1)`. A line the era check flags for the company's
+ * country and year is skipped. Pure: no writes, no draws, and one shared empty array when there is nothing to
+ * say. Callers cap the count. `public` and `group` are optional: release 1 callers pass only the industry and country.
  */
-export function waveLines(g: Pick<GameState, 'flags' | 'year'>, b: Pick<BizState, 'industry' | 'countryId'>, year: number = g.year): string[] {
+export function waveLines(g: Pick<GameState, 'flags' | 'year'>, b: Pick<BizState, 'industry' | 'countryId'> & Partial<Pick<BizState, 'public' | 'group'>>, year: number = g.year): string[] {
   const y = Math.round(year)
   if (!Number.isFinite(y)) return NO_LINES
   const market = marketKey(b)
   const waves = readTechWaves(g)
+  const quoted = isQuoted({ public: b.public === true, group: b.group })
   const out: { text: string; size: number }[] = []
   for (const e of effectsOf(b.industry, market, y, waves)) {
     const demand = e.hist && market === 'world' ? 1 + (e.demand - 1) / 3 : e.demand
     if (!Number.isFinite(demand) || !Number.isFinite(e.costs) || !Number.isFinite(e.value)) continue
-    if (Math.abs(demand - 1) < 0.005 && Math.abs(e.costs - 1) < 0.005 && Math.abs(e.value - 1) < 0.005) continue
-    const text = `${e.name} wave. Demand ${signed(demand)}, ${Math.abs(e.costs - 1) >= 0.005 ? `costs ${signed(e.costs)}, ` : ''}value ${signed(e.value)}.`
+    const worth = quoted ? 1 + STOCK_BETA * (e.value - 1) : e.value
+    if (Math.abs(demand - 1) < 0.005 && Math.abs(e.costs - 1) < 0.005 && Math.abs(worth - 1) < 0.005) continue
+    const text = `${e.name} wave. Demand ${signed(demand)}, ${Math.abs(e.costs - 1) >= 0.005 ? `costs ${signed(e.costs)}, ` : ''}${quoted ? 'price' : 'value'} ${signed(worth)}.`
     if (anachronismsIn(text, y, [b.countryId]).length > 0) continue
-    out.push({ text, size: Math.abs(e.value - 1) })
+    out.push({ text, size: Math.abs(worth - 1) })
   }
   if (!out.length) return NO_LINES
   return out.sort((p, q) => q.size - p.size).map((x) => x.text)
