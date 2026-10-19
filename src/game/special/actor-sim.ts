@@ -1,6 +1,7 @@
 // Actor 2.0 sim: the yearly entry the kit runs after the legacy hook has booked its year. The kit's
 // settleYear owns the marker, the ranking, the report row and the popup budget; `run` is the year itself.
 import { actorJob, masterActing } from './actor'
+import { actorCrises, stepPress } from './actor-events'
 import { closeYear, stepAwards, stepDry, stepOrphans, stepResiduals, stepWrap } from './actor-pipeline'
 import { actorStore, adoptLegacy, type ActorState } from './actor-state'
 import { stepTeam } from './actor-team'
@@ -29,6 +30,7 @@ function run(c: CareerCtx<ActorState>, live: boolean): string | void {
   syncTenure(g, job)
   stepResiduals(c)
   stepTeam(c)
+  stepPress(c)
   stepWrap(c)
   stepDry(c)
   stepAwards(c)
@@ -45,5 +47,6 @@ export const actorSim: CareerSim = {
     active: (g) => !!actorJob(g),
     run,
     peers: { spec: ACTOR_SPEC, score: starPower },
+    crises: actorCrises,
   }),
 }
