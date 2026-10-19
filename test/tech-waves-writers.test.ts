@@ -3,9 +3,11 @@
 // ones the existing suites use (heavy-project, growth, workshop-race); every roll that has to win loops
 // over seeds, because the odds can't be forced.
 import { describe, expect, it } from 'vitest'
+import { readAiFirsts } from '../src/game/business/ai-bench-claims'
 import { CAP_IDS } from '../src/game/business/ai-bench-data'
 import { becomeCeo } from '../src/game/business/career'
 import { marketKey } from '../src/game/business/competition-core'
+import { familyId } from '../src/game/business/competition-roster'
 import { techOf } from '../src/game/business/deeptech-core'
 import { maxStage, programDef } from '../src/game/business/deeptech-data'
 import { startProgram, startTrial } from '../src/game/business/deeptech-rd'
@@ -24,6 +26,7 @@ import { getCountry } from '../src/game/world'
 import { ALL_IDEAS } from '../src/game/workshop/catalog'
 import { license } from '../src/game/workshop/launch'
 import { raceYear } from '../src/game/workshop/market'
+import { offBest, rated } from './ai-bench-kit'
 import { adult, company, nextYear } from './market-kit'
 import { give, idea, inventor } from './workshop-fixtures'
 
@@ -193,6 +196,14 @@ describe('deep-tech milestones', () => {
   })
   it('a weak lab trains a model that does not lead, so it writes no "Frontier AI" wave', () => {
     expect(readTechWaves(trainYear({ stage: 3, level: 40, rented: 0, models: [] }).g)).toEqual([])
+  })
+  it('a managed lab claims at training, is never asked to hold, and its model is never held', () => {
+    // lab() here sets g.year = 2030 on createNewLife({ seed: 30, year: 2000, countryId: 'us' }). A rated model of 2029 at +400 over the market lifts the ceiling,
+    // so the new model passes the third milestone of every capability it covers, and the market reaches that one only around 2035: the claim does not depend on luck.
+    const fam = familyId(createNewLife({ seed: 30, year: 2000, countryId: 'us' }).lifeId)
+    const { g, a } = labYear('aiLab', 'train', { rented: 15, stage: 3, level: 100, plant: 6, caps: Object.fromEntries(CAP_IDS.map((c) => [c, 10])), models: [rated(fam, 7, 2029, offBest(fam, 2029, 400))] }, { manager: true })
+    expect(g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'deeptech.release')).toBe(false)
+    expect(Object.keys(readAiFirsts(g))).toContain('language.3'); expect(techOf(bizOf(g, a)).models.some((m) => m.held)).toBe(false)
   })
   it('an approved drug with peak >= 4 writes a drug wave sized 0.2 + 0.04 peak, capped at 0.5; peak 3 writes none', () => {
     const [w] = readTechWaves(approveYear({ peak: 6 }).g); expect(w).toMatchObject({ kind: 'drug', size: near(0.44) }); expect(w.name).toMatch(/^A new drug for /); expect(readTechWaves(approveYear({ peak: 3 }).g)).toEqual([])

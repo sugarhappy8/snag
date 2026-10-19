@@ -5,6 +5,7 @@
 import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
+import { claimFirsts } from './ai-bench-claims'
 import { firstToLead } from './ai-bench-market'
 import { familyId } from './competition-roster'
 import { economicReportSummary } from './economic-report'
@@ -16,6 +17,7 @@ import { ceoSkill, citySaturation, cycleOf, densityRent, headOffice, insurancePr
 import { executiveEdge } from './dynamics'
 import { LEADERSHIP } from './leadership'
 import { complexityCost } from './products'
+import { launchText, releaseText } from './deeptech-bench'
 import { DEEP_TECH, DRUG_AREAS, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
 import {
   PACES,
@@ -268,6 +270,11 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
   }
   // Before the early returns below, so a hired-manager lab counts too.
   announceBreakthroughs(g, a, b, t, won, approved, newModel)
+  // A hired manager never sees the release popup and never holds a model, so the lab releases and claims at training.
+  if (!runs && newModel > 0) {
+    const m = t.models.find((x) => x.gen === newModel)
+    if (m) claimFirsts(g, a, b, t, m)
+  }
   if (headlines.length === 0 && newModel === 0) return
   if (!runs) {
     for (const h of headlines.slice(0, 3)) log(g, `${a.name}: ${h}`, 'neutral')
@@ -289,7 +296,6 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
 function queueRelease(g: GameState, a: Asset, t: TechState, gen: number): void {
   const m = t.models.find((x) => x.gen === gen)
   if (!m) return
-  const frontier = frontierScore(g.year)
   // Open weights only cost sales when they are the lab's best model and it has paying API
   // customers (their demand drops by a quarter); otherwise they are free hype and talent.
   const best = bestModel(t)
@@ -305,7 +311,7 @@ function queueRelease(g: GameState, a: Asset, t: TechState, gen: number): void {
     g,
     RELEASE,
     `Release ${m.name}?`,
-    `${m.name} scored ${m.score} on the benchmarks (the best anyone has is about ${frontier}). How do you release it? Closed models earn API money; open weights win fans, talent and hype but undercut your own API. Holding it back costs buzz but makes incidents less likely.`,
+    releaseText(m, familyId(g.lifeId), t.models),
     choices,
     { emoji: '\u{1F9E0}', data: { assetId: a.id, gen } },
   )
@@ -325,14 +331,18 @@ const RELEASE = defineScript('deeptech.release', (g, choice, data) => {
     b.brand = clampN(b.brand + 6, 0, 100)
     log(g, `${a.name} released ${m.name} as open weights.`, 'good')
     notice(g, 'Open Weights!', `You put ${m.name} on the internet for anyone to download. Developers are thrilled, researchers want to work for you, and your API customers are quietly self-hosting it.`, { emoji: '\u{1F513}', tone: 'good' })
+    claimFirsts(g, a, b, t, m)
   } else if (choice === 'hold') {
+    // Stored as held: it earns nothing, stays off the scoreboard and claims nothing until the lab releases it.
+    m.held = true
     t.safety = clampN(t.safety + 15, 0, 100)
     t.hype = clampN(t.hype - 5, 0, 100)
     log(g, `${a.name} held ${m.name} back for more safety testing.`)
-    notice(g, 'Held Back', `${m.name} goes through another round of red-teaming before customers get it. The safety team is grateful; the sales team is sulking.`, { emoji: '\u{1F6E1}\u{FE0F}' })
+    notice(g, 'Held Back', `${m.name} goes through more red-teaming. It earns nothing and stays off the scoreboard until you release it.`, { emoji: '\u{1F6E1}\u{FE0F}' })
   } else {
     log(g, `${a.name} launched ${m.name} through its API.`, 'good')
-    notice(g, 'Model Launched', `${m.name} is live for paying customers. ${m.score >= frontierScore(g.year) ? 'Tech journalists are calling it the best model in the world.' : 'Reviews are solid.'}`, { emoji: '\u{1F9E0}', tone: 'good' })
+    notice(g, 'Model Launched', `${m.name} is live for paying customers. ${launchText(m, familyId(g.lifeId), t.models)}`, { emoji: '\u{1F9E0}', tone: 'good' })
+    claimFirsts(g, a, b, t, m)
   }
   revalueQuiet(g, a, b, t)
 })

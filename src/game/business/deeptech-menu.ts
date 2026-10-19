@@ -8,6 +8,7 @@ import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
+import { claimFirsts } from './ai-bench-claims'
 import { familyId } from './competition-roster'
 import { localEcon } from './economy'
 import { shareSummary } from './competition'
@@ -429,7 +430,24 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
     infoNode(a, 'frontier', `The frontier: about ${f}/100 this year and rising. ${best ? `Your best, ${best.name}, scores ${best.score} (competitiveness ${Math.round(competitiveness(t, g.year, familyId(g.lifeId)) * 100)}%).` : 'You have no model yet.'}`, '\u{1F30C}'),
     infoNode(a, 'compute', `Compute: ${plural(t.plant, 'GPU cluster')} owned, ${plural(t.rented, 'cluster')} rented (${money(computeRent(b, t))}/yr)`, '\u{1F5A5}\u{FE0F}'),
   ]
-  for (const m of [...t.models].reverse().slice(0, 5)) nodes.push(infoNode(a, `model.${m.gen}`, `${m.name} (${m.year}): score ${m.score} · ${m.open ? 'open weights' : 'closed'}`, '\u{1F9E0}'))
+  for (const m of [...t.models].reverse().slice(0, 5)) nodes.push(infoNode(a, `model.${m.gen}`, `${m.name} (${m.year}): score ${m.score} · ${m.held ? 'held back' : m.open ? 'open weights' : 'closed'}`, '\u{1F9E0}'))
+  // A held model sells nothing and claims nothing. The action re-reads the live model, so a stale menu can't release twice.
+  for (const m of [...t.models].reverse().filter((x) => x.held).slice(0, 3)) {
+    nodes.push(
+      dtAct(a, `release.${m.gen}`, `Release ${m.name}`, '\u{1F680}', {
+        subtitle: 'Held back. It earns nothing until you release it.',
+        visible: (gg) => view(gg, a).t.models.some((x) => x.gen === m.gen && x.held),
+        run: (gg, cur, bb, tt) => {
+          const live = tt.models.find((x) => x.gen === m.gen)
+          if (!live?.held) return
+          delete live.held
+          log(gg, `${cur.name} released ${live.name} after more testing.`, 'good')
+          claimFirsts(gg, cur, bb, tt, live)
+          revalue(gg, cur, bb, tt)
+        },
+      }),
+    )
+  }
   nodes.push(
     dtAct(a, 'rent', 'Rent a GPU Cluster', '\u{2601}\u{FE0F}', {
       subtitle: (gg) => {
