@@ -10,7 +10,7 @@ import { waveInsiderCases } from '../src/game/business/wave-insider'
 import { moneyState } from '../src/game/computer/money-common'
 import { listedTargets } from '../src/game/computer/money-stocks'
 import { exchangeInfo } from '../src/game/invest/engine'
-import { sectorOfSec } from '../src/game/invest/wave-stocks'
+import { sectorOfSec, waveIndexFactor } from '../src/game/invest/wave-stocks'
 import { buySecurity } from '../src/game/investments'
 import { runScript } from '../src/game/scripts'
 import { politicianJob } from '../src/game/special/politics'
@@ -53,6 +53,19 @@ describe('who is an insider (S13)', () => {
     expect(listedTargets(g).every((t) => sectorOfSec(t.secId) !== null)).toBe(true)
     const withPos = (dir: 'call' | 'put') => { const x = founder(), inf = exchangeInfo('us'); moneyState(x.g).positions.push({ id: `opt-${dir}`, mode: 'real', side: 'buy', dir, strike: 'otm', k: 0.05, units: 4_000_000, premium: 100_000, year: x.g.year, exKey: inf.key, index: inf.ex.index, countryId: 'us', parentId: '', fx: 1 }); launch(x.g, x.a); return rows(x.g) }
     expect(withPos('put')).toEqual([]); expect(withPos('call').length).toBeGreaterThan(0); expect(withPos('call').every((c) => c.via === 'own')).toBe(true)
+  })
+  it('one index call is one case with the gain of one index call, however many stocks the wave lifts (S13)', () => {
+    const inf = exchangeInfo('us'), call = (g: GameState, premium: number) => moneyState(g).positions.push({ id: `opt-${premium}`, mode: 'real', side: 'buy', dir: 'call', strike: 'otm', k: 0.05, units: 4_000_000, premium, year: g.year, exKey: inf.key, index: inf.ex.index, countryId: 'us', parentId: '', fx: 1 })
+    const once = (g: GameState) => Math.round(4_000_000 * (waveIndexFactor(g, inf.key, 2033) / waveIndexFactor(g, inf.key, 2032) - 1))
+    const solo = founder(); call(solo.g, 100_000); launch(solo.g, solo.a)
+    expect(once(solo.g)).toBeGreaterThan(1000); expect(rows(solo.g)).toHaveLength(1); expect(rows(solo.g)[0]).toMatchObject({ via: 'own', stake: 100_000, gain: once(solo.g) })
+    // With shares as well the call joins the largest stake and the other cases keep only their shares: the call's stake and gain are counted once.
+    const { g, a } = founder(), ts = holdable(g, [2033]).slice(0, 3), buy = (x: GameState) => ts.forEach((t, i) => buySecurity(x, t.secId, 100_000 + 100_000 * i))
+    expect(ts).toHaveLength(3); call(g, 100_000); buy(g); const w = launch(g, a), rs = rows(g)
+    const twin = founder(); buy(twin.g); launch(twin.g, twin.a); const sum = (xs: typeof rs, k: 'stake' | 'gain') => xs.reduce((n, c) => n + c[k], 0)
+    expect(rs).toHaveLength(3); expect(rs.filter((c) => c.via === 'own').map((c) => c.secId)).toEqual([ts[2].secId])
+    expect([sum(rs, 'stake') - 100_000, sum(rs, 'gain') - once(g)]).toEqual([sum(rows(twin.g), 'stake'), expect.closeTo(sum(rows(twin.g), 'gain'), -1)])
+    expect([waveInsiderCases(g, w, a.id), rows(g).length]).toEqual([0, 3])
   })
   it('a repeat opens nothing new', () => {
     const { g, a } = founder(), [t] = holdable(g, [2033]); buySecurity(g, t.secId, 200_000); const w = launch(g, a)

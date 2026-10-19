@@ -24,7 +24,8 @@ const MIN_MOVE = 0.005
  * owner is no insider here. Targets are the listed stocks on the player's exchange whose sector is core or supply for the wave's kind;
  * the positions are the ones bought this year or last (`freshOnly`), open calls and longs, and index calls on that exchange. A stock the
  * wave lifts by under half a percent, a stake of nothing and a gain under a thousand dollars (local) open nothing; the three largest
- * stakes become cases. Idempotent: the case id comes from the wave and the stock, so a repeat opens nothing new.
+ * stakes become cases, and the index calls count once, in the largest one. Idempotent: the case id comes from the wave and the stock,
+ * so a repeat opens nothing new.
  */
 export function waveInsiderCases(g: GameState, w: TechWave, assetId: string): number {
   const c = g.character
@@ -47,7 +48,19 @@ export function waveInsiderCases(g: GameState, w: TechWave, assetId: string): nu
     if (!(stake > 0) || !(mult - 1 >= MIN_MOVE) || !(pos.shares * (mult - 1) + indexGain >= floor)) continue
     found.push({ stake, input: { target: t, pos, mult, indexGain, role, note: w.name, company: a.name, key: hashOf(`${w.id}|${t.secId}`).toString(36) } })
   }
-  let opened = 0
-  for (const x of found.sort((p, q) => q.stake - p.stake).slice(0, MAX_CASES)) if (openInsiderCase(g, x.input)) opened++
+  // The index calls are one bet on the exchange, not one per stock: they join the largest stake only, and every later case keeps just its
+  // own positions (and is judged on them), so one call is never charged, seized or arrested for more than once.
+  let opened = 0, indexTaken = false
+  for (const x of found.sort((p, q) => q.stake - p.stake)) {
+    if (opened >= MAX_CASES) break
+    let input = x.input
+    if (indexTaken) {
+      const pos = { ...input.pos, index: 0, indexUnits: 0 }
+      if (!(pos.own + pos.crony + pos.shares > 0) || !(pos.shares * (input.mult - 1) >= floor)) continue
+      input = { ...input, pos, indexGain: 0 }
+    }
+    indexTaken = true
+    if (openInsiderCase(g, input)) opened++
+  }
   return opened
 }
