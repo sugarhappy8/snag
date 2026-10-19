@@ -10,6 +10,9 @@ import { applyFallback } from '../src/game/offline'
 import { loadGame, saveGame } from '../src/game/save'
 import { hasScript, runScript } from '../src/game/scripts'
 import { yearlySpecial } from '../src/game/special'
+import { actorCareerMenu, actorJobNodes } from '../src/game/special/actor'
+import { actorStore, adoptLegacy } from '../src/game/special/actor-state'
+import { hire } from '../src/game/special/common'
 import { optionOdds, rollOption, type CrisisDef, type Stance } from '../src/game/special/kit/crisis'
 import { int, readRows, rec, type CareerBase } from '../src/game/special/kit/state'
 import { setCareerAudit, type AuditEvent } from '../src/game/special/kit/year'
@@ -144,7 +147,19 @@ export interface CareerSetup {
 }
 
 /** One entry per career, added by its task. */
-export const CAREER_SETUPS: Partial<Record<CareerId, CareerSetup>> = {}
+export const CAREER_SETUPS: Partial<Record<CareerId, CareerSetup>> = {
+  actor: {
+    defId: 'actor',
+    stateKey: 'actor.sim',
+    // between roles with the sim in charge: the legacy hook never settles this life
+    hire: (g) => {
+      hire(g, { defId: 'actor', title: 'Actor', company: 'Silverline Studios', salary: 0, data: { project: null } })
+      adoptLegacy(g, actorStore.mut(g))
+    },
+    roots: (g) => [actorCareerMenu, ...actorJobNodes(g)],
+    prefer: { steady: /^actor\.(audition|practice)$/, greedy: /^actor\.(audition|practice)$/, reckless: /^actor\.(audition|stunt|practice)$/ },
+  },
+}
 
 export interface CareerStats {
   careerId: CareerId
