@@ -2,21 +2,27 @@
 // fuel hedge, overhaul and weather cover of the seven trades; utilFx is called directly with a
 // hand-made context, so no family play file is involved. The overhaul's worth goes through the real
 // leverValue with a small overhaul lever of the test's own and a temporary util model (restored after).
+// 'util desk': the levers, the seven events and the copy of the registered family (sector-util-play.ts),
+// through applyLever, the event script and the voice rules.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { unitFlags } from '../scripts/voice/rules.mjs'
+import { staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { localEcon, type Worth } from '../src/game/business/economy'
 import { nationalMarket } from '../src/game/business/dynamics'
-import { SECTOR_BOUNDS } from '../src/game/business/sector-core'
+import { bizHas, eraFits } from '../src/game/business/era'
+import { prepareSectorYear, SECTOR_BOUNDS, seedSector } from '../src/game/business/sector-core'
 import { SECTOR_ROLES, UTIL } from '../src/game/business/sector-data'
-import { modelOf, registerFamily, seasonIndex, type FamilyModel, type LeverDef, type SectorCtx, type SectorFx } from '../src/game/business/sector-kit'
-import { leverValue } from '../src/game/business/sector-menu'
-import { readSector, type UtilState } from '../src/game/business/sector-state'
+import { choiceValue, eventProblems, SECTOR_EVENT_SCRIPT } from '../src/game/business/sector-events'
+import { copyLines, modelOf, registerFamily, sectorCtx, sectorText, seasonIndex, type Branch, type FamilyModel, type LeverDef, type SectorCtx, type SectorEvent, type SectorFx } from '../src/game/business/sector-kit'
+import { applyLever, deskLines, leverValue, sectorMenu } from '../src/game/business/sector-menu'
+import { readSector, saveSector, type UtilState } from '../src/game/business/sector-state'
 import { contractOptions, outageP, outageSize, overhaulCost, spotSettlement, utilFx, utilHeader, utilRow, utilSeed, UTIL_NOTE_COPY } from '../src/game/business/sector-util'
-import type { BizState, KeyStaff } from '../src/game/business/state'
-import { pct } from '../src/game/business/util'
+import { UTIL_COPY, UTIL_EVENTS, UTIL_LEVERS, UTIL_MODEL } from '../src/game/business/sector-util-play'
+import { bizOf, type BizState, type KeyStaff } from '../src/game/business/state'
+import { money, pct } from '../src/game/business/util'
 import type { Industry } from '../src/game/data/markets'
-import type { Asset, GameState } from '../src/game/types'
-import { deskGame, frozen } from './sector-kit'
+import { runScript } from '../src/game/scripts'
+import type { Asset, GameState, MenuNode } from '../src/game/types'
+import { deskGame, frozen, playYear } from './sector-kit'
 
 const TRADES = ['energy', 'solar', 'water', 'telecom', 'dataCenter', 'farm', 'logistics'] as const
 const CAPACITY_TRADES = ['energy', 'solar', 'water', 'telecom', 'farm', 'logistics'] as const
@@ -678,5 +684,691 @@ describe('util math', () => {
       // No history row for the utility trades, so no rough-estimate line.
       expect(utilHeader(t.g, t.b, t.seed).join(' ')).not.toContain('rough estimate')
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The desk: levers, events and copy of the family (sector-util-play.ts)
+
+const EVENT_IDS = ['bigCustomer', 'fuelSpike', 'rateCase', 'recall', 'shortage', 'storm', 'subsidy']
+
+function leverOf(id: string): LeverDef {
+  const l = modelOf('util')?.levers.find((x) => x.id === id)
+  if (!l) throw new Error(`no ${id} lever`)
+  return l
+}
+
+function eventOf(id: string): SectorEvent {
+  const e = modelOf('util')?.events.find((x) => x.id === id)
+  if (!e) throw new Error(`no ${id} event`)
+  return e
+}
+
+/** A company at the neutral point whose last year sold BASE, so the events' own context matches the synthetic worth. */
+function desk(trade: Industry, year = 2024): Setup {
+  const s = setup(trade, year)
+  s.b.last = { netRevenue: BASE, wages: .2 * BASE, sold: 100_000 } as unknown as BizState['last']
+  return s
+}
+
+/** The branches of one choice of one event, in a state. */
+function branchesOf(s: Setup, st: UtilState, event: string, choice: string): Branch[] {
+  const c = eventOf(event).choices(s.g, s.b, st).find((x) => x.id === choice)
+  if (!c) throw new Error(`no ${choice} choice`)
+  return c.branches(s.g, s.b, st)
+}
+
+/** A state where the events are live: a worn plant with half its fuel hedged. */
+function busy(s: Setup): UtilState {
+  return { ...s.seed, condition: 40, hedge: .5 }
+}
+
+/** Every line an event can show in a state: its title, scene, labels and outcomes. */
+function shownBy(s: Setup, ev: SectorEvent, st: UtilState): string[] {
+  const shown = [ev.title, ev.scene(s.g, s.a, s.b, st)]
+  for (const c of ev.choices(s.g, s.b, st)) {
+    shown.push(c.label)
+    for (const br of c.branches(s.g, s.b, st)) shown.push(sectorText(UTIL_COPY, br.text, br.vals))
+  }
+  return shown
+}
+
+/** The two long dashes the voice guide bans, built from their code points so that this file holds neither a dash nor an escape for one. */
+const DASHES = new RegExp(`[${String.fromCharCode(0x2014, 0x2013)}]`)
+
+describe('util desk', () => {
+  it('registers the util model', () => {
+    const model = modelOf('util')
+    expect(model).not.toBeNull()
+    expect(model).toBe(UTIL_MODEL)
+    expect(model?.levers.map((l) => l.id)).toEqual(['overhaul', 'contract', 'hedge', 'cover'])
+    expect(model?.levers).toBe(UTIL_LEVERS)
+    expect(model?.events).toBe(UTIL_EVENTS)
+    expect(model?.events.map((e) => e.id).sort()).toEqual(EVENT_IDS)
+    expect(model?.events).toHaveLength(7)
+    expect(model?.copy).toBe(UTIL_COPY)
+    expect(model?.levers.map((l) => l.paid)).toEqual([true, false, false, false])
+    expect(model?.seed).toBe(utilSeed)
+    expect(model?.effects).toBe(utilFx)
+    expect(model?.header).toBe(utilHeader)
+
+    // Contract needs a spot share to trade, a hedge needs fuel: water and telecom have no contract lever, solar and telecom no hedge.
+    for (const trade of TRADES) {
+      const s = setup(trade)
+      const row = UTIL[trade]
+      expect(leverOf('overhaul').options(s.g, s.b, s.seed).map((o) => o.value), `${trade} overhaul`).toEqual([1])
+      expect(leverOf('cover').options(s.g, s.b, s.seed).map((o) => o.value), `${trade} cover`).toEqual([0, 1])
+      expect(leverOf('contract').options(s.g, s.b, s.seed).map((o) => o.value), `${trade} contract`).toEqual(row.vol > 0 ? contractOptions(row.floor) : [])
+      expect(leverOf('hedge').options(s.g, s.b, s.seed).map((o) => o.value), `${trade} hedge`).toEqual(row.fuel > 0 ? [0, .5, .8] : [])
+    }
+    const offered = (trade: Industry, id: string): number => {
+      const s = setup(trade)
+      return leverOf(id).options(s.g, s.b, s.seed).length
+    }
+    for (const trade of ['water', 'telecom'] as const) expect(offered(trade, 'contract'), trade).toBe(0)
+    for (const trade of ['solar', 'telecom'] as const) expect(offered(trade, 'hedge'), trade).toBe(0)
+    for (const id of ['overhaul', 'contract', 'hedge', 'cover']) expect(offered('energy', id), `energy ${id}`).toBeGreaterThan(0)
+    const e = setup('energy')
+    expect(leverOf('contract').options(e.g, e.b, e.seed).map((o) => o.value)).toEqual([.5, .75, 1])
+    const f = setup('farm')
+    expect(leverOf('contract').options(f.g, f.b, f.seed).map((o) => o.value)).toEqual([0, .25, .5, .75, 1])
+
+    // The current setting of each lever reads from the record.
+    expect(leverOf('overhaul').current({ ...e.seed, overhaul: e.g.year }, e.g.year)).toBe(1)
+    expect(leverOf('overhaul').current({ ...e.seed, overhaul: e.g.year - 1 }, e.g.year)).toBe(0)
+    expect(leverOf('overhaul').current(e.seed, e.g.year)).toBe(0)
+    expect(leverOf('contract').current({ ...e.seed, contract: .75 }, e.g.year)).toBe(.75)
+    expect(leverOf('hedge').current({ ...e.seed, hedge: .8 }, e.g.year)).toBe(.8)
+    expect(leverOf('cover').current({ ...e.seed, cover: 1 }, e.g.year)).toBe(1)
+    // What an option writes.
+    expect(leverOf('overhaul').apply(e.seed, 1, 2031)).toMatchObject({ overhaul: 2031 })
+    expect(leverOf('contract').apply(e.seed, .75, 2031)).toMatchObject({ contract: .75 })
+    expect(leverOf('hedge').apply(e.seed, .8, 2031)).toMatchObject({ hedge: .8 })
+    expect(leverOf('cover').apply(e.seed, 1, 2031)).toMatchObject({ cover: 1 })
+    expect(leverOf('cover').apply({ ...e.seed, cover: 1 }, 0, 2031)).toMatchObject({ cover: 0 })
+    // Only the overhaul has a price.
+    const cx = { ...e.ctx }
+    expect(leverOf('overhaul').cost(e.g, e.b, e.seed, 1, cx)).toBe(overhaulCost(e.b, UTIL.energy, cx))
+    for (const id of ['contract', 'hedge', 'cover']) expect(leverOf(id).cost(e.g, e.b, e.seed, 1, cx), id).toBe(0)
+  })
+
+  it('hides the lever rows a trade has no options for', () => {
+    const ids = (trade: Industry): string[] => {
+      const s = setup(trade)
+      return sectorMenu(s.a).children(s.g)
+        .filter((n: MenuNode) => n.type === 'menu' && (n.visible?.(s.g) ?? true))
+        .map((n: MenuNode) => n.id.split('.')[2])
+    }
+    expect(ids('energy')).toEqual(['overhaul', 'contract', 'hedge', 'cover'])
+    expect(ids('dataCenter')).toEqual(['overhaul', 'contract', 'hedge', 'cover'])
+    expect(ids('farm')).toEqual(['overhaul', 'contract', 'hedge', 'cover'])
+    expect(ids('logistics')).toEqual(['overhaul', 'contract', 'hedge', 'cover'])
+    expect(ids('solar')).toEqual(['overhaul', 'contract', 'cover'])
+    expect(ids('water')).toEqual(['overhaul', 'hedge', 'cover'])
+    expect(ids('telecom')).toEqual(['overhaul', 'cover'])
+  })
+
+  it('shows the desk through deskLines', () => {
+    const s = setup('energy')
+    expect(deskLines(s.g, s.a).join(' ')).toContain('The desk opens at the next year end.')
+    expect(applyLever(s.g, s.a, 'cover', 1, 'owner')).toEqual({ ok: true, paid: 0 })
+    const lines = deskLines(s.g, s.a)
+    expect(lines.join(' ')).toContain('outages in 3 years.')
+    expect(lines.join(' ')).toContain('Weather cover on.')
+    expect(lines.at(-1)).toBe(`${s.g.year}: Weather cover now On.`)
+  })
+
+  it('moves the levers through applyLever', () => {
+    const s1 = setup('energy')
+    const s2 = setup('energy')
+    const bA = (k: Setup): BizState => bizOf(k.g, k.a)
+
+    // The overhaul is priced once, refused a second time, and lifts the condition by 12 in the year it is done.
+    const price = overhaulCost(bA(s1), UTIL.energy, sectorCtx(s1.g, bA(s1), s1.g.year))
+    expect(price).toBeGreaterThan(0)
+    const cash = bA(s1).cash
+    const costs = bA(s1).yearCosts
+    expect(applyLever(s1.g, s1.a, 'overhaul', 1, 'owner')).toEqual({ ok: true, paid: price })
+    expect(bA(s1).cash).toBe(cash - price)
+    expect(bA(s1).yearCosts).toBe(costs + price)
+    expect(readSector(bA(s1))).toMatchObject({ overhaul: s1.g.year, since: s1.g.year - 1, lastYear: s1.g.year - 1 })
+    expect(applyLever(s1.g, s1.a, 'overhaul', 1, 'owner').ok).toBe(false)
+    expect(bA(s1).cash).toBe(cash - price)
+
+    // The control run has the same record and no overhaul; both books close for the year just lived.
+    expect(seedSector(s2.g, s2.a, bA(s2), s2.g.year - 1)).not.toBeNull()
+    const start = readSector(bA(s2))
+    expect(start?.family).toBe('util')
+    if (start?.family !== 'util') return
+    prepareSectorYear(s1.g, s1.a, bA(s1), s1.g.year)
+    prepareSectorYear(s2.g, s2.a, bA(s2), s2.g.year)
+    const done = readSector(bA(s1))
+    const plain = readSector(bA(s2))
+    expect(done?.family === 'util' && plain?.family === 'util').toBe(true)
+    if (done?.family !== 'util' || plain?.family !== 'util') return
+    expect(plain.condition).toBeCloseTo(start.condition - UTIL.energy.wear, 9)
+    expect(done.condition).toBeCloseTo(start.condition + 12 - UTIL.energy.wear, 9)
+
+    // Hedge and cover are free to change once a year; the hook charges their premiums and the books agree.
+    const h = setup('energy')
+    const hb = (): BizState => bizOf(h.g, h.a)
+    const base = sectorCtx(h.g, hb(), h.g.year).base
+    const before = hb().cash
+    expect(applyLever(h.g, h.a, 'hedge', .5, 'owner')).toEqual({ ok: true, paid: 0 })
+    expect(applyLever(h.g, h.a, 'cover', 1, 'owner')).toEqual({ ok: true, paid: 0 })
+    expect(hb().cash).toBe(before)
+    expect(readSector(hb())).toMatchObject({ hedge: .5, cover: 1 })
+    expect(applyLever(h.g, h.a, 'hedge', .8, 'owner').ok).toBe(false)
+    expect(applyLever(h.g, h.a, 'cover', 0, 'owner').ok).toBe(false)
+    expect(applyLever(h.g, h.a, 'contract', .6, 'owner').ok).toBe(false)
+    prepareSectorYear(h.g, h.a, hb(), h.g.year)
+    const row = readSector(hb())?.ledger.at(-1)
+    expect(row?.year).toBe(h.g.year)
+    expect(row?.costs).toBeGreaterThanOrEqual(Math.floor(.006 * base + .025 * .5 * UTIL.energy.fuel * base))
+    // Every dollar the hook booked is in the cash: nothing is booked from nowhere.
+    expect(hb().cash).toBe(before + (row?.income ?? 0) - (row?.costs ?? 0))
+
+    // The contract mix: moving off the seed mix pays a premium every year.
+    const c = setup('energy')
+    const cb = (): BizState => bizOf(c.g, c.a)
+    const cbase = sectorCtx(c.g, cb(), c.g.year).base
+    expect(applyLever(c.g, c.a, 'contract', .75, 'owner')).toEqual({ ok: true, paid: 0 })
+    expect(readSector(cb())).toMatchObject({ contract: .75 })
+    prepareSectorYear(c.g, c.a, cb(), c.g.year)
+    expect(readSector(cb())?.ledger.at(-1)?.costs).toBeGreaterThanOrEqual(Math.floor(.25 * UTIL.energy.disc * cbase))
+    // A trade with no spot share can't take the lever.
+    const w = setup('water')
+    expect(applyLever(w.g, w.a, 'contract', .9, 'owner').ok).toBe(false)
+    expect(applyLever(w.g, w.a, 'contract', 1, 'owner').ok).toBe(false)
+    const t = setup('telecom')
+    expect(applyLever(t.g, t.a, 'hedge', .5, 'owner').ok).toBe(false)
+  })
+
+  it('has valid events', () => {
+    const probes = (s: Setup): UtilState[] => [s.seed, busy(s), { ...s.seed, contract: 1 }]
+    let seen = 0
+    for (const trade of TRADES) {
+      const s = desk(trade)
+      for (const st of probes(s)) {
+        for (const ev of UTIL_EVENTS) {
+          expect(eventProblems(ev, s.g, s.a, s.b, st), `${trade} ${ev.id} ${st.condition}`).toEqual([])
+          for (const line of shownBy(s, ev, st)) {
+            expect(line.length, `${ev.id} has an empty line`).toBeGreaterThan(0)
+            expect(line, `${trade} ${ev.id}`).not.toMatch(/\$\{|NaN|undefined|Infinity/)
+          }
+          seen++
+        }
+      }
+    }
+    expect(seen).toBe(TRADES.length * 3 * 7)
+    // The yearly condition lines of the math file render too.
+    for (const key of Object.keys(UTIL_NOTE_COPY)) {
+      const line = sectorText(UTIL_COPY, key, { name: 'Test plant', loss: '12%' })
+      expect(line).toContain('Test plant')
+      expect(line).not.toMatch(/\$\{|undefined/)
+    }
+  })
+
+  it('has the storm outcomes', () => {
+    const s = desk('energy')
+    const st = busy(s)
+    const weight = (condition: number): number => eventOf('storm').weight(s.g, s.b, { ...s.seed, condition })
+    expect(weight(80)).toBe(1)
+    expect(weight(65)).toBe(1)
+    expect(weight(40)).toBeCloseTo(1.5, 12)
+    expect(weight(0)).toBeCloseTo(2.3, 12)
+    expect(weight(40)).toBeGreaterThan(weight(80))
+
+    const crews = branchesOf(s, st, 'storm', 'crews')
+    const degraded = branchesOf(s, st, 'storm', 'degraded')
+    const power = branchesOf(s, st, 'storm', 'power')
+    for (const bs of [crews, degraded, power]) expect(bs).toHaveLength(1)
+    // Crews pay and avoid most of the capacity loss; running degraded keeps the money and loses capacity and condition; backup pays more and loses neither.
+    expect(crews[0].fx.cash).toBeLessThan(0)
+    expect(power[0].fx.cash).toBeLessThan(crews[0].fx.cash ?? 0)
+    expect(degraded[0].fx.cash ?? 0).toBe(0)
+    expect(crews[0].fx.capacityTo ?? 0).toBeGreaterThan(0)
+    expect(crews[0].fx.capacityTo ?? 0).toBeLessThanOrEqual(.03)
+    expect(degraded[0].fx.capacityTo ?? 0).toBeGreaterThanOrEqual(.07)
+    expect(degraded[0].fx.capacityTo ?? 0).toBeGreaterThan(crews[0].fx.capacityTo ?? 0)
+    expect(power[0].fx.capacityTo ?? 0).toBe(0)
+    expect(crews[0].sec?.add).toEqual({ condition: -2 })
+    expect(degraded[0].sec?.add).toEqual({ condition: -7 })
+    expect(power[0].sec).toBeUndefined()
+    // The bill shown on a label is the bill paid.
+    const label = (id: string): string | undefined => eventOf('storm').choices(s.g, s.b, st).find((c) => c.id === id)?.label
+    expect(label('crews')).toBe(sectorText(UTIL_COPY, 'util.ev.storm.crews.label', { cost: money(-(crews[0].fx.cash ?? 0)) }))
+    expect(label('power')).toBe(sectorText(UTIL_COPY, 'util.ev.storm.power.label', { cost: money(-(power[0].fx.cash ?? 0)) }))
+    // A run-down plant takes more damage when it runs degraded.
+    const worse = branchesOf(s, { ...st, condition: 20 }, 'storm', 'degraded')[0].fx.capacityTo ?? 0
+    const better = branchesOf(s, { ...st, condition: 90 }, 'storm', 'degraded')[0].fx.capacityTo ?? 0
+    expect(worse).toBeGreaterThan(better)
+    // With spare capacity, riding a storm out costs little; with none, the crews pay for themselves.
+    const spare = worthOf(.7)
+    const full = worthOf(1)
+    const value = (w: Worth, id: string): number => choiceValue(s.g, s.a, s.b, st, eventOf('storm'), id, w)
+    expect(value(full, 'crews')).toBeGreaterThan(value(full, 'degraded'))
+    expect(value(spare, 'degraded')).toBeGreaterThan(value(spare, 'crews'))
+  })
+
+  it('has the fuel spike outcomes', () => {
+    const s = desk('energy')
+    const fuel = UTIL.energy.fuel
+    const at = (hedge: number): { hedge: Branch; pass: Branch; absorb: Branch } => {
+      const st: UtilState = { ...s.seed, hedge }
+      return { hedge: branchesOf(s, st, 'fuelSpike', 'hedge')[0], pass: branchesOf(s, st, 'fuelSpike', 'pass')[0], absorb: branchesOf(s, st, 'fuelSpike', 'absorb')[0] }
+    }
+    const none = at(0)
+    // Hedging now sets the hedge to half and then its cost shock is lower than absorbing it.
+    expect(none.hedge.sec?.set).toEqual({ hedge: .5 })
+    expect(none.hedge.fx.costTo ?? 1).toBeLessThan(none.absorb.fx.costTo ?? 1)
+    expect(none.absorb.fx.costTo ?? 1).toBeGreaterThan(1)
+    expect(none.absorb.fx.costTo ?? 1).toBeLessThanOrEqual(1.12)
+    expect(none.absorb.sec).toBeUndefined()
+    expect(none.hedge.fx.cash ?? 0).toBeLessThan(0)
+    // At half a hedge or more it protects nothing extra: the same cost shock as absorbing, and it still pays the premium.
+    for (const hedge of [.5, .8]) {
+      const x = at(hedge)
+      expect(x.hedge.sec, `hedge ${hedge}`).toBeUndefined()
+      expect(x.hedge.fx.costTo, `hedge ${hedge}`).toBe(x.absorb.fx.costTo)
+      expect(x.hedge.fx.cash ?? 0, `hedge ${hedge}`).toBeLessThan(x.absorb.fx.cash ?? 0)
+    }
+    // A hedge already in place softens the spike whatever you choose.
+    expect(at(.8).absorb.fx.costTo ?? 1).toBeLessThan(none.absorb.fx.costTo ?? 1)
+    expect(at(.8).absorb.fx.cash ?? 0).toBeGreaterThan(none.absorb.fx.cash ?? 0)
+    // Passing it on trades demand for less of the cost shock.
+    expect(none.pass.fx.demandTo ?? 1).toBeLessThan(1)
+    expect(none.pass.fx.costTo ?? 1).toBeLessThan(none.absorb.fx.costTo ?? 1)
+    expect(none.pass.fx.costTo ?? 1).toBeGreaterThan(1)
+    // The spike follows the fuel share: none for a trade with no fuel, a smaller one for water than for energy.
+    for (const trade of ['solar', 'telecom'] as const) {
+      expect(UTIL[trade].fuel).toBe(0)
+      const t = desk(trade)
+      const x = branchesOf(t, t.seed, 'fuelSpike', 'absorb')[0]
+      expect(x.fx.costTo).toBeUndefined()
+      expect(x.fx.cash ?? 0).toBe(0)
+    }
+    const water = desk('water')
+    expect(branchesOf(water, water.seed, 'fuelSpike', 'absorb')[0].fx.costTo ?? 1).toBeLessThan(none.absorb.fx.costTo ?? 1)
+    expect(fuel).toBeGreaterThan(UTIL.water.fuel)
+
+    // Worth it only while the hedge is low: the choice beats absorbing at no hedge and loses to it at half or more.
+    for (const trade of ['energy', 'logistics'] as const) {
+      const k = desk(trade)
+      const ev = eventOf('fuelSpike')
+      const value = (st: UtilState, id: string): number => choiceValue(k.g, k.a, k.b, st, ev, id, worthOf(1))
+      expect(value(k.seed, 'hedge'), `${trade} at 0`).toBeGreaterThan(value(k.seed, 'absorb'))
+      for (const hedge of [.5, .8]) expect(value({ ...k.seed, hedge }, 'hedge'), `${trade} at ${hedge}`).toBeLessThan(value({ ...k.seed, hedge }, 'absorb'))
+    }
+  })
+
+  it('has the rate case, grant, customer, shortage and recall outcomes', () => {
+    const s = desk('energy')
+    const st = busy(s)
+    const cashOf = (b: Branch): number => b.fx.cash ?? 0
+
+    // A rate case: the odds of an increase follow the plant's condition; accepting and settling are certain.
+    const win = (condition: number): number => branchesOf(s, { ...s.seed, condition }, 'rateCase', 'file')[0].p
+    expect(win(0)).toBeCloseTo(.25, 9)
+    expect(win(80)).toBeCloseTo(.65, 9)
+    expect(win(100)).toBeCloseTo(.7, 9)
+    expect(win(80)).toBeGreaterThan(win(40))
+    const file = branchesOf(s, st, 'rateCase', 'file')
+    expect(file).toHaveLength(2)
+    expect(file[0].p + file[1].p).toBeCloseTo(1, 12)
+    expect(cashOf(file[0])).toBeGreaterThan(0)
+    expect(cashOf(file[1])).toBeLessThan(0)
+    const accept = branchesOf(s, st, 'rateCase', 'accept')
+    const settle = branchesOf(s, st, 'rateCase', 'settle')
+    expect(accept).toHaveLength(1)
+    expect(settle).toHaveLength(1)
+    expect(cashOf(accept[0])).toBeLessThan(0)
+    expect(cashOf(settle[0])).toBeLessThan(0)
+    expect(cashOf(file[1])).toBeLessThan(cashOf(accept[0]))
+
+    // A grant: the odds follow the condition too; skipping costs and gains nothing.
+    const grant = (condition: number): Branch[] => branchesOf(s, { ...s.seed, condition }, 'subsidy', 'apply')
+    expect(grant(0)[0].p).toBeCloseTo(.2, 9)
+    expect(grant(100)[0].p).toBeCloseTo(.7, 9)
+    expect(grant(80)[0].p).toBeGreaterThan(grant(40)[0].p)
+    expect(grant(80)).toHaveLength(2)
+    expect(cashOf(grant(80)[0])).toBeGreaterThan(0)
+    expect(cashOf(grant(80)[1])).toBeLessThan(0)
+    expect(cashOf(grant(80)[0]) + 0).toBeGreaterThan(-cashOf(grant(80)[1]))
+    expect(branchesOf(s, st, 'subsidy', 'skip')).toHaveLength(1)
+    expect(cashOf(branchesOf(s, st, 'subsidy', 'skip')[0])).toBe(0)
+
+    // A big customer: a discount is a gamble on demand, locking a contract moves the contract share and costs more, and letting them go can cost a little demand.
+    const l = desk('logistics')
+    const lst = busy(l)
+    const discount = branchesOf(l, lst, 'bigCustomer', 'discount')
+    const lock = branchesOf(l, lst, 'bigCustomer', 'lock')
+    const release = branchesOf(l, lst, 'bigCustomer', 'release')
+    expect(discount).toHaveLength(2)
+    expect(discount[0].p + discount[1].p).toBeCloseTo(1, 12)
+    expect(discount[0].fx.demandTo ?? 1).toBeGreaterThan(1)
+    expect(cashOf(discount[0])).toBeLessThan(0)
+    expect(cashOf(discount[1])).toBe(0)
+    expect(lock).toHaveLength(1)
+    expect(lock[0].sec?.add).toEqual({ contract: .25 })
+    expect(lock[0].fx.demandTo ?? 1).toBeGreaterThan(discount[0].fx.demandTo ?? 1)
+    expect(cashOf(lock[0])).toBeLessThan(cashOf(discount[0]))
+    expect(release.length).toBeGreaterThan(0)
+    expect(release.every((b) => cashOf(b) === 0)).toBe(true)
+    expect(release.some((b) => (b.fx.demandTo ?? 1) < 1)).toBe(true)
+
+    // A shortage: a raise moves the pay level for good, temps are a gamble, cutting back loses output.
+    const raise = branchesOf(l, lst, 'shortage', 'raise')
+    const temps = branchesOf(l, lst, 'shortage', 'temps')
+    const cut = branchesOf(l, lst, 'shortage', 'cut')
+    expect(raise).toHaveLength(1)
+    expect(raise[0].fx.wage).toBeCloseTo(.04, 12)
+    expect(temps).toHaveLength(2)
+    expect(temps[0].p + temps[1].p).toBeCloseTo(1, 12)
+    expect(cashOf(temps[0])).toBeLessThan(0)
+    expect(cashOf(temps[0])).toBe(cashOf(temps[1]))
+    expect(temps[1].fx.capacityTo ?? 0).toBeGreaterThan(temps[0].fx.capacityTo ?? 0)
+    expect(cut).toHaveLength(1)
+    expect(cut[0].fx.capacityTo ?? 0).toBeGreaterThanOrEqual(.08)
+    expect(cashOf(cut[0])).toBe(0)
+
+    // A recall: replacing costs and lifts the condition; waiting risks a worse bill and more wear, more so on a worn plant.
+    const replace = branchesOf(s, st, 'recall', 'replace')
+    const wait = (condition: number): Branch[] => branchesOf(s, { ...s.seed, condition }, 'recall', 'wait')
+    expect(replace).toHaveLength(1)
+    expect(cashOf(replace[0])).toBeLessThan(0)
+    expect(replace[0].sec?.add).toEqual({ condition: 3 })
+    expect(wait(40)).toHaveLength(2)
+    expect(wait(40)[0].p + wait(40)[1].p).toBeCloseTo(1, 12)
+    expect(cashOf(wait(40)[0])).toBe(0)
+    expect(cashOf(wait(40)[1])).toBeLessThan(cashOf(replace[0]))
+    expect(wait(40)[1].sec?.add).toEqual({ condition: -4 })
+    expect(wait(40)[1].p).toBeGreaterThan(wait(90)[1].p)
+    expect(wait(40)[1].fx.capacityTo ?? 0).toBeGreaterThan(0)
+  })
+
+  it('has the weights of spec 4.4', () => {
+    const weight = (trade: Industry, id: string): number => {
+      const s = setup(trade)
+      return eventOf(id).weight(s.g, s.b, s.seed)
+    }
+    const pick = (id: string, trades: readonly (typeof TRADES)[number][], w: number): void => {
+      for (const trade of TRADES) expect(weight(trade, id), `${id} ${trade}`).toBe(trades.includes(trade) ? w : 0)
+    }
+    pick('storm', TRADES, 1)
+    pick('rateCase', ['energy', 'water'], .8)
+    pick('fuelSpike', ['energy', 'water', 'dataCenter', 'farm', 'logistics'], .7)
+    pick('subsidy', ['energy', 'solar', 'water', 'farm'], .5)
+    pick('bigCustomer', ['dataCenter', 'telecom', 'logistics'], .6)
+    pick('shortage', ['logistics', 'farm', 'dataCenter'], .6)
+    pick('recall', TRADES, .4)
+    // The rate case reads the trade's regulated floor, the fuel spike its fuel share.
+    for (const trade of TRADES) {
+      expect(weight(trade, 'rateCase') > 0, trade).toBe(UTIL[trade].floor >= .5)
+      expect(weight(trade, 'fuelSpike') > 0, trade).toBe(UTIL[trade].fuel > 0)
+    }
+    // A storm is likelier as the plant wears down: 1.5 at condition 40.
+    const s = setup('farm')
+    expect(eventOf('storm').weight(s.g, s.b, { ...s.seed, condition: 40 })).toBeCloseTo(1.5, 12)
+    expect(eventOf('storm').weight(s.g, s.b, { ...s.seed, condition: 90 })).toBe(1)
+  })
+
+  it('pins the choice ids', () => {
+    const s = setup('energy')
+    const ids = (id: string): string[] => eventOf(id).choices(s.g, s.b, busy(s)).map((c) => c.id)
+    expect(ids('storm')).toEqual(['crews', 'degraded', 'power'])
+    expect(ids('rateCase')).toEqual(['file', 'accept', 'settle'])
+    expect(ids('fuelSpike')).toEqual(['hedge', 'pass', 'absorb'])
+    expect(ids('subsidy')).toEqual(['apply', 'skip'])
+    expect(ids('bigCustomer')).toEqual(['discount', 'release', 'lock'])
+    expect(ids('shortage')).toEqual(['raise', 'temps', 'cut'])
+    expect(ids('recall')).toEqual(['replace', 'wait'])
+  })
+
+  it('reads the era and names the trade', () => {
+    // Every scene of every trade fits every year the family can roll in.
+    for (const year of [1950, 1985, 2026]) {
+      for (const trade of TRADES) {
+        const s = desk(trade, year)
+        const st = busy(s)
+        for (const ev of UTIL_EVENTS) expect(eraFits(s.g, s.b.countryId, ev.scene(s.g, s.a, s.b, st)), `${trade} ${year} ${ev.id}`).toBe(true)
+      }
+    }
+    // What the storm hit and who went short come from the trade.
+    const storm: Record<string, RegExp> = { energy: /lines/, solar: /panels/, water: /mains/, telecom: /towers/, dataCenter: /generators/, farm: /field/, logistics: /roads/ }
+    for (const trade of TRADES) {
+      const s = desk(trade)
+      expect(eventOf('storm').scene(s.g, s.a, s.b, s.seed), trade).toMatch(storm[trade])
+    }
+    const short: Record<string, RegExp> = { logistics: /drivers/, farm: /harvest hands/, dataCenter: /technicians/ }
+    for (const trade of ['logistics', 'farm', 'dataCenter'] as const) {
+      const s = desk(trade)
+      expect(eventOf('shortage').scene(s.g, s.a, s.b, s.seed), trade).toMatch(short[trade])
+    }
+    const customer: Record<string, RegExp> = { dataCenter: /tenant/, telecom: /lines for every site/, logistics: /shipper/ }
+    for (const trade of ['dataCenter', 'telecom', 'logistics'] as const) {
+      const s = desk(trade, 1960)
+      expect(eventOf('bigCustomer').scene(s.g, s.a, s.b, s.seed), trade).toMatch(customer[trade])
+    }
+    const grant: Record<string, RegExp> = { energy: /grid/, solar: /panels/, water: /pipe/, farm: /farm aid/ }
+    for (const trade of ['energy', 'solar', 'water', 'farm'] as const) {
+      const s = desk(trade)
+      expect(eventOf('subsidy').scene(s.g, s.a, s.b, s.seed), trade).toMatch(grant[trade])
+    }
+
+    // Telecom speaks of broadband only once the internet exists there.
+    const old = desk('telecom', 1960)
+    const now = desk('telecom', 2026)
+    expect(bizHas(old.g, old.b.countryId, 'internet')).toBe(false)
+    expect(bizHas(now.g, now.b.countryId, 'internet')).toBe(true)
+    for (const ev of UTIL_EVENTS) {
+      for (const line of shownBy(old, ev, busy(old))) expect(line, `1960 ${ev.id}`).not.toMatch(/broadband/i)
+    }
+    expect(eventOf('bigCustomer').scene(now.g, now.a, now.b, now.seed)).toMatch(/broadband/)
+    expect(eventOf('bigCustomer').scene(old.g, old.a, old.b, old.seed)).not.toMatch(/broadband/)
+    // No other trade mentions it at any time.
+    for (const trade of TRADES.filter((t) => t !== 'telecom')) {
+      const t = desk(trade, 2026)
+      for (const ev of UTIL_EVENTS) for (const line of shownBy(t, ev, busy(t))) expect(line, `${trade} ${ev.id}`).not.toMatch(/broadband/i)
+    }
+  })
+
+  it('has no free lever', () => {
+    // An overhaul is worth doing on a run-down plant and not on a sound one (the same sign as the math file's own check).
+    const overhaul = leverOf('overhaul')
+    for (const trade of ['energy', 'logistics'] as const) {
+      const s = setup(trade)
+      const value = (condition: number): number => leverValue(s.g, s.a, s.b, { ...s.seed, condition }, overhaul, 1, worthOf(1), s.ctx)
+      expect(value(60), `${trade} at 60`).toBeGreaterThan(0)
+      expect(value(85), `${trade} at 85`).toBeLessThan(0)
+      // The best option is "do it" at 60 and "leave it" (worth nothing) at 85.
+      const best = (condition: number): number => (value(condition) > 0 ? 1 : 0)
+      expect(best(60)).toBe(1)
+      expect(best(85)).toBe(0)
+    }
+    // A hedge costs a premium every year, so in a calm year it is worth less than nothing, and in an oil spike it pays.
+    const s = setup('logistics')
+    const hedge = leverOf('hedge')
+    const calm = leverValue(s.g, s.a, s.b, s.seed, hedge, .8, worthOf(1), s.ctx)
+    expect(calm).toBeLessThan(0)
+    s.g.year = 1974
+    const spike = leverValue(s.g, s.a, s.b, s.seed, hedge, .8, worthOf(1), s.ctx)
+    expect(spike).toBeGreaterThan(calm)
+    // The current setting is worth nothing against itself.
+    expect(leverValue(s.g, s.a, s.b, s.seed, hedge, 0, worthOf(1), s.ctx)).toBe(0)
+    expect(leverValue(s.g, s.a, s.b, s.seed, leverOf('cover'), 0, worthOf(1), s.ctx)).toBe(0)
+  })
+
+  it('has no generic double', () => {
+    let rolled = 0
+    let years = 0
+    for (const trade of ['energy', 'farm'] as const) {
+      for (const seed of [1, 2, 3]) {
+        const { g, a } = deskGame(trade, { seed, talent: false })
+        for (let i = 0; i < 12; i++) {
+          const popups = playYear(g)
+          const events = popups.filter((m) => m.scriptId === SECTOR_EVENT_SCRIPT || m.scriptId?.startsWith('business.ev.'))
+          expect(events.length, `${trade} ${seed} year ${i}`).toBeLessThanOrEqual(1)
+          rolled += popups.filter((m) => m.scriptId === SECTOR_EVENT_SCRIPT).length
+          years++
+          const b = bizOf(g, a)
+          expect(Number.isFinite(b.cash), `${trade} ${seed} year ${i}`).toBe(true)
+          const st = readSector(b)
+          expect(st?.family).toBe('util')
+          if (st?.family === 'util') for (const v of [st.condition, st.contract, st.hedge, st.cover, st.outages]) expect(Number.isFinite(v)).toBe(true)
+        }
+      }
+    }
+    expect(years).toBe(72)
+    expect(rolled).toBeGreaterThan(0)
+    expect(rolled / years).toBeLessThanOrEqual(.30)
+  }, 300_000)
+
+  it('marks one best choice for the Business talent and plays every answer', () => {
+    let seen = 0
+    for (const trade of ['logistics', 'water'] as const) {
+      for (const seed of [1, 2, 3, 4]) {
+        const { g, a } = deskGame(trade, { seed })
+        for (let i = 0; i < 12; i++) {
+          for (const m of playYear(g).filter((x) => x.scriptId === SECTOR_EVENT_SCRIPT)) {
+            seen++
+            expect(m.choices.filter((c) => c.hint), `${trade} ${seed} ${m.title}`).toHaveLength(1)
+          }
+        }
+        expect(deskLines(g, a).join(' ')).toContain('Condition')
+        const st = readSector(bizOf(g, a))
+        expect(st?.family).toBe('util')
+        expect(st?.pending).toBeNull()
+        expect(st?.diary.length).toBeLessThanOrEqual(6)
+      }
+    }
+    expect(seen).toBeGreaterThan(0)
+  }, 300_000)
+
+  it('plays every choice of every event through the script', () => {
+    // Fire each event by hand: a pending token, then the script, once per choice and branch roll.
+    for (const trade of ['energy', 'logistics'] as const) {
+      for (const ev of UTIL_EVENTS) {
+        const room = desk(trade)
+        for (const c of ev.choices(room.g, room.b, busy(room))) {
+          for (const seed of [3, 7, 11]) {
+            const s = desk(trade)
+            const st: UtilState = { ...busy(s), since: s.g.year - 3, lastYear: s.g.year - 1, pending: { token: 'tok', id: ev.id, year: s.g.year } }
+            saveSector(s.b, st)
+            s.g.rng = seed
+            const cash = s.b.cash
+            runScript(s.g, SECTOR_EVENT_SCRIPT, c.id, { assetId: s.a.id, token: 'tok' } as never, { kind: 'notice', id: 'x', title: '', text: '' })
+            const after = readSector(bizOf(s.g, s.a))
+            expect(after?.pending, `${ev.id}.${c.id}`).toBeNull()
+            expect(after?.diary.at(-1), `${ev.id}.${c.id}`).toBe(`${s.g.year} ${ev.title}. ${c.label}.`.slice(0, 90))
+            expect(Number.isFinite(bizOf(s.g, s.a).cash), `${ev.id}.${c.id}`).toBe(true)
+            // The cash move is bounded by the event cap.
+            const cx = sectorCtx(s.g, s.b, s.g.year)
+            expect(Math.abs(bizOf(s.g, s.a).cash - cash), `${ev.id}.${c.id}`).toBeLessThanOrEqual(Math.max(.12 * cx.base, 3000 * cx.level) + 1)
+            const notice = s.g.queue.find((m) => m.kind === 'notice')
+            expect(notice && notice.kind === 'notice' ? notice.text : '', `${ev.id}.${c.id}`).not.toMatch(/\$\{|NaN|undefined/)
+            expect(notice && notice.kind === 'notice' ? notice.title : '').toBe(ev.title)
+            if (after?.family === 'util') {
+              expect(after.condition).toBeGreaterThanOrEqual(0)
+              expect(after.condition).toBeLessThanOrEqual(100)
+              expect(after.hedge).toBeLessThanOrEqual(.8)
+              expect(after.contract).toBeLessThanOrEqual(1)
+            }
+          }
+        }
+      }
+    }
+  })
+
+  it('applies the hedge and contract moves of an event to the record', () => {
+    // The fuel spike's hedge choice sets the hedge to half; the lock choice adds a quarter to the contract share.
+    const s = desk('logistics')
+    const st: UtilState = { ...s.seed, since: s.g.year - 3, lastYear: s.g.year - 1, pending: { token: 'tok', id: 'fuelSpike', year: s.g.year } }
+    saveSector(s.b, st)
+    runScript(s.g, SECTOR_EVENT_SCRIPT, 'hedge', { assetId: s.a.id, token: 'tok' } as never, { kind: 'notice', id: 'x', title: '', text: '' })
+    expect(readSector(bizOf(s.g, s.a))).toMatchObject({ hedge: .5, pending: null })
+    const t = desk('logistics')
+    saveSector(t.b, { ...t.seed, since: t.g.year - 3, lastYear: t.g.year - 1, pending: { token: 'tok', id: 'bigCustomer', year: t.g.year } })
+    runScript(t.g, SECTOR_EVENT_SCRIPT, 'lock', { assetId: t.a.id, token: 'tok' } as never, { kind: 'notice', id: 'x', title: '', text: '' })
+    expect(readSector(bizOf(t.g, t.a))?.family === 'util' && (readSector(bizOf(t.g, t.a)) as UtilState).contract).toBeCloseTo(t.seed.contract + .25, 9)
+  })
+
+  it('keeps every event inside its bounds for small and strong companies', () => {
+    const small = desk('farm')
+    small.b.last = { netRevenue: 12_000, wages: 3_000, sold: 400 } as unknown as BizState['last']
+    const strong = desk('energy')
+    strong.b.last = { netRevenue: 90_000_000, wages: 25_000_000, sold: 900_000 } as unknown as BizState['last']
+    for (const s of [small, strong]) {
+      const probes: UtilState[] = [s.seed, busy(s), { ...s.seed, condition: 100, contract: 1, hedge: .8 }, { ...s.seed, condition: 0, hedge: 0 }]
+      for (const st of probes) for (const ev of UTIL_EVENTS) expect(eventProblems(ev, s.g, s.a, s.b, st), `${s.b.industry} ${ev.id}`).toEqual([])
+    }
+  })
+
+  it('has every copy key', () => {
+    const lines = copyLines(UTIL_COPY)
+    expect(lines.length).toBeGreaterThanOrEqual(40)
+    for (const l of lines) expect(l.key.startsWith('util.'), l.key).toBe(true)
+    const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(UTIL_COPY, key)
+
+    // Every option of every lever, for every trade that offers it, has a label and a tip.
+    for (const lever of UTIL_LEVERS) {
+      expect(has(`util.lever.${lever.id}.label`), lever.id).toBe(true)
+      expect(lever.label).toBe(sectorText(UTIL_COPY, `util.lever.${lever.id}.label`))
+      let options = 0
+      for (const trade of TRADES) {
+        const s = setup(trade)
+        for (const o of lever.options(s.g, s.b, s.seed)) {
+          options++
+          expect(has(`util.lever.${lever.id}.${o.value}.label`), `${lever.id} ${o.value}`).toBe(true)
+          expect(has(`util.lever.${lever.id}.${o.value}.tip`), `${lever.id} ${o.value}`).toBe(true)
+          expect(o.label).toBe(sectorText(UTIL_COPY, `util.lever.${lever.id}.${o.value}.label`))
+          expect(o.tip).toBe(sectorText(UTIL_COPY, `util.lever.${lever.id}.${o.value}.tip`))
+        }
+      }
+      expect(options, lever.id).toBeGreaterThan(0)
+    }
+    // Every event has a head and a scene (or its trade variants), and every choice a label, over every trade.
+    for (const trade of TRADES) {
+      const t = desk(trade)
+      const st = busy(t)
+      for (const ev of UTIL_EVENTS) {
+        expect(has(`util.ev.${ev.id}.head`), ev.id).toBe(true)
+        expect(ev.title).toBe(sectorText(UTIL_COPY, `util.ev.${ev.id}.head`))
+        const scenes = lines.filter((l) => new RegExp(`^util\\.ev\\.${ev.id}\\.(\\w+\\.)?scene$`).test(l.key))
+        expect(scenes.length, ev.id).toBeGreaterThan(0)
+        for (const c of ev.choices(t.g, t.b, st)) {
+          expect(has(`util.ev.${ev.id}.${c.id}.label`), `${ev.id}.${c.id}`).toBe(true)
+          c.branches(t.g, t.b, st).forEach((br, k) => {
+            expect(br.text, `${ev.id}.${c.id}`).toBe(`util.ev.${ev.id}.${c.id}.${k}.out`)
+            expect(has(br.text), br.text).toBe(true)
+          })
+        }
+      }
+    }
+    for (const trade of TRADES) expect(has(`util.ev.storm.${trade}.scene`), trade).toBe(true)
+    for (const trade of ['logistics', 'farm', 'dataCenter']) expect(has(`util.ev.shortage.${trade}.scene`), trade).toBe(true)
+    for (const trade of ['dataCenter', 'telecom', 'logistics']) expect(has(`util.ev.bigCustomer.${trade}.scene`), trade).toBe(true)
+    for (const trade of ['energy', 'solar', 'water', 'farm']) expect(has(`util.ev.subsidy.${trade}.scene`), trade).toBe(true)
+  })
+
+  it('keeps the copy inside the voice guide', () => {
+    const roles = new Set<string>()
+    for (const { key, role, text } of copyLines(UTIL_COPY)) {
+      roles.add(role)
+      const t = template(text)
+      expect(unitFlags(t, role), `${key}: ${text}`).toEqual([])
+      expect(text, key).not.toMatch(DASHES)
+      expect(text.trim(), key).toBe(text)
+      if (role === 'scene') {
+        expect(text.endsWith('What will you do?'), key).toBe(true)
+        expect(staticLength(t), key).toBeLessThanOrEqual(140)
+      }
+      if (role === 'outcome') expect(staticLength(t), key).toBeLessThanOrEqual(120)
+      if (role === 'log') expect(staticLength(t), key).toBeLessThanOrEqual(90)
+      if (role === 'tooltip') expect(staticLength(t), key).toBeLessThanOrEqual(120)
+      if (role === 'label') expect(t.trim().split(/\s+/).length, key).toBeLessThanOrEqual(5)
+      if (role === 'title') expect(text.length, key).toBeLessThanOrEqual(40)
+    }
+    expect([...roles].sort()).toEqual(['label', 'log', 'outcome', 'scene', 'title', 'tooltip'])
   })
 })
