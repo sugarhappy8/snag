@@ -11,6 +11,7 @@ import { loadGame, saveGame } from '../src/game/save'
 import { hasScript, runScript } from '../src/game/scripts'
 import { yearlySpecial } from '../src/game/special'
 import { actorCareerMenu, actorJobNodes } from '../src/game/special/actor'
+import { astronautCareerMenu, astronautJobNodes } from '../src/game/special/astronaut'
 import { actorStore, adoptLegacy } from '../src/game/special/actor-state'
 import { hire } from '../src/game/special/common'
 import { optionOdds, rollOption, type CrisisDef, type Stance } from '../src/game/special/kit/crisis'
@@ -158,6 +159,22 @@ export const CAREER_SETUPS: Partial<Record<CareerId, CareerSetup>> = {
     },
     roots: (g) => [actorCareerMenu, ...actorJobNodes(g)],
     prefer: { steady: /^actor\.(audition|practice)$/, greedy: /^actor\.(audition|practice)$/, reckless: /^actor\.(audition|stunt|practice)$/ },
+  },
+  // The Academy is the way in. Once an astronaut job is held the sim's world ticks every year (funding, mood and safety
+  // follow the calendar), so a year of no input changes the record: the idle check needs a sim that is quiet then. A
+  // strong cadet drills, graduates through the selection board and takes the first offer; the run ends at the hire.
+  // The Flight Board and the yearly sim are played by test/astronaut-flight.test.ts.
+  astronaut: {
+    defId: 'astronaut.cadet',
+    stateKey: 'astronaut.sim',
+    hire: (g) => {
+      g.character.stats.smarts = 95
+      g.character.stats.health = 90
+      g.character.hidden.athleticism = 80
+      hire(g, { defId: 'astronaut.cadet', title: 'Space Academy Cadet', company: 'Orion Space Academy', salary: 14_000, performance: 80, data: { training: 80, yearsLeft: 2 } })
+    },
+    roots: (g) => [astronautCareerMenu, ...astronautJobNodes(g)],
+    prefer: { steady: /^astro\.drill\./, greedy: /^astro\.drill\./, reckless: /^astro\.drill\./ },
   },
 }
 

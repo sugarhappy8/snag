@@ -119,3 +119,70 @@ export const BONE_RATE = 1.3
 export const MUSCLE_RATE = 2.0
 export const STRAIN_RATE = 1.4
 export const DOSE_RATE = 0.12
+
+// ---------------------------------------------------------------------------
+// The Flight Board
+
+/** Seats on the board: six are built each year and at most four are shown (the era's manifest may cut that). */
+export const BOARD = { built: 6, shown: 4, minFunding: 20, bids: 2 } as const
+/** How a bid scores: 0.5 standing + 0.3 seat skill + 4 per level; the second bid of a year is 3 lower; swings are +-5 (yours) and +-4 (the rival's, seeded). */
+export const BID = { standing: 0.5, skill: 0.3, level: 4, second: 3, swing: 5, rival: 4 } as const
+/** Which skill a seat leans on. */
+export const ROLE_SKILL: Record<Role, 'pilot' | 'team' | 'eva'> = { commander: 'team', pilot: 'pilot', specialist: 'eva' }
+export const ROLES: readonly Role[] = ['commander', 'pilot', 'specialist']
+/** The rank (and for the pilot, the skill) each seat asks for. */
+export const SEAT_GATES: Record<Role, { level: number; skill: number }> = {
+  commander: { level: 4, skill: 0 },
+  pilot: { level: 2, skill: 50 },
+  specialist: { level: 1, skill: 0 },
+}
+/** Weights for a seat's role on a flight with more than one seat; a single seat is always the pilot's. */
+export const ROLE_WEIGHT: Record<Role, number> = { commander: 0.2, pilot: 0.3, specialist: 0.5 }
+/** Which backgrounds a rival can bid against you with, by flight type. */
+export const MISSION_EDGES: Record<MissionId, readonly Background[]> = {
+  hop: ['pilot'],
+  orbit: ['pilot', 'engineer'],
+  orbiter: ['pilot', 'engineer', 'scientist', 'physician'],
+  satellite: ['engineer', 'pilot'],
+  station: ['scientist', 'engineer', 'physician', 'pilot'],
+  moon: ['pilot', 'scientist'],
+  deep: ['scientist', 'engineer'],
+  mars: ['pilot', 'engineer', 'scientist', 'physician'],
+  own: ['pilot', 'engineer'],
+}
+/** Rivals a seat can be contested by: the top few that fit (the strongest are out of reach early, the later ones are not). */
+export const BID_RIVALS = 5
+/** A year-long station tour needs this year and this rank. */
+export const TOUR_365 = { year: 2015, level: 3 } as const
+/** Launch prep: 1.2 unprepared, 1.0 after a training session this year. */
+export const PREP = { cold: 1.2, trained: 1.0 } as const
+/** The era's launch roll for a peer's flight is as prepared as it gets. */
+export const PEER_PREP = 1.0
+
+/** Flight pay: at most 40% of the salary, bonus x (0.8 to 1.3) plus a little a day. */
+export const FLIGHT_PAY = { cap: 0.4, perDay: 0.0006, lo: 0.8, hi: 1.3 } as const
+/** The cost of a bone injury in the regimen hint: one point of injury chance counts as this many points of bone. */
+export const INJURY_COST = 100
+/** A tour over this many days asks for a regimen. */
+export const REGIMEN_DAYS = 30
+/** The full rehab program: US dollars, bone and muscle on top of the free recovery. */
+export const REHAB = { usd: 6000, bone: 2.5, muscle: 6 } as const
+/** A year without a flight / a flight year: bone and muscle recovered. */
+export const RECOVERY = { rest: { bone: 3, muscle: 8 }, flight: { bone: 1, muscle: 3 } } as const
+/** Bone under this costs health every year; under the fracture line it also risks a stress fracture. */
+export const BONE_LINE = 70
+export const FRACTURE_LINE = 60
+export const FRACTURE_ODDS = 0.1
+/** Family strain: a year at home eases it; leave eases it more. */
+export const STRAIN = { home: 10, child: 4, leave: 25, partnerFrom: 50, childFrom: 60 } as const
+/** The mood and safety cost of a lost crew. */
+export const LOSS = { mood: 18, safety: 10 } as const
+/** Standing needed for each rank (indexed by the rank), and the corps seats for ranks 2 to 5. */
+export const PROMOTION_STANDING: readonly number[] = [0, 50, 55, 60, 66, 74]
+export const PROMOTION_SEATS: Record<number, number> = { 2: 12, 3: 8, 4: 4, 5: 1 }
+/** What an inquiry finds, by weight; a schedule squeeze adds to the schedule cause. */
+export const CAUSES: readonly ['hardware', 'procedure', 'schedule', 'crew'] = ['hardware', 'procedure', 'schedule', 'crew']
+export const CAUSE_WEIGHT: Record<(typeof CAUSES)[number], number> = { hardware: 0.35, procedure: 0.25, schedule: 0.25, crew: 0.15 }
+export const SQUEEZE_CAUSE = 0.3
+/** A cover-up leaks this often a year, for this many years after the loss. */
+export const COVERUP = { leak: 0.2, years: 4, standing: 8, mood: 8 } as const
