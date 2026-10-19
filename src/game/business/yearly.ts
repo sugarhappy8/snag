@@ -53,6 +53,9 @@ import { economicReportSummary, recordEconomicReport } from './economic-report'
 import { readSupply } from './supply'
 import { bookFranchiseYear, franchiseIncomeFor } from './franchise'
 import { bookHedgeYear } from './hedge-company'
+import { bookLabYear } from './lab-year'
+import { labPayrollIn, labSplit } from './lab-state'
+import { LAB_STATEMENT } from './lab-text'
 import { milestoneYear } from './milestones'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { staffTurnover } from './staff'
@@ -169,10 +172,17 @@ export function statementLines(b: BizState, s: Statement): AnnualReportData['lin
   if (s.marketing > 0) lines.push(line('Marketing', signed(-s.marketing)))
   if (s.interest > 0) lines.push(line('Interest', signed(-s.interest)))
   lines.push(line('Upkeep & depreciation', signed(-s.upkeep)))
-  if (s.other > 0) lines.push(line('One-off costs', signed(-s.other)))
+  // The research team's pay has its own line, out of the one-off costs (business/lab-state.ts).
+  const crew = Math.min(labPayrollIn(b, s.year), Math.max(0, s.other))
+  if (s.other - crew > 0) lines.push(line('One-off costs', signed(-(s.other - crew))))
+  if (crew > 0) lines.push(line(LAB_STATEMENT.payroll, signed(-crew)))
   const franchised = Math.min(franchiseIncomeFor(b, s.year), Math.max(0, s.otherIncome - (s.strategicIncome ?? 0)))
-  if (s.otherIncome - (s.strategicIncome ?? 0) - franchised > 0) lines.push(line('Other income', money(s.otherIncome - (s.strategicIncome ?? 0) - franchised), 'good'))
+  // The lab's credit, grant and royalties leave "Other income" the way franchise money does.
+  const lab = labSplit(b, s, (s.strategicIncome ?? 0) + franchised)
+  if (s.otherIncome - (s.strategicIncome ?? 0) - franchised - lab.grants - lab.royalty > 0) lines.push(line('Other income', money(s.otherIncome - (s.strategicIncome ?? 0) - franchised - lab.grants - lab.royalty), 'good'))
   if (franchised > 0) lines.push(line('Franchise fees & royalties', money(franchised), 'good'))
+  if (lab.grants > 0) lines.push(line(LAB_STATEMENT.credit, money(lab.grants), 'good'))
+  if (lab.royalty > 0) lines.push(line(LAB_STATEMENT.royalty, money(lab.royalty), 'good'))
   if (s.strategicIncome) lines.push(line('Perfect foresight · strategic trading income', money(s.strategicIncome), 'good'))
   if (s.ownerPay > 0) lines.push(line('Your salary', signed(-s.ownerPay)))
   lines.push(line('Profit before tax', signed(s.pbt), s.pbt >= 0 ? 'good' : 'bad'))
@@ -499,6 +509,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     bookFranchiseYear(g, a, b, fiscal)
     // Cash a company puts to work in a hedge fund, booked once through yearIncome or yearCosts (business/hedge-company.ts).
     bookHedgeYear(g, a, b, fiscal)
+    // The research lab's tax credit, grant, royalties and team pay for the year, booked once the same way (business/lab-year.ts).
+    bookLabYear(g, a, b, fiscal)
     prepareVenueYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
     if (b.ceo === 'manager' && isFinanceFirm(b)) financeManagerTurn(g, b)
