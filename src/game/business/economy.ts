@@ -10,6 +10,8 @@
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
 import { FACTOR_BOUNDS, marketEventFactors } from '../history/market-events'
 import { historicalIndexReturn } from '../history/markets'
+import { PRESENT_YEAR } from '../history/timeline'
+import { bookedMarketMove } from '../invest/clock'
 import { outcomeTag } from '../timeMachine'
 import { publicBusinessShockFactor } from '../invest/shocks'
 import { seeded } from '../assets'
@@ -949,6 +951,8 @@ export function exchangeMove(g: GameState, countryId: string, year: number): num
   // In history the exchange moves as the real one did (the same tables as the stock market).
   const real = historicalIndexReturn(countryId, year)
   if (real !== null && Number.isFinite(real)) return clampN(real, -0.6, 1.2)
+  // From the present on it is the engine's move of the market year this fiscal year is booked into (one clock with the funds).
+  if (year >= PRESENT_YEAR) return bookedMarketMove(g, countryId, year)
   const ex = exchangeFor(countryId)
   const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|bizexchange|${ex.code}|${year}`)
   const z = (s.next() + s.next() + s.next() - 1.5) * 2
