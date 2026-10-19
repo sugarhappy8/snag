@@ -163,6 +163,35 @@ describe('the record is written once a fiscal year', () => {
   })
 })
 
+describe('one sister is shared across all its buyers', () => {
+  for (const n of [3, 6]) {
+    it(`splits the held capacity and the invoice room between ${n} identical buyers`, () => {
+      const { g, sister, buyer, more, id } = chipGroup(Array.from({ length: n - 1 }, () => 'devices' as Industry))
+      const buyers = [buyer, ...more], rev = 1000e6, cogs = rev / CHIP_SHARE, bill = cogs * CHIP_SHARE
+      const bookYear = (year: number): void => {
+        book(g, sister, year, { revenue: rev, netRevenue: rev, cogs: rev })
+        for (const x of buyers) book(g, x, year, { revenue: 3 * cogs, netRevenue: 3 * cogs, cogs })
+      }
+      bookYear(2026)
+      for (const x of buyers) expect(toggleService(g, id, sister.id, x.id)).toBe(true)
+      prepareInternalServices(g, 2027)
+      bookYear(2027)
+      // What the buyers cover is capacity the sister gave up, and it gives up at most half of its revenue in all.
+      const covers = buyers.map((x) => bizOf(g, x).chips?.cover ?? 0)
+      const covered = covers.reduce((sum, c) => sum + c * bill, 0)
+      expect(covered).toBeLessThanOrEqual(0.5 * rev + 1)
+      expect(covered).toBeGreaterThan(0.49 * rev)
+      expect(Math.max(...covers)).toBeCloseTo((CHIP_RESERVE * rev) / bill, 10)
+      expect(bizOf(g, sister).capacityLoss).toBeLessThanOrEqual(0.5)
+      settleInternalServices(g, 2027)
+      // The invoices share the sister's 25% too, however many buyers there are.
+      expect(internalRevenue(g, id, 2027)).toBeLessThanOrEqual(0.25 * rev)
+      expect(bizOf(g, sister).last!.netRevenue).toBeLessThanOrEqual(1.25 * rev)
+      clean(g)
+    })
+  }
+})
+
 describe('the year settles without moving the sister profit', () => {
   it('invoices at neutral profit, eliminates it from group revenue and logs the saving once', () => {
     const { g, sister, buyer, id } = chipGroup()

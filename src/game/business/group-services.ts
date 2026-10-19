@@ -208,23 +208,25 @@ function assignChips(g: GameState, fiscal: number): void {
       const mine = bookedBefore(q.b, fiscal)
       const bill = mine ? mine.cogs * CHIP_SHARE : 0
       if (!(bill >= 1)) continue
-      let best: { p: GroupMember; chips: ChipSupply; cut: number; revenue: number } | null = null
+      let best: { p: GroupMember; chips: ChipSupply; cut: number; revenue: number; give: number } | null = null
       for (const c of contracts) {
         if (c.customer !== q.a.id) continue
         const p = grp.members.find(x => x.a.id === c.provider)
         const theirs = p ? bookedBefore(p.b, fiscal) : null
         if (!p || !theirs || !(theirs.netRevenue >= 1) || !isChip(grp, c) || !valid(g, grp, c)) continue
+        // Cover is capacity the sister gives up, so it reads what the buyers before this one left of the half it may hold.
+        const give = Math.min(CHIP_RESERVE, Math.max(0, CHIP_HOLD_MAX - (held.get(p.a.id) ?? 0)))
+        if (!(give > 0)) continue
         const t = techView(p.b)
-        const chips = readChips({ year: fiscal, from: p.a.id, name: p.a.name, stage: Math.min(4, t.stage), node: t.node, yield: t.yieldRate, cover: clampN(CHIP_RESERVE * theirs.netRevenue / bill, 0, 1) })
+        const chips = readChips({ year: fiscal, from: p.a.id, name: p.a.name, stage: Math.min(4, t.stage), node: t.node, yield: t.yieldRate, cover: clampN(give * theirs.netRevenue / bill, 0, 1) })
         if (!chips) continue
         const cut = (SISTER_CUT[chips.stage] ?? 0) * chips.cover
-        if (!best || cut > best.cut || (cut === best.cut && p.a.id < best.p.a.id)) best = { p, chips, cut, revenue: theirs.netRevenue }
+        if (!best || cut > best.cut || (cut === best.cut && p.a.id < best.p.a.id)) best = { p, chips, cut, revenue: theirs.netRevenue, give }
       }
       if (!best || chipSource({ industry: q.b.industry, fabs: q.b.fabs, chips: best.chips }).src !== 'sister') continue
       q.b.chips = best.chips
-      const before = held.get(best.p.a.id) ?? 0
-      const hold = Math.min(CHIP_RESERVE, bill / best.revenue, Math.max(0, CHIP_HOLD_MAX - before))
-      held.set(best.p.a.id, before + hold)
+      const hold = Math.min(best.give, bill / best.revenue)
+      held.set(best.p.a.id, (held.get(best.p.a.id) ?? 0) + hold)
       best.p.b.capacityLoss = clampN(1 - (1 - best.p.b.capacityLoss) * (1 - hold), 0, .8)
     }
   }
@@ -243,7 +245,7 @@ function assignChips(g: GameState, fiscal: number): void {
 function settleChips(g: GameState, fiscal: number, records: Json[]): void {
   const groups = new Set<string>()
   for (const a of businessAssets(g)) if ('chips' in a.details && groupIdOf(a.details)) groups.add(groupIdOf(a.details))
-  const base = new Map<string, number>()
+  const room = new Map<string, number>() // what is left of each sister's invoice cap
   for (const id of groups) {
     const grp = liveGroup(g, id)
     if (!grp) continue
@@ -254,10 +256,12 @@ function settleChips(g: GameState, fiscal: number, records: Json[]): void {
       const c = { group: id, provider: chips.from, customer: q.a.id }
       const src = chipSource(q.b)
       if (!p || !ps || ps.year !== fiscal || src.src !== 'sister' || !isChip(grp, c) || !valid(g, grp, c)) continue
-      if (!base.has(p.a.id)) base.set(p.a.id, ps.netRevenue)
+      // The cap is read from the sister's revenue before its first invoice and shared by all its buyers, as the generic loop shares `remaining`.
+      if (!room.has(p.a.id)) room.set(p.a.id, Math.floor(CHIP_INVOICE_MAX * ps.netRevenue))
       const { saved, paid } = chipBook(qs.cogs, src.cut)
-      const invoice = Math.max(0, Math.min(Math.round(paid * src.cover), Math.floor(CHIP_INVOICE_MAX * base.get(p.a.id)!)))
+      const invoice = Math.max(0, Math.min(Math.round(paid * src.cover), room.get(p.a.id)!))
       if (!(saved >= 1) || !Number.isFinite(invoice)) continue
+      room.set(p.a.id, room.get(p.a.id)! - invoice)
       const pbt = ps.pbt
       ps.revenue += invoice; ps.netRevenue += invoice; ps.cogs += invoice
       amend(g, p.b, ps, pbt)
