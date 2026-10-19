@@ -2,7 +2,8 @@
 // antitrust scrutiny and the screens that show them.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { antitrustOf } from '../src/game/business/competition'
+import { antitrustOf, marketOfBiz, marketViewOf, saveMarket } from '../src/game/business/competition'
+import { maybeAntitrust } from '../src/game/business/competition-events'
 import { techOf } from '../src/game/business/deeptech-core'
 import { techMarketNote } from '../src/game/business/deeptech-sim'
 import { readTech, type TechState } from '../src/game/business/deeptech-state'
@@ -74,6 +75,35 @@ describe('antitrust scrutiny', () => {
     expect([waveScrutiny(g, 'aiLab'), waveScrutiny(g, 'dataCenter'), waveScrutiny(makeTestGame(1), 'aiLab')]).toEqual([near(1.15), 1, 1])
     const b = bizFor('aiLab'), p1 = antitrustOf(b, 0.6, 2035).p; expect(p1).toBeGreaterThan(0); expect(antitrustOf(b, 0.6, 2035, 1, undefined, 1.15).p).toBeCloseTo(Math.min(0.5, p1 * 1.15), 6)
     expect(antitrustOf(b, 0.9, 2035, 1, undefined, 1e4).p).toBe(0.5)
+  })
+})
+
+describe('antitrust scrutiny reaches both callers', () => {
+  /** A near-monopoly in a trade, booked this year (the setup of test/competition.test.ts dominantIn, for any trade): `antitrustChance` is above 0 at a 0.8 share and $5B of sales. */
+  const dominant = (trade: Industry): { g: GameState; a: Asset } => {
+    const g = adult(7, 2036, 'fr'); const a = company(g, trade, { outlets: 30 }), b = bizOf(g, a)
+    b.last = { year: g.year - 1, demand: 2_500_000, sold: 2_500_000, produced: 2_500_000, spoiled: 0, price: b.price, revenue: 5_000_000_000, salesTax: 0, netRevenue: 5_000_000_000, cogs: 750_000_000, wages: 1_000_000_000, keyStaff: 0, rent: 125_000_000, marketing: 250_000_000, interest: 0, upkeep: 50_000_000, other: 0, otherIncome: 0, ownerPay: 0, pbt: 2_825_000_000, corpTax: 625_000_000, net: 2_200_000_000, cashErosion: 0, cycle: 1, openFraction: 1, employees: 10_000 }
+    const st = marketOfBiz(b); Object.assign(st, { year: g.year, share: 0.8, base: 0.8 }); saveMarket(b, st)
+    return { g, a }
+  }
+  const BIG = { size: 1, hype: 1, delivery: 1 }   // scrutiny 1 + 0.5 x 1 x 1 = 1.5
+  it('marketViewOf multiplies the case chance by waveScrutiny for a core trade, and leaves a supply trade alone', () => {
+    const { g, a } = dominant('aiLab'), chance = () => marketViewOf(g, readBiz(g, a)).antitrust.p
+    const none = chance(); expect(none).toBeGreaterThan(0); expect(none).toBeLessThan(0.3)   // below the 0.5 clamp even at 1.5 x
+    put(g, AI(BIG)); expect(chance()).toBeCloseTo(none * 1.5, 6); expect(chance()).toBeGreaterThan(none)
+    const supply = dominant('dataCenter'), s0 = marketViewOf(supply.g, readBiz(supply.g, supply.a)).antitrust.p; expect(s0).toBeGreaterThan(0)
+    put(supply.g, AI(BIG)); expect(marketViewOf(supply.g, readBiz(supply.g, supply.a)).antitrust.p).toBe(s0)
+  })
+  it('maybeAntitrust uses it too: in some year the draw falls between the two chances and only the live wave opens a case, never the reverse', () => {
+    const { g, a } = dominant('aiLab')
+    const cases = (waved: boolean, year: number): number => {
+      const c = structuredClone(g); if (waved) put(c, AI(BIG))
+      const asset = c.assets.find((x) => x.id === a.id)!, b = bizOf(c, asset), st = marketOfBiz(b); st.year = year; saveMarket(b, st)
+      maybeAntitrust(c, asset, b, year, true); return marketOfBiz(b).antitrust.cases
+    }
+    let only = 0, reverse = 0
+    for (let year = 2036; year < 2036 + 150 && !only; year++) { const withWave = cases(true, year), without = cases(false, year); if (withWave && !without) only++; if (without && !withWave) reverse++ }
+    expect(only).toBe(1); expect(reverse).toBe(0)
   })
 })
 
