@@ -28,6 +28,7 @@ import {
   dtInd,
   headCount,
   industryCycle,
+  marketReference,
   paceOf,
   rdScale,
   refreshTechValue,
@@ -43,6 +44,8 @@ import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, star
 import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
 import { afterYearSilicon, bookSilicon, pendingBrandStep } from './silicon'
+import { CHIP_LANES, laneOpen } from './silicon-data'
+import { reportLine } from './silicon-text'
 import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
 import { deepWaveFor } from './tech-wave-data'
@@ -441,6 +444,9 @@ export function techStatementLines(b: BizState, t: TechState, s: Statement): Ann
   const x = t.last && t.last.year === s.year ? t.last : null
   const lines: AnnualReportData['lines'] = []
   if (s.demand > 0 || s.sold > 0) lines.push(line(`${def.unit[0].toUpperCase()}${def.unit.slice(1)} sold`, `${units(s.sold)} of ${units(s.demand)} wanted`, s.sold >= s.demand * 0.97 ? 'good' : 'neutral'))
+  // Chip goodwill and the price position of the year (Silicon 2.0), early so the report's line cap never cuts it.
+  const goodwill = reportLine(t, s.year)
+  if (goodwill) lines.push(line(goodwill.label, goodwill.value, goodwill.tone))
   lines.push(line(def.taxShare > 0 ? `Sales (incl. ${m.salesTaxName})` : 'Sales', money(s.revenue)))
   if (x && x.side > 0) lines.push(line('…of which contracts & other revenue', money(x.side)))
   if (s.salesTax > 0) lines.push(line(`${m.salesTaxName} remitted`, signed(-s.salesTax)))
@@ -488,8 +494,14 @@ export function techMarketNote(g: GameState, b: BizState, t: TechState): string 
     if (note) parts.push(note)
   }
   if (ind === 'spaceTech' && t.stage >= 3) parts.push(`${plural(t.wins, 'successful flight')} so far; customers trust a track record.`)
-  const e = localEcon(ind, b.countryId, b.city)
-  parts.push(`A typical ${def.unitOne} sells for about ${money(e.goingPrice)} here; your tech earns ${money(techPriceBounds(g, b, t).going)}.`)
+  if (ind === 'semiconductor') {
+    // One market price for a chip company: the calm reference of the core lane (Silicon 2.0).
+    parts.push(`Chips like yours sell for about ${money(marketReference(g, b, t, CHIP_LANES[0], g.year))} here.`)
+    if (CHIP_LANES.some((l) => l.id !== 'core' && laneOpen(l, t, g.year))) parts.push("Set each chip line's discount under Chips & Fabs.")
+  } else {
+    const e = localEcon(ind, b.countryId, b.city)
+    parts.push(`A typical ${def.unitOne} sells for about ${money(e.goingPrice)} here; your tech earns ${money(techPriceBounds(g, b, t).going)}.`)
+  }
   const v = marketViewOf(g, b)
   if (v.booked && v.share > 0) parts.push(`You hold ${shareText(v.share)} of the world ${v.noun} market (#${v.rank})${v.unmet >= 0.05 ? ` and turned away ${pct(v.unmet)} of your customers last year: more ${def.sitePlural} or compute would keep them` : ''}.`)
   return parts.join(' ')
@@ -541,10 +553,12 @@ export function techReportData(g: GameState, a: Asset, b: BizState): AnnualRepor
     const best = bestTechPlan(g, b, t, lastCycle)
     if (best.production > 0) {
       const price = round2(clampN(best.price, bounds.min, bounds.max))
+      // A pricing policy (Silicon 2.0) that held the plan back says so.
+      const cap = best.limit !== undefined && best.price >= best.limit ? `, within your cap of ${pct(Number(t.silicon?.ceiling))} of the market` : ''
       data.talentHint = {
         price,
         production: Math.round(clampN(best.production, 0, maxProd)),
-        text: talentHint(g, 'Business', `Your gut says ${price >= 100 ? money(price) : formatCents(price)} per ${def.unitOne} and ${units(best.production)} ${def.unit} earns the most next year.`),
+        text: talentHint(g, 'Business', `Your gut says ${price >= 100 ? money(price) : formatCents(price)} per ${def.unitOne} and ${units(best.production)} ${def.unit} earns the most next year${cap}.`),
       }
     }
   }

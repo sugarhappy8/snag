@@ -14,10 +14,12 @@ import { dominanceFrom, freshMarketState, marketDemand, marketKey, marketStateOf
 import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, regimeFor, tierFor, type Regime, type TierId } from './competition-data'
 import { familyId, isRealName, pickHub, rawPull, rivalName, rosterOf, type RivalTier } from './competition-roster'
 import { emptyMarket, MAX_WAVE_FOUNDED, type ExtraRival, type MarketState } from './competition-state'
+import { marketReference, priceIndex, techView } from './deeptech-core'
 import { localEcon, marketCtxFor, marketCtxWithRivalry, marketScale, type Worth } from './economy'
 import { industryDef } from './industries'
 import { entryStrength, presenceIn } from './market-reach'
 import { regionalShares } from './market-regional'
+import { CHIP_LANES } from './silicon-data'
 import { readBiz, type BizState } from './state'
 import { entrantLine, entrantsDue, waveScrutiny } from './tech-waves'
 import { clampN, money as moneyShort, toJson } from './util'
@@ -203,6 +205,8 @@ export interface MarketView {
   /** For world markets: the home country's slice of it and the company's estimated share there. */
   home: { name: string; size: number; share: number } | null
   antitrust: AntitrustView
+  /** Chip companies only: the headline price against the core lane's calm market reference in `g.year` (1 = at the market). */
+  index?: number
   history: { year: number; share: number; lead?: number; hhi?: number; rank: number; size: number }[]
 }
 
@@ -414,6 +418,7 @@ export function marketViewOf(g: GameState, b: BizState): MarketView {
     worldShare,
     home,
     antitrust: antitrustOf(b, Math.max(share, base), g.year, priceRatio, rivals, waveScrutiny(g, b.industry)),
+    ...(b.industry === 'semiconductor' ? { index: priceIndex(b.price, marketReference(g, b, techView(b), CHIP_LANES[0], g.year)) } : {}),
     history: (st?.history ?? []).map((h) => ({ year: h.year, share: h.share, rank: h.rank, size: h.size, ...(h.lead !== undefined ? { lead: h.lead } : {}), ...(h.hhi !== undefined ? { hhi: h.hhi } : {}) })),
   }
 }

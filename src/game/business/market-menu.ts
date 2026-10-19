@@ -180,7 +180,7 @@ export function segmentsMenu(a: Asset): MenuGroup {
           r.mine ? '\u{1F4CD}' : '\u{25AB}\u{FE0F}',
         ),
       )
-      const mine = mySegment(b)
+      const mine = mySegment(b, v.index)
       const open = rows.filter((r) => !r.mine && r.me === 0 && r.weight >= 0.12)[0]
       nodes.push(info(`biz.mkt.seg.tip.${a.id}`, open ? `Room to move: ${open.label.toLowerCase()} is ${pct(open.weight)} of the money and you have none of it. Prices and quality decide your segment.` : `You sit in ${rows.find((r) => r.id === mine)?.label.toLowerCase() ?? 'the middle'}. Charging much more or less, or changing quality, moves you.`, '\u{1F4A1}'))
       return nodes

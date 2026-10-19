@@ -58,6 +58,18 @@ export function siliconRows(g: GameState, b: BizState, t: TechState): { goodwill
   }
 }
 
+/**
+ * The Annual Report's goodwill line for the year just booked, '62 (warm) · 0.88x': goodwill with its band, then the
+ * price position of the squeeze lanes (below 1 is cheaper than the market). Good from 56, bad up to 44. Null when the
+ * company has no booked chip year for `year`. A pure read of a possibly live `t`, so it goes through `siliconView`.
+ */
+export function reportLine(t: TechState, year: number): { label: string; value: string; tone: 'good' | 'bad' | 'neutral' } | null {
+  const s = siliconView(t)
+  if (!s.last || s.last.year !== year) return null
+  const n = Math.round(s.goodwill)
+  return { label: 'Goodwill · price vs market', value: `${n} (${goodwillBand(n)}) · ${s.last.index.toFixed(2)}x`, tone: n >= 56 ? 'good' : n <= 44 ? 'bad' : 'neutral' }
+}
+
 /** A lane's price line from the calm plan: '$52.00 each, 0.88x the market, 24% of your sales' ('' when the lane isn't in the plan). */
 export function laneSubtitle(g: GameState, b: BizState, t: TechState, lane: ChipLane): string {
   const row = techPlan(g, b, t, g.year, { calm: true }).lanes.find((l) => l.id === lane.id)
