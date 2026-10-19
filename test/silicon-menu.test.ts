@@ -35,7 +35,7 @@ const sub = (L: Lab, id: string): string => {
   return typeof s === 'function' ? s(L.g) : s ?? ''
 }
 const notices = (g: GameState): string[] => g.queue.filter((m): m is NoticeModal => m.kind === 'notice').map((m) => m.text)
-const SILICON = { goodwill: 61, lanes: { accel: 0.2 }, ceiling: 0.9, lead: 0, applied: 0, last: null }
+const SILICON = { goodwill: 61, lanes: { accel: 0.2 }, launch: null, ceiling: 0.9, lead: 0, applied: 0, last: null }
 
 describe('the Chips & Fabs rows', () => {
   it('are pure at every stage, year and country, and never more than 14', { timeout: 300_000 }, () => {

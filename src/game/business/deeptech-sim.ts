@@ -37,6 +37,7 @@ import {
   sellable,
   sideRevenue,
   siliconOf,
+  siliconView,
   techFunds,
   techOf,
   techPlan,
@@ -45,7 +46,7 @@ import {
 import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
 import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
-import { afterYearSilicon, bookSilicon, chipPerformance, launchDiscounts, launchOptions, leadsField, pendingBrandStep, type LaunchId } from './silicon'
+import { afterYearSilicon, bookSilicon, chipPerformance, launchDiscounts, launchOptions, LAUNCH_TARGET, leadsField, pendingBrandStep, squeezeOf, type LaunchId } from './silicon'
 import { CHIP_LANES, laneOpen } from './silicon-data'
 import { reportLine } from './silicon-text'
 import { marketViewOf, shareText } from './competition'
@@ -373,7 +374,9 @@ function revalueQuiet(g: GameState, a: Asset, b: BizState, t: TechState): void {
 
 /** The choice a chip lab gets for its new chips: what to charge against the market in the next year. `year` is the fiscal year just booked. */
 function queueLaunch(g: GameState, a: Asset, b: BizState, t: TechState, year: number): void {
-  const options = launchOptions(g, b, t, year + 1)
+  // The choice is settled against the headline the player sets in the Annual Report that follows, so the options are
+  // compared at that report's suggested price, not at the headline from before the win.
+  const options = launchOptions(g, b, t, year + 1, techReportData(g, a, b).suggestedPrice)
   // The Business talent marks the option that earns the most next year, when it clearly does (profit only: goodwill isn't counted).
   const ranked = [...options].sort((x, y) => y.profit - x.profit)
   const delta = ranked.length > 1 ? ranked[0].profit - ranked[1].profit : 0
@@ -396,10 +399,14 @@ function queueLaunch(g: GameState, a: Asset, b: BizState, t: TechState, year: nu
   )
 }
 
-const LAUNCH_NOTICE: Record<LaunchId, string> = {
-  undercut: 'New chips priced at 90% of the market. Goodwill moves with orders shipped, and only in squeeze years.',
-  match: 'New chips priced at the market. Goodwill stays where it is.',
-  keep: 'Prices unchanged. The new chips sell at your current price.',
+const KEEP_NOTICE = 'Prices unchanged. The new chips sell at your current price.'
+
+/** Where the new chips ended up against the market (`index` 1 = at the market), in words. */
+function pricedText(index: number): string {
+  const p = Math.round(index * 100)
+  return p === 100
+    ? 'New chips priced at the market. Goodwill stays where it is.'
+    : `New chips priced at ${p}% of the market. Goodwill moves with orders shipped, and only in squeeze years.`
 }
 
 const LAUNCH = defineScript('deeptech.launch', (g, choice, data) => {
@@ -410,13 +417,35 @@ const LAUNCH = defineScript('deeptech.launch', (g, choice, data) => {
   const year = d.year
   if (b.industry !== 'semiconductor' || !(choice === 'undercut' || choice === 'match' || choice === 'keep') || typeof year !== 'number' || !Number.isInteger(year)) return
   const t = techOf(b)
-  if (choice !== 'keep') {
-    siliconOf(t).lanes = launchDiscounts(g, b, t, choice, year)
-    log(g, `${a.name} ${choice === 'undercut' ? 'undercut' : 'matched'} the market on its new chips.`)
+  if (choice === 'keep') {
+    notice(g, 'Chips Priced', KEEP_NOTICE, { emoji: DEEP_TECH[dtInd(b)].screen.emoji })
+    return
   }
-  notice(g, 'Chips Priced', LAUNCH_NOTICE[choice], { emoji: DEEP_TECH[dtInd(b)].screen.emoji })
-  revalueQuiet(g, a, b, t)
+  // The Annual Report that follows sets the headline price, and the discounts are measured against it: it applies the choice.
+  siliconOf(t).launch = { year, id: choice }
+  log(g, `${a.name} ${choice === 'undercut' ? 'undercut' : 'matched'} the market on its new chips.`)
 })
+
+/**
+ * Applies the launch choice the popup left (Silicon 2.0), now that the Annual Report has set the headline price: the
+ * discounts are cut against that price, so the chips end at the index the player chose whatever price they set. A
+ * choice from an earlier year is dropped, and a company with none is left alone. Says where the chips ended up.
+ */
+function settleLaunch(g: GameState, a: Asset, b: BizState, t: TechState): void {
+  if (b.industry !== 'semiconductor') return
+  const launch = siliconView(t).launch
+  if (!launch) return
+  const s = siliconOf(t)
+  s.launch = null
+  if (launch.year < g.year) return
+  s.lanes = launchDiscounts(g, b, t, launch.id, launch.year)
+  const plan = techPlan(g, b, t, launch.year, { calm: true })
+  const index = squeezeOf(plan.lanes, plan.unitCost).index
+  // A cut is a whole percent, so a lane lands within a point of the target; that counts as reaching it.
+  const target = LAUNCH_TARGET[launch.id]
+  notice(g, 'Chips Priced', pricedText(Math.abs(index - target) < 0.01 ? target : index), { emoji: DEEP_TECH[dtInd(b)].screen.emoji })
+  revalueQuiet(g, a, b, t)
+}
 
 // ---------------------------------------------------------------------------
 // After evolve(): tech level drift, hype, depreciation, the board, IPO readiness
@@ -644,6 +673,7 @@ export const TECH_REPORT = defineScript('deeptech.report', (g, choice, data) => 
   b.price = round2(clampN(price, bounds.min, bounds.max))
   b.production = Math.round(clampN(production, 0, maxProd))
   if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${b.price >= 100 ? money(b.price) : formatCents(b.price)} and planned ${units(b.production)} ${industryDef(b.industry).unit} for the year.`)
+  settleLaunch(g, a, b, t)
 })
 
 function paceChoices(g: GameState, a: Asset, b: BizState, t: TechState, hinted = true): ChoiceOption[] {
@@ -731,4 +761,4 @@ export function formatRunway(years: number): string {
 }
 
 /** Exported for tests: the yearly report and release scripts. */
-export const simInternals = { RELEASE, LAB_REPORT, TECH_REPORT, LAUNCH, queueRelease, queueLaunch }
+export const simInternals = { RELEASE, LAB_REPORT, TECH_REPORT, LAUNCH, queueRelease, queueLaunch, settleLaunch }

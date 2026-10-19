@@ -151,6 +151,9 @@ export function rivalPriceIndex(fam: string, r: Pick<RivalView, 'id' | 'seg' | '
 
 export type LaunchId = 'undercut' | 'match' | 'keep'
 
+/** The price index a launch choice cuts the squeeze lanes to (the market is 1). */
+export const LAUNCH_TARGET = { undercut: 0.9, match: 1 } as const
+
 /** Do the chips score strictly above every rival, in a field of at least two? Pure. */
 export function leadsField(g: GameState, b: BizState, t: TechState): boolean {
   const rivals = marketViewOf(g, b).rivals
@@ -160,33 +163,35 @@ export function leadsField(g: GameState, b: BizState, t: TechState): boolean {
 }
 
 /**
- * The lane discounts a launch choice leaves, for the planning `year`: the full map (zeros dropped), with each open
+ * The lane discounts a launch choice leaves, for the planning `year` and a headline `price` (the one on the company
+ * by default; the Annual Report passes the one the player just set): the full map (zeros dropped), with each open
  * lane the squeeze hits (`shortage` above 0) cut to a price index of 0.90 for `undercut` or 1.00 for `match`, at
- * most 50%. A headline already at or under that price gets no discount. `keep` returns the current map. Pure.
+ * most 50%. A headline already at or under that price gets no new discount, and a lane that is already discounted
+ * deeper keeps its discount. `keep` returns the current map. Pure.
  */
-export function launchDiscounts(g: GameState, b: BizState, t: TechState, id: LaunchId, year: number): Record<string, number> {
+export function launchDiscounts(g: GameState, b: BizState, t: TechState, id: LaunchId, year: number, price: number = b.price): Record<string, number> {
   const lanes = { ...siliconView(t).lanes }
   if (id === 'keep') return lanes
-  const target = id === 'undercut' ? 0.9 : 1
+  const target = LAUNCH_TARGET[id]
   for (const lane of CHIP_LANES) {
     if (lane.id === 'core' || !(lane.shortage > 0) || !laneOpen(lane, t, year)) continue
     const ref = marketReference(g, b, t, lane, year)
-    const cut = b.price > 0 && ref > 0 ? round2(clampN(1 - (target * ref) / b.price, 0, 0.5)) : 0
-    if (cut > 0) lanes[lane.id] = cut
-    else delete lanes[lane.id]
+    const cut = price > 0 && ref > 0 ? round2(clampN(1 - (target * ref) / price, 0, 0.5)) : 0
+    if (cut > (lanes[lane.id] ?? 0)) lanes[lane.id] = cut
   }
   return lanes
 }
 
 /**
- * The three launch choices in order, each with the lanes it leaves and the profit of the calm plan for `year` on a
- * copy of the company's tech that carries them (what `bestTechPlan` would count: no goodwill). Pure: nothing live is touched.
+ * The three launch choices in order, each with the lanes it leaves and the profit of the calm plan for `year` at a
+ * headline `price` (the company's own by default) on a copy of the company's tech that carries them (what
+ * `bestTechPlan` would count: no goodwill). Pure: nothing live is touched.
  */
-export function launchOptions(g: GameState, b: BizState, t: TechState, year: number): { id: LaunchId; lanes: Record<string, number>; profit: number }[] {
+export function launchOptions(g: GameState, b: BizState, t: TechState, year: number, price: number = b.price): { id: LaunchId; lanes: Record<string, number>; profit: number }[] {
   return (['undercut', 'match', 'keep'] as const).map((id) => {
-    const lanes = launchDiscounts(g, b, t, id, year)
+    const lanes = launchDiscounts(g, b, t, id, year, price)
     const copy = techView(b)
     siliconOf(copy).lanes = lanes
-    return { id, lanes, profit: planContribution(g, b, techPlan(g, b, copy, year, { calm: true }), year).profit }
+    return { id, lanes, profit: planContribution(g, b, techPlan(g, b, copy, year, { calm: true, price }), year).profit }
   })
 }

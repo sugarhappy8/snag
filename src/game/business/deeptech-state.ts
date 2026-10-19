@@ -253,11 +253,20 @@ export interface SiliconYear {
   quality: number
 }
 
+/** A launch choice that waits for the Annual Report: the headline price is set there, and its discounts are measured against it. */
+export interface SiliconLaunch {
+  /** The planning year the choice is for. */
+  year: number
+  id: 'undercut' | 'match'
+}
+
 export interface SiliconState {
   /** 0-100, 50 = neutral. */
   goodwill: number
   /** Discount below the headline price by lane id, 0-0.5 (never `core`). */
   lanes: Record<string, number>
+  /** A launch choice not yet applied: the Annual Report that follows applies it to the headline price the player sets, then clears it. */
+  launch: SiliconLaunch | null
   /** Pricing policy: cap on the headline index for hired CEOs and the hint, 0.6-1.3; 0 = none. */
   ceiling: number
   /** Last fiscal year the chips led the field on performance; 0 = never. */
@@ -462,12 +471,12 @@ function readYear(v: Json | undefined): TechYear | null {
 }
 
 export function emptySilicon(): SiliconState {
-  return { goodwill: 50, lanes: {}, ceiling: 0, lead: 0, applied: 0, last: null }
+  return { goodwill: 50, lanes: {}, launch: null, ceiling: 0, lead: 0, applied: 0, last: null }
 }
 
 /** True when nothing differs from the default, so readTech leaves the member out. */
 export function isEmptySilicon(s: SiliconState): boolean {
-  return s.goodwill === 50 && Object.keys(s.lanes).length === 0 && s.ceiling === 0 && s.lead === 0 && s.applied === 0 && s.last === null
+  return s.goodwill === 50 && Object.keys(s.lanes).length === 0 && s.launch === null && s.ceiling === 0 && s.lead === 0 && s.applied === 0 && s.last === null
 }
 
 /** A year as a rounded integer from 1800 to 2300, else 0. */
@@ -492,6 +501,12 @@ function readSiliconYear(v: Json | undefined): SiliconYear | null {
   }
 }
 
+function readLaunch(v: Json | undefined): SiliconLaunch | null {
+  const x = rec(v)
+  const year = x ? siliconYear(x.year) : 0
+  return x && year && (x.id === 'undercut' || x.id === 'match') ? { year, id: x.id } : null
+}
+
 /** Lane discounts: only the four extra lanes (never `core`), 0 to 0.5 in cents, zeros dropped. */
 function readLaneDiscounts(v: Json | undefined): Record<string, number> {
   const x = rec(v)
@@ -513,6 +528,7 @@ export function readSilicon(v: Json | undefined): SiliconState {
   return {
     goodwill: clampN(num(d.goodwill, 50), 0, 100),
     lanes: readLaneDiscounts(d.lanes),
+    launch: readLaunch(d.launch),
     ceiling: ceiling > 0 ? clampN(ceiling, 0.6, 1.3) : 0,
     lead: siliconYear(d.lead),
     applied: siliconYear(d.applied),

@@ -9,15 +9,15 @@ import { emptyMarket } from '../src/game/business/competition-state'
 import { marketReference, planContribution, siliconOf, techOf, techPlan, techView } from '../src/game/business/deeptech-core'
 import { programDef } from '../src/game/business/deeptech-data'
 import { startProgram } from '../src/game/business/deeptech-rd'
-import { simInternals } from '../src/game/business/deeptech-sim'
+import { simInternals, techReportData } from '../src/game/business/deeptech-sim'
 import type { TechState } from '../src/game/business/deeptech-state'
-import { afterYearSilicon, chipPerformance, launchDiscounts, launchOptions, leadsField, type LaunchId } from '../src/game/business/silicon'
+import { afterYearSilicon, chipPerformance, LAUNCH_TARGET, launchDiscounts, launchOptions, leadsField, type LaunchId } from '../src/game/business/silicon'
 import { CHIP_LANES, laneOpen } from '../src/game/business/silicon-data'
 import { bizOf, stakeValue } from '../src/game/business/state'
 import { announceWave, readTechWaves } from '../src/game/business/tech-waves'
 import { money, round2, toJson } from '../src/game/business/util'
 import { runScript } from '../src/game/scripts'
-import type { Asset, ChoiceModal, GameState, ModalItem } from '../src/game/types'
+import type { AnnualReportData, Asset, ChoiceModal, GameState, MinigameModal, ModalItem, NoticeModal } from '../src/game/types'
 import { chipLab, company, labOf, playYear, type Lab } from './silicon-kit'
 
 const AI_CHIP = ['firstChip', 'volume', 'aiChip']
@@ -67,7 +67,15 @@ function popup(L: Lab, year = 2025): ChoiceModal {
   simInternals.queueLaunch(L.g, L.a, L.b, L.t, year)
   return L.g.queue.pop() as ChoiceModal
 }
-const answer = (L: Lab, m: ChoiceModal, id: string): void => runScript(L.g, 'deeptech.launch', id, m.data, m)
+/**
+ * Answers the popup, then settles the choice the way the Annual Report does once the player has set the headline
+ * (the lab's own `b.price`). It calls the settling step itself, not the report script, which would clamp a headline
+ * the test sets far from the market; the report script has its own tests below.
+ */
+const answer = (L: Lab, m: ChoiceModal, id: string): void => {
+  runScript(L.g, 'deeptech.launch', id, m.data, m)
+  simInternals.settleLaunch(L.g, L.a, L.b, L.t)
+}
 const exposed = (L: Lab, year: number) => CHIP_LANES.filter((l) => l.id !== 'core' && l.shortage > 0 && laneOpen(l, techView(L.b), year))
 const indexOf = (L: Lab, id: string, year: number): number => {
   const t = techOf(L.b), lane = CHIP_LANES.find((l) => l.id === id)!
@@ -165,9 +173,66 @@ describe('what each choice does', () => {
     for (const lane of exposed(L, 2026)) expect(Math.abs(indexOf(L, lane.id, 2026) - 1), lane.id).toBeLessThanOrEqual(0.01)
 
     const cheap = lab({ price: 0.5 })
-    siliconOf(cheap.t).lanes = { accel: 0.2, cpu: 0.1 }
     answer(cheap, popup(cheap), 'match')
-    expect(techOf(cheap.b).silicon!.lanes).toEqual({ cpu: 0.1 })
+    expect(techOf(cheap.b).silicon!.lanes).toEqual({})
+  })
+
+  it('never lowers a discount that is already deeper, and raises a shallower one to the target', () => {
+    for (const id of ['undercut', 'match'] as const) {
+      const L = lab()
+      siliconOf(L.t).lanes = { gfx: 0.45, accel: 0.02, cpu: 0.1 }
+      answer(L, popup(L), id)
+      const lanes = techOf(L.b).silicon!.lanes
+      expect([lanes.gfx, lanes.cpu], id).toEqual([0.45, 0.1])
+      for (const lane of ['accel', 'mem']) expect(Math.abs(indexOf(L, lane, 2026) - LAUNCH_TARGET[id]), `${id} ${lane}`).toBeLessThanOrEqual(0.01)
+    }
+    // A headline far under the market adds no discount and removes none.
+    const cheap = lab({ price: 0.5 })
+    siliconOf(cheap.t).lanes = { accel: 0.2, cpu: 0.1 }
+    answer(cheap, popup(cheap), 'undercut')
+    expect(techOf(cheap.b).silicon!.lanes).toEqual({ accel: 0.2, cpu: 0.1 })
+  })
+
+  it('stores undercut and match at the popup and changes no lane or notice until the report', () => {
+    for (const id of ['undercut', 'match'] as const) {
+      const L = lab()
+      siliconOf(L.t).lanes = { cpu: 0.1 }
+      const m = popup(L)
+      runScript(L.g, 'deeptech.launch', id, m.data, m)
+      expect(techOf(L.b).silicon, id).toMatchObject({ lanes: { cpu: 0.1 }, launch: { year: 2026, id } })
+      expect(L.g.queue.filter((q) => q.kind === 'notice'), id).toEqual([])
+      expect(logText(L.g)).toContain(`${L.a.name} ${id === 'undercut' ? 'undercut' : 'matched'} the market on its new chips.`)
+    }
+  })
+
+  it('settling clears the choice, drops one from an earlier year and leaves a company with none alone', () => {
+    const L = lab()
+    answer(L, popup(L), 'undercut')
+    expect(techOf(L.b).silicon!.launch).toBeNull()
+    const stale = lab()
+    siliconOf(stale.t).launch = { year: stale.g.year - 1, id: 'undercut' }
+    simInternals.settleLaunch(stale.g, stale.a, stale.b, stale.t)
+    expect(techOf(stale.b).silicon).toMatchObject({ lanes: {}, launch: null })
+    expect(stale.g.queue.filter((q) => q.kind === 'notice')).toEqual([])
+    const none = lab()
+    const before = JSON.stringify([none.g, none.b])
+    simInternals.settleLaunch(none.g, none.a, none.b, none.t)
+    expect(JSON.stringify([none.g, none.b])).toBe(before)
+  })
+
+  it('launchDiscounts cuts against the headline it is given, and only reads', () => {
+    const L = lab()
+    const t = techOf(L.b)
+    const live = JSON.stringify(L.b)
+    const own = launchDiscounts(L.g, L.b, t, 'undercut', 2026)
+    expect(launchDiscounts(L.g, L.b, t, 'undercut', 2026, L.b.price)).toEqual(own)
+    const dearer = launchDiscounts(L.g, L.b, t, 'undercut', 2026, L.b.price * 1.2)
+    const cheaper = launchDiscounts(L.g, L.b, t, 'undercut', 2026, L.b.price * 0.8)
+    for (const lane of exposed(L, 2026)) {
+      expect(dearer[lane.id], lane.id).toBeGreaterThan(own[lane.id])
+      expect(cheaper[lane.id] ?? 0, lane.id).toBeLessThan(own[lane.id])
+    }
+    expect(JSON.stringify(L.b)).toBe(live)
   })
 
   it('keep changes nothing and writes no log line', () => {
@@ -225,6 +290,93 @@ describe('what each choice does', () => {
   })
 })
 
+describe('the launch settles against the Annual Report', { timeout: 300_000 }, () => {
+  /**
+   * A 2024 aiChip win booked with `ageUp`: the launch popup first, then the Annual Report. The popup is answered with
+   * `choice`, then the report with the headline the player sets (the suggested price times `markup`). `prior` lane
+   * discounts are set before the popup.
+   */
+  function played(choice: LaunchId, opts: { markup?: number; prior?: Record<string, number> } = {}) {
+    const { g, a } = winYear('aiChip', 2024, { patch: { plant: 1 } })
+    if (opts.prior) siliconOf(techOf(bizOf(g, a))).lanes = { ...opts.prior }
+    const popupModal = launches(g)[0]
+    g.queue = g.queue.filter((m) => m !== popupModal)
+    runScript(g, 'deeptech.launch', choice, popupModal.data, popupModal)
+    const report = g.queue.find((m): m is MinigameModal => m.kind === 'minigame' && m.scriptId === 'deeptech.report')!
+    const r = report.data as unknown as AnnualReportData
+    g.queue = g.queue.filter((m) => m !== report)
+    const price = Math.min(r.maxPrice, round2(r.suggestedPrice * (opts.markup ?? 1)))
+    runScript(g, report.scriptId, JSON.stringify({ price, production: Math.min(r.maxProduction, Math.round(r.expectedDemand * 1.05)) }), report.data, report)
+    const b = bizOf(g, a)
+    const L: Lab = { g, a, b, t: techOf(b) }
+    return { L, r, price, year: (popupModal.data as { year: number }).year }
+  }
+  const indices = (L: Lab, year: number): number[] => exposed(L, year).map((l) => indexOf(L, l.id, year))
+  const priced = (g: GameState): string[] => g.queue.filter((m): m is NoticeModal => m.kind === 'notice' && m.title === 'Chips Priced').map((m) => m.text)
+  /** What the notice should say: the squeeze lanes' average price against the market, weighted by lane weight times exposure. */
+  const average = (L: Lab, year: number): number => {
+    const lanes = exposed(L, year)
+    return lanes.reduce((s, l) => s + l.weight * l.shortage * indexOf(L, l.id, year), 0) / lanes.reduce((s, l) => s + l.weight * l.shortage, 0)
+  }
+
+  it('the report moves the headline the popup was answered against', () => {
+    const { r, price } = played('undercut')
+    expect(price).toBe(r.suggestedPrice)
+    expect(price).not.toBe(r.price)
+  })
+
+  it('undercut puts the squeeze lanes at 0.90 of the market against the headline the player set, not the one before the report', () => {
+    for (const markup of [1, 1.3]) {
+      const { L, year } = played('undercut', { markup })
+      const open = indices(L, year)
+      expect(open.length).toBe(3)
+      for (const i of open) expect(Math.abs(i - 0.9), `markup ${markup}`).toBeLessThanOrEqual(0.01)
+    }
+  })
+
+  it('match puts them at 1.00 against that headline, and a headline already under the market gets no discount', () => {
+    const dear = played('match', { markup: 1.3 })
+    for (const i of indices(dear.L, dear.year)) expect(Math.abs(i - 1)).toBeLessThanOrEqual(0.01)
+    const plain = played('match')
+    for (const i of indices(plain.L, plain.year)) expect(i).toBeLessThanOrEqual(1.01)
+  })
+
+  it('never lowers a discount that is already deeper, for undercut or match', () => {
+    for (const choice of ['undercut', 'match'] as const) {
+      const { L, year } = played(choice, { markup: 1.3, prior: { gfx: 0.45, mem: 0.45, cpu: 0.1 } })
+      const lanes = techOf(L.b).silicon!.lanes
+      expect([lanes.gfx, lanes.mem, lanes.cpu], choice).toEqual([0.45, 0.45, 0.1])
+      expect(Math.abs(indexOf(L, 'accel', year) - (choice === 'undercut' ? 0.9 : 1)), choice).toBeLessThanOrEqual(0.01)
+    }
+  })
+
+  it('keep leaves every discount alone', () => {
+    const { L } = played('keep', { markup: 1.3, prior: { gfx: 0.45, accel: 0.2 } })
+    expect(techOf(L.b).silicon!.lanes).toEqual({ gfx: 0.45, accel: 0.2 })
+    expect(priced(L.g)).toEqual(['Prices unchanged. The new chips sell at your current price.'])
+  })
+
+  it('the notice comes with the report and says the index the chips ended at', () => {
+    const cut = played('undercut', { markup: 1.3 })
+    expect(priced(cut.L.g)).toEqual(['New chips priced at 90% of the market. Goodwill moves with orders shipped, and only in squeeze years.'])
+    const at = played('match', { markup: 1.3 })
+    expect(priced(at.L.g)).toEqual(['New chips priced at the market. Goodwill stays where it is.'])
+    // A deeper discount the player already had keeps the average under the target, and the notice says so.
+    const deep = played('undercut', { markup: 1.3, prior: { gfx: 0.45, mem: 0.45 } })
+    const shown = Math.round(100 * average(deep.L, deep.year))
+    expect(shown).toBeLessThan(90)
+    expect(priced(deep.L.g)).toEqual([`New chips priced at ${shown}% of the market. Goodwill moves with orders shipped, and only in squeeze years.`])
+  })
+
+  it('applies once: a later report changes no lane', () => {
+    const { L, price } = played('undercut', { markup: 1.3 })
+    const lanes = JSON.stringify(techOf(L.b).silicon!.lanes)
+    expect(techOf(L.b).silicon!.launch).toBeNull()
+    runScript(L.g, 'deeptech.report', JSON.stringify({ price: price / 2, production: L.b.production }), { assetId: L.a.id }, { kind: 'notice', id: 'x', title: 'x', text: 'x' } as ModalItem)
+    expect(JSON.stringify(techOf(L.b).silicon!.lanes)).toBe(lanes)
+  })
+})
+
 describe('launchOptions', () => {
   it('lists the three options in order with the profit of the calm plan on a copy that carries the lanes', () => {
     const L = lab()
@@ -241,25 +393,38 @@ describe('launchOptions', () => {
 })
 
 describe('the Business talent hint', () => {
-  it('marks only the option that earns the most, with the money it earns over the next best', () => {
-    const L = lab({ talent: true })
+  // The choice is settled against the headline set in the Annual Report that follows, so the options are compared at
+  // that report's suggested price, not at the headline the lab has before the report.
+  const suggested = (L: Lab): number => techReportData(L.g, L.a, L.b).suggestedPrice
+  const rank = (L: Lab, price: number) => [...launchOptions(L.g, L.b, L.t, 2026, price)].sort((x, y) => y.profit - x.profit)
+  /** Chips that sell above the market once the suggested price is set: undercutting then earns the most. */
+  const STRONG = { premium: 0.5, node: 6 }
+
+  it('marks only the option that earns the most at the suggested price, with the money it earns over the next best', () => {
+    const L = lab({ talent: true, patch: STRONG })
     const m = popup(L)
-    const ranked = [...launchOptions(L.g, L.b, L.t, 2026)].sort((x, y) => y.profit - x.profit)
+    const ranked = rank(L, suggested(L))
     const delta = ranked[0].profit - ranked[1].profit
     expect(delta).toBeGreaterThan(1)
     const hinted = m.choices.filter((c) => c.hint)
     expect(hinted.map((c) => c.id)).toEqual([ranked[0].id])
     expect(hinted[0].hint).toContain(`Earns the most next year, about ${money(delta)} more than the rest. It doesn't count goodwill.`)
+    // The headline from before the report would have named another option (or a different sum).
+    const stale = rank(L, L.b.price)
+    expect(stale[0].id !== ranked[0].id || stale[0].profit - stale[1].profit !== delta).toBe(true)
   })
 
   it('is absent without the talent, and when the best two are within one currency unit', () => {
-    const plain = lab()
+    const plain = lab({ patch: STRONG })
     expect(popup(plain).choices.some((c) => c.hint)).toBe(false)
-    // A headline far under the market: no choice moves a price, so all three earn the same.
-    const flat = lab({ talent: true, price: 0.01 })
-    const options = launchOptions(flat.g, flat.b, flat.t, 2026)
-    expect(Math.abs(options[0].profit - options[2].profit)).toBeLessThanOrEqual(1)
+    // Matching and keeping earn the same at the suggested price (it sits under the market), and undercutting earns less.
+    const flat = lab({ talent: true })
+    const ranked = rank(flat, suggested(flat))
+    expect(Math.abs(ranked[0].profit - ranked[1].profit)).toBeLessThanOrEqual(1)
     expect(popup(flat).choices.some((c) => c.hint)).toBe(false)
+    // At the lab's own, dearer headline one option would stand out: the popup does not rank them there.
+    const stale = rank(flat, flat.b.price)
+    expect(stale[0].profit - stale[1].profit).toBeGreaterThan(1)
   })
 })
 

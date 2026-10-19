@@ -18,6 +18,17 @@ describe('the saved silicon state', () => {
     expect(s.last).toEqual({ year: 2025, index: 10, served: 1, depth: 0.4, win: 0, step: 3, perf: 100, quality: 0 })
     expect([readSilicon(J({ ceiling: 5 })).ceiling, readSilicon(J({ ceiling: 0 })).ceiling, readSilicon(J({ last: { year: 'x' } })).last]).toEqual([1.3, 0, null])
   })
+  it('reads a launch choice that waits for the report only when it is a whole one', () => {
+    expect(readSilicon(J({ launch: { year: 2026, id: 'undercut' } })).launch).toEqual({ year: 2026, id: 'undercut' })
+    expect(readSilicon(J({ launch: { year: 2026.4, id: 'match' } })).launch).toEqual({ year: 2026, id: 'match' })
+    for (const bad of [{ year: 2026, id: 'keep' }, { year: 'x', id: 'match' }, { year: 5, id: 'match' }, { id: 'match' }, { year: 2026 }, 'undercut', 7, null, []]) {
+      expect(readSilicon(J({ launch: bad })).launch, JSON.stringify(bad)).toBeNull()
+    }
+    expect(isEmptySilicon(readSilicon(J({ launch: { year: 2026, id: 'match' } })))).toBe(false)
+    expect(emptySilicon().launch).toBeNull()
+    const kept = readTech(J({ ...readTech(undefined), silicon: { launch: { year: 2026, id: 'match' } } }))
+    expect(readTech(J(kept)).silicon?.launch).toEqual({ year: 2026, id: 'match' })
+  })
   it('keeps silicon in readTech only when it differs from the default', () => {
     const plain = readTech(undefined)
     expect('silicon' in plain).toBe(false); expect('silicon' in readTech(J({ ...plain, silicon: emptySilicon() }))).toBe(false)
