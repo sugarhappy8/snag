@@ -177,6 +177,22 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
   },
 ]
 
+/**
+ * The 2024-2027 chip squeeze, by year (1 = the tightest year). It stays outside MARKET_EVENTS on purpose: no
+ * announcement popup, and no marketEventFactors value can move. It is not in demand either (the AI boom row
+ * carries that): it only lifts the street price a chip line is measured against and sets how fast goodwill grows.
+ */
+export const GPU_SHORTAGE: Readonly<Record<number, number>> = { 2024: 0.9, 2025: 1, 2026: 0.7, 2027: 0.4 }
+
+const BOOM = MARKET_EVENTS.find((e) => e.id === 'aiBoom')!
+/** The AI boom row with the squeeze's own years, so the home and abroad geography can't drift from the boom. */
+const SQUEEZE: MarketEvent = { ...BOOM, years: GPU_SHORTAGE }
+
+/** How tight chip supply is in a country in a year: 0 outside 2024-2027, the boom's geography inside. Pure. */
+export function shortageIntensity(country: string, year: number): number {
+  return eventStrength(SQUEEZE, country, year)
+}
+
 // ---------------------------------------------------------------------------
 // Market news: what happened in one trade and market during the game (a breakthrough that worked,
 // business/heavy-rd.ts). Unlike MARKET_EVENTS above, which is fixed history, this is a short list

@@ -8,7 +8,7 @@ import { seeded } from '../assets'
 import { marketOf, industryDemand } from '../data/markets'
 import { codingSkill } from '../computer/skills'
 import { hasTalent } from '../talents'
-import type { Asset, GameState } from '../types'
+import type { Asset, GameState, Json } from '../types'
 import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, marketCtxFor, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { LEAD_DIVISOR, benchYear } from './ai-bench'
@@ -16,7 +16,7 @@ import { labLead } from './ai-bench-market'
 import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
 import { familyId } from './competition-roster'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, satUnits, vcDepth } from './deeptech-data'
-import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type AiModel, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
+import { MAX_TECH_VALUE, TECH_VERSION, emptySilicon, readSilicon, readTech, timesDone, type AiModel, type DeepTechIndustry, type Pace, type SiliconState, type TechState } from './deeptech-state'
 import { hedgeProfitIn, hedgeResultFor } from './hedge-record'
 import { industryDef } from './industries'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
@@ -47,6 +47,24 @@ export function techOf(b: BizState): TechState {
     b.tech = toJson(readTech(cur))
   }
   return b.tech as unknown as TechState
+}
+
+/**
+ * Read-only silicon state (goodwill, lane discounts, pricing policy): the defaults when the company has none.
+ * For menus and every other read; never writes, because a live b.tech can lack `silicon`.
+ */
+export function siliconView(t: TechState): SiliconState {
+  return readSilicon(t.silicon as unknown as Json)
+}
+
+/**
+ * Mutable silicon state: creates it on the live object when it is missing and normalizes it in place (the
+ * returned object is t.silicon itself). Only call from actions, scripts and yearly hooks (never from menu builders).
+ */
+export function siliconOf(t: TechState): SiliconState {
+  const cur = t.silicon as unknown
+  const live = cur && typeof cur === 'object' && !Array.isArray(cur) ? (t.silicon as SiliconState) : (t.silicon = emptySilicon())
+  return Object.assign(live, readSilicon(live as unknown as Json))
 }
 
 // ---------------------------------------------------------------------------
