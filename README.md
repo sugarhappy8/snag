@@ -8,6 +8,12 @@ promoted, date, marry, have kids and adopt pets, buy houses and cars, start comp
 gamble, commit crimes, go to prison and try to escape, get famous, and finally die and earn a
 ribbon. Then you can carry on as one of your children.
 
+**New in v4.0:** breakthroughs move whole markets, AI labs and chip makers compete on benchmarks
+and chip prices, device companies build phones and an operating system, product companies get
+deeper R&D, many trades get an Operations Desk, and actors, astronauts, models and musicians get
+richer careers. See the [v4.0.0 release notes](docs/RELEASE-v4.0.0.md) for what shipped and what
+remains planned.
+
 **New in v3.0:** ordinary full-time jobs have annual Work Plans, part-time jobs have a light
 Shift Focus loop, and field experience follows you between employers. Finance-company hiring
 shows managers' specialties and approaches; hired fund CEOs follow their mandates. See the
@@ -33,7 +39,18 @@ their customers; buy a rival and its products, sites and know-how become yours. 
 real executives and write you a yearly letter), answer to a board of directors once outsiders
 own part of the company, and merge your companies into a conglomerate.
 
-Choose from 56 company sectors. National demand, input costs and customer tastes change over
+**Insider trading, chip wars and deeper companies.** A founder who buys related shares ahead of
+their own launch can be charged with insider trading, and chip companies sell separate chip lines
+against one market price, winning customers by pricing below it in the 2024 to 2027 chip squeeze.
+Product companies get a **Research & Operations** screen with process R&D, patents and licensing,
+an R&D tax credit, a research team and rivals that improve their own versions. Restaurants,
+clinics, farms, power utilities and 14 other trades get an **Operations Desk** with yearly levers,
+a key role and their own events. Actors, astronauts, models and musicians play on a shared careers
+kit with named rivals, contracts, era rules and exits, and musicians negotiate label deals, chart
+against rival acts and tour at a real profit or loss. Older saves load, and musicians with a label
+deal keep their old terms until the current term ends.
+
+Choose from 56 company trades, from food trucks and bakeries to AI labs and device makers. National demand, input costs and customer tastes change over
 time; study your markets and run up to three local strategy programs per country. Breakthroughs (an
 AI lab's frontier model, a new drug, a reusable rocket, a Workshop first) now move whole markets,
 suppliers grow, rivals follow, the companies they replace lose customers, and hype that ships
