@@ -6,6 +6,7 @@ import type { GameState } from '../../types'
 import { actorSim } from '../actor-sim'
 import { astronautSim } from '../astronaut-sim'
 import { modelSim } from '../model-sim'
+import { musicSim } from '../music-sim'
 
 export interface CareerSim {
   id: string
@@ -15,7 +16,7 @@ export interface CareerSim {
   yearly: (g: GameState) => void
 }
 
-export const CAREER_SIMS: readonly CareerSim[] = [actorSim, astronautSim, modelSim]
+export const CAREER_SIMS: readonly CareerSim[] = [actorSim, astronautSim, modelSim, musicSim]
 
 /** Runs each sim in order, stopping as soon as the character is dead. */
 export function yearlyCareerSims(g: GameState, sims: readonly CareerSim[] = CAREER_SIMS): void {

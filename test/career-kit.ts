@@ -17,6 +17,8 @@ import { modelCareerMenu, modelJobNodes } from '../src/game/special/model'
 import { actorStore, adoptLegacy } from '../src/game/special/actor-state'
 import { modelStore } from '../src/game/special/model-state'
 import { hire } from '../src/game/special/common'
+import { musicCareerMenu, musicJobNodes } from '../src/game/special/music'
+import { adoptMusic, musicStore } from '../src/game/special/music-state'
 import { optionOdds, rollOption, type CrisisDef, type Stance } from '../src/game/special/kit/crisis'
 import { int, readRows, rec, type CareerBase } from '../src/game/special/kit/state'
 import { setCareerAudit, type AuditEvent } from '../src/game/special/kit/year'
@@ -134,7 +136,7 @@ export function assertHonestOdds(def: CrisisDef<any, any>, mk: () => { g: GameSt
 // ---------------------------------------------------------------------------
 // Playthrough kit (second half): a seeded career played through the real yearly loop
 
-export type CareerId = 'actor' | 'astronaut' | 'model'
+export type CareerId = 'actor' | 'astronaut' | 'model' | 'music'
 /** steady takes the safe stance, greedy the cash stance, reckless the bold stance, idle takes no menu action. */
 export type CareerStrategy = 'steady' | 'greedy' | 'reckless' | 'idle'
 
@@ -200,6 +202,22 @@ export const CAREER_SETUPS: Partial<Record<CareerId, CareerSetup>> = {
     },
     roots: (g) => [modelCareerMenu, ...modelJobNodes(g)],
     prefer: { steady: /^model\.(cast\.|practice$)/, greedy: /^model\.(cast\.|practice$)/, reckless: /^model\.(cast\.|sabotage$|freelance$)/ },
+  },
+  // An unsigned solo at popularity 0 and fame 0 with no releases, the record adopted: the idle record stays still
+  // (a band could break up, 2.5% a year, which clears the appointment; an unsigned solo has no random yearly event).
+  // The guitar skill gives the steady run a release worth a standing above 5. The tour stays closed at popularity 0
+  // until a release lifts it, and test/music-tour.test.ts plays the P&L.
+  music: {
+    defId: 'musician',
+    stateKey: 'music.sim',
+    hire: (g) => {
+      g.character.hidden.fame = 0
+      g.flags.instruments = { Guitar: 40 }
+      hire(g, { defId: 'musician', title: 'Solo Artist', company: 'Independent', salary: 0, data: { mode: 'solo', instrument: 'Guitar', genre: 'Pop', label: null, contractYears: 0, advancePerYear: 0, popularity: 0, bandName: null, bandmates: [], members: 1, recordedAge: -1, lastRelease: -1 } })
+      adoptMusic(g, musicStore.mut(g))
+    },
+    roots: (g) => [musicCareerMenu, ...musicJobNodes(g)],
+    prefer: { steady: /^music\.(practice|album|concert)$/, greedy: /^music\.(album|concert|practice)$/, reckless: /^music\.(album|tour|concert|practice)$/ },
   },
 }
 

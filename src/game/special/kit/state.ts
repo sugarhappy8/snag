@@ -1,5 +1,5 @@
 // Career kit, state: one versioned, owner-stamped, bounded record per career at
-// g.flags['special.<key>'] (key 'actor.sim', 'astronaut.sim', 'model.sim'). Every reader tolerates junk
+// g.flags['special.<key>'] (key 'actor.sim', 'astronaut.sim', 'model.sim', 'music.sim'). Every reader tolerates junk
 // and never throws; every number it returns is finite and capped. A new life (an heir) never matches
 // the owner stamp, so it starts from an empty record. The kit imports no career file.
 import type { GameState, Job } from '../../types'

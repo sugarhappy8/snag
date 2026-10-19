@@ -635,7 +635,7 @@ describe('astronaut yearly sim', () => {
   const tick = (g: GameState): void => nextYear(g, astronautSim.yearly)
 
   it('is registered after the actor and runs through yearlySpecial', () => {
-    expect(CAREER_SIMS.map((x) => x.id)).toEqual(['actor', 'astronaut', 'model'])
+    expect(CAREER_SIMS.map((x) => x.id)).toEqual(['actor', 'astronaut', 'model', 'music'])
     expect(astronautSim.key).toBe('astronaut.sim')
     const { g } = newAstro(5)
     nextYear(g, yearlySpecial)
