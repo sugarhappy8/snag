@@ -68,7 +68,7 @@ src/
     data/locales.ts      Per-country culture (school naming, exams, emergency number, holidays, food,
                          sports, transport, snow, landmarks...); data in data/locales/<region>.ts.
                          Player-facing text must use localPick/fillLocal/localTerm, never US defaults
-    business.ts business/*.ts   Start/buy/run companies in 55 industries; yearly sim + Annual Report.
+    business.ts business/*.ts   Start/buy/run companies in 56 industries; yearly sim + Annual Report.
                          Actions that spend/earn company cash move b.cash AND add to yearCosts/
                          yearIncome (for the P&L); simulateYear must not move that cash twice.
                          Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt).
@@ -92,6 +92,8 @@ src/
     business/product-market.ts product-data.ts  Product lines that compete head to head: kinds of
                          product with real-history demand curves, line quality vs the rivals'
                          versions, rivals' offerings, stacking, who loses customers (see "Business growth")
+    business/devices-data.ts devices-specs.ts devices-menu.ts  Device and Platform trade: chip terms,
+                         fabs, OS pull, spec sheets (see "Devices and chips" below)
     business/heavy-rd.ts heavy-data.ts  Heavy R&D: five breakthroughs per trade that a product company
                          can pioneer, kept as records in g.flags['heavy.<trade>|<market>'] (see
                          "Heavy R&D" below)
@@ -594,6 +596,69 @@ Heirs and saves. `waveWorldFlags` hands the validated waves and settled factors 
 `familyId(g.lifeId)` plus `outcomeTag(g, year)`, never `g.rng`, so heirs share them and a Time Machine
 fork rerolls only the unfinished year. `techWaves`, `techBase` and `BizState.wave` are optional,
 bounded and validated on read, `SAVE_SCHEMA` stays 2, and a life with no company writes none of them.
+
+### Devices and chips (business/devices-*.ts)
+
+`devices` is the 56th trade (last in `INDUSTRY_IDS`, so no existing index moved), the Device and Platform
+Company, on the classic product-lines engine so that Heavy R&D and the Products menu work unchanged. It sells
+eight dated kinds (`DEMAND` in `product-data.ts`, first years in `ERA_FROM`): Home Computer 1977, Mobile Phone
+1983, Desktop PC 1985, Laptop 1995, Smartphone 2007 (it follows the `smartphone` technology curve), VR Headset
+2016, AR Glasses 2019 and the Device Operating System 1981 (it follows `homeComputer`). `MARKETS.devices` is a
+world market with `network` 1.5. `devices-data.ts` is a pure leaf with no runtime imports: the constants, the
+chip rules and `kindReference`, a private table of each kind's market price in 2026 dollars.
+
+One chip source. `chipSource` takes the cut of the own fabs (`FAB_CUT` by fab count, at most 3) and the cut of
+one sister (`SISTER_CUT` by its `TechState.stage`, times its `cover`) and the larger wins, own fabs on a tie.
+They are never summed. The cut applies to the chip share of unit cost (`CHIP_SHARE` .35), so `chipCostFactor` is
+never below .895, and with the dominance saving (`SCALE_SAVING` .10) never below .80. `chipTerms` adds the node,
+the yield and the performance bump over the market's chips (`marketNode(year)`, `MARKET_YIELD` .70), and a
+quality `lift` of `LIFT_K` .4 per point, at most `LIFT_MAX` 6. Performance has that one channel into demand.
+Every function reads `fabs` and `chips` through `readFabs` and `readChips`, because `bizOf` hands out
+`a.details` unscrubbed unless the version changed: a damaged value reads as the open market.
+
+Saved state. `BizState.fabs` (integer 1 to 3) and `BizState.chips` (`ChipSupply`) are optional and read by
+`normalizeBiz`, which keeps them for `devices` only and drops any bad field. `SAVE_SCHEMA` stays 2, `BIZ_VERSION`
+stays 2 and `TechState` gets no field.
+
+Three hooks in `economy.ts`, all pure reads of the business. `costFactor` multiplies in `chipCostFactor` (so
+calm plans and hints include it), `evolve` adds `chipTerms(b, year).lift` to the quality target before its
+clamp, and `bookYear` adds `fabUpkeep(b)` beside the capacity-line upkeep, so it carries the same finance, CEO
+and head-office multipliers.
+
+The fab is a fixed-price capex lever. `fabCost(b, n)` is `FAB_BASE` times `capitalIndex(b)` (the local capital
+level against the trade's default) times a sum that rises 35% for each fab already built; it never reads cash,
+revenue, valuation or a statement. `buildFabAction(a)` in `manage.ts` builds one: `act` runs `manageBlock` and
+`disabled` (industry, `FAB_MAX`, cash), `run` repeats the cash check, asks `boardAllows` (kind `capex`) and
+draws no random number. A fab can't be sold, a hired CEO never builds one (`board-ceo.ts` knows only capacity
+lines), and it is not equipment: `equipmentValue` ignores it, so insurance, disaster damage, credit limits and
+liquidation never see it. The hint comes from `fabGain`, the `bestPlan` profit difference, and says cost only.
+
+The sister path reuses Group Services. In `group-services.ts` the `valid()` chip branch accepts a semiconductor
+provider and a devices customer in the same country, both fully owned (`own >= .999`), with the provider at
+stage 2 or later, and skips the outlet rule because chip supply amends no tax. `chipBlock` says in plain text
+why a pair can't start, and `chipRows`, `chipResultFor` and `hasChipContract` feed the Devices screen and
+`groupYear`. `assignChips` runs inside `prepareInternalServices`, behind `groupServicesPrepared`: from last
+year's booked statements it writes one `ChipSupply` record per buyer (`cover = CHIP_RESERVE x the sister's
+revenue / the buyer's chip bill`, so a small sister can't feed a giant), holds back capacity only for a sister
+that is used (at most half of it), and deletes every record not renewed that year. `settleChips` runs inside
+`settleInternalServices`, behind `groupServicesSettled`, keyed by the buyer's record and not the contract list.
+The saving is already in the buyer's cogs, because `costFactor` read the record before booking. The invoice is
+profit-neutral on the provider, exactly as the other contracts book it, and `internalRevenue` eliminates it. No
+cash moves. `groupYear` drops the cross-selling lift of a buyer with a chip contract.
+
+The operating system. `osStrength(b, year)` (0 to 1) reads the best OS line's `effectiveQuality`, so it ages with
+the line, and `osPull(base, strength)` is the network pull with `OS_BETA` .9 added to the exponent, never below
+the plain pull and never above `OS_PULL_CAP` 3.0. `marketCtxFor` swaps it into `w` for `devices` only, after
+`buildCtx` (whose cache stays free of the product list). Rivals keep `network x RIVAL_NETWORK`, a pull of .75,
+and a rival with better quality still wins customers back through `edgeOf`. Nothing new is saved.
+
+Spec sheets. `specSheet` (pure) sets the best line of each hardware kind against the rivals that sell it this
+year, on performance, quality and price, each a `ScoreRow` from `scorecard.ts` (mean, best, rank and trend).
+Rival performance is `devicePerf` at the market's node and yield, rival price is `kindReference x
+rivalPriceIndex` (Silicon 2.0), and price is negated so the cheapest ranks first. Rival figures are the market's
+and are modeled; no row names a rival. `devicesMenu` renders Devices & Chips with at most 12 rows (header, chip
+source, the fab action, one sister row, the platform row and up to seven kinds), reads `readBiz`, `marketCtxFor`
+and `fieldFor`, and never writes state or draws `g.rng`.
 
 ### AI lab benchmarks (business/ai-bench*.ts, scorecard.ts, deeptech-bench.ts)
 

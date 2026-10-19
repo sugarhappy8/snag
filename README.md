@@ -33,12 +33,14 @@ their customers; buy a rival and its products, sites and know-how become yours. 
 real executives and write you a yearly letter), answer to a board of directors once outsiders
 own part of the company, and merge your companies into a conglomerate.
 
-Choose from 55 company sectors. National demand, input costs and customer tastes change over
+Choose from 56 company sectors. National demand, input costs and customer tastes change over
 time; study your markets and run up to three local strategy programs per country. Breakthroughs (an
 AI lab's frontier model, a new drug, a reusable rocket, a Workshop first) now move whole markets,
 suppliers grow, rivals follow, the companies they replace lose customers, and hype that ships
 nothing unwinds. An AI lab ranks its models against modeled rival labs on a Benchmarks screen,
-and can research vision or coding ahead of the market. Elite CEOs
+and can research vision or coding ahead of the market. A device company compares its specs, price
+and quality with the market, builds chip fabs or buys chips from a sister company, and can lock
+customers in with an operating system. Elite CEOs
 bring stronger operating performance and turnaround planning, and ask for an initial 2–10%
 equity grant. Any positive company or conglomerate stake prevents voluntary resignation or
 retirement, even after dilution or skill growth; salary and board dismissal still apply.
