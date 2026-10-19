@@ -636,15 +636,18 @@ liquidation never see it. The hint comes from `fabGain`, the `bestPlan` profit d
 The sister path reuses Group Services. In `group-services.ts` the `valid()` chip branch accepts a semiconductor
 provider and a devices customer in the same country, both fully owned (`own >= .999`), with the provider at
 stage 2 or later, and skips the outlet rule because chip supply amends no tax. `chipBlock` says in plain text
-why a pair can't start, and `chipRows`, `chipResultFor` and `hasChipContract` feed the Devices screen and
-`groupYear`. `assignChips` runs inside `prepareInternalServices`, behind `groupServicesPrepared`: from last
-year's booked statements it writes one `ChipSupply` record per buyer (`cover = CHIP_RESERVE x the sister's
-revenue / the buyer's chip bill`, so a small sister can't feed a giant), holds back capacity only for a sister
-that is used (at most half of it), and deletes every record not renewed that year. `settleChips` runs inside
+why a pair can't start, and `chipRows`, `chipResultFor`, `hasChipContract` and `chipSupplied` feed the Devices
+screen and `groupYear`. `assignChips` runs inside `prepareInternalServices`, behind `groupServicesPrepared`: from
+last year's booked statements it writes one `ChipSupply` record per buyer (`cover = the sister's hold x its
+revenue / the buyer's chip bill`, the hold being at most `CHIP_RESERVE` and whatever earlier buyers left of the
+half the sister may give up, so a small or shared sister can't feed a giant), holds back capacity only for a
+sister that is used, and deletes every record not renewed that year. `settleChips` runs inside
 `settleInternalServices`, behind `groupServicesSettled`, keyed by the buyer's record and not the contract list.
 The saving is already in the buyer's cogs, because `costFactor` read the record before booking. The invoice is
-profit-neutral on the provider, exactly as the other contracts book it, and `internalRevenue` eliminates it. No
-cash moves. `groupYear` drops the cross-selling lift of a buyer with a chip contract.
+profit-neutral on the provider, exactly as the other contracts book it, and `internalRevenue` eliminates it. All a
+sister's invoices share one 25% of its revenue. No cash moves. `groupYear` drops the cross-selling lift of a buyer
+only while `chipSupplied` is true: its record is for that fiscal year, the sister is still valid and in the group,
+and the sister is still the better source. A contract that gave the buyer no chips leaves the lift alone.
 
 The operating system. `osStrength(b, year)` (0 to 1) reads the best OS line's `effectiveQuality`, so it ages with
 the line, and `osPull(base, strength)` is the network pull with `OS_BETA` .9 added to the exponent, never below

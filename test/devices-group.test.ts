@@ -312,8 +312,10 @@ describe('empty books give no record, no hold and no invoice (RF3)', () => {
   }
 })
 
-describe('cross-selling follows the contract', () => {
-  function world(contract: boolean) {
+describe('cross-selling follows the chips the sister supplies', () => {
+  /** A sister chip company and a device company in one group. Books of the year before the fiscal year feed the record; then the fiscal year is booked. */
+  function world(opts: { contract?: boolean; prepare?: boolean; fabs?: number; dilute?: boolean } = {}) {
+    const { contract = false, prepare = contract } = opts
     const g = makeTestGame(123, { age: 45, money: 1e9 })
     for (const [i, industry] of (['semiconductor', 'devices'] as const).entries()) {
       const b = newBiz(g, industry, 'us', 'Chicago', { cash: 200e6, founded: g.year - 5, valuation: 220e6 })
@@ -321,23 +323,46 @@ describe('cross-selling follows the contract', () => {
       b.manager!.since = g.year - 5; b.manager!.equity = 0.02
       g.assets.push(createBusinessAsset(g, `Division ${i}`, b, 1e6))
     }
-    const [sister, buyer] = g.assets
+    const [sister, buyer] = g.assets, fiscal = g.year - 1
     techOf(bizOf(g, sister)).stage = 3
-    for (const a of [sister, buyer]) book(g, a, g.year - 1, { revenue: 1e8, netRevenue: 1e8, cogs: 3e7, pbt: 2e7, net: 1.5e7, corpTax: 5e6 })
+    const bookYear = (year: number): void => { for (const a of [sister, buyer]) book(g, a, year, { revenue: 1e8, netRevenue: 1e8, cogs: 3e7, pbt: 2e7, net: 1.5e7, corpTax: 5e6 }) }
+    bookYear(fiscal - 1)
     expect(formGroup(g, [sister.id, buyer.id], 'Atlas')).toBe(true)
     const id = groupsOf(g)[0].core.id
     g.queue = []
     if (contract) expect(toggleService(g, id, sister.id, buyer.id)).toBe(true)
-    return { g, buyer }
+    if (opts.fabs) bizOf(g, buyer).fabs = opts.fabs
+    if (prepare) prepareInternalServices(g, fiscal)
+    bookYear(fiscal)
+    if (opts.dilute) bizOf(g, sister).share = 0.8
+    return { g, buyer, fiscal }
   }
-  it('drops the buyer lift while a chip contract replaces it', () => {
-    const open = world(false)
-    yearlyGroups(open.g)
-    expect(bizOf(open.g, open.buyer).demandShock).toBeGreaterThan(1)
-    const tied = world(true)
+  const lift = (w: ReturnType<typeof world>): number => { yearlyGroups(w.g); return bizOf(w.g, w.buyer).demandShock }
+
+  it('keeps the buyer lift with no contract', () => {
+    expect(lift(world())).toBeGreaterThan(1)
+  })
+
+  it('drops the buyer lift while the sister supplies its chips this fiscal year', () => {
+    const tied = world({ contract: true })
     expect(hasChipContract(tied.g, groupsOf(tied.g)[0], tied.buyer.id)).toBe(true)
-    yearlyGroups(tied.g)
-    expect(bizOf(tied.g, tied.buyer).demandShock).toBe(1)
+    expect(bizOf(tied.g, tied.buyer).chips?.year).toBe(tied.fiscal)
+    expect(lift(tied)).toBe(1)
+  })
+
+  it('keeps the lift when the contract gives the buyer no chips', () => {
+    // Own fabs win, so the record is never written and nothing is held back.
+    const fabs = world({ contract: true, fabs: 3 })
+    expect(bizOf(fabs.g, fabs.buyer).chips).toBeUndefined()
+    expect(lift(fabs)).toBeGreaterThan(1)
+    // A contract signed after the year began has no record for it.
+    const late = world({ contract: true, prepare: false })
+    expect(bizOf(late.g, late.buyer).chips).toBeUndefined()
+    expect(lift(late)).toBeGreaterThan(1)
+    // The sister stopped qualifying after the record was written, so settlement books nothing either.
+    const diluted = world({ contract: true, dilute: true })
+    expect(bizOf(diluted.g, diluted.buyer).chips?.year).toBe(diluted.fiscal)
+    expect(lift(diluted)).toBeGreaterThan(1)
   })
 })
 
@@ -350,6 +375,19 @@ describe('Assign All and ownership', () => {
     const minority = chipGroup()
     bizOf(minority.g, minority.sister).share = 0.8
     expect(assignAllServices(minority.g, minority.id)).toBe(0)
+  })
+
+  it('says in the notice that a chip contract can replace the cross-selling lift, and a generic one does not', () => {
+    const noticeText = (g: GameState): string => { const m = g.queue[g.queue.length - 1]; return m?.kind === 'notice' ? m.text : '' }
+    const chip = chipGroup()
+    expect(toggleService(chip.g, chip.id, chip.sister.id, chip.buyer.id)).toBe(true)
+    expect(noticeText(chip.g)).toContain('cross-selling lift')
+    const all = chipGroup()
+    expect(assignAllServices(all.g, all.id)).toBe(1)
+    expect(noticeText(all.g)).toContain('cross-selling lift')
+    const plain = chipGroup(['manufacturing', 'fashion'])
+    expect(toggleService(plain.g, plain.id, plain.more[0].id, plain.more[1].id)).toBe(true)
+    expect(noticeText(plain.g)).not.toContain('cross-selling')
   })
 
   it('changes nothing for a player under 18', () => {

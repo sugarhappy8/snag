@@ -26,6 +26,7 @@ const SERVICE: Record<string, { label: string; key: CostKey; share: number }> = 
   // The label only: chips are booked by assignChips and settleChips, never by the generic loops (share 0).
   semiconductor: { label: 'Chip supply', key: 'cogs', share: 0 },
 }
+const NO_BONUS = 'generic purchasing/back-office bonuses are excluded for this buyer.'
 export function serviceContracts(g: GameState): Contract[] {
   const list = g.flags.groupServices
   if (!Array.isArray(list)) return []
@@ -50,7 +51,10 @@ export function toggleService(g: GameState, group: string, provider: string, cus
   if (exists) list = list.filter(x => x.provider !== provider || x.customer !== customer)
   else { if (list.length >= 120 || !valid(g, grp, c)) return false; list.push(c) }
   g.flags.groupServices = list as unknown as Json
-  notice(g, 'Internal Contract', exists ? 'External procurement restored for this service.' : 'Internal service contracted from next fiscal settlement. Delivery is limited by provider capacity, buyer spending and real delivery cost; generic purchasing/back-office bonuses are excluded for this buyer.')
+  const text = exists ? 'External procurement restored for this service.' : isChip(grp, c)
+    ? `Chip supply is contracted from the next fiscal year, and only if this sister is a better source than your own fabs. While it supplies the buyer's chips it holds back capacity from external customers and replaces the buyer's cross-selling lift; ${NO_BONUS}`
+    : `Internal service contracted from next fiscal settlement. Delivery is limited by provider capacity, buyer spending and real delivery cost; ${NO_BONUS}`
+  notice(g, 'Internal Contract', text)
   return true
 }
 /** Add all eligible missing pairs in one write. Repeating the command never toggles anything off. */
@@ -58,13 +62,16 @@ export function assignAllServices(g: GameState, group: string): number {
   const grp = groupById(g, group)
   if (!grp || manageBlock(g, grp.members[0].a) || grp.core.share <= .5 || !grp.members.every(x => ownerControls(g, x.a))) return 0
   const list = serviceContracts(g), before = list.length
+  let chips = 0
   for (const p of grp.members) for (const q of grp.members) {
     const c = { group, provider: p.a.id, customer: q.a.id }
     if (list.length >= 120 || !valid(g, grp, c) || list.some(x => x.group === group && x.provider === c.provider && x.customer === c.customer)) continue
     list.push(c)
+    if (isChip(grp, c)) chips += 1
   }
   g.flags.groupServices = list as unknown as Json
-  notice(g, 'Internal Contracts Assigned', `${list.length - before} new eligible internal contracts assigned. Existing contracts were kept. The 120-contract portfolio limit, country rules, provider capacity and delivery costs still apply.`)
+  const lift = chips ? ' A chip contract replaces the device company\'s cross-selling lift only while the sister supplies its chips; own fabs can be the better source.' : ''
+  notice(g, 'Internal Contracts Assigned', `${list.length - before} new eligible internal contracts assigned. Existing contracts were kept. The 120-contract portfolio limit, country rules, provider capacity and delivery costs still apply.${lift}`)
   return list.length - before
 }
 /** Hold back up to 20% of providers' delivery capacity from external customers. */
@@ -165,6 +172,19 @@ export function chipBlock(g: GameState, p: GroupMember, q: GroupMember): string 
 /** True when a contract for this customer has a semiconductor provider in the group. */
 export function hasChipContract(g: GameState, grp: Group, customer: string): boolean {
   return serviceContracts(g).some(x => x.group === grp.core.id && x.customer === customer && isChip(grp, x))
+}
+
+/**
+ * True when this buyer's chips come from a sister in this fiscal year: its record is stamped for the year, the sister is still in the
+ * group and valid, and the sister is still the better source (own fabs win ties). Only then does the contract stand in for the
+ * buyer's cross-selling lift. A contract that gave the buyer nothing, or one that went stale, leaves the lift alone.
+ */
+export function chipSupplied(g: GameState, grp: Group, customer: string, fiscal: number): boolean {
+  const q = grp.members.find(x => x.a.id === customer)
+  const chips = q ? readChips(q.b.chips as unknown as Json) : null
+  if (!q || !chips || chips.year !== fiscal || chipSource(q.b).src !== 'sister') return false
+  const c = { group: grp.core.id, provider: chips.from, customer }
+  return isChip(grp, c) && valid(g, grp, c)
 }
 
 /** The latest chip settlement booked for this buyer: who supplied, what it saved and the fiscal year. */
