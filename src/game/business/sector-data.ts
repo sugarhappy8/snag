@@ -85,4 +85,19 @@ export const FOOD: Readonly<Record<'restaurant' | 'foodTruck' | 'cafe' | 'bakery
 
 // ---- care (Task 5)
 
+/** What a payer (an insurer, a school board, a fleet account) takes: `disc` off the price, `up` more demand per unit of payer mix, `deny` of the bill denied. */
+export interface PayerRow { disc: number; up: number; deny: number }
+/** `visits` a client makes a year (display only), `r0` the retention a trade starts at, `crowd` the use above which clients feel it, `amp` the season swing (spec 4.3). */
+export interface CareRow { visits: number; r0: number; crowd: number; amp: number; payer: PayerRow | null }
+
+export const CARE: Readonly<Record<'clinic' | 'education' | 'gym' | 'salon' | 'petCare' | 'homeCare' | 'autoShop', CareRow>> = {
+  clinic: { visits: 3.2, r0: .78, crowd: .85, amp: .02, payer: { disc: .22, up: .55, deny: .07 } },
+  education: { visits: 1.6, r0: .55, crowd: .90, amp: .05, payer: { disc: .30, up: .70, deny: .02 } },
+  gym: { visits: 1.0, r0: .68, crowd: .80, amp: .06, payer: { disc: .15, up: .35, deny: 0 } },
+  salon: { visits: 5.0, r0: .72, crowd: .85, amp: .03, payer: null },
+  petCare: { visits: 5.0, r0: .70, crowd: .85, amp: .03, payer: null },
+  homeCare: { visits: 4.0, r0: .74, crowd: .90, amp: .02, payer: { disc: .25, up: .60, deny: .04 } },
+  autoShop: { visits: 1.6, r0: .60, crowd: .90, amp: .02, payer: { disc: .12, up: .30, deny: .01 } },
+}
+
 // ---- util (Task 7)
