@@ -468,6 +468,50 @@ describe('actor menus: retire and quit', () => {
   })
 })
 
+describe('actor menus: a sim-owned life reads its own record', () => {
+  const textOf = (n: MenuNode | undefined, g?: GameState): string => (n && n.type === 'info' ? (typeof n.text === 'function' ? (g ? n.text(g) : '') : n.text) : '')
+
+  it('shows the sim credits, awards, reputation, agent and shoot in the filmography, the header and the status row', () => {
+    const { g, s } = newActor(5, { age: 40 })
+    s.credits = actorStore.read({ v: 1, credits: [creditRow('Small Film', 1994, { age: 39, quality: 70, residual: 800 })] }, g).credits
+    s.awards = ['Best Actor at the Golden Reel, "Small Film" (age 39)']
+    s.rep = 47
+    s.team.agent = rep()
+    s.pipeline = [proj({ id: 'p1', title: 'The Last Echo' })]
+    // the frozen legacy profile and the job's project say nothing: the sim is the one record
+    expect(g.character.job?.data.project ?? null).toBeNull()
+    const roots = careerRoots('actor')(g)
+    const film = findNode(g, roots, 'actor.filmography')
+    expect(film?.type).toBe('menu')
+    if (film?.type !== 'menu') return
+    expect(sub(g, film)).toBe('1 credit · 1 award')
+    const lines = film.children(g).map((n) => textOf(n, g)).join('\n')
+    expect(lines).toContain('"Small Film"')
+    expect(lines).toContain('Reputation 47%')
+    expect(lines).toContain('Agent: Mia Chen')
+    expect(lines).toContain('Best Actor at the Golden Reel')
+    expect(lines).not.toContain('No credits yet.')
+    expect(typeof actorCareerMenu.header === 'function' ? actorCareerMenu.header(g) : '').toContain('Reputation: 47%')
+    expect(textOf(findNode(g, roots, 'actor.status'))).toContain('Filming "The Last Echo"')
+    assertMenuPure(g, careerRoots('actor'))
+
+    // between shoots the status row says so; a retired actor's menu reads the same record
+    s.pipeline = []
+    expect(textOf(findNode(g, careerRoots('actor')(g), 'actor.status'))).toContain('Between roles')
+    leave(g, 'retired')
+    const after = findNode(g, careerRoots('actor')(g), 'actor.filmography')
+    expect(after?.type === 'menu' && sub(g, after)).toBe('1 credit · 1 award')
+  })
+
+  it('still shows the legacy profile before the sim owns the life', () => {
+    const g = legacyLife()
+    const film = findNode(g, careerRoots('actor')(g), 'actor.filmography')
+    expect(film?.type === 'menu' && sub(g, film)).toBe('1 credit · 0 awards')
+    expect(textOf(findNode(g, careerRoots('actor')(g), 'actor.status'))).toContain('Filming "The Last Echo"')
+    expect(typeof actorCareerMenu.header === 'function' ? actorCareerMenu.header(g) : '').toContain('Reputation: 62%')
+  })
+})
+
 describe('actor menus: the whole career', () => {
   it('keeps a 12-year steady and reckless playthrough clean [RF1 RF3 RF5]', () => {
     const runs = [11, 12].flatMap((seed) => (['steady', 'reckless'] as const).map((strategy) => playCareer('actor', strategy, 12, seed)))

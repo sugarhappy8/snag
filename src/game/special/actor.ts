@@ -656,6 +656,14 @@ function removeCostars(g: GameState, proj: Project): void {
   proj.costars = []
 }
 
+/** What the legacy menus show: the sim record once it owns the life (the legacy profile is frozen by then), the legacy profile before. Pure. */
+function shown(g: GameState): { credits: Credit[]; awards: string[]; reputation: number; agent: Agent | null } {
+  const s = actorStore.peek(g)
+  if (s?.migrated) return { credits: s.credits, awards: s.awards, reputation: s.rep, agent: s.team.agent }
+  const p = viewActor(g)
+  return { credits: p.credits, awards: p.awards, reputation: p.reputation, agent: p.agent }
+}
+
 function filmographyMenu(): MenuGroup {
   return {
     type: 'menu',
@@ -663,11 +671,11 @@ function filmographyMenu(): MenuGroup {
     label: 'Filmography',
     emoji: '\u{1F39E}\u{FE0F}',
     subtitle: (g) => {
-      const p = viewActor(g)
+      const p = shown(g)
       return `${p.credits.length} credit${p.credits.length === 1 ? '' : 's'} · ${p.awards.length} award${p.awards.length === 1 ? '' : 's'}`
     },
     children: (g): MenuNode[] => {
-      const p = viewActor(g)
+      const p = shown(g)
       const nodes: MenuNode[] = [
         { type: 'info', id: 'actor.f.stats', emoji: '\u{1F3AD}', text: `Acting skill ${actingSkill(g)}% · Reputation ${p.reputation}%${p.agent ? ` · Agent: ${p.agent.name}` : ''}` },
       ]
@@ -715,7 +723,7 @@ export const actorCareerMenu: MenuGroup = {
   emoji: '\u{1F3AC}',
   subtitle: 'Become a movie or TV star',
   header: (g) => {
-    const p = viewActor(g)
+    const p = shown(g)
     return `Acting skill: ${actingSkill(g)}% · Reputation: ${p.reputation}%. Start as an extra and work your way up to leading roles. Auditions open at 18.`
   },
   children: (g): MenuNode[] => {
@@ -730,14 +738,18 @@ export function actorJobNodes(g: GameState): MenuNode[] {
   const proj = project(job)
   // Once the sim owns the life, actor-menu.ts offers the stunt and quit rows (same ids) for the projects in its pipeline.
   const sim = actorStore.peek(g)?.migrated === true
+  // The sim keeps its shoots in its own pipeline: the job's legacy project is empty once it owns the life.
+  const shoot = sim ? actorStore.peek(g)?.pipeline.find((x) => x.stage === 'shoot') : undefined
   return [
     {
       type: 'info',
       id: 'actor.status',
       emoji: '\u{1F3AC}',
-      text: proj
-        ? `Filming "${proj.title}" (${proj.genre} ${proj.kind === 'film' ? 'film' : `series, season ${proj.season}`}) for ${proj.studio} · ${money(proj.pay)}`
-        : `Between roles. Audition to land your next part.`,
+      text: shoot
+        ? `Filming "${shoot.title}" (${shoot.genre} ${shoot.kind === 'film' ? 'film' : `series, season ${shoot.season}`}) for ${shoot.studio} · ${money(shoot.terms.fee)}`
+        : proj
+          ? `Filming "${proj.title}" (${proj.genre} ${proj.kind === 'film' ? 'film' : `series, season ${proj.season}`}) for ${proj.studio} · ${money(proj.pay)}`
+          : `Between roles. Audition to land your next part.`,
     },
     auditionAction,
     developAction,
