@@ -55,10 +55,13 @@ describe('modelRating', () => {
     d({ level: 30 }, 27); d({ gen: 2 }, 15); d({ compute: 1 }, 9); d({ research: 1 }, 20); d({ roll: 1 }, 60); d({ spec: 10 }, 10)
     expect(R({ ...lo, gen: 8 })).toBe(R({ ...lo, gen: 12 }))
   })
-  it('never leads by more than 90 on one model, lifts the reference to the lab\'s own release, and never drops below 1', () => {
+  it('never leads the market by more than 90 whatever the lab has released, lifts the reference to a release under that ceiling, and never drops below 1', () => {
     const huge = { level: 100, gen: 8, compute: 12, research: 10, roll: 1 }
     expect(R(huge)).toBeGreaterThan(1260 + 60); expect(R(huge)).toBeLessThanOrEqual(1260 + 90)
-    expect(R({ ...huge, released: 1500 })).toBeGreaterThan(1500 + 60); expect(R({ ...huge, released: 1500 })).toBeLessThanOrEqual(1500 + 90)
+    // A release 40 over the market lifts the reference: a raw rating below it counts in full instead of being compressed, and a huge one still stops at the ceiling.
+    expect(R({ roll: 1, released: 1300 })).toBeGreaterThan(R({ roll: 1 })); expect(R({ ...huge, released: 1300 })).toBeGreaterThan(1300 + 40); expect(R({ ...huge, released: 1300 })).toBeLessThanOrEqual(1260 + 90)
+    for (const released of [1349, 1350, 1500, 5000]) expect(R({ ...huge, released })).toBeLessThanOrEqual(1260 + 90)
+    expect(R({ ...huge, released: 1500 })).toBe(1260 + 90)   // a release past the ceiling (an old save) lifts nothing
     expect(R({ cap: 'coding', year: 2012, level: 0, gen: 1, compute: 0, roll: 0 })).toBe(1)
     expect(RATING_OFFSET).toBeGreaterThan(0)
   })

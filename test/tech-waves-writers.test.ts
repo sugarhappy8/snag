@@ -198,12 +198,12 @@ describe('deep-tech milestones', () => {
     expect(readTechWaves(trainYear({ stage: 3, level: 40, rented: 0, models: [] }).g)).toEqual([])
   })
   it('a managed lab claims at training, is never asked to hold, and its model is never held', () => {
-    // lab() here sets g.year = 2030 on createNewLife({ seed: 30, year: 2000, countryId: 'us' }). A rated model of 2029 at +400 over the market lifts the ceiling,
-    // so the new model passes the third milestone of every capability it covers, and the market reaches that one only around 2035: the claim does not depend on luck.
+    // lab() here sets g.year = 2030 on createNewLife({ seed: 30, year: 2000, countryId: 'us' }). A maxed lab's new model sits at the ceiling, 90 over the market's best
+    // (a rated model of 2029 at +80 does not lift it), which is past the second milestone of vision, which the market reaches only after 2030: the claim does not depend on luck.
     const fam = familyId(createNewLife({ seed: 30, year: 2000, countryId: 'us' }).lifeId)
-    const { g, a } = labYear('aiLab', 'train', { rented: 15, stage: 3, level: 100, plant: 6, caps: Object.fromEntries(CAP_IDS.map((c) => [c, 10])), models: [rated(fam, 7, 2029, offBest(fam, 2029, 400))] }, { manager: true })
+    const { g, a } = labYear('aiLab', 'train', { rented: 15, stage: 3, level: 100, plant: 6, caps: Object.fromEntries(CAP_IDS.map((c) => [c, 10])), models: [rated(fam, 7, 2029, offBest(fam, 2029, 80))] }, { manager: true })
     expect(g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'deeptech.release')).toBe(false)
-    expect(Object.keys(readAiFirsts(g))).toContain('language.3'); expect(techOf(bizOf(g, a)).models.some((m) => m.held)).toBe(false)
+    expect(Object.keys(readAiFirsts(g))).toContain('vision.2'); expect(techOf(bizOf(g, a)).models.some((m) => m.held)).toBe(false)
   })
   it('an approved drug with peak >= 4 writes a drug wave sized 0.2 + 0.04 peak, capped at 0.5; peak 3 writes none', () => {
     const [w] = readTechWaves(approveYear({ peak: 6 }).g); expect(w).toMatchObject({ kind: 'drug', size: near(0.44) }); expect(w.name).toMatch(/^A new drug for /); expect(readTechWaves(approveYear({ peak: 3 }).g)).toEqual([])

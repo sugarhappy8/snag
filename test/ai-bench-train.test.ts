@@ -27,6 +27,16 @@ describe('trainWin on the rated path', () => {
     const t = T({ level: 100, plant: 6, rented: 0, caps: { language: 10 }, models: priors(7) }); win(t, { roll: () => 1 })
     expect(last(t).rating!.language! - capBest(FAM, 'language', 2026)).toBeLessThanOrEqual(90); expect(last(t).rating!.language! - capBest(FAM, 'language', 2026)).toBeGreaterThan(60)
   })
+  it('keeps the lead under the ceiling across models: training every year never lifts a rating past 90 over the market', () => {
+    for (const research of [0, 10]) {
+      const t = T({ level: 100, plant: 6, rented: 0, models: priors(7), caps: Object.fromEntries(CAP_IDS.map((c) => [c, research])) })
+      for (let Y = 2026; Y <= 2031; Y++) {
+        win(t, { year: Y, roll: () => 1 })
+        const over = Math.max(...CAP_IDS.filter((c) => last(t).rating![c] !== undefined).map((c) => last(t).rating![c]! - capBest(FAM, c, Y)))
+        expect([research, Y, over <= 90]).toEqual([research, Y, true])
+      }
+    }
+  })
   it('sets hype by lead over the best rival and ends the line with the matching sentence (at most 120 characters)', () => {
     const probe = T(); win(probe); const C = compositeRating(last(probe).rating, 2026)
     const run = (gap: number) => { const t = T({ hype: 20 }), line = win(t, { rival: () => ({ composite: C + gap, score: 79, leader: 'OpenAI', modeled: true }) }); return { hype: t.hype - 20, line } }

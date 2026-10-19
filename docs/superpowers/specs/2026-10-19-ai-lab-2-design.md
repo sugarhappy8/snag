@@ -223,8 +223,9 @@ with the research hint) gives:
 
 ```
 raw   = capBest(year) - 320 + 2.7 level + 15 min(gen, 8) + 9 compute + 20 caps[c] + spec + 120 (roll - 0.5)
-ref   = max(capBest(year), best released rating of this lab in c)       // held models don't count
-rating = raw <= ref ? raw : ref + 90 (1 - e^(-(raw - ref) / 90))      // nobody leads by more than 90 on one model
+top   = capBest(year) + 90                                              // the ceiling is the market's, not the lab's own
+ref   = clamp(best released rating of this lab in c, capBest(year), top)   // held models don't count; a release lifts ref, never top
+rating = raw <= ref ? raw : top - (top - ref) e^(-(raw - ref) / (top - ref))   // ref = capBest: ref + 90 (1 - e^(-(raw - ref) / 90))
 spec  = 70 (seeded(`${fam}|aispec|${gen}|${c}`).next() - 0.5)          // zero mean, no rng draw
 ```
 
@@ -232,7 +233,9 @@ spec  = 70 (seeded(`${fam}|aispec|${gen}|${c}`).next() - 0.5)          // zero m
 does: level 70, gen 6 and 3.6 compute is `capBest - 9` before the roll, about two score points above the
 old line (the calibration test in section 13 pins the demand it earns). A level-100, gen-8, full-compute lab
 is `+178` raw and lands at `capBest + 78`; the old formula put it 25 score points over the line with no
-ceiling. Ten research levels add 200 raw and the ceiling holds it at +89.
+ceiling. Ten research levels add 200 raw and the ceiling holds it at +89, and it holds for every model the lab
+trains after it: a model is never rated more than 90 over the market's best that year, so a lead cannot compound
+(a lab's own releases only spare a later model the compression below them, up to the ceiling).
 
 The model stores `rating` and the composite `score`. Level +5 and stage at least 1 stay. Hype keeps its
 three tiers, now read from the lead over the best rival composite on this year's board
@@ -425,7 +428,7 @@ multiplications and a loop over at most 12 models; a test counts that 1,000 call
 
 | Risk (audit) | Guard |
 |---|---|
-| A maxed lab can never be out-scored | The 90-point ceiling over `max(capBest, released)`, catch-up after 2 years (1 for open), real arcs on the rival side, and a rank among about 25 labs |
+| A maxed lab can never be out-scored | The 90-point ceiling over `capBest` (a lab's own releases never lift it; the multi-model test trains six years in a row), catch-up after 2 years (1 for open), real arcs on the rival side, and a rank among about 25 labs |
 | Saturation at 99 | Benchmark generations; scores sit at 53 to 90 for the market's best, so a lead stays visible |
 | Hype farming by retraining | Same three tiers as today, now from a lead that can't compound; hype decays 15% a year; firsts are 24 ever |
 | Valuation pump | No new valuation multiplier; track `ipShare` 0.3; premium +0.01 per first; waves reach valuation only through release 1's clamped `industryCycle.wave` |

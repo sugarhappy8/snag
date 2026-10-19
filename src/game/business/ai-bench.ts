@@ -12,6 +12,8 @@ import { clampN } from './util'
 /** Starting numbers, tuned by the calibration tests (steps of 5 for the offset). */
 export const RATING_OFFSET = 320
 export const LEAD_DIVISOR = 190
+/** The most a model can be rated over the market's best in a capability. */
+const CEILING = 90
 
 /** The fields of an AiModel that rating code reads. */
 type RatedModel = AiModel & { rating?: CapMap; held?: true }
@@ -128,7 +130,7 @@ export interface RatingInput {
   spec: number
   /** The one training roll, 0 to 1. */
   roll: number
-  /** The best released rating of this lab in this capability (held models don't count). */
+  /** The best released rating of this lab in this capability (held models don't count); it lifts the reference up to the ceiling and no further. */
   released: number
 }
 
@@ -136,12 +138,18 @@ function fin(n: number, or = 0): number {
   return Number.isFinite(n) ? n : or
 }
 
-/** The rating of one new model in one capability. Nobody leads by more than 90 on one model. */
+/**
+ * The rating of one new model in one capability. No model is rated more than 90 over the market's best, however many
+ * the lab has trained: the ceiling is the market's, not the lab's own. A raw rating up to the lab's own best release
+ * (which sits under the ceiling) counts in full; above it the rating closes on the ceiling and never passes it.
+ */
 export function modelRating(i: RatingInput): number {
   const best = capBest(i.fam, i.cap, i.year)
   const raw = best - RATING_OFFSET + 2.7 * fin(i.level) + 15 * Math.min(fin(i.gen), 8) + 9 * fin(i.compute) + 20 * fin(i.research) + fin(i.spec) + 120 * (fin(i.roll, 0.5) - 0.5)
-  const ref = Math.max(best, fin(i.released))
-  const rating = raw <= ref ? raw : ref + 90 * (1 - Math.E ** (-(raw - ref) / 90))
+  const ceiling = best + CEILING
+  const ref = clampN(fin(i.released), best, ceiling)
+  const room = ceiling - ref
+  const rating = raw <= ref ? raw : room > 0 ? ceiling - room * Math.E ** (-(raw - ref) / room) : ceiling
   return clampN(Math.round(rating), 1, 5000)
 }
 
