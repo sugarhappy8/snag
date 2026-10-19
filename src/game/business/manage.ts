@@ -4,6 +4,8 @@ import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log
 import { arrestPlayer } from '../crime'
 import { venueOwnerMenu } from './venues'
 import { isVenue } from './venues-data'
+import { sectorMenu } from './sector-menu'
+import { familyOf } from './sector-state'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
@@ -2168,6 +2170,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   // National strategy programs are for product companies; financial firms run their own operations.
   const strategy = finance ? [] : [tidyNationalStrategy(nationalStrategyMenu(a), a)]
   if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
+  if (familyOf(health.industry)) nodes.push(sectorMenu(a))
   if (finance) {
     nodes.push({ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a))
   } else if (isStudio(readBiz(g, a))) {

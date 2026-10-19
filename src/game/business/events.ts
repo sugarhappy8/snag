@@ -19,6 +19,7 @@ import { isFinanceFirm } from './finance-firm-state'
 import { sellBusiness } from './exit'
 import { conglomerate, investorFirm, laborProtection, traitOf, unionStrength } from './flavor'
 import { industryDef } from './industries'
+import { sectorOwnsEvent } from './sector-state'
 import { bizOf, findBusiness, totalOutlets, type BizState, type KeyStaff } from './state'
 import { aPct, clampN, markBest, money, num, pct, promisePrice, rec, str } from './util'
 
@@ -1013,6 +1014,8 @@ const ANY_COMPANY = new Set(['audit', 'strike', 'lawsuit', 'embezzle', 'disaster
 /** An event's weight for this company (0: it can't happen here). */
 function weightFor(g: GameState, b: BizState, e: BizEvent): number {
   if (isFinanceFirm(b) && !ANY_COMPANY.has(e.id)) return 0
+  // A food company with a live Operations Desk record has its own inspection and critic (business/sector-state.ts).
+  if (sectorOwnsEvent(b, e.id)) return 0
   return Math.max(0, e.weight(g, b))
 }
 

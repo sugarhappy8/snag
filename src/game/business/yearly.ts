@@ -56,6 +56,7 @@ import { bookHedgeYear } from './hedge-company'
 import { milestoneYear } from './milestones'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { prepareSectorYear } from './sector-core'
+import { maybeSectorEvent } from './sector-events'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, diluteBusinessEquity, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
@@ -579,6 +580,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     // price cut from a price war would be undone by the report, and a company sold in a buyout
     // would still get a report.)
     if (plans) queueReport(g, a, b)
+    // A family event of the Operations Desk comes first; a generic event is skipped that year (business/sector-events.ts).
+    if (!eventQueued && maybeSectorEvent(g, a, b, fiscal, managed)) eventQueued = true
     if (!eventQueued && (maybeVenueOwnerEvent(g, a, b, fiscal, managed) || (studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
     // Regulators come for dominant companies on their own schedule (not the random-event roll).
     maybeAntitrust(g, a, b, fiscal, managed)
