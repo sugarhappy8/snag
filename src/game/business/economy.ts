@@ -25,6 +25,7 @@ import { industryDef, lineOf, type IndustryDef, type StaffFocus } from './indust
 import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { franchiseFeesFor } from './franchise-state'
+import { fieldMarketOf, labIncomeIn, labValue } from './lab-state'
 import { hedgeProfitIn } from './hedge-record'
 import { studioValue } from './gamestudio-state'
 import { heavyPulse, readHeavy } from './heavy-rd'
@@ -470,7 +471,8 @@ export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx
   // and then everything below is exactly what it always was.
   const heavy = readHeavy(g, b.industry, marketKey(b))
   // What the rivals offer of each kind of product, and how well (product-market.ts).
-  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy)
+  // The company's trade and the shields its patents hold go with it (lab-state.ts fieldMarketOf).
+  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy, fieldMarketOf(b))
   const pot = ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1)
   // A breakthrough wakes up demand for the whole trade in its market, rivals and the player alike.
   const pulse = heavy.length ? heavyPulse(heavy, year) : 1
@@ -943,6 +945,12 @@ export function valuationOf(b: BizState): number {
   // A company fund's yearly result is already in the cash below: it is valued at what it is, never
   // capitalized as earnings (business/hedge-record.ts hedgeProfitIn).
   if (b.hedge) h.forEach((r, i) => (avg -= hedgeProfitIn(b, r) * weights[i]))
+  // The R&D credit, a research grant and patent royalties are already in the cash: valued at what they
+  // are, never capitalized as if they recurred (business/lab-state.ts).
+  if (b.lab) {
+    const keep = 1 - clampN(marketOf(b.countryId).corporateTax, 0, 0.9)
+    h.forEach((r, i) => (avg -= labIncomeIn(b, r.year) * keep * weights[i]))
+  }
   if (h.length === 0) avg = 0
   let growth = 0
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)
@@ -975,7 +983,7 @@ export function valuationOf(b: BizState): number {
   const tech = isDeepTech(b) ? deepTechValue(b.tech) : 0
   // A bank's run-time advance into its client book is shareholders' money funded by the
   // central-bank debt counted in b.debt (business/bank-state.ts), so it belongs in equity.
-  let equity = Math.max(ev, floor) + games + tech + b.cash - b.debt + bankAdvanceOf(b)
+  let equity = Math.max(ev, floor) + games + tech + labValue(b) + b.cash - b.debt + bankAdvanceOf(b)
   if (b.cooked > 0) equity *= 1 + 0.25 * Math.min(3, b.cooked)
   return Math.max(0, dollars(equity))
 }

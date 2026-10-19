@@ -13,6 +13,7 @@ import { marketOwner, marketViewOf, shareText, type MarketView, type RivalView }
 import { acquireRival, acquisitionGains, acquisitionQuote, offensiveValue, OFFENSIVE_EDGE, raidValue } from './competition-moves'
 import { rivalLines } from './product-market'
 import { industryDef } from './industries'
+import { shieldsOf } from './lab-state'
 import { cached, hinting, live, mAct } from './market-menu-kit'
 import { continentOf } from './market-regional'
 import { demandWeights, hasSupplyChain, MODE_LABEL, MODE_TERM } from './market-reach'
@@ -368,7 +369,8 @@ export function rivalsMenu(a: Asset): MenuGroup {
 
 /** What a rival sells, best-selling kinds first, with its quality in each: 'Sells: Street Lighting (64) · Hydro Dam (58)'. */
 function productsLine(g: GameState, b: BizState, r: RivalView): string {
-  const lines = rivalLines(r, b.industry, marketKey(b), g.year)
+  // A kind one of the company's patents holds isn't sold by anyone yet (lab-state.ts shieldsOf).
+  const lines = rivalLines(r, b.industry, marketKey(b), g.year, shieldsOf(b))
   if (!lines.length) return 'Sells: its basic range (no product lines of note yet)'
   const shown = lines.slice(0, 4).map((l) => `${l.family} (${l.quality})`)
   return `Sells: ${shown.join(' \u{00B7} ')}${lines.length > 4 ? ` \u{00B7} +${lines.length - 4} more` : ''}`

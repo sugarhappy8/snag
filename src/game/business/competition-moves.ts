@@ -16,6 +16,7 @@ import { isDeepTech } from './deeptech-state'
 import { isFinanceFirm } from './finance-firm-state'
 import { bizWorth, fxValue, localEcon, marketCtxFor, maxProduction, planFor, refreshValue, valuationOf } from './economy'
 import { industryDef } from './industries'
+import { shieldsOf } from './lab-state'
 import { effectiveQuality, fieldFor, infoOf, productPull, rivalLines } from './product-market'
 import { pullValue } from './rd'
 import { totalOutlets, type BizState, type Product } from './state'
@@ -87,7 +88,7 @@ export function acquiredLines(g: GameState, b: BizState, r: Pick<RivalView, 'id'
     mine.set(f, Math.max(mine.get(f) ?? -Infinity, effectiveQuality(p, b.industry, g.year)))
   }
   const out: AcquiredLine[] = []
-  for (const x of rivalLines(r, b.industry, marketKey(b), g.year)) {
+  for (const x of rivalLines(r, b.industry, marketKey(b), g.year, shieldsOf(b))) {
     const own = mine.get(x.family)
     if (own === undefined) out.push({ family: x.family, quality: x.quality, upgrade: false })
     else if (x.quality > own + 1) out.push({ family: x.family, quality: x.quality, upgrade: true })

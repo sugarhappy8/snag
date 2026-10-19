@@ -14,9 +14,9 @@
 // state, no RNG (deterministic hashes of rival and product names).
 import type { FieldRival, MarketCtx } from './competition-core'
 import { heavyArrival, heavyFringeArrival, heavyLevel, heavyLevelFor, heavyVersionQuality, type HeavyRecord } from './heavy-rd'
-import { industryDef } from './industries'
+import { industryDef, rdTierOf, type RdTier } from './industries'
 import { demandLevel, demandSize, demandTrend, PERIOD_CLASSICS, type DemandLevel } from './product-data'
-import { styleOf, TIMELESS } from './products'
+import { ageStyleOf, TIMELESS } from './products'
 import type { Product } from './state'
 
 // ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ const MAX_AGE_LOSS = 30
 export function effectiveQuality(p: Pick<Product, 'quality' | 'boost' | 'launched'>, industry: string, year: number): number {
   const q = lineQuality(p)
   const age = Math.max(0, year - p.launched - 1)
-  return q - Math.min(MAX_AGE_LOSS, AGE_RATE[styleOf(industry)] * age)
+  return q - Math.min(MAX_AGE_LOSS, AGE_RATE[ageStyleOf(industry)] * age)
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +205,58 @@ export function rivalVersion(r: Pick<FieldRival, 'id' | 'tier' | 'quality'>, fam
   return { offers: adoption >= v.thr, quality: v.quality }
 }
 
+// ---------------------------------------------------------------------------
+// Rival R&D (R&D 3.0): a rival's version of a kind improves with every year it has sold it
+
+/** Points a year a rival's version rises while it sells a kind, by the tech tier of the trade (industries.ts rdTierOf). */
+export const RISE_BASE: Record<RdTier, number> = { low: 0.2, mid: 0.3, high: 0.45, breakthrough: 0.6 }
+/** Bigger rivals do more R&D; a size that isn't listed counts as 1. */
+export const RISE_SIZE: Record<string, number> = { giant: 1.3, major: 1.15, mid: 1, small: 0.7 }
+/** The most a rival's version can rise above what it started at, and the years of selling that count. */
+export const RISE_CAP = 8
+export const RISE_SPAN = 12
+
+/**
+ * How many points a rival's version of a kind has risen after `yearsSelling` years on the market (pure, by hash:
+ * no random draw). 0 in the year it starts selling, never past RISE_CAP.
+ */
+export function riseOf(industry: string, rival: { id: string; tier: string }, family: string, yearsSelling: number): number {
+  const years = yearsSelling > 0 ? Math.min(RISE_SPAN, yearsSelling) : 0
+  const size = Object.hasOwn(RISE_SIZE, rival.tier) ? RISE_SIZE[rival.tier] : 1
+  const luck = 0.6 + 0.8 * mix(hashOf(rival.id), hashOf(family), 5)
+  return Math.min(RISE_CAP, RISE_BASE[rdTierOf(industry)] * size * luck * years)
+}
+
+const seriesCache = new Map<string, readonly number[]>()
+
+/** A kind's adoption in `year` and the RISE_SPAN - 1 years before it (index 0 = `year`), read once and kept. */
+function adoptionSeries(family: string, place: string, year: number): readonly number[] {
+  const key = `${year}\u0001${place}\u0001${family}`
+  const hit = seriesCache.get(key)
+  if (hit) return hit
+  const out: number[] = []
+  for (let i = 0; i < RISE_SPAN; i++) out.push(demandLevel(family, place, year - i).adoption)
+  Object.freeze(out)
+  if (seriesCache.size >= 2000) {
+    const first = seriesCache.keys().next().value
+    if (first !== undefined) seriesCache.delete(first)
+  }
+  seriesCache.set(key, out)
+  return out
+}
+
+/** Years a rival has sold a kind it takes up at adoption `thr`: the leading years of the series at or above it, less the first. */
+function yearsSellingOf(series: readonly number[], thr: number): number {
+  let n = 0
+  while (n < series.length && series[n] >= thr) n++
+  return Math.max(0, n - 1)
+}
+
+/** A classic version's quality after the rise: whole, never past 99. */
+function risenQuality(base: number, rise: number): number {
+  return Math.round(Math.min(99, base + rise))
+}
+
 export interface FamilyField {
   /** 0-1: share of the rivals' pull that offers this kind of product. */
   offer: number
@@ -218,6 +270,18 @@ export interface FamilyField {
   exists: boolean
 }
 
+/** A patent's hold on a kind of product: no rival (or long-tail seller) offers it while the year is before `until` (lab-state.ts shieldsOf). */
+export interface Shield {
+  family: string
+  until: number
+}
+
+/** What a field is read for besides the rivals: the company's trade and the shields its patents hold. */
+export interface FieldMarket {
+  industry: string
+  shield?: readonly Shield[]
+}
+
 /** The rivals' side of every kind of product in one market and year (computed on demand). */
 export interface Field {
   place: string
@@ -226,6 +290,8 @@ export interface Field {
   rivals: readonly unknown[]
   /** The breakthroughs of this market it was read with (heavy-rd.ts); a field for another year of the same market passes them on. */
   heavy: readonly HeavyRecord[]
+  /** The trade and the shields it was read with (absent for a field built without them); a field for another year passes them on. */
+  market?: FieldMarket
   of(family: string): FamilyField
   /** Each rival's version of a kind, in the order of the rivals the field was made from (-1: none). */
   versions(family: string): readonly number[]
@@ -241,7 +307,7 @@ const NO_HEAVY: readonly HeavyRecord[] = Object.freeze([])
  * records (heavy-rd.ts readHeavy): a kind with a record follows it instead of the real-history curve, and
  * the records are part of the cache key. Without records the field is what it always was.
  */
-export function fieldOf(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' | 'pull'>[], fringe: number, place: string, year: number, heavy?: readonly HeavyRecord[]): Field {
+export function fieldOf(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' | 'pull'>[], fringe: number, place: string, year: number, heavy?: readonly HeavyRecord[], market?: FieldMarket): Field {
   let pulls = 0
   let quality = 0
   rivals.forEach((r, i) => {
@@ -251,11 +317,15 @@ export function fieldOf(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quali
   const records = heavy ?? NO_HEAVY
   // Every number the field reads from a record is in the signature (the arrival depends on the years).
   const sig = records.length ? `|${records.map((r) => `${r.family}\u0001${r.year}\u0001${r.years}\u0001${r.quality}`).join('\u0002')}` : ''
-  const key = `${place}|${year}|${fringe}|${rivals.length}|${rivals[0]?.id ?? ''}|${rivals[rivals.length - 1]?.id ?? ''}|${pulls}|${quality}${sig}`
+  // The trade and the shields are part of the key too (shields in any order are one field); a field built without a market has no shield.
+  const shields = market?.shield?.length ? [...market.shield].sort((x, y) => (x.family < y.family ? -1 : x.family > y.family ? 1 : x.until - y.until)) : []
+  const mkey = market ? `|m${market.industry}|s${shields.map((x) => `${x.family}\u0001${x.until}`).join('\u0002')}` : ''
+  const key = `${place}|${year}|${fringe}|${rivals.length}|${rivals[0]?.id ?? ''}|${rivals[rivals.length - 1]?.id ?? ''}|${pulls}|${quality}${sig}${mkey}`
   const hit = fieldCache.get(key)
   if (hit) return hit
   // The field keeps its own frozen copy: a list changed later by its owner can't change a shared, cached field.
-  const out = makeField(rivals, fringe, place, year, records.length ? Object.freeze([...records]) : NO_HEAVY)
+  const kept = market ? Object.freeze({ industry: market.industry, ...(shields.length ? { shield: Object.freeze(shields.map((x) => Object.freeze({ family: x.family, until: x.until }))) } : {}) }) : undefined
+  const out = makeField(rivals, fringe, place, year, records.length ? Object.freeze([...records]) : NO_HEAVY, kept)
   if (fieldCache.size > 256) {
     const first = fieldCache.keys().next().value
     if (first !== undefined) fieldCache.delete(first)
@@ -264,7 +334,7 @@ export function fieldOf(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quali
   return out
 }
 
-function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' | 'pull'>[], fringe: number, place: string, year: number, heavy: readonly HeavyRecord[]): Field {
+function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' | 'pull'>[], fringe: number, place: string, year: number, heavy: readonly HeavyRecord[], market?: FieldMarket): Field {
   const memo = new Map<string, { f: FamilyField; v: number[] }>()
   const total = rivals.reduce((t, r) => t + Math.max(0, r.pull), 0) + Math.max(0, fringe)
   let hashes: number[] | null = null
@@ -277,11 +347,15 @@ function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' |
     const versions: number[] = new Array(rivals.length).fill(-1)
     let wo = 0
     let wq = 0
-    if (d.exists) {
+    // A patent holds the kind back: it exists and has its demand, but no rival and nobody in the long tail offers it yet.
+    const held = market?.shield?.some((x) => x.family === family && year < x.until) === true
+    if (d.exists && !held) {
       if (rec) {
         rivals.forEach((r, i) => {
-          if (year < heavyArrival(rec, r)) return
-          const q = heavyVersionQuality(rec, r)
+          const at = heavyArrival(rec, r)
+          if (year < at) return
+          // With a market the version improves from its arrival, and never passes the pioneer's.
+          const q = market ? Math.min(rec.quality, risenQuality(heavyVersionQuality(rec, r), riseOf(market.industry, r, family, year - at))) : heavyVersionQuality(rec, r)
           versions[i] = q
           if (!(r.pull > 0)) return
           wo += r.pull
@@ -293,13 +367,20 @@ function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' |
       } else {
         hashes ??= rivals.map((r) => hashOf(r.id))
         const hf = hashOf(family)
+        // With a market each version rises with the years its rival has sold the kind (the series is read once per kind).
+        let series: readonly number[] | undefined
         rivals.forEach((r, i) => {
           const v = versionOf(hashes![i], hf, r.tier, r.quality)
           if (d.adoption < v.thr) return
-          versions[i] = v.quality
+          let q = v.quality
+          if (market) {
+            series ??= adoptionSeries(family, place, year)
+            q = risenQuality(q, riseOf(market.industry, r, family, yearsSellingOf(series, v.thr)))
+          }
+          versions[i] = q
           if (!(r.pull > 0)) return
           wo += r.pull
-          wq += r.pull * v.quality
+          wq += r.pull * q
         })
         const tail = Math.max(0, fringe) * d.adoption
         wo += tail
@@ -310,12 +391,12 @@ function makeField(rivals: readonly Pick<FieldRival, 'id' | 'tier' | 'quality' |
     memo.set(family, out)
     return out
   }
-  return { place, year, rivals, heavy, of: (family) => get(family).f, versions: (family) => get(family).v }
+  return { place, year, rivals, heavy, ...(market ? { market } : {}), of: (family) => get(family).f, versions: (family) => get(family).v }
 }
 
 /** The market's field for a context (marketCtxFor attaches one; a bare context gets it computed). */
 export function fieldFor(ctx: MarketCtx): Field {
-  return ctx.field ?? fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year)
+  return ctx.field ?? fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, undefined, { industry: ctx.industry })
 }
 
 /**
@@ -502,12 +583,12 @@ const MAX_PRESS = 0.5
  * The rivals' combined pull is unchanged (the company's own gain is its pull, productPull), so
  * this only decides who pays for it. Returns the context unchanged when the company has no lines.
  */
-export function applyProductRivalry(ctx: MarketCtx, industry: string, products: readonly Product[], field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, ctx.field?.heavy)): MarketCtx {
+export function applyProductRivalry(ctx: MarketCtx, industry: string, products: readonly Product[], field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, ctx.field?.heavy, ctx.field?.market)): MarketCtx {
   if (!products.length || !ctx.rivals.length) return ctx
   const mine = bestByFamily(industry, products, ctx.year)
   if (!mine.size) return ctx
   // The field must have been read from these very rivals (same order): its versions line up.
-  const own = field.rivals === ctx.rivals ? field : fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, field.heavy)
+  const own = field.rivals === ctx.rivals ? field : fieldOf(ctx.rivals, ctx.fringe, ctx.key, ctx.year, field.heavy, field.market)
   const press: { seg: number; q: number; adoption: number; versions: readonly number[] }[] = []
   for (const [family, q] of mine) {
     const f = own.of(family)
@@ -533,14 +614,21 @@ export function applyProductRivalry(ctx: MarketCtx, industry: string, products: 
   return { ...ctx, rivals }
 }
 
-/** The kinds of product a rival sells this year, best-selling kinds first, with its quality in each. */
-export function rivalLines(r: Pick<FieldRival, 'id' | 'tier' | 'quality'>, industry: string, place: string, year: number): { family: string; quality: number; level: number }[] {
+/**
+ * The kinds of product a rival sells this year, best-selling kinds first, with its quality in each (the field's
+ * number: the rise is in it). A kind that one of `shield` holds in `year` is left out, as the field gives it no offer.
+ */
+export function rivalLines(r: Pick<FieldRival, 'id' | 'tier' | 'quality'>, industry: string, place: string, year: number, shield?: readonly Shield[]): { family: string; quality: number; level: number }[] {
   const out: { family: string; quality: number; level: number }[] = []
+  const hr = hashOf(r.id)
   for (const family of familiesOf(industry)) {
+    if (shield?.some((x) => x.family === family && year < x.until)) continue
     const d = demandLevel(family, place, year)
     if (!d.exists) continue
-    const v = rivalVersion(r, family, d.adoption)
-    if (v.offers) out.push({ family, quality: v.quality, level: d.level * demandSize(family) })
+    const v = versionOf(hr, hashOf(family), r.tier, r.quality)
+    if (d.adoption < v.thr) continue
+    const quality = risenQuality(v.quality, riseOf(industry, r, family, yearsSellingOf(adoptionSeries(family, place, year), v.thr)))
+    out.push({ family, quality, level: d.level * demandSize(family) })
   }
   return out.sort((x, y) => y.level - x.level)
 }

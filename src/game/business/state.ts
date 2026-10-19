@@ -418,6 +418,8 @@ export interface BizState {
   hedge?: CompanyHedge
   /** Franchise network (business/franchise.ts readFranchise). Missing until the first franchise is sold. */
   franchise?: Json
+  /** Research lab: Operations R&D, team, patents, credit ledger (business/lab-state.ts readLab). Missing until the lab first books something. Read it with readLab, write it with saveLab. */
+  lab?: Json
   /** Yearly dividend rule (business/dividend-policy.ts). Missing: none set. Read it with readDividend, never raw. */
   dividend?: DividendPolicy
   /**
@@ -779,6 +781,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.milestones && typeof d.milestones === 'object' && !Array.isArray(d.milestones) ? { milestones: d.milestones } : {}),
     ...companyHedgeField(d.hedge),
     ...(d.franchise && typeof d.franchise === 'object' && !Array.isArray(d.franchise) ? { franchise: d.franchise } : {}),
+    ...(d.lab && typeof d.lab === 'object' && !Array.isArray(d.lab) ? { lab: d.lab } : {}),
     ...dividendField(d.dividend),
     ...(waveStamp ? { wave: waveStamp } : {}),
   }

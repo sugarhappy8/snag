@@ -17,14 +17,17 @@ import { industryDef } from './industries'
 import { demandSize } from './product-data'
 import { advanceHeavy, heavyArrivals, heavyOf, type HeavyRecord } from './heavy-rd'
 import { breakthroughByName } from './heavy-data'
+import { TEAM_ODDS } from './lab-data'
+import { readLab, teamPower, teamSlots } from './lab-state'
+import { advanceLab } from './lab-year'
 import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, kindLevel, kindTrend, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
 import { complexityShare } from './products'
 import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
 import { clampN, money, plural } from './util'
 
-/** Chance a project at a normal budget works: whoever runs it, quality, the quality team. */
+/** Chance a project at a normal budget works: whoever runs it, quality, the quality team, the research team (lab-state.ts teamPower). */
 export function launchP(g: GameState, b: BizState): number {
-  return clampN(0.25 + ceoSkill(g, b) / 250 + b.quality / 300 + 0.1 * staffPower(b, 'quality'), 0.1, 0.9)
+  return clampN(0.25 + ceoSkill(g, b) / 250 + b.quality / 300 + 0.1 * staffPower(b, 'quality') + TEAM_ODDS * teamPower(readLab(b).team.length), 0.1, 0.9)
 }
 
 /** A hit (15% of the products that work) launches 10 quality points better and adds 8 brand instead of 3. */
@@ -69,6 +72,15 @@ function siteSales(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number
 }
 
 /**
+ * How big a typical site of the trade is here against the reference, less than proportionally (RD_EXP):
+ * the size term of every R&D price (rdCost, and the Operations R&D programs of lab-rules.ts). Fixed by
+ * the trade and the place, never by the company's own cash or sales.
+ */
+export function rdSiteScale(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number {
+  return Math.pow(Math.max(0.01, siteSales(b) / RD_REF), RD_EXP)
+}
+
+/**
  * What developing an idea costs at a normal budget: fixed by the product (how big a typical
  * business of the trade is here, the sort of line, the size of its market), never by the
  * company's own cash or sales.
@@ -76,7 +88,7 @@ function siteSales(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number
 export function rdCost(b: Pick<BizState, 'industry' | 'countryId' | 'city'>, idea: string): number {
   const info = lineInfo(idea, b.industry)
   const gen = info.kind === 'next' ? 1 + 0.05 * Math.max(0, info.gen - 2) : 1
-  const scale = Math.pow(Math.max(0.01, siteSales(b) / RD_REF), RD_EXP)
+  const scale = rdSiteScale(b)
   return Math.max(1_000, roundBudget(RD_BASE * scale * KIND_COST[info.kind] * Math.sqrt(demandSize(info.family)) * gen))
 }
 
@@ -86,10 +98,10 @@ export function rdRange(b: Pick<BizState, 'industry' | 'countryId' | 'city'>, id
   return { min: Math.max(500, roundBudget(normal * RD_MIN)), max: roundBudget(normal * RD_MAX), normal }
 }
 
-/** Projects the team runs at once without strain: one more per doubling of the company's sites. */
-export function rdSlots(b: Pick<BizState, 'outlets'>): number {
+/** Projects the team runs at once without strain: one more per doubling of the company's sites, and a little room for a research team (lab-state.ts teamSlots). */
+export function rdSlots(b: Pick<BizState, 'outlets' | 'lab'>): number {
   const sites = b.outlets.reduce((s, o) => s + o.count, 0)
-  return 1 + Math.floor(Math.log2(1 + Math.max(0, sites)))
+  return 1 + Math.floor(Math.log2(1 + Math.max(0, sites))) + teamSlots(readLab(b).team.length)
 }
 
 /** Projects that use the team's slots: a running breakthrough (heavy-rd.ts) has a team of its own and doesn't count. */
@@ -98,7 +110,7 @@ export function ordinaryProjects(b: Pick<BizState, 'rd'>): RdProject[] {
 }
 
 /** How much a new project's budget is stretched by the ones already running (1 while slots are free). */
-export function rdCrowding(b: Pick<BizState, 'rd' | 'outlets'>): number {
+export function rdCrowding(b: Pick<BizState, 'rd' | 'outlets' | 'lab'>): number {
   return 1 + 0.15 * Math.max(0, ordinaryProjects(b).length + 1 - rdSlots(b))
 }
 
@@ -164,7 +176,7 @@ export function rdQuote(g: GameState, b: BizState, idea: string, budget: number,
   const field = fieldFor(c)
   const f = field.of(info.family)
   const launchYear = g.year + years
-  const later = fieldOf(c.rivals, c.fringe, c.key, launchYear, field.heavy)
+  const later = fieldOf(c.rivals, c.fringe, c.key, launchYear, field.heavy, field.market)
   const line: Product = { name: idea, launched: launchYear, boost: 0, quality, family: info.family, kind: info.kind }
   const lift = productPull(b.industry, [...b.products, line], launchYear, later).total - productPull(b.industry, b.products, launchYear, later).total
   return { cost, k, odds, years, quality, info, field: f.quality, offer: f.offer, level: f.level, trend: kindTrend(info.family, c.key, g.year, field.heavy), lift: Math.max(0, lift) }
@@ -218,9 +230,10 @@ export function shiftLineQuality(b: BizState, name: string, dq: number): void {
 function liftPath(b: BizState, ctx: MarketCtx, line: Product, from: number): { base: number; lift: number }[] {
   const out: { base: number; lift: number }[] = []
   const heavy = fieldFor(ctx).heavy
+  const market = fieldFor(ctx).market
   for (let t = 0; t < HORIZON; t++) {
     const year = from + t
-    const field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy)
+    const field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy, market)
     const base = productPull(b.industry, b.products, year, field).total
     const withIt = productPull(b.industry, [...b.products, { ...line, launched: from }], year, field).total
     out.push({ base, lift: Math.max(0, withIt - base) })
@@ -418,6 +431,8 @@ export function projectQuality(p: RdProject): number {
 export function advanceRd(g: GameState, b: BizState, year: number): void {
   // The first rival to offer a breakthrough that works is reported once (heavy-rd.ts), whether or not this company has projects.
   heavyArrivals(g, b, year)
+  // Operations R&D programs (lab-year.ts) move a year closer too; a company with no lab does nothing here.
+  advanceLab(g, b, year)
   if (!Array.isArray(b.rd) || b.rd.length === 0) return
   const a = g.assets.find((x) => (x.details as unknown) === b) ?? null
   const name = a?.name ?? 'The company'

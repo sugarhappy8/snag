@@ -90,6 +90,7 @@ import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
 import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 import { climateLine, dashboardRows } from './dashboard'
 import { franchiseMenu } from './franchise'
+import { labMenus } from './lab-menu'
 import { milestonesMenu } from './milestones'
 import { tidyNationalStrategy } from './national-view'
 import { FAB_MAX, readFabs } from './devices-data'
@@ -555,7 +556,8 @@ function lineSubtitle(l: LinePull, total: number, trend: -1 | 0 | 1, beats: stri
 function leadOf(family: string, field: Field, year: number): number | undefined {
   const rec = field.heavy.find((r) => r.family === family)
   if (!rec) return undefined
-  const lead = heavyLead(rec)
+  // A patent on the kind holds rivals back at least until its shield ends (lab-state.ts shieldsOf).
+  const lead = Math.max(heavyLead(rec), ...(field.market?.shield ?? []).filter((x) => x.family === family && x.until > year).map((x) => x.until))
   return lead >= year ? lead : undefined
 }
 
@@ -2258,7 +2260,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
     if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
     const franchise = franchiseMenu(a, health)
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...(health.industry === 'devices' ? [devicesMenu(a, buildFabAction(a))] : []), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...(health.industry === 'devices' ? [devicesMenu(a, buildFabAction(a))] : []), ...labMenus(a, health), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(economicReportMenu(a))

@@ -32,6 +32,10 @@ import { financeTarget } from './finance-leadership'
 import { industryDef, lineOf, type RoleDef } from './industries'
 import { complexityShare, productIdeas } from './products'
 import { heavyOf } from './heavy-rd'
+import { opsProgram } from './lab-data'
+import { bestLabMove } from './lab-rules'
+import { LAB_SAY } from './lab-text'
+import { fileLabPatent, startOps } from './lab-year'
 import { bestRdIdea, pullValue, rdOf, retireLines, retireOrder } from './rd'
 import { fieldFor, lineInfo, productPull } from './product-market'
 import { bestRole, hireValue, interviewFee, maxKeyStaff } from './staff'
@@ -58,6 +62,9 @@ const GROWTH_PACE: Record<Mandate, number> = { growth: 0.5, balanced: 0.3, profi
 
 /** R&D projects a CEO may start in a year under each mandate. */
 const RD_PER_YEAR: Record<Mandate, number> = { growth: 5, balanced: 3, profit: 2, cash: 1 }
+
+/** Operations R&D programs and patents a CEO may start in a year under each mandate (a cost-cutter may add one cost program). */
+const LAB_PER_YEAR: Record<Mandate, number> = { growth: 2, balanced: 1, profit: 1, cash: 0 }
 
 /** A mistake model: an estimate as the CEO sees it (identity for hints). */
 export type Judge = (v: number) => number
@@ -562,6 +569,24 @@ function productTurn(t: Turn): void {
     // One product by name when the name is short enough; a product name can run to 60 characters.
     const named = `Put ${money(total)} into R&D on ${started[0]}.`
     t.lines.push(started.length === 1 && letterWords(named) <= LETTER_WORDS ? named : `Put ${money(total)} into R&D on ${plural(started.length, 'new product')}.`)
+    t.big = true
+  }
+  // R&D 3.0: Operations R&D programs and patents that pay, paid through the same board budget and reserve
+  // as the projects above (the block keeps no budget of its own). Never a hire, never a licence later.
+  const labMoves = LAB_PER_YEAR[t.st.mandate]
+  for (let i = 0; i < labMoves + (style === 'costCutter' ? 1 : 0); i++) {
+    const move = bestLabMove(g, b, spendable(t), bizWorth(g, b), t.judge, i >= labMoves)
+    if (!move) break
+    spend(t, move.price, true)
+    b.yearCosts += move.price
+    if (move.kind === 'ops') {
+      startOps(g, t.a, b, move.id, false)
+      t.lines.push(LAB_SAY.letterStarted(opsProgram(move.id)?.label ?? 'a program'))
+    } else {
+      fileLabPatent(g, t.a, b, move.family, move.mode, false)
+      const named = LAB_SAY.letterFiled(move.family)
+      t.lines.push(letterWords(named) <= LETTER_WORDS ? named : LAB_SAY.letterFiledShort())
+    }
     t.big = true
   }
 }
