@@ -4,15 +4,19 @@
 // here: the statement and the corporate tax count the amounts through yearIncome and yearCosts, and every
 // amount has a ledger field (lab-state.ts LabRow) and a line on the annual report. Nothing here draws
 // g.rng, and a year booked is never booked again (`lab.booked`).
-import { log } from '../core'
+import { log, notice } from '../core'
+import { chance } from '../rng'
 import type { Asset, GameState } from '../types'
+import { boardAllows } from './board'
+import { manageBlock } from './gate'
 import { heavyEligible } from './heavy-rd'
-import { labCreditRate, LAB_CREDIT_CAP } from './lab-data'
-import { draftLab, readLab, saveLab, type LabRow, type LabState } from './lab-state'
-import { LAB_LOG } from './lab-text'
+import { labCreditRate, labGrantAmount, labTierOf, LAB_CREDIT_CAP, LAB_GRANT_GAP, LAB_GRANT_SITES, opsProgram } from './lab-data'
+import { opsBlock, opsOdds, opsPrice, opsValue, opsYears } from './lab-rules'
+import { applyWin, draftLab, readLab, saveLab, type LabProgram, type LabRow, type LabState } from './lab-state'
+import { LAB_LOG, LAB_SAY } from './lab-text'
 import { rdProjects } from './rd'
-import type { BizState } from './state'
-import { money, rec } from './util'
+import { bizOf, findBusiness, runsIt, totalOutlets, type BizState } from './state'
+import { clampN, money, plural, rec } from './util'
 
 /**
  * Dollars of R&D the company started in a fiscal year: the budgets of its ordinary projects, the cost of
@@ -74,4 +78,92 @@ export function bookLabYear(g: GameState, a: Asset, b: BizState, fiscal: number)
   d.booked = fiscal
   saveLab(b, d)
   if (row.grant > 0) log(g, LAB_LOG.grant(a.name, money(row.grant)), 'good')
+}
+
+/**
+ * Start an Operations R&D program: the price leaves company cash now (a cost of this year) unless `pay`
+ * is false (the hired CEO's board budget already took it), a grant is worked out and stored with the
+ * program, and the owner gets the notice when the owner's own action started it. Null (and a notice)
+ * when it can't start. No random draw: the roll happens when the work is done (advanceLab).
+ */
+export function startOps(g: GameState, a: Asset, b: BizState, id: string, pay: boolean): LabProgram | null {
+  const why = opsBlock(g, b, id, !pay)
+  const def = opsProgram(id)
+  const tier = labTierOf(b.industry)
+  if (why || !def || !tier) {
+    notice(g, 'R&D', why ?? LAB_SAY.pickProgram(), { emoji: '\u{1F9EA}' })
+    return null
+  }
+  const price = opsPrice(b, def.rung)
+  const years = opsYears(b, def.rung)
+  const odds = Math.round(opsOdds(g, b, def.rung) * 1000) / 1000
+  const d = draftLab(b)
+  // One grant every few years, for a company still small enough to need it, paid when the work is done. Claimed now, so two starts can't both have one.
+  let grant = 0
+  if (g.year - d.lastGrant >= LAB_GRANT_GAP && totalOutlets(b) <= LAB_GRANT_SITES) {
+    grant = labGrantAmount(b.countryId, tier, price)
+    if (grant > 0) d.lastGrant = g.year
+  }
+  if (pay) {
+    b.cash -= price
+    b.yearCosts += price
+  }
+  const program: LabProgram = { id: def.id, started: g.year, years, progress: 0, odds, price, grant }
+  d.programs.push(program)
+  saveLab(b, d)
+  log(g, LAB_LOG.started(a.name, def.label))
+  if (pay && runsIt(g, a) && g.character.alive) notice(g, 'Operations R&D', LAB_SAY.started(a.name, def.label, money(price), plural(years, 'year'), String(Math.round(odds * 100))), { emoji: '\u{1F52C}' })
+  return program
+}
+
+/**
+ * Year end (economy.evolve through rd.ts advanceRd; `year` is the fiscal year just booked): every program
+ * gets a year of work, and each one that is finished rolls once, in track order (cost, yield, quality),
+ * the only draw of g.rng the lab makes. A win lifts the track's level; a flop loses the price and leaves
+ * the program available. Win or flop, the grant the program earned is due with the next booking. A year
+ * is stepped once (`stepped`), so replaying it changes nothing and draws nothing; a company with no lab
+ * is left alone.
+ */
+export function advanceLab(g: GameState, b: BizState, year: number): void {
+  if (!b.lab || !heavyEligible(b)) return
+  if (readLab(b).stepped >= year) return
+  const d = draftLab(b)
+  d.stepped = year
+  const name = g.assets.find((x) => (x.details as unknown) === b)?.name ?? 'The company'
+  for (const p of d.programs) p.progress = Math.min(p.years, p.progress + 1)
+  // The stored programs are already in track order (readLab sorts them), which is the order they roll.
+  const finished = d.programs.filter((p) => p.progress >= p.years)
+  d.programs = d.programs.filter((p) => p.progress < p.years)
+  for (const p of finished) {
+    d.due.grant += p.grant
+    const def = opsProgram(p.id)
+    if (!def) continue
+    if (chance(g, clampN(p.odds, 0.02, 0.98))) {
+      applyWin(d, def, year)
+      log(g, LAB_LOG.worked(name, def.label), 'good')
+    } else log(g, LAB_LOG.failed(name, def.label), 'bad')
+  }
+  saveLab(b, d)
+}
+
+/**
+ * The owner funds an Operations R&D program: the live company, the right to manage it, the program's own
+ * reason (opsBlock) and, past this year's capital budget, the board's vote (the gain is a fifth of the win
+ * before its price, as ordinary R&D asks) are all checked here, so a direct call, a restored menu or an
+ * older save can't skip them. True when a program started.
+ */
+export function doOps(g: GameState, a: Asset, id: string): boolean {
+  const cur = findBusiness(g, a.id)
+  if (!cur || manageBlock(g, cur)) return false
+  const b = bizOf(g, cur)
+  const def = opsProgram(id)
+  const why = opsBlock(g, b, id)
+  if (why || !def) {
+    notice(g, 'R&D', why ?? LAB_SAY.pickProgram(), { emoji: '\u{1F9EA}' })
+    return false
+  }
+  const price = opsPrice(b, def.rung)
+  const gain = Math.max(0, (opsValue(g, b, id) + price) / 5)
+  if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: price, gain, label: `Fund ${def.label} (${money(price)})` })) return false
+  return startOps(g, cur, b, id, true) !== null
 }

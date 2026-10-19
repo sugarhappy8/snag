@@ -85,6 +85,7 @@ import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
 import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 import { climateLine, dashboardRows } from './dashboard'
 import { franchiseMenu } from './franchise'
+import { labMenus } from './lab-menu'
 import { milestonesMenu } from './milestones'
 import { tidyNationalStrategy } from './national-view'
 
@@ -2195,7 +2196,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
     if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
     const franchise = franchiseMenu(a, health)
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...labMenus(a, health), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(economicReportMenu(a))

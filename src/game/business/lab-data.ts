@@ -1,8 +1,8 @@
-// R&D 3.0 data: the credit cap, the grant rows and the nine Operations R&D programs. Light on imports on
-// purpose (lab-state.ts reads OPS_PROGRAMS to throw out unknown ids, and economy.ts reads lab-state.ts):
-// no module-level code here calls an imported function.
+// R&D 3.0 data: the credit cap, the grant rows, the nine Operations R&D programs and what a trade's tier
+// lets them do. Light on imports on purpose (lab-state.ts reads OPS_PROGRAMS to throw out unknown ids, and
+// economy.ts reads lab-state.ts): no module-level code here calls an imported function.
 import { RD_CREDIT } from './deeptech-data'
-import type { RdTier } from './industries'
+import { rdTierOf, type RdTier } from './industries'
 import type { LabTrack } from './lab-state'
 import { clampN } from './util'
 
@@ -82,3 +82,41 @@ export const OPS_PROGRAMS: readonly OpsProgram[] = [
 export function opsProgram(id: string): OpsProgram | null {
   return OPS_PROGRAMS.find((p) => p.id === id) ?? null
 }
+
+/** The tiers that have Operations R&D: a breakthrough (deep-tech) trade keeps its own lab. */
+export type LabTier = Exclude<RdTier, 'breakthrough'>
+
+/** A trade's Operations R&D tier; null for a breakthrough trade. */
+export function labTierOf(industry: string): LabTier | null {
+  const tier = rdTierOf(industry)
+  return tier === 'breakthrough' ? null : tier
+}
+
+/**
+ * What a tier adds to a program's odds and the most each track can change once its level is 1 (the level
+ * itself stops at LAB_LEVEL_MAX): unit cost falls by `cost`, output rises by `yield`, demand rises by `quality`.
+ */
+export const OPS_TIER: Record<LabTier, { odds: number; cost: number; yield: number; quality: number }> = {
+  low: { odds: 0.25, cost: 0.05, yield: 0.06, quality: 0.04 },
+  mid: { odds: 0.2, cost: 0.08, yield: 0.1, quality: 0.05 },
+  high: { odds: 0.12, cost: 0.1, yield: 0.1, quality: 0.07 },
+}
+
+/** The highest rung a tier is offered: a low-tech trade stops at the second. */
+export const OPS_MAX_RUNG: Record<LabTier, 2 | 3> = { low: 2, mid: 3, high: 3 }
+
+/** By rung (index rung - 1): price as a multiple of the base, years of work, odds taken off, and the share of the gap to the ceiling a first win closes. */
+export const RUNG_X: readonly [number, number, number] = [1, 2.2, 4.5]
+export const RUNG_YEARS = [1, 1.5, 2] as const
+export const RUNG_PENALTY = [0, 0.05, 0.1] as const
+export const RUNG_GAIN = [0.3, 0.4, 0.5] as const
+
+/** Years after a win before the same program may run again; years between two grants; most sites a grant company may have. */
+export const OPS_COOLDOWN = 3
+export const LAB_GRANT_GAP = 3
+export const LAB_GRANT_SITES = 25
+
+/** A track's level never passes this, fades by this factor each year, and each win on a track is worth this much of the last. */
+export const LAB_LEVEL_MAX = 0.95
+export const LAB_FADE = 0.95
+export const LAB_WIN_DECAY = 0.8

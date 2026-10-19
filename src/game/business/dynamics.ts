@@ -7,6 +7,7 @@ import { marketEventFactors } from '../history/market-events'
 import { marketDef } from './competition-data'
 import { notice } from '../core'
 import type { GameState, Json } from '../types'
+import { opsEffectsOf } from './lab-state'
 import type { BizState } from './state'
 import { clampN, num, rec, str } from './util'
 
@@ -96,7 +97,12 @@ export function nationalMarket(g: GameState, industry: string, country: string, 
 export function executiveEdge(skill: number): number { return skill >= 85 ? .65 + .85 * clampN((skill - 85) / 15, 0, 1) : Math.pow(clampN((skill - 75) / 25, 0, 1), 1.5) }
 
 export function businessEffects(g: GameState, b: BizState, country: string, year: number) {
-  if (!b.expansion) return { demand: 1, cost: 1, capacity: 1 }
+  if (!b.expansion) {
+    // Without a research lab this is the same answer as ever; with one, Operations R&D is the only effect (lab-state.ts).
+    if (!b.lab) return { demand: 1, cost: 1, capacity: 1 }
+    const ops = opsEffectsOf(b, year)
+    return { demand: clampN(1 + ops.demand, .7, 1.65), cost: clampN(1 + ops.cost, .65, 1.5), capacity: Math.min(1.4, 1 + ops.capacity) }
+  }
   const x = expansionOf(b)
   const national = nationalMarket(g, b.industry, country, year)
   let demand = 1, cost = 1, capacity = 1
@@ -110,7 +116,9 @@ export function businessEffects(g: GameState, b: BizState, country: string, year
     if (p.id === 'training' || p.id === 'efficiency') capacity += .08
     if (p.id === 'resilience' && national.demand < 1) demand += (1 - national.demand) * .7
   }
-  return { demand: clampN(demand, .7, 1.65), cost: clampN(cost, .65, 1.5), capacity: Math.min(1.4, capacity) }
+  // Operations R&D (lab-state.ts) joins the strategies' sums before the clamps, which stay the outer bound.
+  const ops = opsEffectsOf(b, year)
+  return { demand: clampN(demand + ops.demand, .7, 1.65), cost: clampN(cost + ops.cost, .65, 1.5), capacity: Math.min(1.4, capacity + ops.capacity) }
 }
 
 /** Real operating failures of the player's large company affect confidence in its national sector. */

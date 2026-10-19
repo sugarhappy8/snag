@@ -17,6 +17,7 @@ import { industryDef } from './industries'
 import { demandSize } from './product-data'
 import { advanceHeavy, heavyArrivals, heavyOf, type HeavyRecord } from './heavy-rd'
 import { breakthroughByName } from './heavy-data'
+import { advanceLab } from './lab-year'
 import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, kindLevel, kindTrend, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
 import { complexityShare } from './products'
 import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
@@ -69,6 +70,15 @@ function siteSales(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number
 }
 
 /**
+ * How big a typical site of the trade is here against the reference, less than proportionally (RD_EXP):
+ * the size term of every R&D price (rdCost, and the Operations R&D programs of lab-rules.ts). Fixed by
+ * the trade and the place, never by the company's own cash or sales.
+ */
+export function rdSiteScale(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number {
+  return Math.pow(Math.max(0.01, siteSales(b) / RD_REF), RD_EXP)
+}
+
+/**
  * What developing an idea costs at a normal budget: fixed by the product (how big a typical
  * business of the trade is here, the sort of line, the size of its market), never by the
  * company's own cash or sales.
@@ -76,7 +86,7 @@ function siteSales(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number
 export function rdCost(b: Pick<BizState, 'industry' | 'countryId' | 'city'>, idea: string): number {
   const info = lineInfo(idea, b.industry)
   const gen = info.kind === 'next' ? 1 + 0.05 * Math.max(0, info.gen - 2) : 1
-  const scale = Math.pow(Math.max(0.01, siteSales(b) / RD_REF), RD_EXP)
+  const scale = rdSiteScale(b)
   return Math.max(1_000, roundBudget(RD_BASE * scale * KIND_COST[info.kind] * Math.sqrt(demandSize(info.family)) * gen))
 }
 
@@ -418,6 +428,8 @@ export function projectQuality(p: RdProject): number {
 export function advanceRd(g: GameState, b: BizState, year: number): void {
   // The first rival to offer a breakthrough that works is reported once (heavy-rd.ts), whether or not this company has projects.
   heavyArrivals(g, b, year)
+  // Operations R&D programs (lab-year.ts) move a year closer too; a company with no lab does nothing here.
+  advanceLab(g, b, year)
   if (!Array.isArray(b.rd) || b.rd.length === 0) return
   const a = g.assets.find((x) => (x.details as unknown) === b) ?? null
   const name = a?.name ?? 'The company'

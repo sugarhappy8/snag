@@ -7,7 +7,7 @@
 // normalized copy cached by the identity of the stored object. Writers take draftLab() (a mutable copy),
 // change it and hand it to saveLab(), which stores a NEW object, so a cached read can never go stale.
 import type { Json } from '../types'
-import { OPS_PROGRAMS, opsProgram } from './lab-data'
+import { LAB_FADE, LAB_LEVEL_MAX, LAB_WIN_DECAY, labTierOf, OPS_PROGRAMS, OPS_TIER, opsProgram, RUNG_GAIN, type OpsProgram } from './lab-data'
 import type { BizState } from './state'
 import { clampN, num, rec } from './util'
 
@@ -123,7 +123,7 @@ function names(v: Json | undefined): string[] {
 
 function readLevel(v: Json | undefined): LabLevel {
   const x = rec(v)
-  const level = x ? clampN(num(x.v), 0, 0.95) : 0
+  const level = x ? clampN(num(x.v), 0, LAB_LEVEL_MAX) : 0
   const at = x ? markOf(x.at) : 0
   return level > 0 && at > 0 ? { v: level, at } : { v: 0, at: 0 }
 }
@@ -293,4 +293,48 @@ export function labSplit(b: Pick<BizState, 'lab'>, s: { year: number; otherIncom
   const room = Number.isFinite(s.otherIncome - taken) ? Math.max(0, Math.round(s.otherIncome - taken)) : 0
   const grants = Math.min(row.credit + row.grant, room)
   return { grants, royalty: Math.min(row.royalty, room - grants) }
+}
+
+/** A track's level in `year`: what it stood at when it was set, faded 5% for each year since (never for a year before it was set). */
+export function levelOf(st: LabState, track: LabTrack, year: number): number {
+  const l = st.levels[track]
+  if (!(l.v > 0)) return 0
+  const age = Number.isFinite(year) ? Math.max(0, year - l.at) : 0
+  return l.v * Math.pow(LAB_FADE, age)
+}
+
+/**
+ * What a win in fiscal year `fiscal` would leave a program's track at: the learning curve. The level in
+ * the year after the win (`Leff`) closes a share of its gap to 1 (a rung's share, 20% less for each win
+ * the track already has), and never passes the ceiling. Pure: applyWin and the program's quote share it.
+ */
+export function winLevel(st: LabState, p: OpsProgram, fiscal: number): number {
+  const leff = levelOf(st, p.track, fiscal + 1)
+  const gain = (1 - leff) * RUNG_GAIN[p.rung - 1] * Math.pow(LAB_WIN_DECAY, st.runs[p.track])
+  return Math.min(LAB_LEVEL_MAX, leff + gain)
+}
+
+/** Record a win on a draft: the track's new level from the year after, one more win on the curve, and the program's cooldown. */
+export function applyWin(st: LabState, p: OpsProgram, fiscal: number): void {
+  st.levels[p.track] = { v: winLevel(st, p, fiscal), at: fiscal + 1 }
+  st.runs[p.track] = Math.min(LAB_LIMITS.runs, st.runs[p.track] + 1)
+  st.done[p.id] = fiscal
+}
+
+/**
+ * What Operations R&D does to the company in `year`, as changes to the three multipliers businessEffects
+ * keeps: unit cost (zero or below), output per site and demand (zero or above). The one place the channel
+ * math lives: the year end, the board's quote and the hints all read it. Nothing for a breakthrough
+ * (deep-tech) trade or a company with no lab.
+ */
+export function opsEffectsOf(b: Pick<BizState, 'lab' | 'industry'>, year: number): { cost: number; capacity: number; demand: number } {
+  const tier = labTierOf(b.industry)
+  if (!b.lab || !tier) return { cost: 0, capacity: 0, demand: 0 }
+  const st = readLab(b)
+  const cap = OPS_TIER[tier]
+  return {
+    cost: 0 - cap.cost * levelOf(st, 'cost', year),
+    capacity: cap.yield * levelOf(st, 'yield', year),
+    demand: cap.quality * levelOf(st, 'quality', year),
+  }
 }
