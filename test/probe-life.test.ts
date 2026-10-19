@@ -13,8 +13,9 @@ describe('probeLife', () => {
   })
 
   it('keepAlive carries a founder past the untreated illness that kills them without it', () => {
-    // Seed 8 gets appendicitis at 35 and, with no doctor, dies of it at 39.
-    const life = { seed: 8, birthYear: 1926, businesses: 2, years: 10 }
+    // Seed 226 gets appendicitis at 32 and, with no doctor, dies of it at 35. A seed is only good for one version of the yearly rng
+    // stream: when a release adds yearly draws, rescan for one that still dies without keepAlive and lives with it.
+    const life = { seed: 226, birthYear: 1926, businesses: 2, years: 10 }
     expect(probeLife(life).character.alive).toBe(false)
     const g = probeLife({ ...life, keepAlive: true })
     expect(g.character.alive).toBe(true)
