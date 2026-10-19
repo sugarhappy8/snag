@@ -224,7 +224,8 @@ export interface SettleOpts<S extends CareerBase> {
   /** The year's body. `live` is false once the job is gone, so only what is already earned pays out. Returns the report note. */
   run: (c: CareerCtx<S>, live: boolean) => string | void
   peers?: { spec: RivalSpec; score: (g: GameState, s: S) => number }
-  crises?: CrisisSet<S>
+  /** The settle only offers: a set's `odds` is for hints. */
+  crises?: Pick<CrisisSet<S>, 'offer'>
   /** Default 'skip': nothing runs, and nothing is written, while in prison. */
   prison?: 'skip' | 'run'
 }

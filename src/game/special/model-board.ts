@@ -26,8 +26,9 @@ import { cap, int, rec } from './kit/state'
 import { careerCtx, careerLog, careerSay, claimChoice, fit, type CareerCtx } from './kit/year'
 import { PHOTOGRAPHERS, modelJob, noteGig } from './model'
 import { agencyRows, motherPct } from './model-agency'
-import { MODEL_SPEC, castPlan, lookValue, marketFactor, scoreOf } from './model-core'
+import { MODEL_SPEC, castPlan, lookValue, marketFactor, scoreOf, strainNext } from './model-core'
 import { BRAND_TIERS, CIRCUITS, FOCUS, FOCUSES, KINDS, KIND_IDS, SEASON_CAP, TIER_FEE, TIER_REQ, circuitsAt, housePool, kindLabel, kindOpen, tierIndex } from './model-data'
+import { injuryOdds } from './model-events'
 import { modelStore, payOut, readContract, type Focus, type Kind, type MdOffer, type ModelState, type Season } from './model-state'
 import { totalFollowers } from './social'
 
@@ -602,6 +603,15 @@ function focusMenu(): MenuGroup {
   }
 }
 
+/** The strain the next settle will make of the work booked so far: its days and abroad shows, less the rest and the plan taken this year. */
+function projectedStrain(g: GameState, s: ModelState): number {
+  const booked = boardOf(g, s).filter((o) => o.status === 'booked')
+  const days = booked.reduce((n, o) => n + o.days, 0)
+  const trips = booked.filter((o) => o.abroad && KINDS[o.kind]?.show === true).length
+  const rest = (s.restYear === g.year ? 30 : 0) + (s.planYear === g.year ? 15 : 0)
+  return strainNext(s.strain, days, trips, rest)
+}
+
 function restMenu(): MenuGroup {
   return {
     type: 'menu',
@@ -612,8 +622,9 @@ function restMenu(): MenuGroup {
     subtitle: 'Ease your workload',
     header: () => 'A heavy calendar builds up workload. Rest and a recovery plan ease it at the next year end.',
     hint: (g) => {
-      const strain = view(g).strain
-      return strain > 40 ? (honest(g, 'Modeling', `Injury risk this year at your workload: ${oddsText(Math.min(0.29, 0.02 + 0.006 * Math.max(0, strain - 55)))}.`).hint ?? null) : null
+      const s = view(g)
+      const p = injuryOdds(g, s, projectedStrain(g, s))
+      return p >= 0.025 ? (honest(g, 'Modeling', `Injury risk this year at your workload: ${oddsText(p)}.`).hint ?? null) : null
     },
     children: () => [
       row({

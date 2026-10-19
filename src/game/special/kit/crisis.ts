@@ -70,6 +70,12 @@ export interface CrisisDef<S extends CareerBase, D extends Record<string, Json>>
 export interface CrisisSet<S extends CareerBase> {
   /** True when a crisis was queued. False when the budget, a cool-down, the pending cap or the roll said no. */
   offer(c: CareerCtx<S>): boolean
+  /**
+   * The chance that crisis `id` is the one offered at the settle of `year` (default next year's), from the state as it
+   * stands: the offer roll times its share of the eligible weights, 0 when it is not eligible. Pure. The popup room
+   * (budget and pending cap) is not counted.
+   */
+  odds(g: GameState, s: S, id: string, year?: number): number
 }
 
 /** Chance of an offer per active career-year, drawn from g.rng after the settle marker. */
@@ -192,11 +198,19 @@ export function defineCrises<S extends CareerBase>(o: {
   }
   for (const def of defs) defineScript(scriptOf(def.id), (g, choice, data) => resolve(def, g, choice, data))
 
+  const eligibleAt = (g: GameState, s: S, year: number): CrisisDef<S, any>[] => defs.filter((def) => def.weight(g, s) > 0 && (s.cool[coolKey(def.id)] ?? -1) < year)
+
   return {
+    odds(g, s, id, year = g.year + 1) {
+      const eligible = eligibleAt(g, s, year)
+      const mine = eligible.find((def) => def.id === id)
+      const total = eligible.reduce((n, def) => n + Math.max(0, def.weight(g, s)), 0)
+      return mine && total > 0 ? CRISIS_ODDS * (Math.max(0, mine.weight(g, s)) / total) : 0
+    },
     offer(c) {
       const g = c.g
       if (!choiceRoom(c)) return false
-      const eligible = defs.filter((def) => def.weight(g, c.s) > 0 && (c.s.cool[coolKey(def.id)] ?? -1) < c.year)
+      const eligible = eligibleAt(g, c.s, c.year)
       if (eligible.length === 0 || !chance(g, CRISIS_ODDS)) return false
       const def = weightedPick(g, eligible, (x) => x.weight(g, c.s))
       const d = def.make(g, c.s, seeded(`${familySeed(g)}|crisis|${career}.${def.id}|${c.year}${outcomeTag(g, c.year)}`))

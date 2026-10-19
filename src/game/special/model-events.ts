@@ -503,3 +503,11 @@ const pressStorm: Def<NoData> = {
 export const MODEL_DEFS: readonly CrisisDef<ModelState, any>[] = [agencyApproach, windowConflict, injury, testShoot, rumor, youngerFaces, likenessLicence, pressStorm]
 
 export const modelCrises: CrisisSet<ModelState> = defineCrises({ career: 'model', store: modelStore, talent: 'Modeling', defs: MODEL_DEFS })
+
+/**
+ * The chance an injury is offered at the next settle, if the workload is `strain` by then: the kit's offer roll times the
+ * injury's share of the eligible weights, which is not strainRisk itself (that is only the weight). Pure.
+ */
+export function injuryOdds(g: GameState, s: ModelState, strain: number): number {
+  return modelCrises.odds(g, { ...s, strain }, 'injury')
+}

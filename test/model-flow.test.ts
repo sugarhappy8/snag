@@ -7,7 +7,7 @@ import { ACTION_BUDGET, careerCtx, setCareerAudit, type CareerCtx } from '../src
 import { modelCareerMenu, modelJobNodes } from '../src/game/special/model'
 import { RENEWAL_SCRIPT, agencyBlock, ensureContract, releaseFee, signWith, switchAgency } from '../src/game/special/model-agency'
 import { boardOf, castBlock, castOffer, focusChange, modelRows, offerSabotage, portfolioShoot, recoveryPlan, restSeason, sabotageTargets, SABOTAGE_SCRIPT } from '../src/game/special/model-board'
-import { lookValue, MODEL_SPEC, scoreOf, strainRisk } from '../src/game/special/model-core'
+import { lookValue, MODEL_SPEC, scoreOf } from '../src/game/special/model-core'
 import { modelStore, readContract, type MdOffer, type ModelState } from '../src/game/special/model-state'
 import type { ChoiceModal, GameState, Json, MenuAction, MenuNode, ModalItem } from '../src/game/types'
 import { assertCareersClean, assertMenuPure, careerRoots, nextYear, playCareer } from './career-kit'
@@ -426,18 +426,86 @@ describe('model levers', () => {
     expect(state(g)).toBe(before)
   })
 
-  it('eases strain next year after a rest and shows the injury risk only above strain 40', () => {
+  it('eases strain next year after a rest, and the injury hint follows the strain the settle will make of the booked work', () => {
     const { g, s } = signed()
-    s.strain = 60
+    s.strain = 90
+    s.board = { year: g.year, items: Array.from({ length: 8 }, (_, i) => offer({ id: `b${i}`, fee: 100, days: 6, status: 'booked', terms: { agency: 'Silhouette Models', commission: 22, mother: 0 } })) }
     const rest = jobRow(g, 'model.rest.season')
     expect(rest.disabledReason?.(g)).toBeNull()
     const menu = modelRows(g).find((n) => n.type === 'menu' && n.id === 'model.rest')
-    expect(menu && menu.type === 'menu' ? menu.hint?.(g) : null).toBeNull() // no talent
+    const hint = (): string | null => (menu && menu.type === 'menu' ? (menu.hint?.(g) ?? null) : null)
+    expect(hint()).toBeNull() // no talent
     g.character.talent = 'Modeling'
-    const text = menu && menu.type === 'menu' ? menu.hint?.(g) : null
-    expect(text).toContain(`about ${Math.round(strainRisk(60) * 20) * 5}%`)
-    s.strain = 20
-    expect(menu && menu.type === 'menu' ? menu.hint?.(g) : null).toBeNull()
+    const text = hint()
+    expect(text).toMatch(/Injury risk this year at your workload: about \d+%\.$/)
+    // a rest season and a plan ease the workload the settle will see, so the risk the hint prints can only fall
+    const pct = (x: string | null): number => (x === null ? 0 : Number(/about (\d+)%/.exec(x)?.[1]))
+    const before = pct(text)
+    expect(before).toBeGreaterThan(0)
+    s.restYear = g.year
+    s.planYear = g.year
+    expect(pct(hint())).toBeLessThan(before)
+  })
+
+  describe('the injury hint is a probability', () => {
+    /** A 1995 life signed to Silhouette Models with a book of 5 and one open casting: injury is the only crisis that can be offered. */
+    function soloInjury(strain: number, seed: number): { g: GameState; s: ModelState } {
+      const { g, s } = signed({ seed })
+      s.book = 5
+      s.rep = 50
+      s.strain = strain
+      s.board = { year: g.year, items: [offer({ id: 'only', fee: 100, days: 1 })] }
+      g.character.talent = 'Modeling'
+      return { g, s }
+    }
+    const hintOf = (g: GameState): number => {
+      const menu = modelRows(g).find((n) => n.type === 'menu' && n.id === 'model.rest')
+      const text = menu && menu.type === 'menu' ? (menu.hint?.(g) ?? null) : null
+      const m = /about (\d+)%/.exec(text ?? '')
+      if (!m) throw new Error(`no injury hint: ${text}`)
+      return Number(m[1]) / 100
+    }
+    /** How often the real settle offers the injury across many seeds of the same life. */
+    function offerRate(strain: number, n: number, tweak?: (f: { g: GameState; s: ModelState }) => void): number {
+      let hits = 0
+      for (let seed = 1; seed <= n; seed++) {
+        const f = soloInjury(strain, 5)
+        tweak?.(f)
+        f.g.rng = seed * 7919
+        nextYear(f.g)
+        if (f.g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'career.model.injury')) hits++
+      }
+      return hits / n
+    }
+
+    it('prints the share the kit really offers: the 35% roll when nothing else is eligible, at any strain', () => {
+      for (const strain of [20, 83]) {
+        const { g } = soloInjury(strain, 5)
+        const printed = hintOf(g)
+        const real = offerRate(strain, 500)
+        expect(Math.abs(printed - real), `strain ${strain}: hint ${printed}, real ${real}`).toBeLessThan(0.06)
+      }
+    })
+
+    it('shares the odds with the other eligible crises and counts the work already booked', () => {
+      const heavy = (f: { g: GameState; s: ModelState }): void => {
+        f.s.book = 60 // a test shoot is eligible too
+        f.s.board = { year: f.g.year, items: Array.from({ length: 8 }, (_, i) => offer({ id: `b${i}`, fee: 100, days: 6, status: 'booked', terms: { agency: 'Silhouette Models', commission: 22, mother: 0 } })) }
+      }
+      const f = soloInjury(90, 5)
+      heavy(f)
+      const printed = hintOf(f.g)
+      const real = offerRate(90, 500, heavy)
+      expect(printed).toBeGreaterThanOrEqual(0.05)
+      expect(Math.abs(printed - real), `hint ${printed}, real ${real}`).toBeLessThan(0.06)
+    })
+
+    it('says nothing when the injury cannot be offered (a cool-down, or no casting to cancel)', () => {
+      const { g, s } = soloInjury(83, 5)
+      s.cool['crisis.injury'] = g.year + 5
+      const menu = modelRows(g).find((n) => n.type === 'menu' && n.id === 'model.rest')
+      expect(menu && menu.type === 'menu' ? (menu.hint?.(g) ?? null) : 'no menu').toBeNull()
+    })
   })
 
   it('targets one of the three nearest rivals above you and drops them from this year shortlists', () => {
