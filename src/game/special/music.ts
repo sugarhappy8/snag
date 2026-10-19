@@ -9,6 +9,7 @@ import { musicMastersMenu, yearlyMusicRights } from './music-rights'
 import { CERTS, GENRES, RELEASE_TYPES, genresAt, subgenresAt } from './music-data'
 import { type RosterEntry, cooled, endDeal, labelNamed, labelsAt, offerDeal } from './music-label'
 import { bookRelease } from './music-market'
+import { musicNodes } from './music-menu'
 import { musicStore } from './music-state'
 import { tourAction } from './music-tour'
 import { careerCtx, emitBooks } from './kit/year'
@@ -575,6 +576,9 @@ function discographyMenu(): MenuGroup {
     subtitle: (g) => `${viewMusic(g).discography.length} release${viewMusic(g).discography.length === 1 ? '' : 's'}`,
     children: (g): MenuNode[] => {
       const p = viewMusic(g)
+      const sim = musicStore.view(g)
+      // The chart peak of a release: the ledger row with its title in the year it came out (a legacy release has none).
+      const peakOf = (r: Release): number => sim.ledger.find((x) => x.title === r.title && x.year === g.year - (g.character.age - r.age))?.peak ?? 0
       const nodes: MenuNode[] = []
       if (p.discography.length === 0) nodes.push({ type: 'info', id: 'music.d.none', text: 'No releases yet.' })
       p.discography
@@ -585,10 +589,11 @@ function discographyMenu(): MenuGroup {
             type: 'info',
             id: `music.d.${i}`,
             emoji: r.cert === 'Diamond' ? '\u{1F48E}' : r.cert ? '\u{1F4C0}' : '\u{1F4BF}',
-            text: `"${r.title}" · ${r.type} (${r.subgenre}) · age ${r.age} · ${compact(r.sold)} sold${r.cert ? ` · ${r.cert}` : ''} · ${short(r.earned)}`,
+            text: `"${r.title}" · ${r.type} (${r.subgenre}) · age ${r.age} · ${compact(r.sold)} sold${r.cert ? ` · ${r.cert}` : ''} · ${short(r.earned)}${peakOf(r) > 0 ? ` · #${peakOf(r)}` : ''}`,
           }),
         )
       p.awards.forEach((a, i) => nodes.push({ type: 'info', id: `music.a.${i}`, emoji: '\u{1F3C6}', text: a }))
+      sim.awards.forEach((a, i) => nodes.push({ type: 'info', id: `music.sa.${i}`, emoji: '\u{1F3C6}', text: a }))
       return nodes
     },
   }
@@ -626,6 +631,7 @@ export function musicJobNodes(g: GameState): MenuNode[] {
       emoji: INSTRUMENT_EMOJI[d.instrument] ?? '\u{1F3B5}',
       text: `${artistName(g)} · ${d.genre} · Popularity ${d.popularity}%${d.mode === 'solo' && d.label ? ` · ${d.label} (${d.contractYears} year${d.contractYears === 1 ? '' : 's'} left)` : ''}`,
     },
+    ...musicNodes(g),
     {
       type: 'action',
       id: 'music.album',

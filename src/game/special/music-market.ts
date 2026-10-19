@@ -218,7 +218,8 @@ export interface Booked {
 }
 
 const ROW_TYPES: readonly LedgerRow['type'][] = ['studio', 'single', 'live', 'compilation']
-const UNSIGNED_RATE = 0.21
+/** The artist's share of net with no label deal (the menus read it too). */
+export const UNSIGNED_RATE = 0.21
 const UNSIGNED_REACH = 0.85
 /** The legacy tail the discography keeps: 15% of the share, halving yearly (music.ts). */
 const LEGACY_TAIL = 0.15
