@@ -14,6 +14,7 @@
 // (setting it too would charge the preference twice in exit.ts).
 import { DEEP_TECH_IDS, type Industry } from '../data/markets'
 import type { Json } from '../types'
+import { CAP_IDS, isCapId, type CapMap } from './ai-bench-data'
 import { clampN, money, num, rec, str } from './util'
 
 export type DeepTechIndustry = (typeof DEEP_TECH_IDS)[number]
@@ -30,8 +31,11 @@ export function isDeepTech(b: { industry: Industry | string }): boolean {
 // ---------------------------------------------------------------------------
 // Types
 
-/** Bumped whenever TechState gains fields, so techOf() re-normalizes states saved before. */
-export const TECH_VERSION = 3
+/**
+ * Bumped whenever TechState gains fields, so techOf() re-normalizes states saved before. Version 4 is the
+ * AI Lab 2.0 release (rating, held, caps, firsts); Silicon 2.0 adds its fields under 4 without bumping again.
+ */
+export const TECH_VERSION = 4
 export const MAX_TECH_SEQUENCE = 999_999_999
 
 /** Funding stages: index = TechState.series. */
@@ -111,6 +115,10 @@ export interface AiModel {
   score: number
   open: boolean
   year: number
+  /** Rating in each capability open in `year` (ai-bench.ts); missing on models trained before 2012 or before 4.0. */
+  rating?: CapMap
+  /** Held back at release: not sold, not scored, no first, no catch-up. */
+  held?: true
 }
 
 /** A government or anchor-customer contract: yearly revenue for a few years. */
@@ -181,6 +189,10 @@ export interface TechState {
   /** AI: GPU clusters rented from a cloud provider. */
   rented: number
   models: AiModel[]
+  /** AI: research levels from finished capability programs, 0-20 each. */
+  caps: CapMap
+  /** AI: the world firsts this lab holds, `${CapId}.${1|2|3}`, at most 24. */
+  firsts: string[]
   /** 0-100: safety culture (AI, robotics, EVs, biotech): fewer incidents and recalls. */
   safety: number
   drugs: Drug[]
@@ -325,14 +337,65 @@ function readDrug(x: Record<string, Json>): Drug | null {
   }
 }
 
+/** Known capabilities with a finite value that rounds into 1 to 5000; null when nothing is left. */
+function readRating(v: Json | undefined): CapMap | null {
+  const x = rec(v)
+  if (!x) return null
+  const out: CapMap = {}
+  let any = false
+  for (const k of Object.keys(x)) {
+    const n = x[k]
+    if (!isCapId(k) || typeof n !== 'number' || !Number.isFinite(n)) continue
+    const r = Math.round(n)
+    if (r < 1 || r > 5000) continue
+    out[k] = r
+    any = true
+  }
+  return any ? out : null
+}
+
 function readModel(x: Record<string, Json>): AiModel | null {
+  const rating = readRating(x.rating)
   return {
     gen: Math.max(1, Math.round(num(x.gen, 1))),
     name: str(x.name, 'Model'),
     score: clampN(num(x.score, 40), 0, 100),
     open: x.open === true,
     year: Math.round(num(x.year)),
+    ...(rating ? { rating } : {}),
+    ...(x.held === true ? { held: true as const } : {}),
   }
+}
+
+/** Research levels: known capabilities, whole numbers 0 to 20, zeros dropped. */
+function readCaps(v: Json | undefined): CapMap {
+  const x = rec(v)
+  const out: CapMap = {}
+  if (!x) return out
+  for (const k of Object.keys(x)) {
+    if (!isCapId(k)) continue
+    const n = clampN(Math.round(num(x[k])), 0, 20)
+    if (n > 0) out[k] = n
+  }
+  return out
+}
+
+const FIRST_KEY = /^([a-z]+)\.([123])$/
+
+/** World-first keys this lab holds: `${CapId}.${1|2|3}`, unique, in saved order, at most 24. */
+function readFirsts(v: Json | undefined): string[] {
+  if (!Array.isArray(v)) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const k of v) {
+    if (out.length >= CAP_IDS.length * 3) break
+    if (typeof k !== 'string' || seen.has(k)) continue
+    const m = FIRST_KEY.exec(k)
+    if (!m || !isCapId(m[1])) continue
+    seen.add(k)
+    out.push(k)
+  }
+  return out
 }
 
 function readContract(v: Json | undefined): TechContract | null {
@@ -405,6 +468,8 @@ export function readTech(v: Json | undefined): TechState {
     yieldRate: clampN(num(d.yieldRate, 0.55), 0.3, 0.97),
     rented: clampN(Math.round(num(d.rented)), 0, 40),
     models,
+    caps: readCaps(d.caps),
+    firsts: readFirsts(d.firsts),
     safety: clampN(num(d.safety, 40), 0, 100),
     drugs,
     tests: Math.max(0, Math.round(num(d.tests))),

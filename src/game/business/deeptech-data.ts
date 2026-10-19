@@ -3,7 +3,8 @@
 // regulators, space agencies, export controls). Pure data and small pure helpers: no game state
 // is touched here. US dollars at US prices; deeptech-core.ts scales them to each market.
 import type { DegreeKind } from '../types'
-import { MAX_SERIES, nextDrugId, timesDone, type DeepTechIndustry, type TechState } from './deeptech-state'
+import { modelStrength } from './ai-bench'
+import { MAX_SERIES, nextDrugId, timesDone, type AiModel, type DeepTechIndustry, type TechState } from './deeptech-state'
 
 // ---------------------------------------------------------------------------
 // Commercial ladders
@@ -385,11 +386,37 @@ export function nodeCap(t: TechState, countryId: string): number {
   return 3
 }
 
-/** The best (highest-scoring) model a lab has. */
-export function bestModel(t: TechState): { gen: number; score: number; name: string; open: boolean } | null {
-  let best: TechState['models'][number] | null = null
-  for (const m of t.models) if (!best || m.score > best.score) best = m
+/** True when a model carries ratings (older saves and models before 2012 don't). */
+function isRated(m: AiModel): boolean {
+  return m.rating !== undefined && modelStrength(m) > 0
+}
+
+/**
+ * The strongest of some models: rated models outrank unrated ones and compare by rating strength (scores
+ * from different test generations aren't comparable); unrated models compare by score; ties keep the earlier.
+ */
+function strongest(models: readonly AiModel[]): AiModel | null {
+  let best: AiModel | null = null
+  let bestStrength = 0
+  for (const m of models) {
+    const rated = isRated(m)
+    const strength = rated ? modelStrength(m) : 0
+    if (!best) { best = m; bestStrength = strength; continue }
+    const bestRated = isRated(best)
+    const beats = rated !== bestRated ? rated : rated ? strength > bestStrength : m.score > best.score
+    if (beats) { best = m; bestStrength = strength }
+  }
   return best
+}
+
+/** The best model a lab has released: held models don't count, so a lab with only held models has none. */
+export function bestModel(t: Pick<TechState, 'models'>): AiModel | null {
+  return strongest(t.models.filter((m) => !m.held))
+}
+
+/** The best released model that existed by `year` (its own `year` is at or before it). */
+export function bestModelAsOf(t: Pick<TechState, 'models'>, year: number): AiModel | null {
+  return strongest(t.models.filter((m) => !m.held && m.year <= year))
 }
 
 export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {

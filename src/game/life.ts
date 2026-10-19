@@ -50,6 +50,7 @@ import { successionEstateUnits } from './business/nepo-inheritance'
 import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
+import { benchWorldFlags } from './business/ai-bench-claims'
 import { heavyWorldFlags } from './business/heavy-rd'
 import { waveWorldFlags } from './business/tech-waves'
 import { bizOf, readBiz, type Manager } from './business/state'
@@ -1529,6 +1530,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...heavyWorldFlags(n),
     // Tech waves and the settled factors they left are world state too (validated on the way through).
     ...waveWorldFlags(n),
+    // AI firsts are world state: an heir can't claim a milestone the family already reached.
+    ...benchWorldFlags(n),
   }
   inheritRoyalStatus(n, heirP)
   // An heir already serving as group CEO keeps that appointment, now as the playable chair.
