@@ -34,6 +34,7 @@ import {
   runwayYears,
   sellable,
   sideRevenue,
+  siliconOf,
   techFunds,
   techOf,
   techPlan,
@@ -42,6 +43,7 @@ import {
 import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
 import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
+import { bookSilicon, pendingBrandStep } from './silicon'
 import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
 import { deepWaveFor } from './tech-wave-data'
@@ -70,6 +72,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     if (best.production > 0) {
       b.price = round2(Math.max(0.01, best.price * (1 + (rand(g) - 0.5) * 2 * slop)))
       b.production = Math.max(0, Math.round(best.production * (1 + (rand(g) - 0.5) * slop)))
+      // The pricing policy caps the slopped price too (after both draws, so the random stream is unchanged).
+      if (best.limit !== undefined) b.price = round2(Math.max(0.01, Math.min(b.price, best.limit)))
     } else b.production = 0
   }
 
@@ -96,7 +100,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     }
   }
 
-  const revenue = sold * b.price
+  // What a unit sells for across the chip lanes (the headline price when none is discounted).
+  const revenue = sold * plan.mix
   const salesTax = (revenue * plan.taxRate) / (1 + plan.taxRate)
   const side = sideRevenue(b, t, year)
   const netRevenue = revenue - salesTax + side.total
@@ -197,7 +202,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     sold,
     produced,
     spoiled: leftover - inventoryEnd,
-    price: round2(b.price),
+    price: round2(plan.mix),
     revenue: dollars(revenue + side.total),
     salesTax: dollars(salesTax),
     netRevenue: dollars(netRevenue),
@@ -220,6 +225,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     employees,
   }
   b.last = stmt
+  bookSilicon(b, t, year, plan, stmt)
 
   // Tell the CEO what the lab did; managed companies just get a line in the log.
   afterResearch(g, a, b, t, rd0.headlines, rd0.newModel, stageBefore, runs, rd0.won, rd0.approved)
@@ -363,7 +369,9 @@ export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void
   const ind = dtInd(b)
   // Product quality follows the tech; the brand follows the buzz.
   b.quality = Math.round(clampN(b.quality * 0.6 + (35 + t.level * 0.6) * 0.4, 0, 100))
-  b.brand = Math.round(clampN(b.brand + (t.hype - 40) / 20, 0, 100))
+  // Chip goodwill (Silicon 2.0) adds its brand step once for each booked year; hype is never touched by price.
+  const step = pendingBrandStep(t)
+  b.brand = Math.round(clampN(b.brand + (t.hype - 40) / 20 + step, 0, 100))
   // Everyone else keeps improving: stand still and you fall behind.
   const rdSpend = t.last?.rd ?? 0
   const gain = Math.min(4, Math.log10(1 + rdSpend / (1_000_000 * rdScale(b.countryId))) * 1.2)
@@ -396,6 +404,8 @@ export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void
   // Investors who control the board and run out of patience (t.pressure) replace the CEO in the
   // board's yearly review (business/board.ts boardYear), with everything else the board weighs.
   ipoCheck(g, a, b, t)
+  // The brand step above counted for this booked year, so it never counts twice. Kept last: the steps before it still see the year as pending.
+  if (t.silicon?.last && t.silicon.applied < t.silicon.last.year) siliconOf(t).applied = t.silicon.last.year
 }
 
 function ipoCheck(g: GameState, a: Asset, b: BizState, t: TechState): void {
