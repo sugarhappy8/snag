@@ -10,6 +10,7 @@ import { CERTS, GENRES, RELEASE_TYPES, genresAt, subgenresAt } from './music-dat
 import { type RosterEntry, cooled, endDeal, labelNamed, labelsAt, offerDeal } from './music-label'
 import { bookRelease } from './music-market'
 import { musicStore } from './music-state'
+import { tourAction } from './music-tour'
 import { careerCtx, emitBooks } from './kit/year'
 import {
   type ContractOffer,
@@ -458,41 +459,6 @@ const concertScript = defineScript('special.music.concert', (g, choice) => {
     : pick(g, ['The sound system kept squealing.', 'You forgot the words to your own song.', 'Half the crowd left during the slow songs.'])
   say(g, 'Concert', `You played ${venueLabel(g, venue.name)} in front of ${attendance.toLocaleString('en-US')} fans. ${vibe} You earned ${money(share)}.`, '\u{1F3A4}', good ? 'good' : 'neutral')
 })
-
-const tourAction: MenuAction = {
-  type: 'action',
-  id: 'music.tour',
-  label: 'Tour',
-  emoji: '\u{1F30D}',
-  subtitle: 'Go on a world tour',
-  disabledReason: (g) => blocked(g, 0),
-  run: (g) => {
-    const job = musicJob(g)
-    if (!job) return
-    const d = md(job)
-    if (d.popularity < 15) return say(g, 'Tour', `${d.mode === 'band' ? 'Promoters' : `${d.label ?? 'Your label'}`} said nobody would buy tickets yet. Build your popularity first.`, '\u{1F30D}', 'bad')
-    if (!useYearAction(g, 'music.tour', 1)) return tell(g, 'Tour', "You're already exhausted from this year's tour.", '\u{1F971}')
-    const c = g.character
-    const cities = Math.max(5, Math.round(d.popularity / 2 + randInt(g, 0, 20)))
-    const gross = Math.round(d.popularity ** 2 * cities * (20 + rand(g) * 40))
-    const share = d.mode === 'band' ? Math.round(gross / Math.max(1, d.members)) : gross
-    earnIncome(g, share)
-    musicProfile(g).tours += 1
-    d.popularity = clamp100(d.popularity + randInt(g, 2, 5))
-    addFame(g, 2)
-    addStat(g, 'health', -randInt(g, 3, 8))
-    addStat(g, 'happiness', 8)
-    if (c.age >= 75) g.flags['special.music.tour75'] = true
-    log(g, `I went on a ${cities}-city world tour.`, 'good')
-    const chaos = pick(g, [
-      'Your tour bus broke down in the middle of nowhere twice.',
-      'A fan proposed to you on stage. You said "maybe".',
-      'You crowd-surfed in four countries.',
-      'You lost your voice in the middle of the tour and lip-synced three shows.',
-    ])
-    say(g, 'World Tour', `You played ${cities} cities on your world tour and earned ${money(share)}${d.mode === 'band' ? ' as your share' : ''}. ${chaos}`, '\u{1F30D}', 'good')
-  },
-}
 
 // ---------------------------------------------------------------------------
 // Band management
