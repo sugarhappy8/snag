@@ -7,6 +7,9 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { ageCeiling } from '../mastery'
+// The model-*.ts files are used inside function bodies only: they import this file back.
+import { freelanceBlock } from './model-agency'
+import { bookFreelance, modelRows, modelStanding, offerSabotage } from './model-board'
 import { addFame, blocked, bump, claimYearly, clamp100, fameOf, fameToward, flagSkill, hire, leave, masterFlagSkill, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, tell, view, withHint, yearlyList } from './common'
 
 interface Agency {
@@ -217,6 +220,8 @@ function genFreelance(g: GameState): Gig[] {
 
 const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
   if (choice === 'cancel') return
+  const closed = freelanceBlock(g)
+  if (closed) return tell(g, 'Freelance Gigs', closed, '\u{1F4F8}')
   const gigs = yearlyList<Gig>(g, 'model.freelance', () => genFreelance(g))
   const idx = Number(choice)
   const gig = gigs[idx]
@@ -229,7 +234,7 @@ const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
     log(g, `I didn't book the ${gig.name.toLowerCase()} gig.`, 'bad')
     return say(g, 'Casting', pick(g, [`The casting director for the ${gig.name.toLowerCase()} said you weren't the look they wanted.`, `You showed up to the ${gig.name.toLowerCase()} casting and were told to "work on your angles".`, `You lost the ${gig.name.toLowerCase()} gig to someone's cousin.`]), gig.emoji, 'bad')
   }
-  earnIncome(g, gig.pay)
+  if (!bookFreelance(g, gig.name, gig.pay)) earnIncome(g, gig.pay)
   modelProfile(g).gigs += 1
   count(g, 'modelGigs')
   addStat(g, 'happiness', 4)
@@ -244,8 +249,10 @@ const freelanceAction: MenuAction = {
   label: 'Freelance Gigs',
   emoji: '\u{1F4F8}',
   subtitle: 'Audition for one-off modeling gigs',
-  disabledReason: (g) => blocked(g, 16),
+  disabledReason: (g) => blocked(g, 16) ?? freelanceBlock(g),
   run: (g) => {
+    const closed = freelanceBlock(g)
+    if (closed) return tell(g, 'Freelance Gigs', closed, '\u{1F4F8}')
     const gigs = yearlyList<Gig>(g, 'model.freelance', () => genFreelance(g))
     if (gigs.length === 0) return tell(g, 'Freelance Gigs', 'There are no more castings this year.', '\u{1F4F8}')
     scriptChoice(
@@ -339,7 +346,7 @@ const BOOKINGS: { id: string; label: string; emoji: string; minRank: number; mul
   { id: 'campaign', label: 'Luxury brand campaign', emoji: '\u{1F48E}', minRank: 3, mult: 0.4, fame: 5 },
 ]
 
-const bookingScript = defineScript('special.model.booking', (g, choice) => {
+export const bookingScript = defineScript('special.model.booking', (g, choice) => {
   if (choice === 'cancel') return
   const job = modelJob(g)
   const b = BOOKINGS.find((x) => x.id === choice)
@@ -468,22 +475,9 @@ export function modelJobNodes(g: GameState): MenuNode[] {
   if (!job) return []
   return [
     { type: 'info', id: 'model.status', emoji: '\u{1F483}', text: `${job.title} at ${job.company} · Performance ${job.performance}% · Modeling skill ${modelingSkill(g)}%` },
-    {
-      type: 'action',
-      id: 'model.book',
-      label: 'Book a Gig',
-      emoji: '\u{1F4C5}',
-      subtitle: 'Work a job your agency lined up',
-      disabledReason: (gg) => blocked(gg, 0),
-      run: (gg) => {
-        const j = modelJob(gg)
-        if (!j) return
-        const options = BOOKINGS.filter((b) => b.minRank <= j.level)
-        scriptChoice(gg, bookingScript, 'Bookings', 'Your agent has these jobs for you. Which one do you want?', [...options.map((b) => ({ id: b.id, label: b.label, emoji: b.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
-          emoji: '\u{1F4C5}',
-        })
-      },
-    },
+    // the Season Board (model.board) replaces the one-roll 'Book a Gig' row
+    ...modelRows(g),
+    modelStanding,
     freelanceAction,
     {
       type: 'action',
@@ -502,7 +496,10 @@ export function modelJobNodes(g: GameState): MenuNode[] {
       emoji: '\u{1F608}',
       subtitle: "Ruin a rival model's day",
       disabledReason: (gg) => blocked(gg, 0),
-      run: (gg) => scriptChoice(gg, sabotageScript, 'Sabotage', 'How do you want to get ahead?', SABOTAGE, { emoji: '\u{1F608}' }),
+      // one of the three rivals nearest above you; with none above, the legacy choice
+      run: (gg) => {
+        if (!offerSabotage(gg)) scriptChoice(gg, sabotageScript, 'Sabotage', 'How do you want to get ahead?', SABOTAGE, { emoji: '\u{1F608}' })
+      },
     },
     wardrobeMenu(),
     quitModel,
@@ -521,7 +518,7 @@ export const modelCareerMenu: MenuGroup = {
   },
   children: (g): MenuNode[] => {
     if (modelJob(g)) return [{ type: 'info', id: 'model.already', text: 'You are already signed with an agency. Manage your career from your job.', emoji: '\u{1F483}' }]
-    return [headshotAction, freelanceAction, agencyAction, wardrobeMenu()]
+    return [headshotAction, freelanceAction, agencyAction, ...modelRows(g), modelStanding, wardrobeMenu()]
   },
 }
 

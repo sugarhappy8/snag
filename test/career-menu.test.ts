@@ -282,7 +282,14 @@ describe('playthrough kit, run on the probe career', () => {
     expect(g.character.job?.defId).toBe('probe')
     expect(JSON.stringify(newCareerGame('actor', 4, 'gb', 1980))).toBe(JSON.stringify(g))
     expect(newCareerGame('actor', 5).lifeId).not.toBe(newCareerGame('actor', 6).lifeId)
-    expect(() => newCareerGame('model', 1)).toThrow(/model/)
+    // a career with no registered setup throws: model has one now, so take it out for the check
+    const registered = CAREER_SETUPS.model
+    delete CAREER_SETUPS.model
+    try {
+      expect(() => newCareerGame('model', 1)).toThrow(/model/)
+    } finally {
+      CAREER_SETUPS.model = registered
+    }
   })
 
   it('nextYear bumps year and age, clears yearActions and then runs the hook', () => {

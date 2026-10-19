@@ -12,7 +12,9 @@ import { hasScript, runScript } from '../src/game/scripts'
 import { yearlySpecial } from '../src/game/special'
 import { actorCareerMenu, actorJobNodes } from '../src/game/special/actor'
 import { astronautCareerMenu, astronautJobNodes } from '../src/game/special/astronaut'
+import { modelCareerMenu, modelJobNodes } from '../src/game/special/model'
 import { actorStore, adoptLegacy } from '../src/game/special/actor-state'
+import { modelStore } from '../src/game/special/model-state'
 import { hire } from '../src/game/special/common'
 import { optionOdds, rollOption, type CrisisDef, type Stance } from '../src/game/special/kit/crisis'
 import { int, readRows, rec, type CareerBase } from '../src/game/special/kit/state'
@@ -175,6 +177,21 @@ export const CAREER_SETUPS: Partial<Record<CareerId, CareerSetup>> = {
     },
     roots: (g) => [astronautCareerMenu, ...astronautJobNodes(g)],
     prefer: { steady: /^astro\.drill\./, greedy: /^astro\.drill\./, reckless: /^astro\.drill\./ },
+  },
+  // A Supermodel at the top of the ladder: the legacy hook has nothing left to promote, and fame, mood, buzz and strain
+  // start at the level the sim holds them at, so a year of no input leaves the record as it was (the idle check). The
+  // season board, the contract and the strain are played by test/model-year.test.ts and test/model-flow.test.ts.
+  model: {
+    defId: 'model',
+    stateKey: 'model.sim',
+    hire: (g) => {
+      g.character.stats.looks = 100
+      g.character.hidden.fame = 75
+      hire(g, { defId: 'model', title: 'Supermodel', company: 'Icon Elite', salary: 880_000, level: 4, performance: 100, data: { tier: 3, gigsThisYear: 0, sabotaged: 0 } })
+      Object.assign(modelStore.mut(g), { focus: 'commercial', mood: 100, buzz: 37.5, strain: 0, rep: 50, book: 0 })
+    },
+    roots: (g) => [modelCareerMenu, ...modelJobNodes(g)],
+    prefer: { steady: /^model\.(cast\.|practice$)/, greedy: /^model\.(cast\.|practice$)/, reckless: /^model\.(cast\.|sabotage$|freelance$)/ },
   },
 }
 

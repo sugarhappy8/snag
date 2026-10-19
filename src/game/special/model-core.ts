@@ -6,7 +6,7 @@ import { hasTalent } from '../talents'
 import type { GameState } from '../types'
 import { activeField, standingOf, type RivalSpec } from './kit/rivals'
 import { modelingSkill, viewModel } from './model'
-import { COMMISSION, FLOOR_BONUS, FOCUS, FOCUSES, KINDS, SHELF_YOUNG, TALENT_PRIME, TIER_REQ } from './model-data'
+import { COMMISSION, FLOOR_BONUS, FOCUS, KINDS, SHELF_YOUNG, TALENT_PRIME, TIER_REQ } from './model-data'
 import type { Focus, MdOffer, ModelState } from './model-state'
 import { totalFollowers } from './social'
 
@@ -14,10 +14,14 @@ const fin = (v: unknown, d: number): number => (typeof v === 'number' && Number.
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n))
 const logistic = (x: number): number => 1 / (1 + Math.exp(-x))
 
-/** Rivals: the three focuses are the edges; no field before 1925, then 12 active names. */
+/**
+ * Rivals: the three focuses are the edges; no field before 1925, then 12 active names. The edges are written out
+ * (they are model-data's FOCUSES): model-data and model.ts import each other, so this file reads nothing from
+ * model-data while it loads.
+ */
 export const MODEL_SPEC: RivalSpec = {
   career: 'model',
-  edges: FOCUSES,
+  edges: ['runway', 'editorial', 'commercial'] satisfies readonly Focus[],
   debutAge: [16, 22],
   length: [8, 20],
   field: (year) => (year < 1925 ? 0 : 12),
