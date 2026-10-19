@@ -71,6 +71,18 @@ export const SECTOR_HISTORY: readonly SectorHistoryRow[] = [
 
 // ---- food (Task 3)
 
+/** One part of the day: its share of demand and its share of the seat-hours (spec 4.2). */
+export interface DayPart { name: string; share: number; seat: number }
+/** `amp` is the season swing, `waste` the prep and plate waste, `platform` and `fleet` the share of sales that can go out (fleet 0: none). */
+export interface FoodRow { dayparts: readonly DayPart[]; amp: number; waste: number; platform: number; fleet: number }
+
+export const FOOD: Readonly<Record<'restaurant' | 'foodTruck' | 'cafe' | 'bakery', FoodRow>> = {
+  restaurant: { dayparts: [{ name: 'lunch', share: .28, seat: .30 }, { name: 'dinner', share: .60, seat: .45 }, { name: 'late', share: .12, seat: .25 }], amp: .04, waste: .08, platform: .25, fleet: .15 },
+  foodTruck: { dayparts: [{ name: 'lunch', share: .45, seat: .40 }, { name: 'dinner', share: .45, seat: .40 }, { name: 'late', share: .10, seat: .20 }], amp: .10, waste: .07, platform: .15, fleet: 0 },
+  cafe: { dayparts: [{ name: 'morning', share: .50, seat: .35 }, { name: 'midday', share: .30, seat: .35 }, { name: 'afternoon', share: .20, seat: .30 }], amp: .03, waste: .06, platform: .20, fleet: .10 },
+  bakery: { dayparts: [{ name: 'morning', share: .70, seat: .55 }, { name: 'midday', share: .25, seat: .30 }, { name: 'close', share: .05, seat: .15 }], amp: .02, waste: .12, platform: .15, fleet: .15 },
+}
+
 // ---- care (Task 5)
 
 // ---- util (Task 7)
