@@ -37,7 +37,8 @@ Choose from 55 company sectors. National demand, input costs and customer tastes
 time; study your markets and run up to three local strategy programs per country. Breakthroughs (an
 AI lab's frontier model, a new drug, a reusable rocket, a Workshop first) now move whole markets,
 suppliers grow, rivals follow, the companies they replace lose customers, and hype that ships
-nothing unwinds. Elite CEOs
+nothing unwinds. An AI lab ranks its models against modeled rival labs on a Benchmarks screen,
+and can research vision or coding ahead of the market. Elite CEOs
 bring stronger operating performance and turnaround planning, and ask for an initial 2–10%
 equity grant. Any positive company or conglomerate stake prevents voluntary resignation or
 retirement, even after dilution or skill growth; salary and board dismissal still apply.

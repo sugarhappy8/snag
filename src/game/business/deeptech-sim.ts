@@ -5,6 +5,7 @@
 import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
+import { benchYear } from './ai-bench'
 import { claimFirsts } from './ai-bench-claims'
 import { firstToLead } from './ai-bench-market'
 import { familyId } from './competition-roster'
@@ -17,7 +18,7 @@ import { ceoSkill, citySaturation, cycleOf, densityRent, headOffice, insurancePr
 import { executiveEdge } from './dynamics'
 import { LEADERSHIP } from './leadership'
 import { complexityCost } from './products'
-import { launchText, releaseText } from './deeptech-bench'
+import { launchText, marketNote, releaseText } from './deeptech-bench'
 import { DEEP_TECH, DRUG_AREAS, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
 import {
   PACES,
@@ -473,8 +474,8 @@ export function techMarketNote(g: GameState, b: BizState, t: TechState): string 
   parts.push(...waveLines(g, b, g.year - 1).slice(0, 1))
   if (ind === 'semiconductor') parts.push(`You're on the ${NODES[t.node]} node with ${Math.round(t.yieldRate * 100)}% yields.`)
   if (ind === 'aiLab') {
-    const best = bestModel(t)
-    if (best) parts.push(`${best.name} scores ${best.score}; the frontier is about ${frontierScore(g.year)} and rising.`)
+    const note = marketNote(familyId(g.lifeId), t, benchYear(g))
+    if (note) parts.push(note)
   }
   if (ind === 'spaceTech' && t.stage >= 3) parts.push(`${plural(t.wins, 'successful flight')} so far; customers trust a track record.`)
   const e = localEcon(ind, b.countryId, b.city)

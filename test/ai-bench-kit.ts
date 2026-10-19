@@ -47,6 +47,36 @@ function all(g: GameState, nodes: MenuNode[]): MenuNode[] {
   return nodes.flatMap((n) => (n.type === 'menu' ? [n, ...all(g, n.children(g))] : [n]))
 }
 
+/** Every label, subtitle, hint, disabled reason, header, info text and confirm text in the business view of `a`, the way the menu purity walk of `deeptech.test.ts` reads it. */
+export function menuText(g: GameState, a: Asset): string[] {
+  const text: string[] = []
+  const walk = (nodes: MenuNode[]): void => {
+    for (const n of nodes) {
+      if (n.type === 'heading') text.push(n.label)
+      else if (n.type === 'info') text.push(typeof n.text === 'function' ? n.text(g) : n.text)
+      else {
+        if (n.visible && !n.visible(g)) continue
+        text.push(n.label)
+        const sub = typeof n.subtitle === 'function' ? n.subtitle(g) : n.subtitle
+        if (sub) text.push(sub)
+        const hint = n.hint?.(g)
+        if (hint) text.push(hint)
+        const why = n.disabledReason?.(g)
+        if (why) text.push(why)
+        if (n.type === 'menu') {
+          if (n.header) text.push(n.header(g))
+          walk(n.children(g))
+        } else if (n.confirm) {
+          const c = n.confirm(g)
+          if (c) text.push(c)
+        }
+      }
+    }
+  }
+  walk(businessAssetView(g, a))
+  return text
+}
+
 /** The node `${id}.${a.id}` anywhere in the business view of `a` (any node type). */
 export function node(g: GameState, a: Asset, id: string): MenuNode {
   const n = all(g, businessAssetView(g, a)).find((x) => x.id === `${id}.${a.id}`)

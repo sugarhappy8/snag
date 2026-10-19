@@ -79,7 +79,7 @@ src/
                          match the resolvers; price promises (util.priceCapOf) cap price until booked.
                          ownerTalent(g, b, id): Cooking (+food quality), Leadership (+morale) perks
     business/deeptech*.ts  8 deep-tech industries (DEEP_TECH_IDS): state in Asset.details.tech
-                         (deeptech-state readTech/TECH_VERSION — bump it when TechState gains fields);
+                         (deeptech-state readTech/TECH_VERSION — bump it when TechState gains fields (currently 4));
                          data, core, rd, funding, sim, events, menu, manager, found modules. Investor and
                          grant money sits in TechState.venture (the R&D account), never in b.cash; the
                          valuation nets out investors' 1x preference itself (so BizState.pref stays 0 for
@@ -98,6 +98,9 @@ src/
     business/tech-waves.ts tech-wave-factors.ts tech-wave-data.ts history/tech-waves.ts  Tech waves:
                          breakthrough-class events that move whole company markets together, in flags
                          techWaves and techBase and BizState.wave (see "Tech waves" below)
+    business/ai-bench*.ts scorecard.ts deeptech-bench.ts  AI Lab 2.0: capability ratings and benchmark
+                         generations, the rival lab board, world firsts and the Benchmarks lines (see
+                         "AI lab benchmarks" below)
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
     business/share-classes.ts share-classes-menu.ts  Share classes of the player's company: the votes
@@ -591,6 +594,57 @@ Heirs and saves. `waveWorldFlags` hands the validated waves and settled factors 
 `familyId(g.lifeId)` plus `outcomeTag(g, year)`, never `g.rng`, so heirs share them and a Time Machine
 fork rerolls only the unfinished year. `techWaves`, `techBase` and `BizState.wave` are optional,
 bounded and validated on read, `SAVE_SCHEMA` stays 2, and a life with no company writes none of them.
+
+### AI lab benchmarks (business/ai-bench*.ts, scorecard.ts, deeptech-bench.ts)
+
+An AI lab is scored on eight capabilities (language, coding, vision, speech, reasoning and math, agents,
+robotics control, science), each with a **rating**: an integer where 100 points is one doubling of odds
+against a test. `ai-bench-data.ts` holds the capabilities (weights, the era and delay that open each, and
+stylized anchors up to 2026); `ai-bench.ts` is the roster-free formula layer. `capBest(fam, cap, year)` is
+the best rating in the world: linear between anchors up to `PRESENT_YEAR`, then a seeded drift keyed
+`${fam}|aicap|${cap}|${year}` that slows over time. `benchScore` turns a rating into a 0 to 99 score on
+one **benchmark generation**; `benchHard` starts the first test with the best lab near 67 and retires a
+generation, making the next 300 harder, once the best lab would score above 90 on it. A score can
+therefore fall while a model doesn't change, so cross-year comparisons use ratings, never scores.
+`scorecard.ts` (`scoreRow`, `scoreText`) is a pure, import-free leaf shared with Silicon 2.0: your figure
+against everyone else's, with market mean, best, rank and trend.
+
+The rival board (`ai-bench-market.ts`) is built from the existing `aiLab` roster: `rosterOf`,
+`activeRivals` and `rawPull` pick the labs on the world market (a lab is on the board at a tenth of the
+strongest pull), each lab's rating in a capability is `capBest` minus a gap from its pull and a seeded
+specialty (`aiLab|${id}|${cap}`), and the top lab sits exactly on `capBest`. Real labs carry `modeled`.
+Boards and capability fronts are cached in bounded maps. **Catch-up** is part of the lab's standing, not
+the market: from two years after a released model (one for open weights) every rival rises by the same
+amount so the best rival is within 70 points of it, so a lead is earned and fades. `labLead` is the cheap
+read (composite rating minus the best rival's), `labStanding` the full one with a `ScoreRow` per capability,
+and both read `bestModelAsOf` (the strongest unheld model by that year). Every function takes its year;
+only `benchYear(g)` (the last closed fiscal year) derives one, and menus, the Annual Report note and the
+profile line use it.
+
+Training and demand. `trainWin` keeps its single roll. For a lab in 2012 or later it asks `modelRating`
+(shared with the research hint) for each open capability: `capBest - 320` plus level, generation, compute,
+20 per research level and a seeded model specialty, with no model leading its own year's best by more than
+90. A lab with no `fam`, or a year before 2012, or a model with no rating keeps the old frontier formulas
+untouched. `ProgCtx.rival` hands `trainWin` the best rival of the year without it importing roster code.
+`labLead` drives `competitiveness` (`1 + lead / 190`, clamped) and the premium; `demandScale`, the pitch
+odds and the pitch hint read the same number.
+
+Research tracks. `capProgram(cap)` builds one program per capability (`cap.<id>`: two years, odds 0.65,
+cost `3M x 1.4^level`, `ipShare` 0.3, no `unlocks`). A finished track adds a research level that every
+later model uses. A track is gated on a rated model that covers the capability, `programBlock` allows
+`max(1, floor(maxPrograms / 3))` at once (`trackLimit`), and `bestProgram` never picks one, so the general
+manager and the Lab Report never start research. The Benchmarks menu (`benchMenu`) holds the Research
+submenu, and the lab menu points to it.
+
+Firsts and held models. Three milestones per capability sit above the 2026 market (`capMilestone`,
+`marketYear`). `claimFirsts` runs when a model is released and records `${cap}.${k}` in `flags.aiFirsts`
+(at most 24, validated by `readAiFirsts`, carried to heirs by `benchWorldFlags`), once for the whole
+family and only before the market passes it, with a log line, hype, brand and a wave. A model held at
+release is stored as `held`: it sells nothing, claims nothing, never counts for catch-up, and has its own
+release action. `deeptech-bench.ts` builds every line (rows, series, firsts, the Compute & Models line, the
+report note, the profile clause) so the screens share one source; menus read state and never draw the
+dice. New saved fields (`rating`, `held`, `caps`, `firsts`, `flags.aiFirsts`) are optional and normalized by
+`readModel`, `readTech` and `readAiFirsts`, `TECH_VERSION` is 4 and `SAVE_SCHEMA` stays 2.
 
 ### Nepotism, succession and family employment
 

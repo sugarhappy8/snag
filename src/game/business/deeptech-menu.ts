@@ -8,7 +8,10 @@ import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { claimFirsts } from './ai-bench-claims'
+import { benchYear, capOpen } from './ai-bench'
+import { claimFirsts, readAiFirsts } from './ai-bench-claims'
+import { CAP_IDS, CAPS, isCapId } from './ai-bench-data'
+import { labStanding } from './ai-bench-market'
 import { familyId } from './competition-roster'
 import { localEcon } from './economy'
 import { shareSummary } from './competition'
@@ -22,9 +25,9 @@ import {
   RESTRICTED,
   bestModel,
   drugRegulator,
-  frontierScore,
   maxStage,
   nodeCap,
+  programDef,
   stageName,
   type ProgramDef,
 } from './deeptech-data'
@@ -45,9 +48,10 @@ import {
   techSkill,
   techView,
 } from './deeptech-core'
+import { aiLine, benchRows, firstRows, summaryClause } from './deeptech-bench'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
-import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
+import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
 import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
@@ -219,9 +223,10 @@ function labMenu(a: Asset): MenuGroup {
       }
       nodes.push({ type: 'heading', id: `dt.labH2.${a.id}`, label: 'Start a program' })
       for (const def of PROGRAMS[ind]) {
-        if (def.gate(t, b.countryId) === 'Already done.') continue
+        if (def.track || def.gate(t, b.countryId) === 'Already done.') continue
         nodes.push(programRow(a, def, t))
       }
+      if (ind === 'aiLab') nodes.push({ type: 'info', id: `dt.labBench.${a.id}`, text: 'Capability research is under Benchmarks.', emoji: '\u{1F4CA}' })
       if (ind === 'biotech') nodes.push({ type: 'info', id: `dt.labTrials.${a.id}`, text: 'Clinical trials for your drug candidates are started from the Drug Pipeline.', emoji: '\u{1F48A}' })
       nodes.push({ type: 'heading', id: `dt.labH3.${a.id}`, label: 'R&D pace' })
       const runway = runwayYears(g, a, b, t)
@@ -238,6 +243,56 @@ function labMenu(a: Asset): MenuGroup {
           }),
         )
       }
+      return nodes
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks (AI labs)
+
+/** How many capability tracks the lab is researching right now. */
+function runningTracks(t: TechState): number {
+  return t.programs.filter((p) => programDef('aiLab', p.id)?.track).length
+}
+
+/** Where the lab's models rank against modeled rival labs, plus the capability research that moves them. Every line comes from deeptech-bench.ts. */
+function benchMenu(a: Asset): MenuGroup {
+  return {
+    type: 'menu',
+    id: `dt.bench.${a.id}`,
+    label: 'Benchmarks',
+    emoji: '\u{1F4CA}',
+    subtitle: (g) => {
+      const s = labStanding(familyId(g.lifeId), view(g, a).t, benchYear(g))
+      return s ? `Overall ${s.composite.mine}, rank ${s.composite.rank} of ${s.composite.of}` : 'No rated model yet'
+    },
+    disabledReason: (g) => dtBlock(g, a),
+    children: (g) => {
+      const { t } = view(g, a)
+      const fam = familyId(g.lifeId)
+      const year = benchYear(g)
+      const nodes: MenuNode[] = benchRows(fam, t, year).map((line) => infoNode(a, `bench.${line.id}`, line.text, isCapId(line.id) ? CAPS[line.id].emoji : '\u{1F4CA}'))
+      if (!CAP_IDS.some((c) => capOpen(c) <= year)) return nodes
+      if (labStanding(fam, t, year)) {
+        const firsts = firstRows(fam, t, year, readAiFirsts(g))
+        if (firsts.length) nodes.push({ type: 'heading', id: `dt.benchH1.${a.id}`, label: 'Firsts' }, ...firsts.map((line) => infoNode(a, `bench.${line.id}`, line.text, '\u{1F3C6}')))
+      }
+      nodes.push({
+        type: 'menu',
+        id: `dt.benchRd.${a.id}`,
+        label: 'Research',
+        emoji: '\u{1F9EA}',
+        subtitle: (gg) => {
+          const v = view(gg, a)
+          return `${runningTracks(v.t)} of ${trackLimit(v.b, v.t)} running`
+        },
+        disabledReason: (gg) => dtBlock(gg, a),
+        children: (gg) => {
+          const v = view(gg, a)
+          return CAP_IDS.filter((c) => capOpen(c) <= benchYear(gg)).map((c) => programRow(a, programDef('aiLab', `cap.${c}`)!, v.t))
+        },
+      })
       return nodes
     },
   }
@@ -424,10 +479,9 @@ function chipsNodes(_g: GameState, a: Asset, b: BizState, t: TechState): MenuNod
 }
 
 function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] {
-  const f = frontierScore(g.year)
   const best = bestModel(t)
   const nodes: MenuNode[] = [
-    infoNode(a, 'frontier', `The frontier: about ${f}/100 this year and rising. ${best ? `Your best, ${best.name}, scores ${best.score} (competitiveness ${Math.round(competitiveness(t, g.year, familyId(g.lifeId)) * 100)}%).` : 'You have no model yet.'}`, '\u{1F30C}'),
+    infoNode(a, 'frontier', aiLine(familyId(g.lifeId), t, benchYear(g), g.year), '\u{1F30C}'),
     infoNode(a, 'compute', `Compute: ${plural(t.plant, 'GPU cluster')} owned, ${plural(t.rented, 'cluster')} rented (${money(computeRent(b, t))}/yr)`, '\u{1F5A5}\u{FE0F}'),
   ]
   for (const m of [...t.models].reverse().slice(0, 5)) nodes.push(infoNode(a, `model.${m.gen}`, `${m.name} (${m.year}): score ${m.score} · ${m.held ? 'held back' : m.open ? 'open weights' : 'closed'}`, '\u{1F9E0}'))
@@ -908,7 +962,7 @@ function screenMenu(a: Asset, b0: BizState): MenuGroup {
 /** Extra rows on the company screen under "Run the Company". */
 export function deepTechNodesImpl(g: GameState, a: Asset): MenuNode[] {
   const b = readBiz(g, a)
-  return [labMenu(a), fundingMenu(a), screenMenu(a, b)]
+  return dtInd(b) === 'aiLab' ? [labMenu(a), benchMenu(a), fundingMenu(a), screenMenu(a, b)] : [labMenu(a), fundingMenu(a), screenMenu(a, b)]
 }
 
 /** One status line for the company screen. */
@@ -930,8 +984,8 @@ export function deepTechSummaryImpl(g: GameState, a: Asset): string {
   const ind = dtInd(b)
   const parts = [`deep tech at "${stageName(ind, t.stage)}"`, `tech level ${Math.round(t.level)}/100`, b.public ? 'publicly listed' : `${SERIES[t.series]} startup`]
   if (ind === 'aiLab') {
-    const best = bestModel(t)
-    if (best) parts.push(`best model ${best.name} (score ${best.score})`)
+    const clause = summaryClause(familyId(g.lifeId), t, benchYear(g))
+    if (clause) parts.push(clause)
   }
   if (ind === 'semiconductor') parts.push(`${NODES[t.node]} chips${t.plant ? `, ${plural(t.plant, 'fab')}` : ', fabless'}`)
   if (ind === 'biotech') {
