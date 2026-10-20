@@ -1,0 +1,613 @@
+// Boot: choosing where the save lives, importing the localStorage record of v4.0.2 into IndexedDB,
+// and setting aside every record that can't be played (save-hydrate.ts). The storage is the kit's:
+// a localStorage in memory and a fake IndexedDB that can fail, hang, answer late or corrupt a read.
+import { readFileSync } from 'node:fs'
+import { gzipSync, gunzipSync } from 'node:zlib'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ageUp } from '../src/game/aging'
+import { createNewLife } from '../src/game/life'
+import * as save from '../src/game/save'
+import { idbSaveBackend, memorySaveBackend, SAVE_KEY } from '../src/game/save-backends'
+import { diagnoseRecord, hydrateSaves, newerOf } from '../src/game/save-hydrate'
+import { QUARANTINE_SLOTS } from '../src/game/save-quarantine'
+import { isLoadableGame, migrateSave, SAVE_SCHEMA } from '../src/game/save-schema'
+import {
+  activeBackend,
+  activeBackendName,
+  addSaveNotice,
+  deleteSaveCopy,
+  flushSave,
+  getSaveStatus,
+  primeCache,
+  readRecord,
+  readSaveCopy,
+  resetSaveStoreForTests,
+  savedThisSession,
+  saveRecord,
+  setSaveBackend,
+} from '../src/game/save-store'
+import { decodeSnapshotRecord, encodeSnapshotRecord } from '../src/game/snapshot-codec'
+import type { GameState } from '../src/game/types'
+import { controlledBackend, fakeIndexedDb, memoryLocalStorage } from './save-kit'
+import type { ControlledBackend } from './save-kit'
+
+const [SLOT_1, SLOT_2] = QUARANTINE_SLOTS
+
+/** The schema 1 save of v2.4.0, as the text a store would hold. */
+const fixtureJson = gunzipSync(readFileSync('test/fixtures/save-v1.json.gz')).toString()
+
+// One life at three moments, and another life: built once, so this file stays quick.
+let older: string
+let later: string
+let otherLife: string
+let lifeId: string
+
+beforeAll(() => {
+  const g = createNewLife({ seed: 7, year: 2026 })
+  for (let i = 0; i < 5; i++) {
+    g.queue = []
+    ageUp(g)
+  }
+  g.queue = []
+  older = JSON.stringify(g)
+  lifeId = g.lifeId
+  ageUp(g)
+  g.queue = []
+  later = JSON.stringify(g)
+  const other = createNewLife({ seed: 8, year: 2026 })
+  for (let i = 0; i < 2; i++) {
+    other.queue = []
+    ageUp(other)
+  }
+  other.queue = []
+  otherLife = JSON.stringify(other)
+})
+
+let storage: ReturnType<typeof memoryLocalStorage>
+
+beforeEach(() => {
+  resetSaveStoreForTests()
+  storage = memoryLocalStorage()
+  vi.stubGlobal('localStorage', storage)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
+/** A localStorage that refuses every call, as a browser with storage disabled does. */
+function disabledStorage(): Storage {
+  const denied = (): never => {
+    throw new DOMException('Access denied', 'SecurityError')
+  }
+  return { get length(): number { return denied() }, clear: denied, getItem: denied, key: denied, removeItem: denied, setItem: denied }
+}
+
+/** Timers a hang can be waited out with. The streams of the codec need the real rest. */
+function fakeTimers(): void {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+}
+
+/** Waits for the import to hand its write to `backend` (the codec's gzip streams run on real time). */
+async function writeReaches(backend: ControlledBackend): Promise<void> {
+  const giveUp = Date.now() + 5000
+  while (backend.writes.length === 0 && Date.now() < giveUp) await new Promise<void>((resolve) => setImmediate(resolve))
+  expect(backend.writes).toHaveLength(1)
+}
+
+/** The record the IndexedDB of `factory` holds in the main slot, as stored. */
+async function idbRecord(factory: IDBFactory): Promise<string | null> {
+  return (await idbSaveBackend(factory)).read()
+}
+
+async function putIdbRecord(factory: IDBFactory, record: string): Promise<void> {
+  await (await idbSaveBackend(factory)).write(record)
+}
+
+/** The game a record migrates to, as JSON: what boot stores when it imports `raw`. */
+function migratedJson(raw: string): string {
+  const found = migrateSave(JSON.parse(raw))
+  if (found.kind !== 'ready') throw new Error(`expected a ready save, got ${found.kind}`)
+  return JSON.stringify(found.game)
+}
+
+/** A save a later version of the game wrote. */
+function newerRecord(): string {
+  return JSON.stringify({ ...(JSON.parse(older) as Record<string, unknown>), schemaVersion: SAVE_SCHEMA + 1 })
+}
+
+describe('the first visit', () => {
+  it('uses IndexedDB, has nothing to load, and the first save lands in it', async () => {
+    const factory = fakeIndexedDb()
+    const out = await hydrateSaves({ factory })
+    expect(out).toEqual({ backend: 'idb', source: 'none', fellBack: false, imported: false })
+    expect(getSaveStatus().notices).toEqual([])
+    expect(save.loadGame()).toBeNull()
+    expect(saveRecord('{"a":1}')).toBe(true)
+    expect(await flushSave()).toBe(true)
+    expect(readRecord()).toBe('{"a":1}')
+    expect(await idbRecord(factory)).toBe('{"a":1}')
+  })
+
+  it('with every storage refused, resolves with a warning on the first save and no notices', async () => {
+    vi.stubGlobal('localStorage', disabledStorage())
+    const out = await hydrateSaves({ factory: fakeIndexedDb({ failOpen: true }) })
+    expect(out).toMatchObject({ backend: 'local', source: 'none', fellBack: true, imported: false })
+    expect(getSaveStatus().notices).toEqual([])
+    expect(saveRecord('{}')).toBe(false)
+    expect(getSaveStatus().persistFailed).toBe(true)
+  })
+
+  it('stays on localStorage, without a fallback, when the IndexedDB switch is off', async () => {
+    storage.data.set(SAVE_KEY, older)
+    const out = await hydrateSaves({ idb: false, factory: fakeIndexedDb({ failOpen: true }) })
+    expect(out).toEqual({ backend: 'local', source: 'local', fellBack: false, imported: false })
+    expect(storage.data.get(SAVE_KEY)).toBe(older)
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+
+  it('uses exactly the backend it is given, and reads a synchronous one live', async () => {
+    const memory = memorySaveBackend(older)
+    const out = await hydrateSaves({ backend: memory })
+    expect(out).toEqual({ backend: 'memory', source: 'local', fellBack: false, imported: false })
+    expect(activeBackend()).toBe(memory)
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+})
+
+describe('a database that fails, hangs or answers late', () => {
+  it('falls back to localStorage when the database refuses to open', async () => {
+    storage.data.set(SAVE_KEY, older)
+    const out = await hydrateSaves({ factory: fakeIndexedDb({ failOpen: true }) })
+    expect(out).toEqual({ backend: 'local', source: 'local', fellBack: true, imported: false })
+    expect(activeBackendName()).toBe('local')
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+
+  it.each(['open', 'read'] as const)('a database that hangs on %s falls back after 3000 ms, not before', async (hang) => {
+    fakeTimers()
+    storage.data.set(SAVE_KEY, older)
+    let outcome: Awaited<ReturnType<typeof hydrateSaves>> | undefined
+    const pending = hydrateSaves({ factory: fakeIndexedDb({ hang }) }).then((out) => {
+      outcome = out
+    })
+    await vi.advanceTimersByTimeAsync(2999)
+    expect(outcome).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    await pending
+    expect(outcome).toMatchObject({ backend: 'local', source: 'local', fellBack: true, imported: false })
+    expect(activeBackendName()).toBe('local')
+    expect(storage.data.get(SAVE_KEY)).toBe(older)
+  })
+
+  it('an open that answers after the fallback neither switches back nor writes', async () => {
+    fakeTimers()
+    const factory = fakeIndexedDb({ slowOpen: 4000 })
+    const pending = hydrateSaves({ factory })
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(await pending).toMatchObject({ backend: 'local', fellBack: true })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(activeBackendName()).toBe('local')
+    expect(storage.data.size).toBe(0)
+    const reopened = idbSaveBackend(factory, 10_000)
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(await (await reopened).read()).toBeNull()
+  })
+})
+
+describe('importing the localStorage save', () => {
+  it('moves a save of the current shape into IndexedDB, and the next boot loads it from there', async () => {
+    storage.data.set(SAVE_KEY, older)
+    const factory = fakeIndexedDb()
+    const out = await hydrateSaves({ factory })
+    expect(out).toEqual({ backend: 'idb', source: 'legacy', fellBack: false, imported: true })
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(await decodeSnapshotRecord((await idbRecord(factory)) ?? '')).toBe(migratedJson(older))
+    const loaded = save.loadGame()
+    expect(isLoadableGame(loaded)).toBe(true)
+    expect(loaded?.lifeId).toBe(lifeId)
+    expect(getSaveStatus().notices).toEqual([])
+
+    resetSaveStoreForTests()
+    const again = await hydrateSaves({ factory })
+    expect(again).toEqual({ backend: 'idb', source: 'idb', fellBack: false, imported: false })
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+
+  it('migrates the schema 1 fixture on the way in', async () => {
+    storage.data.set(SAVE_KEY, fixtureJson)
+    const factory = fakeIndexedDb()
+    expect(await hydrateSaves({ factory })).toMatchObject({ backend: 'idb', source: 'legacy', imported: true })
+    const stored = JSON.parse(await decodeSnapshotRecord((await idbRecord(factory)) ?? '')) as GameState
+    expect(stored.schemaVersion).toBe(SAVE_SCHEMA)
+    expect(save.loadGame()?.schemaVersion).toBe(SAVE_SCHEMA)
+  })
+
+  it('keeps the localStorage record, and plays from it, when the read-back differs', async () => {
+    storage.data.set(SAVE_KEY, older)
+    const out = await hydrateSaves({ factory: fakeIndexedDb({ corruptReadback: true }) })
+    expect(out).toMatchObject({ backend: 'local', fellBack: true, imported: false })
+    expect(storage.data.get(SAVE_KEY)).toBe(older)
+    expect(activeBackendName()).toBe('local')
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+
+  it('keeps the localStorage record when the write is refused', async () => {
+    storage.data.set(SAVE_KEY, older)
+    const out = await hydrateSaves({ factory: fakeIndexedDb({ failWrite: true }) })
+    expect(out).toMatchObject({ backend: 'local', fellBack: true, imported: false })
+    expect(storage.data.get(SAVE_KEY)).toBe(older)
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+
+  it('gives up on a write that never settles after 3000 ms, and leaves the localStorage record alone', async () => {
+    fakeTimers()
+    storage.data.set(SAVE_KEY, older)
+    const backend = controlledBackend()
+    let outcome: Awaited<ReturnType<typeof hydrateSaves>> | undefined
+    const pending = hydrateSaves({ backend }).then((out) => {
+      outcome = out
+    })
+    await writeReaches(backend)
+    await vi.advanceTimersByTimeAsync(2999)
+    expect(outcome).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    await pending
+    expect(outcome).toMatchObject({ backend: 'local', fellBack: true, imported: false })
+    expect(backend.writes).toHaveLength(1)
+    // The write settling late changes nothing: the legacy key stays and the backend stays local.
+    backend.settle()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(storage.data.get(SAVE_KEY)).toBe(older)
+    expect(activeBackendName()).toBe('local')
+  })
+
+  it('stores a record of 100,000 characters or more compressed, and reads it back whole after a reboot', async () => {
+    const big = JSON.parse(older) as GameState
+    Object.assign(big.flags, { pad: 'x'.repeat(150_000) })
+    const bigJson = JSON.stringify(big)
+    expect(bigJson.length).toBeGreaterThanOrEqual(100_000)
+    storage.data.set(SAVE_KEY, bigJson)
+    const factory = fakeIndexedDb()
+    expect(await hydrateSaves({ factory })).toMatchObject({ source: 'legacy', imported: true })
+    const stored = (await idbRecord(factory)) ?? ''
+    expect(stored.startsWith('gz2:')).toBe(true)
+    expect(await decodeSnapshotRecord(stored)).toBe(migratedJson(bigJson))
+
+    resetSaveStoreForTests()
+    expect(await hydrateSaves({ factory })).toMatchObject({ backend: 'idb', source: 'idb' })
+    expect(readRecord()).toBe(migratedJson(bigJson))
+  })
+})
+
+describe('both stores hold a game', () => {
+  it('imports the later save of the same life, and keeps the older IndexedDB record as a stale copy', async () => {
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, older)
+    storage.data.set(SAVE_KEY, later)
+    const out = await hydrateSaves({ factory })
+    expect(out).toEqual({ backend: 'idb', source: 'legacy', fellBack: false, imported: true })
+    const notices = getSaveStatus().notices
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatchObject({ kind: 'stale', bytes: older.length })
+    expect(await readSaveCopy(notices[0].id)).toBe(older)
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(await decodeSnapshotRecord((await idbRecord(factory)) ?? '')).toBe(migratedJson(later))
+  })
+
+  it('keeps the IndexedDB save when it is the later one, and the legacy record becomes the stale copy', async () => {
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, later)
+    storage.data.set(SAVE_KEY, older)
+    const out = await hydrateSaves({ factory })
+    expect(out).toEqual({ backend: 'idb', source: 'idb', fellBack: false, imported: false })
+    const notices = getSaveStatus().notices
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatchObject({ kind: 'stale' })
+    expect(await readSaveCopy(notices[0].id)).toBe(older)
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(await idbRecord(factory)).toBe(later)
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+
+  it('keeps the IndexedDB save when the two are different lives', async () => {
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, older)
+    storage.data.set(SAVE_KEY, otherLife)
+    expect(await hydrateSaves({ factory })).toMatchObject({ source: 'idb', imported: false })
+    const notices = getSaveStatus().notices
+    expect(notices).toHaveLength(1)
+    expect(await readSaveCopy(notices[0].id)).toBe(otherLife)
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+
+  describe('newerOf', () => {
+    const game = (id: string, year: number, age: number) => ({ lifeId: id, year, character: { age } }) as unknown as GameState
+
+    it.each([
+      ['a tie', game('a', 2030, 5), game('a', 2030, 5), 'idb'],
+      ['the legacy save a year later', game('a', 2030, 5), game('a', 2031, 6), 'legacy'],
+      ['the IndexedDB save a year later', game('a', 2031, 6), game('a', 2030, 5), 'idb'],
+      ['the same year, the legacy save older in age', game('a', 2030, 5), game('a', 2030, 4), 'idb'],
+      ['the same year, the legacy save older in age by one more', game('a', 2030, 5), game('a', 2030, 6), 'legacy'],
+      ['different lives, the legacy one later', game('a', 2030, 5), game('b', 2040, 15), 'idb'],
+      ['different lives, the legacy one earlier', game('a', 2040, 15), game('b', 2030, 5), 'idb'],
+    ] as const)('%s', (_name, idb, legacy, expected) => {
+      expect(newerOf(idb, legacy)).toBe(expected)
+    })
+  })
+})
+
+describe('records that can not be played', () => {
+  let bad: Record<string, string>
+
+  beforeAll(async () => {
+    const packed = await encodeSnapshotRecord(older, 0)
+    expect(packed.startsWith('gz2:')).toBe(true)
+    bad = {
+      'corrupt JSON': '{"version": 1, "character": ',
+      'a truncated gz2 string': packed.slice(0, packed.length - 3),
+      'a gz2 string with a bad alphabet': 'gz2:3:ab',
+      'JSON that is not a game': '{"version":1,"schemaVersion":2,"character":{}}',
+    }
+  })
+
+  const names = ['corrupt JSON', 'a truncated gz2 string', 'a gz2 string with a bad alphabet', 'JSON that is not a game']
+
+  describe.each(['IndexedDB', 'localStorage'] as const)('as the %s record', (where) => {
+    it.each(names)('keeps %s byte for byte as a damaged copy, and frees the main slot', async (name) => {
+      const raw = bad[name]
+      const factory = fakeIndexedDb()
+      if (where === 'IndexedDB') await putIdbRecord(factory, raw)
+      else storage.data.set(SAVE_KEY, raw)
+      const out = await hydrateSaves({ factory })
+      expect(out).toEqual({ backend: 'idb', source: 'none', fellBack: false, imported: false })
+      const notices = getSaveStatus().notices
+      expect(notices).toHaveLength(1)
+      expect(notices[0]).toMatchObject({ kind: 'damaged', bytes: raw.length })
+      expect(await readSaveCopy(notices[0].id)).toBe(raw)
+      expect(await idbRecord(factory)).toBeNull()
+      expect(storage.data.has(SAVE_KEY)).toBe(false)
+      expect(save.loadGame()).toBeNull()
+      // A later save never touches the copy.
+      expect(saveRecord('{}')).toBe(true)
+      expect(await flushSave()).toBe(true)
+      expect(await readSaveCopy(notices[0].id)).toBe(raw)
+    })
+  })
+
+  it('keeps a save older than the oldest schema as a tooOld copy', async () => {
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, fixtureJson)
+    expect(await hydrateSaves({ factory, minSchema: 2 })).toMatchObject({ backend: 'idb', source: 'none' })
+    const notices = getSaveStatus().notices
+    expect(notices).toEqual([{ id: notices[0].id, kind: 'tooOld', bytes: fixtureJson.length, version: 1 }])
+    expect(await readSaveCopy(notices[0].id)).toBe(fixtureJson)
+    expect(await idbRecord(factory)).toBeNull()
+  })
+
+  it('keeps a tooOld legacy record the same way', async () => {
+    storage.data.set(SAVE_KEY, fixtureJson)
+    expect(await hydrateSaves({ factory: fakeIndexedDb(), minSchema: 2 })).toMatchObject({ source: 'none', imported: false })
+    const notices = getSaveStatus().notices
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatchObject({ kind: 'tooOld', version: 1 })
+    expect(await readSaveCopy(notices[0].id)).toBe(fixtureJson)
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+  })
+
+  it('on a synchronous backend, keeps the damaged record as a copy and empties the slot', async () => {
+    const memory = memorySaveBackend('not json')
+    await hydrateSaves({ backend: memory })
+    expect(memory.read()).toBeNull()
+    expect(getSaveStatus().notices).toHaveLength(1)
+    expect(await readSaveCopy(getSaveStatus().notices[0].id)).toBe('not json')
+  })
+})
+
+describe('a record from a newer version of the game', () => {
+  it('stays byte for byte in IndexedDB, listed under the main key, and the first save copies it', async () => {
+    const raw = newerRecord()
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, raw)
+    const out = await hydrateSaves({ factory })
+    expect(out).toEqual({ backend: 'idb', source: 'none', fellBack: false, imported: false })
+    expect(getSaveStatus().notices).toEqual([{ id: SAVE_KEY, kind: 'newer', bytes: raw.length, version: SAVE_SCHEMA + 1 }])
+    expect(await idbRecord(factory)).toBe(raw)
+    expect(await readSaveCopy(SAVE_KEY)).toBe(raw)
+    expect(save.loadGame()).toBeNull()
+
+    expect(saveRecord(later)).toBe(true)
+    expect(await flushSave()).toBe(true)
+    const notices = getSaveStatus().notices
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatchObject({ kind: 'newer', version: SAVE_SCHEMA + 1 })
+    expect(notices[0].id).not.toBe(SAVE_KEY)
+    expect(await readSaveCopy(notices[0].id)).toBe(raw)
+    expect(await decodeSnapshotRecord((await idbRecord(factory)) ?? '')).toBe(later)
+  })
+
+  it('as the localStorage record keeps the page on localStorage and leaves IndexedDB untouched', async () => {
+    const raw = newerRecord()
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, later)
+    storage.data.set(SAVE_KEY, raw)
+    const out = await hydrateSaves({ factory })
+    expect(out).toEqual({ backend: 'local', source: 'none', fellBack: false, imported: false })
+    expect(activeBackendName()).toBe('local')
+    expect(getSaveStatus().notices).toEqual([{ id: SAVE_KEY, kind: 'newer', bytes: raw.length, version: SAVE_SCHEMA + 1 }])
+    expect(storage.data.get(SAVE_KEY)).toBe(raw)
+    expect(await idbRecord(factory)).toBe(later)
+    expect(save.loadGame()).toBeNull()
+  })
+
+  it('beside a legacy record keeps the newer one in place and shelves the legacy one', async () => {
+    const raw = newerRecord()
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, raw)
+    storage.data.set(SAVE_KEY, older)
+    await hydrateSaves({ factory })
+    const notices = getSaveStatus().notices
+    expect(notices.map((n) => n.kind).sort()).toEqual(['newer', 'stale'])
+    const stale = notices.find((n) => n.kind === 'stale')
+    expect(await readSaveCopy(stale?.id ?? '')).toBe(older)
+    expect(notices.find((n) => n.kind === 'newer')?.id).toBe(SAVE_KEY)
+    expect(await idbRecord(factory)).toBe(raw)
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+  })
+})
+
+describe('boot is once', () => {
+  it('a second call after a save changes nothing and says why', async () => {
+    const factory = fakeIndexedDb()
+    await hydrateSaves({ factory })
+    saveRecord(later)
+    const again = await hydrateSaves({ factory })
+    expect(again).toMatchObject({ backend: 'idb', source: 'none', skipped: 'already-saved' })
+    expect(readRecord()).toBe(later)
+    expect(await flushSave()).toBe(true)
+    expect(readRecord()).toBe(later)
+  })
+
+  it('never rejects: an error nobody expected falls back to localStorage', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const opts = {
+      get idb(): boolean {
+        throw new Error('boom')
+      },
+    }
+    const out = await hydrateSaves(opts)
+    expect(out).toEqual({ backend: 'local', source: 'none', fellBack: true, imported: false })
+    expect(activeBackendName()).toBe('local')
+    expect(error).toHaveBeenCalled()
+  })
+})
+
+describe('copies an earlier session kept', () => {
+  it('lists each one with the kind its content has', async () => {
+    storage.data.set(SLOT_1, 'garbage')
+    storage.data.set(SLOT_2, older)
+    await hydrateSaves({ factory: fakeIndexedDb() })
+    expect(getSaveStatus().notices).toEqual([
+      { id: SLOT_1, kind: 'damaged', bytes: 'garbage'.length },
+      { id: SLOT_2, kind: 'stale', bytes: older.length },
+    ])
+  })
+
+  it('drops a notice when its copy is deleted', async () => {
+    storage.data.set(SLOT_1, 'garbage')
+    storage.data.set(SLOT_2, older)
+    await hydrateSaves({ factory: fakeIndexedDb() })
+    await deleteSaveCopy(SLOT_1)
+    expect(getSaveStatus().notices.map((n) => n.id)).toEqual([SLOT_2])
+  })
+
+  it('lists the copies in the overflow of IndexedDB too', async () => {
+    const factory = fakeIndexedDb()
+    const idb = await idbSaveBackend(factory)
+    await idb.overflow.put('bad-1', older)
+    storage.data.set(SLOT_1, 'garbage')
+    await hydrateSaves({ factory })
+    expect(getSaveStatus().notices.map((n) => [n.id, n.kind])).toEqual([
+      [SLOT_1, 'damaged'],
+      ['bad-1', 'stale'],
+    ])
+  })
+})
+
+describe('five copies already kept', () => {
+  async function fillFive(factory: IDBFactory): Promise<void> {
+    for (const [n, slot] of QUARANTINE_SLOTS.entries()) storage.data.set(slot, `copy ${n + 1}`)
+    const idb = await idbSaveBackend(factory)
+    await idb.overflow.put('bad-1', 'copy 4')
+    await idb.overflow.put('bad-2', 'copy 5')
+  }
+
+  it('leaves a damaged IndexedDB record where it is, with a notice under the main key', async () => {
+    const factory = fakeIndexedDb()
+    await fillFive(factory)
+    await putIdbRecord(factory, 'not json')
+    await hydrateSaves({ factory })
+    expect(await idbRecord(factory)).toBe('not json')
+    const notices = getSaveStatus().notices
+    expect(notices).toHaveLength(6)
+    expect(notices.find((n) => n.id === SAVE_KEY)).toMatchObject({ kind: 'damaged', bytes: 'not json'.length })
+    expect(await readSaveCopy(SAVE_KEY)).toBe('not json')
+  })
+
+  it('leaves a losing legacy record in localStorage, and lists nothing for it', async () => {
+    const factory = fakeIndexedDb()
+    await fillFive(factory)
+    await putIdbRecord(factory, later)
+    storage.data.set(SAVE_KEY, 'not json')
+    expect(await hydrateSaves({ factory })).toMatchObject({ backend: 'idb', source: 'idb' })
+    expect(storage.data.get(SAVE_KEY)).toBe('not json')
+    expect(getSaveStatus().notices).toHaveLength(5)
+    expect(getSaveStatus().notices.some((n) => n.id === SAVE_KEY)).toBe(false)
+  })
+
+  it('does not import over an IndexedDB record it could not keep', async () => {
+    const factory = fakeIndexedDb()
+    await fillFive(factory)
+    await putIdbRecord(factory, 'not json')
+    storage.data.set(SAVE_KEY, later)
+    const out = await hydrateSaves({ factory })
+    expect(out).toMatchObject({ backend: 'local', source: 'local', fellBack: true, imported: false })
+    expect(await idbRecord(factory)).toBe('not json')
+    expect(storage.data.get(SAVE_KEY)).toBe(later)
+    expect(getSaveStatus().notices.some((n) => n.id === SAVE_KEY)).toBe(false)
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+})
+
+describe('diagnoseRecord', () => {
+  it('reads a plain record, a gz1 record and a gz2 record', async () => {
+    const gz1 = `gz1:${gzipSync(Buffer.from(older)).toString('base64')}`
+    const gz2 = await encodeSnapshotRecord(older, 0)
+    expect(gz2.startsWith('gz2:')).toBe(true)
+    for (const raw of [older, gz1, gz2]) {
+      const found = await diagnoseRecord(raw)
+      expect(found.kind).toBe('ready')
+      if (found.kind === 'ready') expect(found.game.lifeId).toBe(lifeId)
+    }
+  })
+
+  it('names a newer and a too old record with their schema, and never rejects', async () => {
+    expect(await diagnoseRecord(newerRecord())).toEqual({ kind: 'newer', version: SAVE_SCHEMA + 1 })
+    expect(await diagnoseRecord(fixtureJson, { minSchema: 2 })).toEqual({ kind: 'tooOld', version: 1 })
+    for (const raw of ['', 'null', '[]', '{', 'gz2:', 'gz1:!!!']) expect(await diagnoseRecord(raw)).toEqual({ kind: 'damaged' })
+  })
+})
+
+describe('the boot functions of the store', () => {
+  it('primeCache sets what an asynchronous backend reads, and does nothing once the page has saved', async () => {
+    setSaveBackend(controlledBackend())
+    expect(savedThisSession()).toBe(false)
+    expect(primeCache('{"a":1}')).toBe(true)
+    expect(readRecord()).toBe('{"a":1}')
+    expect(saveRecord('{"b":2}')).toBe(true)
+    expect(savedThisSession()).toBe(true)
+    expect(primeCache('{"a":1}')).toBe(false)
+    expect(readRecord()).toBe('{"b":2}')
+  })
+
+  it('addSaveNotice puts a notice where the one it replaces was, else last', () => {
+    addSaveNotice({ id: 'a', kind: 'damaged', bytes: 1 })
+    addSaveNotice({ id: 'b', kind: 'damaged', bytes: 2 })
+    addSaveNotice({ id: 'c', kind: 'stale', bytes: 3 }, 'a')
+    addSaveNotice({ id: 'b', kind: 'stale', bytes: 4 })
+    expect(getSaveStatus().notices).toEqual([
+      { id: 'c', kind: 'stale', bytes: 3 },
+      { id: 'b', kind: 'stale', bytes: 4 },
+    ])
+  })
+
+  it('activeBackend is the default localStorage backend until one is set', () => {
+    expect(activeBackend().name).toBe('local')
+    const memory = memorySaveBackend()
+    setSaveBackend(memory)
+    expect(activeBackend()).toBe(memory)
+  })
+})
