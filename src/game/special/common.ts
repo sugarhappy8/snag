@@ -3,6 +3,7 @@
 // "special.<key>" so it survives quitting a career; the current gig lives in Job.data.
 import { outcomeTag } from '../timeMachine'
 import { addHidden, article, count, endJob, formatMoney, notice, shortMoney } from '../core'
+import { typicalIncome, US_TYPICAL_INCOME } from '../events/wealth-core'
 import { createPerson } from '../people'
 import { nextRandom, pick, rand } from '../rng'
 import { ageCeiling, liftSkill, type MasteryFamily } from '../mastery'
@@ -314,6 +315,17 @@ export function money(n: number): string {
 
 export function short(n: number): string {
   return shortMoney(n)
+}
+
+/**
+ * How a career's pay table (written in US 2020s dollars) compares with what the same work pays
+ * here and now: a typical local income over the US one. Exactly 1 for the US from 2026, 0.3 in
+ * 1930, 0.2 in Nigeria today; never above 1.6 (typicalIncome caps the country's wealth). Reads
+ * only g.year and the country, draws nothing.
+ */
+export function payScale(g: GameState): number {
+  const scale = typicalIncome(g) / US_TYPICAL_INCOME
+  return Number.isFinite(scale) && scale > 0 ? scale : 1
 }
 
 /** 1.2M / 45.3K / 812 for follower counts and record sales. */
