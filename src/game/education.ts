@@ -573,6 +573,19 @@ export function hasDegree(g: GameState, kind: DegreeKind, major?: string): boole
   return g.character.education.degrees.some((d) => d.kind === kind && (!major || d.major === major))
 }
 
+/** Countries where a bachelor's holder can start a PhD directly. Everywhere else a master's comes first. */
+const DIRECT_PHD_COUNTRIES = new Set(['us', 'pr', 'ca', 'gb', 'ie', 'au', 'hk', 'sg'])
+
+/** Degrees at master's level or above, any of which opens a PhD in a master's-first country. */
+const POSTGRAD_KINDS: DegreeKind[] = ['master', 'mba', 'nursing', 'jd', 'md', 'dds', 'pharmd', 'dvm', 'doctorate']
+
+/** Why you can't start a PhD yet in this country, or null (pure). Only gates new applications. */
+export function phdEntryBlocker(g: GameState): string | null {
+  const id = g.character.countryId
+  if (DIRECT_PHD_COUNTRIES.has(id) || POSTGRAD_KINDS.some((k) => hasDegree(g, k))) return null
+  return `A PhD in ${getCountry(id).name} normally needs a master's degree first.`
+}
+
 /** High school diploma or GED (or anything higher). */
 export function hasHighSchool(g: GameState): boolean {
   return g.character.education.degrees.length > 0
@@ -1876,7 +1889,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
       emoji: '\u{1F393}',
       tone: 'good',
     })
-    const options = GRAD_ORDER.filter((k) => GRAD_ELIGIBILITY[k].includes(major))
+    const options = GRAD_ORDER.filter((k) => GRAD_ELIGIBILITY[k].includes(major) && (k !== 'phd' || !phdEntryBlocker(g)))
     if (options.length > 0) {
       const choices: ChoiceOption[] = options.slice(0, 5).map((k) => ({ id: k, label: `Apply to ${PROGRAMS[k].label}`, emoji: PROGRAMS[k].emoji }))
       choices.push({ id: 'work', label: 'Enter the workforce', emoji: '\u{1F4BC}' })
@@ -2545,6 +2558,11 @@ export function applyToGraduateSchool(g: GameState, key: GradKey): void {
   }
   if (hasDegree(g, info.kind) && key !== 'master' && key !== 'phd') {
     notice(g, info.label, `You already graduated from ${info.label.toLowerCase()}.`, { emoji: info.emoji })
+    return
+  }
+  const phdBlock = key === 'phd' ? phdEntryBlocker(g) : null
+  if (phdBlock) {
+    notice(g, info.label, phdBlock, { emoji: info.emoji })
     return
   }
   const major = bachelorFor(g, key)
@@ -3861,7 +3879,7 @@ function graduateMenu(): MenuGroup {
           label: info.label,
           emoji: info.emoji,
           subtitle: (g) => `${info.years} years • ${formatMoney(roundMoney(info.tuition * wealthScale(g)))}/yr • ${key === 'master' || key === 'phd' ? 'Most majors' : GRAD_ELIGIBILITY[key].join(', ')}`,
-          disabledReason: (g) => postSecondaryBlocker(g) ?? (hasDegree(g, 'bachelor') ? null : "You need a bachelor's degree first."),
+          disabledReason: (g) => postSecondaryBlocker(g) ?? (hasDegree(g, 'bachelor') ? null : "You need a bachelor's degree first.") ?? (key === 'phd' ? phdEntryBlocker(g) : null),
           confirm: quitJobConfirm,
           run: (g) => applyToGraduateSchool(g, key),
         }

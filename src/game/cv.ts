@@ -19,6 +19,7 @@
 import { eraPick } from './events/era'
 import { hasTech } from './history/timeline'
 import { cycleLabel, cycleOf } from './business/economy'
+import { ceoJob } from './business/state'
 import { devCvEntries } from './computer/dev-cv'
 import { codingSkill } from './computer/skills'
 import { addHidden, addStat, clamp, count, earnIncome, formatMoney, log, notice, parents, remember, spend, useYearAction, yearActionsUsed } from './core'
@@ -33,6 +34,8 @@ import { authorView } from './special/author-state'
 import { hasMainCharacter, hasTalent, isTalentId, shownTalents, talentHint, type TalentId } from './talents'
 import { getCountry } from './world'
 import type {
+  Asset,
+  CareerRecord,
   CvEntry,
   CvKind,
   DegreeKind,
@@ -49,6 +52,9 @@ import type {
 
 // ---------------------------------------------------------------------------
 // Small helpers
+
+/** The titles becomeCeo writes: the player running a company they founded or own. */
+const CEO_TITLE = /^(?:Founder|Owner) & CEO$/
 
 function num(v: Json | undefined, dflt: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : dflt
@@ -651,22 +657,38 @@ function derivedEntries(g: GameState): CvEntry[] {
   }
   const exam = examEntry(g, hsDegree?.age ?? c.age)
   if (exam) out.push(exam)
+  // A company you still own is one row, below, whatever stints you had running it: its CEO rows in
+  // the job history (and the CEO job you hold now) fold into that row instead of listing it twice.
+  const businesses = g.assets.filter((a) => a.kind === 'business')
+  const ownedBy = (r: CareerRecord): Asset | undefined => {
+    if (typeof r.assetId === 'string') return businesses.find((a) => a.id === r.assetId)
+    // A save from before the row named its company: a founder or owner row for a company of that name.
+    return CEO_TITLE.test(r.title) ? businesses.find((a) => a.name === r.company && a.purchasedAge <= r.startAge) : undefined
+  }
+  const ceoYears = new Map<string, number>()
   // Work history (one entry per employer), then current jobs.
-  const byCompany = new Map<string, { title: string; start: number; end: number; salary: number }>()
+  const byCompany = new Map<string, { company: string; title: string; start: number; end: number; salary: number }>()
   for (const r of c.careerHistory) {
-    const prev = byCompany.get(r.company)
-    if (prev) byCompany.set(r.company, { title: r.endAge >= prev.end ? r.title : prev.title, start: Math.min(prev.start, r.startAge), end: Math.max(prev.end, r.endAge), salary: Math.max(prev.salary, r.salary) })
-    else byCompany.set(r.company, { title: r.title, start: r.startAge, end: r.endAge, salary: r.salary })
+    const owned = ownedBy(r)
+    if (owned) {
+      ceoYears.set(owned.id, (ceoYears.get(owned.id) ?? 0) + Math.max(0, r.endAge - r.startAge))
+      continue
+    }
+    // Two companies with one name stay two rows when the record says which company it was.
+    const key = typeof r.assetId === 'string' ? `#${r.assetId}` : r.company
+    const prev = byCompany.get(key)
+    if (prev) byCompany.set(key, { company: r.company, title: r.endAge >= prev.end ? r.title : prev.title, start: Math.min(prev.start, r.startAge), end: Math.max(prev.end, r.endAge), salary: Math.max(prev.salary, r.salary) })
+    else byCompany.set(key, { company: r.company, title: r.title, start: r.startAge, end: r.endAge, salary: r.salary })
   }
   let i = 0
-  for (const [company, r] of byCompany) {
+  for (const r of byCompany.values()) {
     const ind = industryForTitle(r.title)
     const years = Math.max(0, r.end - r.start)
     out.push({
       id: `d:job:${i++}`,
       kind: 'experience',
       title: r.title,
-      org: company,
+      org: r.company,
       startAge: r.start,
       endAge: r.end,
       detail: years <= 1 ? 'under a year' : `${years} years`,
@@ -678,6 +700,11 @@ function derivedEntries(g: GameState): CvEntry[] {
   for (const slot of ['job', 'partTimeJob'] as const) {
     const j = c[slot]
     if (!j) continue
+    const running = ceoJob(g) === j ? businesses.find((a) => a.id === j.data.assetId) : undefined
+    if (running) {
+      ceoYears.set(running.id, (ceoYears.get(running.id) ?? 0) + Math.max(0, j.yearsAtCompany))
+      continue
+    }
     const ind = industryForTitle(j.title)
     const tags = j.category === 'military' ? ['service', 'government', 'sports'] : j.category === 'special' ? specialTags(j.defId) : ind ? INDUSTRY_TAGS[ind] : []
     out.push({
@@ -693,17 +720,17 @@ function derivedEntries(g: GameState): CvEntry[] {
     })
   }
   // Businesses you own.
-  const businesses = g.assets.filter((a) => a.kind === 'business')
   businesses.forEach((a, k) => {
     const acquired = a.details.acquired === true
     const employees = num(a.details.employees, 0)
+    const ran = Math.round(ceoYears.get(a.id) ?? 0)
     out.push({
       id: `d:biz:${k}`,
       kind: 'experience',
       title: acquired ? 'Owner' : 'Founder & CEO',
       org: a.name,
       startAge: a.purchasedAge,
-      detail: employees > 0 ? `${plural(employees, 'employee')}` : 'Running the whole show',
+      detail: [employees > 0 ? plural(employees, 'employee') : 'Running the whole show', ran >= 1 ? `${plural(ran, 'year')} as CEO` : ''].filter(Boolean).join(' • '),
       strength: between(6 + (employees >= 10 ? 1 : 0) + (a.value >= 1_000_000 ? 1 : 0), 1, 9),
       embellished: false,
       tags: ['business'],

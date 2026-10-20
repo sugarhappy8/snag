@@ -119,6 +119,8 @@ export interface CareerRecord {
   endAge: number
   reason: 'quit' | 'fired' | 'retired' | 'laid off' | 'graduated' | 'promoted' | 'died' | 'prison' | 'other'
   salary: number
+  /** The business a CEO row was for, so the CV can tell it from another company with the same name. Missing on older saves. */
+  assetId?: string
 }
 
 // ---------------------------------------------------------------------------
