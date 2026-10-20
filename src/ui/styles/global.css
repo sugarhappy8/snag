@@ -72,6 +72,19 @@
   --hint-border: #d9c6f6;
   --hint-ring: #a77ae8;
 
+  /* Chart marks (src/ui/charts). Each reaches 3:1 on --bg, --card and --card-2 in both themes
+     (test/chart-contrast.test.ts). Series are told apart by hue and by marker shape, never by colour alone.
+     Good and bad have their own pair: the --action-* fills fall below 3:1 in dark mode. The grid is the border colour. */
+  --chart-1: #0072b2;
+  --chart-2: #c0480a;
+  --chart-3: #007a5a;
+  --chart-4: #9b4f86;
+  --chart-5: #8a6a00;
+  --chart-6: #4c5a6e;
+  --chart-good: #177638;
+  --chart-bad: #c5302b;
+  --chart-grid: var(--border);
+
   --app-width: 480px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -125,6 +138,15 @@
     --hint-bg: #2a2142;
     --hint-border: #4b3a78;
     --hint-ring: #a982f0;
+
+    --chart-1: #56b4e9;
+    --chart-2: #f08a4b;
+    --chart-3: #2fc79a;
+    --chart-4: #e39ac8;
+    --chart-5: #e6b422;
+    --chart-6: #a9b6c8;
+    --chart-good: #5fd38a;
+    --chart-bad: #ff7d75;
 
     color-scheme: dark;
   }
