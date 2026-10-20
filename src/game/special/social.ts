@@ -643,7 +643,7 @@ const promoScript = defineScript('special.social.promo', (g, choice, data) => {
     const lost = Math.round(organic(acct) * (0.02 + rand(g) * 0.06))
     acct.followers = Math.max(0, acct.followers - lost)
     addFame(g, -1)
-    text += lost > 0 ? ` Your ${plat.noun} saw right through it and ${compact(lost)} of them unfollowed you.` : ` Nobody real was watching, so nobody unfollowed you.`
+    text += lost > 0 ? ` Your ${plat.noun} saw right through it and ${compact(lost)} of them unfollowed you.` : ` The followers were bought, so none left.`
   } else {
     text += pick(g, [' Your fans didn\'t seem to mind.', ' A few fans even bought it.', ' Nobody noticed it was an ad. Perfect.'])
   }
@@ -945,7 +945,7 @@ function accountMenu(plat: Platform): MenuGroup {
       if (!a) return ''
       const celebs = a.celebFollowers.length ? ` Celebrity followers: ${a.celebFollowers.join(', ')}.` : ''
       const status = a.suspended ? ` Your account is suspended for ${a.suspended}.` : ''
-      return `@${a.handle}${a.verified ? ' \u{2714}\u{FE0F}' : ''} — ${a.followers.toLocaleString('en-US')} ${plat.noun}${a.fake ? ` (${a.fake.toLocaleString('en-US')} bought)` : ''}, ${a.posts} posts${a.monetized ? ', monetized' : ''}.${celebs}${status}`
+      return `@${a.handle}${a.verified ? ' \u{2714}\u{FE0F}' : ''}: ${a.followers.toLocaleString('en-US')} ${plat.noun}${a.fake ? ` (${a.fake.toLocaleString('en-US')} bought)` : ''}, ${a.posts} posts${a.monetized ? ', monetized' : ''}.${celebs}${status}`
     },
     children: (g): MenuNode[] => {
       const a = viewAccount(g, plat.id)

@@ -4,7 +4,8 @@
 // country through payScale. The cap draws nothing, so the early years are unchanged.
 import { describe, expect, it } from 'vitest'
 import { runScript } from '../src/game/scripts'
-import { ownerKey, payScale } from '../src/game/special/common'
+import { ownerKey } from '../src/game/special/common'
+import { payScale } from '../src/game/special/pay-scale'
 import { fameMenu, yearlyFame } from '../src/game/special/fame'
 import type { ChoiceModal, GameState, MenuAction } from '../src/game/types'
 import { makeTestGame } from './helpers'

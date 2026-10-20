@@ -16,7 +16,8 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { countryLabel, getCountry } from '../world'
-import { addColleague, blocked, bump, claimYearly, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, payScale, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
+import { addColleague, blocked, bump, claimYearly, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
+import { payScale } from './pay-scale'
 
 // ---------------------------------------------------------------------------
 // Branches & ranks
@@ -88,6 +89,16 @@ function ranks(b: Branch, track: Track): string[] {
 export function payFor(g: GameState, track: Track, level: number): number {
   const table = track === 'officer' ? OFFICER_PAY : ENLISTED_PAY
   return Math.round((table[Math.min(level, table.length - 1)] * payScale(g)) / 100) * 100
+}
+
+/**
+ * What a promotion pays: the rank's table pay here and now, but never less than the job already
+ * earns. A career saved by v4.0.2 carries US 2020s pay into a poorer country or an earlier year,
+ * and a step up must not cut it. Draws nothing.
+ */
+function promotedPay(g: GameState, job: Job, track: Track, level: number): number {
+  const kept = Number.isFinite(job.salary) ? job.salary : 0
+  return Math.max(kept, payFor(g, track, level))
 }
 
 export function militaryJob(g: GameState): Job | null {
@@ -522,7 +533,7 @@ const serviceDoneScript = defineScript('special.mil.serviceDone', (g, choice) =>
     const b = branchOf(md.branch)
     md.conscript = false
     md.serviceLeft = 0
-    promote(g, job, b.enlisted[1], payFor(g, 'enlisted', 1), 1)
+    promote(g, job, b.enlisted[1], promotedPay(g, job, 'enlisted', 1), 1)
     log(g, `I re-enlisted in the ${job.company}.`, 'good')
     say(g, 'Re-enlisted', `You re-enlisted in the ${job.company} and were promoted to ${job.title}.`, b.emoji, 'good')
     return
@@ -597,7 +608,7 @@ export function yearlyMilitary(g: GameState): void {
   const leader = hasTalent(g, 'Leadership')
   const bar = (next >= ladder.length - 3 ? 80 : 60) - (leader ? 5 : 0)
   if (next < ladder.length && job.yearsInRole >= wait && job.performance >= bar && chance(g, leader ? 0.7 : 0.55)) {
-    promote(g, job, ladder[next], payFor(g, md.track, next), next)
+    promote(g, job, ladder[next], promotedPay(g, job, md.track, next), next)
     if (next === ladder.length - 1) milProfile(g).topRank = true
     log(g, `I was promoted to ${ladder[next]}.`, 'good')
     remember(g, `Promoted to ${ladder[next]} in the ${job.company}.`)
