@@ -1,0 +1,41 @@
+/* Notice digest (R1-T4): one card for a run of plain notices. Built on the global tokens (global.css), so it follows
+   light and dark mode. The card is a .popup, which already scrolls, so nothing here has a fixed height. */
+
+.digest-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.digest-item {
+  padding-left: 10px;
+  border-left: 3px solid var(--hairline);
+}
+
+.digest-item.tone-good {
+  border-left-color: var(--tone-good);
+}
+
+.digest-item.tone-bad {
+  border-left-color: var(--tone-bad);
+}
+
+.digest-item.tone-event {
+  border-left-color: var(--tone-event);
+}
+
+.digest-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.digest-text {
+  display: block;
+  font-size: 14.5px;
+  line-height: 1.45;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}

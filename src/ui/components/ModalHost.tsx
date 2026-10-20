@@ -1,12 +1,14 @@
 // Shows the head of the modal queue above everything: notices, choices, inputs and minigames.
 // Built-in tasks ('aiTask' modals) are never shown: the store resolves them on the spot.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { getPerson, personAvatar, relationLabel } from '../../game/core'
+import { FLAGS } from '../../game/flags'
 import type { ChoiceModal, GameState, InputModal, MinigameModal, NoticeModal, Tone } from '../../game/types'
 import { MINIGAMES } from '../minigames'
 import {
   chooseOption,
   dismissNotice,
+  dismissNotices,
   finishMinigame,
   processQueue,
   submitInput,
@@ -17,6 +19,8 @@ import { personName } from './PersonSheet'
 import { cleanHint, TalentHint } from './TalentHint'
 import { canSlide } from './menuModel'
 import { SliderInputCard } from './SliderCard'
+import { digestRows, digestTitle, digestTone, planHead } from './noticeModel'
+import '../styles/notices.css'
 
 const TONE_EMOJI: Partial<Record<Tone, string>> = {
   good: '😄',
@@ -44,6 +48,11 @@ export function ModalHost() {
   useEffect(() => {
     if (taskAtHead) processQueue()
   }, [taskAtHead, head?.id])
+
+  // A run of plain notices at the head shares one card (G.11 step 1, behind FLAGS.noticeDigest). Every other plan,
+  // the lone notice, a choice, an input, a minigame, falls through to the code below, which is today's.
+  const plan = game ? planHead(game.queue, FLAGS.noticeDigest) : null
+  if (plan?.kind === 'digest') return <DigestCard key={plan.items.map((m) => m.id).join('+')} items={plan.items} />
 
   // Nothing to draw for a task: it's replaced by whatever it produces in the same moment.
   if (!head || !game || taskAtHead) return null
@@ -90,6 +99,52 @@ export function NoticeCard({ modal }: { modal: NoticeModal }) {
       {modal.support ? <p className="popup-support">{SUPPORT_LINE}</p> : null}
       <div className="popup-actions">
         <button className="btn btn-primary btn-block" onClick={() => dismissNotice(modal.id)} autoFocus>
+          OK
+        </button>
+      </div>
+    </PopupFrame>
+  )
+}
+
+/** One card for a run of plain notices: every row in full, one OK for all. Tone is also in the row emoji, never colour alone. */
+export function DigestCard({ items }: { items: readonly NoticeModal[] }): ReactElement {
+  const rows = digestRows(items)
+  const tone = digestTone(items)
+  const toneClass = tone === 'bad' ? 'tone-bad' : tone === 'good' ? 'tone-good' : ''
+  const title = digestTitle(items.length)
+  const ids = items.map((m) => m.id)
+  const idKey = ids.join('+')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.repeat || isTyping(e.target)) return
+      e.preventDefault()
+      dismissNotices(ids)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // ids is derived from idKey, so the key is the only dependency
+  }, [idKey])
+
+  return (
+    <PopupFrame className={toneClass} label={title}>
+      <span className="popup-emoji" aria-hidden>
+        {tone === 'bad' ? '😟' : '📋'}
+      </span>
+      <h2 className="popup-title">{title}</h2>
+      <ul className="digest-list">
+        {rows.map((r) => (
+          <li key={r.id} className={`digest-item tone-${r.tone}`}>
+            <span className="digest-emoji" aria-hidden>
+              {r.emoji}
+            </span>{' '}
+            <strong className="digest-title">{r.title}</strong>
+            <span className="digest-text">{r.text}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="popup-actions">
+        <button className="btn btn-primary btn-block" onClick={() => dismissNotices(ids)} autoFocus>
           OK
         </button>
       </div>

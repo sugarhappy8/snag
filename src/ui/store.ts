@@ -505,6 +505,20 @@ export function dismissNotice(id: string): void {
   handleModal(id, () => {})
 }
 
+/**
+ * One OK for a run of notices (the digest card): removes the notices with these ids in one act(), so one clone and
+ * one save for the whole card. Ids that are not notices in the queue are ignored, and a second call is a no-op.
+ * A notice has no handler to run, so this does not go through handleModal.
+ */
+export function dismissNotices(ids: readonly string[]): void {
+  const want = new Set(ids)
+  const current = state.game
+  if (!current || want.size === 0 || !current.queue.some((m) => m.kind === 'notice' && want.has(m.id))) return
+  act((g) => {
+    g.queue = g.queue.filter((m) => !(m.kind === 'notice' && want.has(m.id)))
+  })
+}
+
 export function chooseOption(id: string, choiceId: string): void {
   const queued = state.game?.queue.find((modal) => modal.id === id)
   if (!queued || queued.kind !== 'choice' || !queued.choices.some((option) => option.id === choiceId)) return
