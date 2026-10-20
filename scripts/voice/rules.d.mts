@@ -9,7 +9,7 @@ export const TELLS: readonly string[]
 /** The words a line must not end on. */
 export const FEELING_WORDS: readonly string[]
 
-export type LimitedRole = 'log' | 'scene' | 'outcome' | 'tooltip' | 'digest'
+export type LimitedRole = 'log' | 'scene' | 'outcome' | 'tooltip' | 'digest' | 'headline' | 'deck'
 /** Hard caps in characters of static text (a hole counts 0). The roles title, label and text have no fixed number. */
 export const LIMITS: Readonly<Record<LimitedRole, number>>
 /** Where rewrites aim, lower than the caps. */
