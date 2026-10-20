@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { craftSkill } from '../src/game/activities/creative'
 import { cvEntries } from '../src/game/cv'
+import { typicalIncome } from '../src/game/events/wealth-core'
 import { runScript } from '../src/game/scripts'
 import { specialCareersMenu, specialJobNodes, yearlySpecial } from '../src/game/special'
 import {
@@ -1188,5 +1189,93 @@ describe('author menus, script flow, CV, and integration wiring', () => {
     g.character.firstName = 'New'
     entries = cvEntries(g)
     expect(entries.some((entry) => entry.id.startsWith('d:author:'))).toBe(false)
+  })
+})
+
+describe('adaptation ceilings', () => {
+  function adaptable(g: GameState, patch: Partial<AuthorWork> = {}): AuthorWork {
+    const p = authorView(g)
+    p.seq = 1
+    p.works = [workPatch({
+      quality: 95, copies: 5_000_000, readers: 0, countryId: g.character.countryId, started: g.year - 2, released: g.year - 1,
+      adaptedUntil: 0, adaptationBase: 0, adaptationEarned: 0, earned: 0, ...patch,
+    })]
+    saveAuthor(g, p)
+    return authorView(g).works[0]
+  }
+
+  it('caps the signing fee at 150 and the yearly base at 15 typical incomes, in rich countries and in 1930', () => {
+    for (const [countryId, year] of [['us', 2026], ['mc', 2026], ['us', 1930]] as const) {
+      const g = game(81, countryId)
+      g.year = year
+      const typical = typicalIncome(g, countryId)
+      const work = adaptable(g)
+      const offer = authorAdaptationOffer(g, work)
+      expect(offer.available).toBe(true)
+      expect(offer.fee).toBeLessThanOrEqual(150 * typical)
+      expect(offer.annual).toBeLessThanOrEqual(15 * typical)
+
+      const before = g.character.money
+      licenseAuthorAdaptation(g, 'aw1')
+      const licensed = authorView(g).works[0]
+      expect(g.character.money - before).toBeLessThanOrEqual(150 * typical)
+      expect(licensed.adaptationEarned).toBeLessThanOrEqual(150 * typical)
+      expect(licensed.adaptationBase).toBeLessThanOrEqual(15 * typical)
+    }
+  })
+
+  it('pins the ceilings: US 2026 pays at most 6,750,000 and 675,000, US 1930 at most 2,025,000 and 202,500', () => {
+    const now = game(82, 'us')
+    expect(authorAdaptationOffer(now, adaptable(now))).toMatchObject({ fee: 6_750_000, annual: 675_000 })
+    const old = game(82, 'us')
+    old.year = 1930
+    expect(authorAdaptationOffer(old, adaptable(old))).toMatchObject({ fee: 2_025_000, annual: 202_500 })
+  })
+
+  it('leaves a modest hit alone, far below the ceilings', () => {
+    const g = game(83, 'us')
+    const work = adaptable(g, { copies: 10_000, quality: 80 })
+    expect(authorAdaptationOffer(g, work)).toMatchObject({ available: true, fee: 30_000, annual: 3_500 })
+  })
+
+  it('pays an old save with an oversize stored base at most the yearly cap, and five payments at most five caps', () => {
+    const g = game(84)
+    adaptable(g, {
+      started: 2020, released: 2020, copies: 10_000, tail: 0, share: 0, gross: 0, lastYear: -1,
+      adaptedUntil: 2029, adaptationBase: 5e7,
+    })
+    const startMoney = g.character.money
+    const paid: number[] = []
+    let caps = 0
+    for (let payment = 0; payment < 5; payment++) {
+      const cap = 15 * typicalIncome(g, 'us')
+      const before = authorView(g).works[0].adaptationEarned
+      yearlyAuthor(g)
+      const gained = authorView(g).works[0].adaptationEarned - before
+      expect(gained).toBeGreaterThan(0)
+      expect(gained).toBeLessThanOrEqual(cap)
+      paid.push(gained)
+      caps += cap
+      nextYear(g)
+    }
+    const total = paid.reduce((sum, x) => sum + x, 0)
+    expect(total).toBeLessThanOrEqual(caps)
+    expect(g.character.money - startMoney).toBe(total)
+    expect(authorView(g).works[0].earned).toBe(total)
+  })
+
+  it('never pays above the cap when the stored base sits right at it, whatever the royalty roll', () => {
+    for (let seed = 1; seed <= 12; seed++) {
+      const g = game(seed)
+      const cap = 15 * typicalIncome(g, 'us')
+      adaptable(g, {
+        started: 2020, released: 2020, copies: 10_000, tail: 0, share: 0, gross: 0, lastYear: -1,
+        adaptedUntil: 2029, adaptationBase: cap,
+      })
+      yearlyAuthor(g)
+      const gained = authorView(g).works[0].adaptationEarned
+      expect(gained).toBeGreaterThan(0)
+      expect(gained).toBeLessThanOrEqual(cap)
+    }
   })
 })
