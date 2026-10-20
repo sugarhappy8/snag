@@ -11,7 +11,7 @@
 // uses walkTreeCached / actionSequenceCached: a file then walks a state once per option set AND flag state. Menus and
 // hubs read FLAGS (navRegroup, cockpits, chartKit) when they are called, so the tree depends on the flags: the memo key
 // carries the flag values read at call time (navCacheKey). A test that compares flag-off with flag-on gets two walks,
-// never one entry twice. R1-N4's buildIndexCached must build its key with navCacheKey too.
+// never one entry twice. buildIndexCached (R1-N4) builds its key with navCacheKey too.
 import { MORTGAGE_PLANS, buyHouse, houseListings } from '../src/game/assets'
 import { becomeCeo } from '../src/game/business/career'
 import { evolve, recordYear, simulateYear, valuationOf } from '../src/game/business/economy'
@@ -30,6 +30,7 @@ import { createPerson } from '../src/game/people'
 import type { GameState, InterviewJob, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { groupChildren, nodeDisabled, nodeVisible } from '../src/ui/components/menuModel'
+import { buildIndex, type SearchIndex } from '../src/ui/nav/searchIndex'
 import { deepFreeze } from './fuzz-kit'
 
 export type NavTab = 'occupation' | 'assets' | 'relationships' | 'activities'
@@ -304,6 +305,22 @@ export function actionSequenceCached(name: NavStateName, opts: Omit<WalkOpts, 'r
   if (!hit) {
     hit = sequenceOf(walkTreeCached(name, opts))
     sequenceCache.set(key, hit)
+  }
+  return hit
+}
+
+const indexCache = new Map<string, SearchIndex>()
+
+/**
+ * buildIndex of the frozen canned state `name` (the real roots), memoised per (name, flags) inside one test file like
+ * walkTreeCached, so a file indexes the 11,822-node CEO tree once. Never mutate the result.
+ */
+export function buildIndexCached(name: NavStateName): SearchIndex {
+  const key = navCacheKey(name)
+  let hit = indexCache.get(key)
+  if (!hit) {
+    hit = buildIndex(frozen(name))
+    indexCache.set(key, hit)
   }
   return hit
 }
