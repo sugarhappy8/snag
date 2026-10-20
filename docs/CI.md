@@ -11,7 +11,7 @@ track that wants CI before it merges opens a draft PR against the release branch
 | `checks` | `ci-shard.mjs --verify 4` (every test file is in the fast tier or a shard), typecheck, the voice report (warning only), `vite build`. |
 | `fast` | The guard tests marked `// ci: fast`, one run, two workers. |
 | `test` | Four shards in a matrix. Each runs the files `ci-shard.mjs <i> 4` prints, with `SLICE=<i>/4` set for the seed-sliced files. |
-| `aggregate` | Downloads the shard artifacts and merges the sliced files with `SLICE=merge`. Does nothing until a file is in `split`. Prints the timing summary. |
+| `aggregate` | Downloads the shard artifacts and merges the sliced files with `SLICE=merge` (see the seed-sliced files below). Prints the timing summary. |
 | `gate` | Named `CI gate`. Fails unless the four jobs above passed. This is the one required status check. |
 
 ## The shards
@@ -23,6 +23,23 @@ inside a shard. Locally, `npm test` still runs everything.
 
 Useful commands: `node scripts/ci-shard.mjs --plan 4` (seconds and file counts per shard), `--verify 4` (coverage problems),
 `2 4` (the files of shard 2).
+
+## The seed-sliced files
+
+Five files are 45% of the run time, so each shard runs a slice of their seeds: `simulate`, `era-features`,
+`main-character-life`, `sector-story` and `anachronism`. They are the `split` list in `scripts/test-timings.json`, they
+import `./shard-kit`, and `ci-shard.mjs --verify` fails if the two ever disagree. The shard sets `SLICE=<i>/4` and
+`SLICE_DIR=test-slices`; the `aggregate` job sets `SLICE=merge`.
+
+| `SLICE` | What the file does |
+|---|---|
+| unset | Everything, as `npm test` does locally. |
+| `i/n` | Plays its share of the seeds (`seedSlice`), runs the per-seed assertions, and writes its rows to `test-slices/<key>.<i>of<n>.json` (`recordSlice`). |
+| `merge` | Plays no seeds. Reads every slice's rows (`mergedSlices`) and runs the assertions that need all the seeds (a count, a median, a threshold). |
+
+An assertion over all the seeds never runs on one slice alone. A describe that is cheap and not worth splitting runs in
+one owner slice (`ownedHere`). A slice file that is missing, appears twice or comes from a run of another size fails the
+merge and names the key. Locally, `SLICE=1/4 SLICE_DIR=$TMPDIR/s npx vitest run test/anachronism.test.ts` plays one slice.
 
 ## The fast tier
 

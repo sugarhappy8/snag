@@ -11,6 +11,7 @@ import { applyFallback } from '../src/game/offline'
 import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
 import { makeTestGame } from './helpers'
+import { mergedSlices, ownedHere, readSlice, recordSlice, seedSlice } from './shard-kit'
 import { STAT_KEYS, type AnnualReportData, type GameState, type MenuAction, type MenuNode, type MinigameModal, type ModalItem } from '../src/game/types'
 
 function driver(seed: number) {
@@ -24,6 +25,9 @@ function driver(seed: number) {
   return { next, int: (lo: number, hi: number) => lo + Math.floor(next() * (hi - lo + 1)), pick: <T,>(xs: readonly T[]): T => xs[Math.floor(next() * xs.length)] }
 }
 type Driver = ReturnType<typeof driver>
+
+// In CI each shard plays a slice of the seeds (SLICE=i/n) and the merge step checks the whole set (test/shard-kit.ts).
+const slice = readSlice()
 
 function minigameResult(m: MinigameModal, d: Driver): string {
   switch (m.game) {
@@ -163,10 +167,26 @@ function playLife(seed: number, talents: string[] | undefined): LifeResult {
 }
 
 describe('Main Character Syndrome lives', () => {
-  it('play full lives to death without errors, and the money stays bounded', () => {
-    const SEEDS = Array.from({ length: 14 }, (_, i) => i + 1)
-    const mcs = SEEDS.map((s) => playLife(s, ['MainCharacter']))
-    const plain = SEEDS.map((s) => playLife(s, undefined))
+  const SEEDS = Array.from({ length: 14 }, (_, i) => i + 1)
+  const mine = seedSlice(SEEDS, 'mcl:lives', slice)
+  type Played = { seed: number; mcs: LifeResult; plain: LifeResult }
+  const played: Played[] = []
+
+  it.each(mine)('plays seed %i to death as a main character and as anybody else', (seed) => {
+    played.push({ seed, mcs: playLife(seed, ['MainCharacter']), plain: playLife(seed, undefined) })
+  }, 300_000)
+
+  it('keeps the money bounded, and mastery to the main characters', () => {
+    recordSlice('mcl:lives', played, slice)
+    // A slice checks only that its own seeds were played; the merge step checks the whole set.
+    if (slice.mode === 'part') {
+      expect(played).toHaveLength(mine.length)
+      return
+    }
+    const all = slice.mode === 'merge' ? mergedSlices<Played>('mcl:lives', slice) : played
+    expect(all.map((r) => r.seed)).toEqual(SEEDS)
+    const mcs = all.map((r) => r.mcs)
+    const plain = all.map((r) => r.plain)
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
     // Things get mastered along the way for a main character, and never for anybody else.
     expect(mean(mcs.map((r) => r.mastered))).toBeGreaterThan(3)
@@ -174,10 +194,11 @@ describe('Main Character Syndrome lives', () => {
     // Bounded by the market: a great career or a lucky market, never minted cash.
     expect(Math.max(...mcs.map((r) => r.peakWorth))).toBeLessThan(1_000_000_000)
     expect(mcs.every((r) => Number.isFinite(r.netWorth))).toBe(true)
-  }, 600_000)
+  })
 })
 
-describe('careers: faster, not richer than the ladder allows', () => {
+// The careers describe (twelve short careers) runs in one owner slice only.
+if (ownedHere('mcl:careers', slice)) describe('careers: faster, not richer than the ladder allows', () => {
   function careerTotal(seed: number, main: boolean): { total: number; top: number; level: number } {
     const g = makeTestGame(seed, { age: 25, money: 0, talents: main ? ['MainCharacter'] : undefined, stats: { happiness: 70, health: 90, smarts: 70, looks: 60 } })
     g.log = [{ age: 25, year: 2026, entries: [] }]

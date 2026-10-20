@@ -22,6 +22,13 @@ import { bizOf, readBiz } from '../src/game/business/state'
 import type { Industry } from '../src/game/data/markets'
 import type { GameState } from '../src/game/types'
 import { deskGame, inert, managedDesk, playYear } from './sector-kit'
+import { readSlice, seedSlice } from './shard-kit'
+
+// In CI each shard runs some of the four tests below (SLICE=i/n); each test pools its own seeds, so it stays whole
+// (test/shard-kit.ts). In the merge step no test is left, and one empty test keeps the file from counting as empty.
+const slice = readSlice()
+const mine = seedSlice(['food', 'care', 'util', 'hired'], 'sector:tests', slice)
+const families = (['food', 'care', 'util'] as FamilyId[]).filter((family) => mine.includes(family))
 
 /** Care has the thinnest margins, so it needs the most seeds (see above); food and utilities settle with five. */
 const SEEDS: Readonly<Record<FamilyId, readonly number[]>> = { food: [1, 2, 3, 4, 5], care: [1, 2, 3, 4, 5, 6, 7, 8], util: [1, 2, 3, 4, 5] }
@@ -121,8 +128,8 @@ function owner(trade: Industry, seed: number, layer: boolean): Run {
   return tally(g, a.id, `${trade} seed ${seed} ${layer ? 'desk' : 'classic'}`, books)
 }
 
-describe('sector story: an owner who never touches a lever', () => {
-  for (const family of ['food', 'care', 'util'] as FamilyId[]) {
+if (families.length > 0) describe('sector story: an owner who never touches a lever', () => {
+  for (const family of families) {
     it(`${family}: the desk keeps profit near the classic run and drains no cash`, () => {
       const [low, high] = BAND[family]
       const bad: string[] = []
@@ -179,7 +186,7 @@ function hired(trade: Industry, seed: number, layer: boolean): Run {
   return tally(g, a.id, `${trade} seed ${seed} CEO ${layer ? 'desk' : 'classic'}`, books)
 }
 
-describe('sector story: a hired CEO of skill 90', () => {
+if (mine.includes('hired')) describe('sector story: a hired CEO of skill 90', () => {
   it('works the desk without wrecking the company or making money out of nothing', () => {
     const bad: string[] = []
     const changes: Partial<Record<FamilyId, number>> = {}
@@ -207,3 +214,5 @@ describe('sector story: a hired CEO of skill 90', () => {
     expect(bad).toEqual([])
   }, TIMEOUT)
 })
+
+if (mine.length === 0 && slice.mode !== 'full') it('has no share in this slice', () => {})
