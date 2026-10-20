@@ -147,8 +147,15 @@ export interface FundState {
 }
 
 export const FUND_VERSION = 4
-/** Stored resolved startups (live ones are always kept). */
-const MAX_RESOLVED = 60
+/** Stored resolved startups. */
+export const MAX_RESOLVED_STARTUPS = 60
+/**
+ * Stored live startups. A firm backs about six a year (three to five pitches and a hype deal) and sells each
+ * after twelve years, so honest play peaks near seventy; this bounds a damaged save, not play.
+ */
+export const MAX_LIVE_STARTUPS = 200
+/** Stored venture funds (a new one every few years: forty is two centuries of raising). */
+export const MAX_VC_FUNDS = 40
 
 const n = (v: Json | undefined, fallback: number, lo = -1e15, hi = 1e15): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback
@@ -226,8 +233,9 @@ function readNew(x: Record<string, Json>, countryId: string): FundState {
   const cos = list(x.cos).map(c => obj(c)).filter((c): c is Record<string, Json> => !!c).map(readStartup).filter((c): c is Startup => !!c)
   const seen = new Set<string>()
   const unique = cos.filter(c => !seen.has(c.id) && !!seen.add(c.id))
-  const live = unique.filter(c => c.status === 'live'), done = unique.filter(c => c.status !== 'live').slice(-MAX_RESOLVED)
-  const funds = list(x.funds).map(f => obj(f)).filter((f): f is Record<string, Json> => !!f).map(readVcFund).filter((f): f is VcFund => !!f).slice(-40)
+  // Live ones are kept (the latest MAX_LIVE_STARTUPS, since the book appends); only a damaged record has more.
+  const live = unique.filter(c => c.status === 'live').slice(-MAX_LIVE_STARTUPS), done = unique.filter(c => c.status !== 'live').slice(-MAX_RESOLVED_STARTUPS)
+  const funds = list(x.funds).map(f => obj(f)).filter((f): f is Record<string, Json> => !!f).map(readVcFund).filter((f): f is VcFund => !!f).slice(-MAX_VC_FUNDS)
   const probe = obj(x.probe), ponzi = obj(x.ponzi)
   return {
     kind: 'fund', v: FUND_VERSION, type, lastYear: Math.round(n(x.lastYear, -1, -1, 1e5)), aum, rep: n(x.rep, .5, 0, 1), compliance: n(x.compliance, 50, 0, 100),

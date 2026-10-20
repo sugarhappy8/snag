@@ -141,6 +141,8 @@ export interface BankBook {
   dramaYear: number
   /** The fiscal year the hired CEO last planned rates and appetite for (no replanning mid-year). */
   planned: number
+  /** The calendar year the hired CEO last made its capital choices (a product line, a campaign, branches): once a year, after the books close. */
+  capitalYear: number
   cool: Record<string, number>
   last: BankLast | null
   hist: BankHist[]
@@ -216,7 +218,7 @@ function fresh(b: Pick<BizState, 'countryId' | 'founded' | 'cash' | 'debt' | 'ou
     reserves: deposits - business - bonds, bonds, bondYield: r.bond, fixed: { mortgage: r.mortgage, auto: r.mortgage + (PRODUCTS.auto.premium ?? 0) }, advance: 0, cbOwed: 0, trust: 55,
     savingsGap: 0, loanGap: 0, appetite: 'balanced', products: { business: year }, reach: online ? 2 : 0,
     campaignYear: 0, campaignBoost: 0, shock: 1, growth: 0, strikes: 0, seize: false, run: null, heat: 0,
-    lastYear: -1, dramaYear: -1, planned: -1, cool: {}, last: null, hist: [],
+    lastYear: -1, dramaYear: -1, planned: -1, capitalYear: -1, cool: {}, last: null, hist: [],
   }
 }
 
@@ -314,6 +316,7 @@ export function readBank(b: Pick<BizState, 'industry' | 'countryId' | 'founded' 
     shock: finite(x.shock, 1, .5, 1.5), growth: finite(x.growth, 0, -1, 10), strikes: Math.round(finite(x.strikes, 0, 0, 9)), seize: x.seize === true,
     run: run && run.wave > 0 ? run : null, heat: finite(x.heat, 0, 0, 100),
     lastYear: Math.round(finite(x.lastYear, -1, -1, 100_000)), dramaYear: Math.round(finite(x.dramaYear, -1, -1, 100_000)), planned: Math.round(finite(x.planned, -1, -1, 100_000)),
+    capitalYear: Math.round(finite(x.capitalYear, -1, -1, 100_000)),
     cool, last: readLast(x.last), hist,
   }
   // Client books always balance: a damaged save rebalances through reserves (never b.cash).
