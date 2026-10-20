@@ -18,8 +18,10 @@ import {
   clearSave,
   clearTimeline,
   expectSnapshot,
+  flushSave,
   forgetFuture,
   forgetStop,
+  getSaveStatus,
   loadGame,
   loadSnapshot,
   recordDeath,
@@ -27,6 +29,7 @@ import {
   saveGame,
   snapshotIfDue,
   startTimeline,
+  subscribeSaveStatus,
   subscribeTimeStops,
   timeStops,
   unrecordDeath,
@@ -112,6 +115,13 @@ export function getApp(): AppState {
 subscribeTimeStops(() => {
   const stops = state.game ? timeStops(state.game.lifeId) : NO_STOPS
   if (stops !== state.timeStops) setState({ timeStops: stops })
+})
+
+// A save that is only queued (IndexedDB) can still fail later, and saveGame has already said true. The
+// banner follows the save store's own word on whether the newest save is in storage.
+subscribeSaveStatus(() => {
+  const failed = getSaveStatus().persistFailed
+  if (failed !== state.saveError) setState({ saveError: failed })
 })
 
 function subscribe(listener: () => void): () => void {
@@ -241,6 +251,15 @@ export const TRAVEL_TIMEOUT_MS = 15_000
 const STALLED = 'stalled'
 
 /**
+ * Save the arrival of a Time Machine jump and wait until it is in storage. False when it is not.
+ * With localStorage the write is done inside saveGame, so this is saveGame: a refused write is false
+ * at once. With IndexedDB the write is only queued when saveGame answers, so it waits for the queue.
+ */
+export async function saveForTravel(g: GameState): Promise<boolean> {
+  return saveGame(g) && (await flushSave())
+}
+
+/**
  * Go back to the start of age `age` of the current life: the snapshot is restored exactly
  * (plus a log line, the jump counted and fresh dice), the "Back to" chip is cleared, and a death that happened since is taken off the graveyard and ribbons.
  * Resolves true once you've arrived; false (with timeTravel.error set) when you can't go.
@@ -307,12 +326,23 @@ export async function travelBack(age: number): Promise<boolean> {
   // Save the trip before anything else changes. If even that fails (storage full), the jump is
   // called off: otherwise a reload would bring back a dead life whose grave and ribbon were
   // already taken back, and a second jump would take another life's ribbon.
-  if (!saveGame(arrived)) {
+  if (!(await saveForTravel(arrived))) {
     setState({
       timeTravel: {
         ...state.timeTravel,
         busy: false,
         error: `The Time Machine couldn't save your trip to ${stop.year}: this browser's storage is full. Free some space and try again.`,
+      },
+    })
+    return false
+  }
+  // An asynchronous write takes a moment, and a tap in that gap must not be overwritten by commit(arrived).
+  if (state.game !== now) {
+    setState({
+      timeTravel: {
+        ...state.timeTravel,
+        busy: false,
+        error: 'The Time Machine trip was called off: the game moved on while it saved.',
       },
     })
     return false
@@ -347,7 +377,8 @@ function commit(g: GameState): void {
   // The start of a year (its birthday popups done): keep it for the Time Machine. Best-effort
   // and asynchronous, after the save, so it can never cost the player their game.
   if (saved) void snapshotIfDue(g)
-  setState({ game: g, saveError: !saved, timeStops: timeStops(g.lifeId) })
+  // An earlier asynchronous failure keeps the banner up until a write succeeds: a retry still pending hasn't.
+  setState({ game: g, saveError: !saved || getSaveStatus().persistFailed, timeStops: timeStops(g.lifeId) })
 }
 
 /** Retry the current in-memory life without replaying its last action. */
