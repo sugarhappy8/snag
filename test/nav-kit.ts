@@ -21,13 +21,13 @@ import { applyPlan, autoPlan } from '../src/game/business/yearly'
 import { hireForJob } from '../src/game/careers'
 import { getJobDef } from '../src/game/data/jobs'
 import { FLAGS } from '../src/game/flags'
+import { peopleMenu } from '../src/game/hubs/people'
 import { SECTIONED_ROOTS } from '../src/game/hubs/sections'
 import { contractCondition } from '../src/game/health'
 import { createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
 import { createPerson } from '../src/game/people'
-import { personActions, relationshipGroups } from '../src/game/relationships'
-import type { GameState, InterviewJob, MenuAction, MenuGroup, MenuNode, Person } from '../src/game/types'
+import type { GameState, InterviewJob, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { groupChildren, nodeDisabled, nodeVisible } from '../src/ui/components/menuModel'
 import { deepFreeze } from './fuzz-kit'
@@ -203,40 +203,6 @@ function isHub(id: string): boolean {
   return id.startsWith('hub.')
 }
 
-function personGroup(p: Person): MenuGroup {
-  return {
-    type: 'menu',
-    id: `person.${p.id}`,
-    label: `${p.firstName} ${p.lastName}`.trim(),
-    emoji: '\u{1F464}',
-    children: (g) => personActions(g, p),
-  }
-}
-
-/**
- * The Relationships tab is a custom sheet, not a MenuGroup, so the walk builds a root from the same two functions
- * the sheet uses: one group `person.<id>` per person, under a heading per relationship group. R1-N3 replaces it
- * with peopleMenu. Because of the headings this root can never be reported tooLong; when peopleMenu replaces it,
- * N3 must decide again whether its root is sectioned and check or regenerate the baseline, so the lint does not
- * loosen or tighten by accident at that merge.
- */
-function relationshipsRoot(): MenuGroup {
-  return {
-    type: 'menu',
-    id: 'relationships',
-    label: 'Relationships',
-    emoji: '\u{2764}\u{FE0F}',
-    children: (g) => {
-      const out: MenuNode[] = []
-      for (const grp of relationshipGroups(g)) {
-        out.push({ type: 'heading', id: `rel.${grp.title}`, label: grp.title })
-        for (const p of grp.people) out.push(personGroup(p))
-      }
-      return out
-    },
-  }
-}
-
 /**
  * Walk the four tabs in DFS pre-order. Only visible action and menu nodes are listed (headings and info rows are
  * not). A locked group is listed but not entered. Callbacks go through the menuModel wrappers, so a throwing
@@ -246,7 +212,7 @@ function relationshipsRoot(): MenuGroup {
 export function walkTree(g: GameState, opts: WalkOpts = {}): Walked[] {
   const maxDepth = opts.maxDepth ?? 8
   const maxNodes = opts.maxNodes ?? 30000
-  const roots: Record<NavTab, MenuGroup> = { occupation: occupationMenu, assets: assetsMenu, relationships: relationshipsRoot(), activities: activitiesMenu, ...opts.roots }
+  const roots: Record<NavTab, MenuGroup> = { occupation: occupationMenu, assets: assetsMenu, relationships: peopleMenu, activities: activitiesMenu, ...opts.roots }
   const out: Walked[] = []
   const lint = { tooLong: new Set<string>(), single: new Set<string>() }
   let truncated = false
