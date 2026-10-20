@@ -238,6 +238,13 @@ function setFake(a: { fake?: number }, n: number): void {
   else delete a.fake
 }
 
+/** Cut an account to a share of its followers; the bought ones shrink by the same share. */
+function scaleFollowers(a: Account, share: number): void {
+  const bought = boundedFake(a.fake, a.followers)
+  a.followers = Math.round(a.followers * share)
+  setFake(a, boundedFake(Math.round(bought * share), a.followers))
+}
+
 function canonicalPlatform(value: unknown): Platform | undefined {
   if (typeof value !== 'string') return undefined
   return PLATFORMS.find((p) => p.id === value || p.name === value || LEGACY_NAMES[p.id] === value)
@@ -320,7 +327,7 @@ function sync(g: GameState): void {
     g.character.social = null
     return
   }
-  const top = [...list].sort((a, b) => b.followers - a.followers)[0]
+  const top = [...list].sort((a, b) => organic(b) - organic(a))[0]
   const mirror: SocialMedia = { platform: top.platform, handle: top.handle, followers: top.followers, verified: top.verified, monetized: top.monetized }
   if (top.fake) mirror.fake = top.fake
   g.character.social = mirror
@@ -484,7 +491,7 @@ const hateScript = defineScript('special.social.hate', (g, choice, data) => {
   let text: string
   if (choice === 'clap') {
     if (chance(g, 0.45)) {
-      if (acct) acct.followers += Math.round(acct.followers * 0.02) + randInt(g, 5, 50)
+      if (acct) acct.followers += Math.round(organic(acct) * 0.02) + randInt(g, 5, 50)
       addStat(g, 'happiness', 4)
       text = 'You clapped back with a devastating reply. The trolls went quiet and your fans cheered.'
     } else {
@@ -632,10 +639,11 @@ const promoScript = defineScript('special.social.promo', (g, choice, data) => {
   count(g, 'sponsoredPosts')
   let text = `You promoted ${offer.product} for ${offer.sponsor} on ${plat.name} and earned ${money(offer.pay)}.`
   if (offer.shady && chance(g, 0.7)) {
-    const lost = Math.round(acct.followers * (0.02 + rand(g) * 0.06))
+    // Only real followers can unfollow: bought ones are bots and stay put.
+    const lost = Math.round(organic(acct) * (0.02 + rand(g) * 0.06))
     acct.followers = Math.max(0, acct.followers - lost)
     addFame(g, -1)
-    text += ` Your ${plat.noun} saw right through it and ${compact(lost)} of them unfollowed you.`
+    text += lost > 0 ? ` Your ${plat.noun} saw right through it and ${compact(lost)} of them unfollowed you.` : ` Nobody real was watching, so nobody unfollowed you.`
   } else {
     text += pick(g, [' Your fans didn\'t seem to mind.', ' A few fans even bought it.', ' Nobody noticed it was an ad. Perfect.'])
   }
@@ -652,14 +660,14 @@ function promote(g: GameState, platformId: string): void {
   if (!useYearAction(g, `social.promo.${platformId}`, 2)) return tell(g, plat.name, 'No more sponsors are interested in working with you this year.', '\u{1F937}')
   const offers = PRODUCTS.filter((x) => x.shady || !x.category || brandPool(g, x.category, x.segment ? { segment: x.segment } : {}).length > 0)
   const product = pick(g, offers)
-  const pay = Math.max(50, Math.round((acct.followers * (0.01 + rand(g) * 0.04) + fameOf(g) * 100) / 10) * 10)
+  const pay = Math.max(50, Math.round((organic(acct) * (0.01 + rand(g) * 0.04) + fameOf(g) * 100) / 10) * 10)
   const real = !product.shady && product.category ? pickBrand(g, product.category, product.segment ? { segment: product.segment } : {}) : undefined
   const offer: PromoOffer = { platform: platformId, sponsor: real?.name ?? pick(g, SHADY_SPONSORS), product: product.name, shady: product.shady, pay }
   scriptChoice(
     g,
     promoScript,
     plat.name,
-    `${offer.sponsor} will pay you ${money(pay)} to promote ${product.name} to your ${compact(acct.followers)} ${plat.noun}.`,
+    `${offer.sponsor} will pay you ${money(pay)} to promote ${product.name} to your ${compact(organic(acct))} ${plat.noun}.`,
     [
       { id: 'accept', label: 'Promote it', emoji: '\u{2705}' },
       { id: 'decline', label: 'Decline', emoji: '\u{274C}' },
@@ -689,13 +697,13 @@ const celebActScript = defineScript('special.social.celebAct', (g, choice, data)
   if (choice === 'compliment') {
     if (chance(g, 0.15 + f / 200) && !acct.celebFollowers.includes(celeb)) {
       acct.celebFollowers.push(celeb)
-      const gained = Math.round(500 + acct.followers * 0.05 + rand(g) * 5_000)
+      const gained = Math.round(500 + organic(acct) * 0.05 + rand(g) * 5_000)
       acct.followers += gained
       text = `You complimented ${celeb}. They followed you back! You gained ${compact(gained)} ${plat.noun} from the attention.`
     } else text = pick(g, [`You complimented ${celeb}. They didn't notice.`, `You told ${celeb} they were your hero. Their assistant liked it.`])
   } else if (choice === 'insult') {
     if (chance(g, 0.3)) {
-      const gained = Math.round(200 + acct.followers * 0.03 + rand(g) * 3_000)
+      const gained = Math.round(200 + organic(acct) * 0.03 + rand(g) * 3_000)
       acct.followers += gained
       addFame(g, 1)
       text = `You insulted ${celeb}, who fired back. The drama earned you ${compact(gained)} ${plat.noun}.`
@@ -753,7 +761,7 @@ const trollScript = defineScript('special.social.troll', (g, choice, data) => {
       text = `You trolled your ${relationLabel(p).toLowerCase()} ${p.firstName} online. They saw it and are furious with you.`
     } else text = `You trolled your ${relationLabel(p).toLowerCase()} ${p.firstName} online. Luckily, they never saw it.`
   }
-  if (chance(g, 0.4)) acct.followers += randInt(g, 1, 30) + Math.round(acct.followers * 0.005)
+  if (chance(g, 0.4)) acct.followers += randInt(g, 1, 30) + Math.round(organic(acct) * 0.005)
   if (plat.trollSuspends && acct.trolls >= 3 && chance(g, 0.35)) {
     acct.suspended = 'abusive behavior'
     text += ` ${plat.name} suspended your account for abusive behavior.`
@@ -848,17 +856,17 @@ const hackScript = defineScript('special.social.hack', (g, choice, data) => {
     if (spend(g, d.ransom)) {
       if (chance(g, 0.7)) text = `You paid the hacker ${money(d.ransom)} and got your ${plat.name} account back.`
       else {
-        acct.followers = Math.round(acct.followers * 0.6)
+        scaleFollowers(acct, 0.6)
         text = `You paid ${money(d.ransom)}, and the hacker posted embarrassing photos anyway before handing it back. You lost a chunk of ${plat.noun}.`
       }
     } else {
-      acct.followers = Math.round(acct.followers * 0.7)
+      scaleFollowers(acct, 0.7)
       text = `You couldn't afford the ransom. The hacker spammed your ${plat.noun} with scam links before you got your account back.`
     }
   } else if (choice === 'support') {
     if (chance(g, 0.6)) text = `Account recovery finally worked after a few stressful weeks.`
     else {
-      acct.followers = Math.round(acct.followers * 0.75)
+      scaleFollowers(acct, 0.75)
       text = `Recovering the account took months. By then the hacker had driven away a quarter of your ${plat.noun}.`
     }
   } else {
@@ -937,7 +945,7 @@ function accountMenu(plat: Platform): MenuGroup {
       if (!a) return ''
       const celebs = a.celebFollowers.length ? ` Celebrity followers: ${a.celebFollowers.join(', ')}.` : ''
       const status = a.suspended ? ` Your account is suspended for ${a.suspended}.` : ''
-      return `@${a.handle}${a.verified ? ' \u{2714}\u{FE0F}' : ''} — ${a.followers.toLocaleString('en-US')} ${plat.noun}, ${a.posts} posts${a.monetized ? ', monetized' : ''}.${celebs}${status}`
+      return `@${a.handle}${a.verified ? ' \u{2714}\u{FE0F}' : ''} — ${a.followers.toLocaleString('en-US')} ${plat.noun}${a.fake ? ` (${a.fake.toLocaleString('en-US')} bought)` : ''}, ${a.posts} posts${a.monetized ? ', monetized' : ''}.${celebs}${status}`
     },
     children: (g): MenuNode[] => {
       const a = viewAccount(g, plat.id)
@@ -968,7 +976,7 @@ function accountMenu(plat: Platform): MenuGroup {
         label: 'Promote a Product',
         emoji: '\u{1F4B0}',
         subtitle: 'Get paid by a sponsor',
-        disabledReason: (gg) => accountReason(gg) ?? ((viewAccount(gg, plat.id)?.followers ?? 0) < 1_000 && fameOf(gg) < FAMOUS ? `Sponsors want at least 1,000 ${plat.noun}.` : null),
+        disabledReason: (gg) => accountReason(gg) ?? ((organic(viewAccount(gg, plat.id) ?? { followers: 0 })) < 1_000 && fameOf(gg) < FAMOUS ? `Sponsors want at least 1,000 ${plat.noun}.` : null),
         run: (gg) => promote(gg, plat.id),
       })
       if (plat.celebs) {
@@ -1148,7 +1156,8 @@ export function yearlySocial(g: GameState): void {
     acct.postsAtLastYear = acct.posts
     // Platforms sweep out bought accounts every year: a fixed share, no dice.
     const bought = boundedFake(acct.fake, acct.followers)
-    const gone = Math.round(bought * 0.3)
+    // A small leftover goes in one sweep, so no stray field or tiny log line lingers.
+    const gone = bought < 100 ? bought : Math.round(bought * 0.3)
     if (gone > 0) {
       acct.followers -= gone
       setFake(acct, bought - gone)

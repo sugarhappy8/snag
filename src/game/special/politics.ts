@@ -15,6 +15,7 @@ import { registerInsiderLedger, type InsiderCaseInput, type InsiderPositions } f
 // School Board Director → Mayor → Governor → President / Prime Minister. From Mayor up you can
 // also abuse the office: market-moving announcements, insider trades and the fallout (see
 // "Abuse of power" below).
+import { realFollowers } from '../followers'
 import { hasTech } from '../history/timeline'
 import { anchor, cryptoBanned, enforcement, fam, local, readState as readMoney, regulator } from '../computer/money-common'
 import { caseProfit, coinTargets, findTarget, freezeBets, maxBet, minBet, openBetsOn, placeBet, priceLabel, stockTargets, tagBets, type BetTarget } from '../computer/money-stocks'
@@ -735,7 +736,7 @@ function voterMood(g: GameState, camp: Campaign): string {
 /** Expected poll swing of a stop for this candidate (no randomness: safe for hints). */
 function expectedSwing(g: GameState, camp: Campaign, id: string): number {
   const c = g.character
-  const followers = hasTech(g, 'socialMedia') ? (c.social?.followers ?? 0) : 0
+  const followers = hasTech(g, 'socialMedia') ? realFollowers(c.social) : 0
   const base: Record<string, number> = {
     debate: (c.stats.smarts - 50) / 6,
     rally: 2,
@@ -817,7 +818,7 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
         const d = randInt(g, -3, 4)
         return { delta: d, text: d >= 2 ? 'Volunteers handed out your campaign leaflets. People stopped to read them.' : 'A gust of wind carried your campaign leaflets into a puddle. The opposition enjoyed that.' }
       }
-      const followers = hasTech(g, 'socialMedia') ? (c.social?.followers ?? 0) : 0
+      const followers = hasTech(g, 'socialMedia') ? realFollowers(c.social) : 0
       const d = randInt(g, -3, 4) + (followers > 100_000 ? 3 : followers > 5_000 ? 1 : 0)
       return { delta: d, text: d >= 2 ? pick(g, ['Your campaign video went viral. Even teenagers shared it, ironically.', 'Your meme game was strong. The youth vote noticed.']) : pick(g, ['You posted an old meme and got roasted in the replies.', 'An intern tweeted from your account by mistake. "lol who even votes"']) }
     }

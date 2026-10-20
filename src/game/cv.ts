@@ -29,6 +29,7 @@ import { industryDemand, marketOf } from './data/markets'
 import { economyOf, industryConditions } from './economy'
 import { chance, nextRandom, pick, randInt, uid } from './rng'
 import { masterFirstTime } from './mastery'
+import { realFollowers } from './followers'
 import { formatDef } from './special/author-data'
 import { authorView } from './special/author-state'
 import { hasMainCharacter, hasTalent, isTalentId, shownTalents, talentHint, type TalentId } from './talents'
@@ -752,9 +753,8 @@ function derivedEntries(g: GameState): CvEntry[] {
     out.push({ id: 'd:fame', kind: 'award', title: 'Public figure', org: '', startAge: c.age, detail: `Fame ${c.hidden.fame}%`, strength: between(Math.round(c.hidden.fame / 12), 4, 9), embellished: false, tags: ['media'] })
   }
   // Bought followers don't count: the CV shows the audience that is actually there.
-  const bought = typeof c.social?.fake === 'number' && Number.isFinite(c.social.fake) ? Math.max(0, Math.round(c.social.fake)) : 0
-  if (c.social && c.social.followers - bought >= 10_000) {
-    const f = c.social.followers - bought
+  const f = realFollowers(c.social)
+  if (c.social && f >= 10_000) {
     out.push({
       id: 'd:social',
       kind: 'project',
