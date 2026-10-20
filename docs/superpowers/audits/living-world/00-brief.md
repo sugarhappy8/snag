@@ -2,7 +2,7 @@
 
 You are one of eleven read-only auditors. Together your digests will feed ONE master design and roadmap for the next big stage of AnotherLife (a browser life simulator: Vite + React 19 + strict TypeScript, Vitest; engine in `src/game` is pure TS with a seeded RNG, state is plain JSON, tests in `test/`, docs in `docs/`). The code to read is a read-only checkout of main (v4.0.2) at:
 
-    /tmp/claude-0/-home-user-snag/91204518-72c3-5880-a3f8-357fc9b44d53/scratchpad/the main checkout (v4.0.2)
+    a read-only checkout of main at v4.0.2
 
 DO NOT edit anything inside it. Write exactly one digest file (path given in your task) and return a SHORT summary (max 12 lines) of it. You may run read-only commands (grep, wc, cat, git log) and small throwaway scripts in the scratchpad, never in the main checkout (v4.0.2). Do not run the full test suite. Use Sonnet-level effort: be concrete and fast, no padding.
 
