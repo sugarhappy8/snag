@@ -1660,8 +1660,11 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
       if (equity <= 0) continue
       g.assets = g.assets.filter((x) => x.id !== a.id)
       businessGone(g, a)
-      p.money += equity
-      remaining -= equity
+      // The ex gets only what is still owed; the rest of the sale comes back to you.
+      const share = Math.min(equity, remaining)
+      p.money += share
+      if (equity > share) addMoney(g, equity - share)
+      remaining -= share
       taken.push(a.name)
     }
     lines.push(`The judge ordered you to pay ${money(owed)} to your ex.`)
