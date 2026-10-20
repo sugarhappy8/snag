@@ -751,8 +751,10 @@ function derivedEntries(g: GameState): CvEntry[] {
   if (c.hidden.fame >= 50) {
     out.push({ id: 'd:fame', kind: 'award', title: 'Public figure', org: '', startAge: c.age, detail: `Fame ${c.hidden.fame}%`, strength: between(Math.round(c.hidden.fame / 12), 4, 9), embellished: false, tags: ['media'] })
   }
-  if (c.social && c.social.followers >= 10_000) {
-    const f = c.social.followers
+  // Bought followers don't count: the CV shows the audience that is actually there.
+  const bought = typeof c.social?.fake === 'number' && Number.isFinite(c.social.fake) ? Math.max(0, Math.round(c.social.fake)) : 0
+  if (c.social && c.social.followers - bought >= 10_000) {
+    const f = c.social.followers - bought
     out.push({
       id: 'd:social',
       kind: 'project',
