@@ -13,7 +13,7 @@ import { COUNTRIES, getCountry } from '../world'
 import { dominanceFrom, freshMarketState, marketDemand, marketKey, marketStateOf, type MarketCtx, type MarketPick } from './competition-core'
 import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, regimeFor, tierFor, type Regime, type TierId } from './competition-data'
 import { familyId, isRealName, pickHub, rawPull, rivalName, rosterOf, type RivalTier } from './competition-roster'
-import { emptyMarket, MAX_RIVAL_SHARES, MAX_WAVE_FOUNDED, type ExtraRival, type MarketState } from './competition-state'
+import { emptyMarket, flatTop, MAX_RIVAL_SHARES, MAX_WAVE_FOUNDED, type ExtraRival, type MarketState } from './competition-state'
 import { marketReference, priceIndex, techView } from './deeptech-core'
 import { localEcon, marketCtxFor, marketCtxWithRivalry, marketScale, type Worth } from './economy'
 import { industryDef } from './industries'
@@ -87,7 +87,9 @@ export function refreshMarket(g: GameState, a: Asset, b: BizState, year: number,
   st.rivals = rivals
   const lead = rivals.length ? rivals[0][1] : 0
   const hhi = Math.round(rivals.reduce((t, r) => t + (r[1] * 100) ** 2, share * share * 10_000))
-  st.history = [...st.history.filter((h) => h.year < year), { year, share: Math.round(share * 1e6) / 1e6, rank, size: st.size, lead: Math.round(lead * 1e6) / 1e6, hhi }].slice(-20)
+  // The year's biggest rivals by name, for the market ladder (R1 charts); nothing here reads it back into a result.
+  const top = flatTop(rivals)
+  st.history = [...st.history.filter((h) => h.year < year), { year, share: Math.round(share * 1e6) / 1e6, rank, size: st.size, lead: Math.round(lead * 1e6) / 1e6, hhi, ...(top ? { top } : {}) }].slice(-20)
   if (st.edgeUntil <= year) {
     st.edge = 1
     st.edgeUntil = 0
@@ -207,7 +209,7 @@ export interface MarketView {
   antitrust: AntitrustView
   /** Chip companies only: the headline price against the core lane's calm market reference in `g.year` (1 = at the market). */
   index?: number
-  history: { year: number; share: number; lead?: number; hhi?: number; rank: number; size: number }[]
+  history: { year: number; share: number; lead?: number; hhi?: number; rank: number; size: number; top?: (string | number)[] }[]
 }
 
 /** 'the world', 'Japan', 'the United States' (a market key or a country id, as it reads mid-sentence). */
@@ -419,7 +421,7 @@ export function marketViewOf(g: GameState, b: BizState): MarketView {
     home,
     antitrust: antitrustOf(b, Math.max(share, base), g.year, priceRatio, rivals, waveScrutiny(g, b.industry)),
     ...(b.industry === 'semiconductor' ? { index: priceIndex(b.price, marketReference(g, b, techView(b), CHIP_LANES[0], g.year)) } : {}),
-    history: (st?.history ?? []).map((h) => ({ year: h.year, share: h.share, rank: h.rank, size: h.size, ...(h.lead !== undefined ? { lead: h.lead } : {}), ...(h.hhi !== undefined ? { hhi: h.hhi } : {}) })),
+    history: (st?.history ?? []).map((h) => ({ year: h.year, share: h.share, rank: h.rank, size: h.size, ...(h.lead !== undefined ? { lead: h.lead } : {}), ...(h.hhi !== undefined ? { hhi: h.hhi } : {}), ...(h.top ? { top: [...h.top] } : {}) })),
   }
 }
 

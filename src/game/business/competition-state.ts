@@ -48,6 +48,63 @@ export interface MarketHistory {
   lead?: number
   /** HHI-style concentration of the named field that year, 0-10000 (absent in old saves). */
   hhi?: number
+  /**
+   * The biggest rivals that year as one flat list, [id, share, id, share, ...] (at most TOP_RIVALS pairs, biggest first;
+   * absent before R1). Flat keeps a row at 17 values; topPairs() decodes it.
+   */
+  top?: (string | number)[]
+}
+
+/** Rivals a history row remembers by name. */
+export const TOP_RIVALS = 8
+const TOP_ID_MAX = 60
+
+/** A share as the history keeps it: held to 0 to 1 and rounded to 1e-6. */
+function topShare(n: number): number {
+  return Math.round(clampN(n, 0, 1) * 1e6) / 1e6
+}
+
+/**
+ * The flat `top` of a booked year from its sorted [id, share] list: the first TOP_RIVALS whose share is above 0 and whose id
+ * the reader will accept. Undefined when nothing is left (the key is then left out of the row).
+ */
+export function flatTop(rivals: readonly (readonly [string, number])[]): (string | number)[] | undefined {
+  const out: (string | number)[] = []
+  for (const [id, share] of rivals.slice(0, TOP_RIVALS)) {
+    const s = topShare(share)
+    if (s > 0 && id.length > 0 && id.length <= TOP_ID_MAX) out.push(id, s)
+  }
+  return out.length ? out : undefined
+}
+
+/** A stored `top`, or nothing. Strict about the list (even length, at most 2 x TOP_RIVALS, string ids, finite shares), then each entry is held to 0 to 1; a share of 0 or less and a repeated id are left out. */
+function readTop(v: Json | undefined): (string | number)[] | undefined {
+  if (!Array.isArray(v) || v.length % 2 !== 0 || v.length > TOP_RIVALS * 2) return undefined
+  for (let i = 0; i < v.length; i += 2) {
+    const id = v[i], share = v[i + 1]
+    if (typeof id !== 'string' || id.length === 0 || id.length > TOP_ID_MAX || typeof share !== 'number' || !Number.isFinite(share)) return undefined
+  }
+  const seen = new Set<string>()
+  const out: (string | number)[] = []
+  for (let i = 0; i < v.length; i += 2) {
+    const id = v[i] as string, share = topShare(v[i + 1] as number)
+    if (share <= 0 || seen.has(id)) continue
+    seen.add(id)
+    out.push(id, share)
+  }
+  return out.length ? out : undefined
+}
+
+/** The [id, share] pairs of a history row's `top` (none for a row without one). */
+export function topPairs(h: { top?: readonly (string | number)[] }): [string, number][] {
+  const t = h.top
+  if (!Array.isArray(t)) return []
+  const out: [string, number][] = []
+  for (let i = 0; i + 1 < t.length; i += 2) {
+    const id = t[i], share = t[i + 1]
+    if (typeof id === 'string' && typeof share === 'number') out.push([id, share])
+  }
+  return out
 }
 
 export interface AntitrustState {
@@ -167,6 +224,8 @@ function readHistory(v: Json): MarketHistory | null {
   const h: MarketHistory = { year: Math.round(o.year), share: clampN(num(o.share), 0, 1), rank: Math.max(1, Math.round(num(o.rank, 1))), size: Math.max(0, num(o.size)) }
   if (typeof o.lead === 'number' && Number.isFinite(o.lead)) h.lead = clampN(o.lead, 0, 1)
   if (typeof o.hhi === 'number' && Number.isFinite(o.hhi)) h.hhi = clampN(o.hhi, 0, 10_000)
+  const top = readTop(o.top)
+  if (top) h.top = top
   return h
 }
 

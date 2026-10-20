@@ -1,5 +1,6 @@
 // Persistence: the current life (kept by save-store.ts, in IndexedDB or localStorage), and in
 // localStorage the ribbon collection, the graveyard and the Time Machine's start-of-year snapshots.
+import { readSpark } from './life-series'
 import { refreshRoyalCareers } from './npc-lives'
 import { isFiniteNumber, isGameShell, isLoadableGame, isRecord, migrateLegacyAi, migrateSave } from './save-schema'
 import { readRecord, removeRecord, saveRecord, setLocalQuotaEvictor } from './save-store'
@@ -108,6 +109,8 @@ export function unrecordRibbon(id: string): void {
 export interface GraveyardEntry extends AncestorSummary {
   lifeId: string
   obituary: string | null
+  /** The life's net worth, age by age, at most 40 points (life-series.ts lifeSpark); absent before R1 and when the life was too short. */
+  spark?: number[]
 }
 
 export function loadGraveyard(): GraveyardEntry[] {
@@ -130,7 +133,10 @@ export function loadGraveyard(): GraveyardEntry[] {
       && (entry.obituary === undefined || entry.obituary === null || typeof entry.obituary === 'string')
       && (entry.countryId === undefined || typeof entry.countryId === 'string')
     if (!valid) continue
-    out.push({ ...(entry as unknown as GraveyardEntry), ribbon: typeof entry.ribbon === 'string' ? entry.ribbon : null, obituary: typeof entry.obituary === 'string' ? entry.obituary : null })
+    // A damaged trail is dropped; the grave still loads.
+    const { spark: rawSpark, ...rest } = entry
+    const spark = readSpark(rawSpark)
+    out.push({ ...(rest as unknown as GraveyardEntry), ribbon: typeof entry.ribbon === 'string' ? entry.ribbon : null, obituary: typeof entry.obituary === 'string' ? entry.obituary : null, ...(spark ? { spark } : {}) })
     if (out.length >= GRAVEYARD_MAX) break
   }
   return out
