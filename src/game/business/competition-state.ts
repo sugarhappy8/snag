@@ -11,6 +11,12 @@ export const MARKET_VERSION = 1
 /** Wave fast followers remembered (three per wave: room for 32 live waves in one market). */
 export const MAX_WAVE_FOUNDED = 96
 
+/** Rival shares kept on the state: the booking keeps the 40 biggest (competition.ts refreshMarket). */
+export const MAX_RIVAL_SHARES = 40
+
+/** Rival modifiers kept. A move or event only ever targets a rival on the table, so no more than the shares. */
+export const MAX_RIVAL_MODS = 40
+
 /** A rival drawn in by the player's own success or an event (the generated roster lives in competition-roster.ts). */
 export interface ExtraRival {
   id: string
@@ -222,6 +228,11 @@ function readDeal(v: Json): MarketDeal | null {
   return { rivalId, year, until: Math.max(year, Math.round(num(o.until, year))) }
 }
 
+/** Plain code-unit order, the same on every machine (localeCompare is not). */
+function byId(x: string, y: string): number {
+  return x < y ? -1 : x > y ? 1 : 0
+}
+
 function uniqueLast<T>(rows: T[], key: (row: T) => string): T[] {
   const seen = new Set<string>()
   const out: T[] = []
@@ -249,13 +260,20 @@ export function readMarket(v: Json | undefined, key: string): MarketState | null
     }
   }
   rivals = uniqueLast(rivals, x => x[0])
-  const mods: Record<string, RivalMod> = {}
+  // The booking keeps the biggest 40; a record with more is damaged, so keep the same 40 (ties by id).
+  if (rivals.length > MAX_RIVAL_SHARES) rivals = [...rivals].sort((x, y) => y[1] - x[1] || byId(x[0], y[0])).slice(0, MAX_RIVAL_SHARES)
+  let mods: Record<string, RivalMod> = {}
   const m = rec(o.mods)
   if (m) {
     for (const [id, x] of Object.entries(m)) {
       const r = rec(x)
       if (id && r) mods[id] = { mult: clampN(num(r.mult, 1), 0.1, 5), until: Math.round(num(r.until)) }
     }
+  }
+  // Honest play holds a couple of two-year modifiers; a record with more keeps the longest running (ties by id).
+  if (Object.keys(mods).length > MAX_RIVAL_MODS) {
+    const keep = Object.keys(mods).sort((x, y) => mods[y].until - mods[x].until || byId(x, y)).slice(0, MAX_RIVAL_MODS)
+    mods = Object.fromEntries(keep.map(id => [id, mods[id]]))
   }
   const at = rec(o.antitrust)
   const history: MarketHistory[] = []

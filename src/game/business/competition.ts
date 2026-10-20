@@ -13,7 +13,7 @@ import { COUNTRIES, getCountry } from '../world'
 import { dominanceFrom, freshMarketState, marketDemand, marketKey, marketStateOf, type MarketCtx, type MarketPick } from './competition-core'
 import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, regimeFor, tierFor, type Regime, type TierId } from './competition-data'
 import { familyId, isRealName, pickHub, rawPull, rivalName, rosterOf, type RivalTier } from './competition-roster'
-import { emptyMarket, MAX_WAVE_FOUNDED, type ExtraRival, type MarketState } from './competition-state'
+import { emptyMarket, MAX_RIVAL_SHARES, MAX_WAVE_FOUNDED, type ExtraRival, type MarketState } from './competition-state'
 import { marketReference, priceIndex, techView } from './deeptech-core'
 import { localEcon, marketCtxFor, marketCtxWithRivalry, marketScale, type Worth } from './economy'
 import { industryDef } from './industries'
@@ -68,7 +68,7 @@ export function refreshMarket(g: GameState, a: Asset, b: BizState, year: number,
     .map((r): [string, number] => [r.id, ctx.F > 0 ? (others * r.pull) / ctx.F : 0])
     .filter((x) => x[1] > 1e-7)
     .sort((x, y) => y[1] - x[1])
-    .slice(0, 40)
+    .slice(0, MAX_RIVAL_SHARES)
     .map(([id, s]) => [id, Math.round(s * 1e6) / 1e6])
   const rank = 1 + rivals.filter((r) => r[1] > share).length
   // Market size in dollars: what the player actually took (at its own prices) plus the rivals'
