@@ -4,6 +4,7 @@
 // final, then gold, silver, bronze or heartbreak, with fame, sponsors and the national medal
 // bonus (some countries pay a fortune, some pay nothing).
 import { addStat, count, earnIncome, log, scriptChoice } from '../core'
+import { realWealthFactor } from '../history/events-people'
 import { bell, chance, pick } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Json, MenuGroup, MenuNode } from '../types'
@@ -107,7 +108,8 @@ const finalScript = defineScript('sports.olympics.final', (g, choice, data) => {
   addStat(g, 'happiness', medal === 'gold' ? 25 : 15)
   const cid = g.character.countryId
   const goldBonus = GOLD_BONUS[cid] ?? tidy(20_000 * Math.max(0.3, wealth(g)))
-  const bonus = cid === 'gb' || cid === 'se' || cid === 'no' ? 0 : tidy(goldBonus * (medal === 'gold' ? 1 : medal === 'silver' ? 0.5 : 0.33))
+  // The table is in today's dollars; a committee paid its medalists in the money of the year.
+  const bonus = cid === 'gb' || cid === 'se' || cid === 'no' ? 0 : tidy(goldBonus * (medal === 'gold' ? 1 : medal === 'silver' ? 0.5 : 0.33) * realWealthFactor(g.year))
   if (bonus > 0) earnIncome(g, bonus)
   const word = medal === 'gold' ? 'GOLD' : medal === 'silver' ? 'silver' : 'bronze'
   honor(g, `Won Olympic ${medal} in ${e.event} at the ${games}.`, `Olympic ${medal} medalist (${e.sport})`, nationalTeam(g), medal === 'gold' ? 10 : 9)

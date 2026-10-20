@@ -213,7 +213,9 @@ export function trimStudioGames(games: StudioGame[]): StudioGame[] {
     let score = Infinity
     out.forEach((x, i) => {
       if (x.stage !== 'live' || x.tail > 0) return
-      const s = x.critic + Math.log10(1 + x.copies) * 5 + x.awards.length * 30
+      // Nothing writes `awards` yet (the real awards ledger is F.10), so a stored list counts for
+      // at most two: 60 points, never enough to pin a game against a critic score of up to 100.
+      const s = x.critic + Math.log10(1 + x.copies) * 5 + Math.min(2, x.awards.length) * 30
       if (s < score) {
         score = s
         worst = i

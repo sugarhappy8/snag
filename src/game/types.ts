@@ -205,6 +205,8 @@ export interface SocialMedia {
   followers: number
   verified: boolean
   monetized: boolean
+  /** Bought followers still on the account (a whole number, at most `followers`). Written only when above 0. */
+  fake?: number
 }
 
 // ---------------------------------------------------------------------------

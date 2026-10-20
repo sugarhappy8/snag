@@ -138,7 +138,7 @@ describe('group treasury, ventures and shareholder capital', () => {
     expect(groupBuybackQuote(g, grp, 100).available).toBeCloseTo(.1)
   })
 
-  it('extends a 100-rated group CEO’s profit protection to supervised family divisions', () => {
+  it('gives a 100-rated group CEO no profit guarantee for supervised family divisions: each books its own loss', () => {
     const { g, id } = world(['solar', 'logistics', 'bank'], 100), grp = liveGroup(g, id)!
     grp.core.autoFound = false
     for (const x of grp.members) {
@@ -148,10 +148,14 @@ describe('group treasury, ventures and shareholder capital', () => {
     saveGroup(g, grp)
     yearlyBusinessImpl(g)
     const members = groupById(g, id)!.members
-    expect(members.filter(x => x.b.industry !== 'bank').every(x => (x.b.last?.net ?? 0) > 0)).toBe(true)
+    // R0-3 (D28): no rating guarantees a profit. The debt-laden divisions book what their books say.
+    for (const x of members.filter(x => x.b.industry !== 'bank')) {
+      expect(x.b.last!.net).toBeLessThan(0)
+      expect(x.b.last!.strategicIncome).toBeUndefined()
+    }
     // Banking 2.0: a bank earns what its books earn; no strategic trading income for any CEO.
     expect(members.find(x => x.b.industry === 'bank')!.b.last!.strategicIncome ?? 0).toBe(0)
-    expect(groupById(g, id)!.core.history.at(-1)!.profit).toBeGreaterThan(0)
+    expect(groupById(g, id)!.core.history.at(-1)!.profit).toBeLessThan(0)
   })
 
   it('assigns all eligible pairs once, keeps existing contracts and excludes minority/cross-border pairs', () => {

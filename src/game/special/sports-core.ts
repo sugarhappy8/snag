@@ -3,7 +3,8 @@
 // cabinet), local popularity, fees parents pay for kids, the Olympic calendar, endorsements and
 // the long-term brain-injury risk of contact sports.
 import { anachronistic } from '../events/era'
-import { allBrands } from '../data/brands'
+import { typicalIncome } from '../events/wealth-core'
+import { allBrands, type Brand } from '../data/brands'
 import { brandPool, pickBrand } from '../shops/everyday-brands'
 import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, spend, useYearAction } from '../core'
 import { addCvEntry } from '../cv'
@@ -460,6 +461,27 @@ interface SponsorOffer {
   sport: string
 }
 
+/** The most one brand pays a year: 40 typical local incomes for each point of its fame (1 to 10), in the year's dollars. */
+export function dealCeiling(g: GameState, brand: { fame?: number } | undefined): number {
+  return typicalIncome(g) * 40 * (brand?.fame ?? 5)
+}
+
+/**
+ * The registry record behind a signed deal: the brand of that name in the category its product line
+ * draws from (several records can share a name, a rival firm or a regional branch; the best known
+ * one counts), so the ceiling never differs from the one the offer was cut under.
+ */
+function dealBrand(name: string, product: string): Brand | undefined {
+  const kind = ENDORSE_KINDS.find((k) => k.product === product)
+  if (!kind) return undefined
+  let best: Brand | undefined
+  for (const b of allBrands()) {
+    if (b.name !== name || b.category !== kind.category || (kind.segment && b.segment !== kind.segment)) continue
+    if (!best || (b.fame ?? 5) > (best.fame ?? 5)) best = b
+  }
+  return best
+}
+
 function offerFor(g: GameState, sport: string, appeal: number): SponsorOffer | null {
   const p = sportsProfile(g)
   const takenIds = p.sponsors.map((s) => s.brand)
@@ -474,7 +496,7 @@ function offerFor(g: GameState, sport: string, appeal: number): SponsorOffer | n
   const fame = g.character.hidden.fame
   // Superstars get millions per brand; everyone else gets far less (fame matters cubed).
   const base = 4_000 + (fame / 100) ** 3 * 6_000_000 + p.buzz * 3_000
-  const yearly = tidy(base * Math.max(0.2, Math.min(1.2, appeal)) * (0.7 + rand(g) * 0.6) * (0.6 + wealth(g) * 0.4))
+  const yearly = Math.min(dealCeiling(g, real), tidy(base * Math.max(0.2, Math.min(1.2, appeal)) * (0.7 + rand(g) * 0.6) * (0.6 + wealth(g) * 0.4)))
   return { brand, product, yearly: Math.max(2_000, yearly), years: randInt(g, 1, 4), sport }
 }
 
@@ -494,6 +516,7 @@ const sponsorScript = defineScript('sports.sponsor.offer', (g, choice, data) => 
     }
     yearly = tidy(yearly * (1.2 + rand(g) * 0.3))
   }
+  yearly = Math.min(yearly, dealCeiling(g, dealBrand(o.brand, o.product)))
   if (p.sponsors.length >= maxDeals(g.character.hidden.fame)) return tell(g, o.brand, 'Your agent says another endorsement deal would "dilute the brand". You are the brand.', '\u{1F91D}')
   p.sponsors.push({ brand: o.brand, product: o.product, yearly, yearsLeft: o.years, sinceAge: g.character.age })
   addFame(g, 1)
@@ -570,7 +593,7 @@ export function yearlySponsors(g: GameState, sport: string | null, appeal: numbe
   p.sponsors = p.sponsors.filter((d) => d.yearsLeft > 0)
   for (const d of ended) {
     if (sport && c.hidden.fame >= 15 && p.sponsors.length < maxDeals(c.hidden.fame) && chance(g, 0.5)) {
-      p.sponsors.push({ ...d, yearsLeft: randInt(g, 1, 3), yearly: tidy(d.yearly * (0.6 + (c.hidden.fame / 100) * 0.6) * (0.85 + rand(g) * 0.3)) })
+      p.sponsors.push({ ...d, yearsLeft: randInt(g, 1, 3), yearly: Math.min(dealCeiling(g, dealBrand(d.brand, d.product)), tidy(d.yearly * (0.6 + (c.hidden.fame / 100) * 0.6) * (0.85 + rand(g) * 0.3))) })
       log(g, `${d.brand} renewed my endorsement deal.`, 'good')
     } else log(g, `My endorsement deal with ${d.brand} ended.`)
   }

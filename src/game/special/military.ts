@@ -16,7 +16,7 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { countryLabel, getCountry } from '../world'
-import { addColleague, blocked, bump, claimYearly, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
+import { addColleague, blocked, bump, claimYearly, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, payScale, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
 
 // ---------------------------------------------------------------------------
 // Branches & ranks
@@ -84,9 +84,10 @@ function ranks(b: Branch, track: Track): string[] {
   return track === 'officer' ? b.officer : b.enlisted
 }
 
-function payFor(track: Track, level: number): number {
+/** What this rank pays here and now: the US 2020s table times payScale, in round hundreds. */
+export function payFor(g: GameState, track: Track, level: number): number {
   const table = track === 'officer' ? OFFICER_PAY : ENLISTED_PAY
-  return table[Math.min(level, table.length - 1)]
+  return Math.round((table[Math.min(level, table.length - 1)] * payScale(g)) / 100) * 100
 }
 
 export function militaryJob(g: GameState): Job | null {
@@ -200,7 +201,7 @@ function enlist(g: GameState, b: Branch, track: Track, conscript = false): void 
     title: conscript ? 'Conscript' : rankList[0],
     company,
     category: 'military',
-    salary: conscript ? Math.round(ENLISTED_PAY[0] * 0.6) : payFor(track, 0),
+    salary: conscript ? Math.round(payFor(g, 'enlisted', 0) * 0.6) : payFor(g, track, 0),
     performance: 55,
     data: { branch: b.id, track, conscript, serviceLeft: conscript ? randInt(g, 1, 2) : 0, deployments: 0 },
   })
@@ -521,7 +522,7 @@ const serviceDoneScript = defineScript('special.mil.serviceDone', (g, choice) =>
     const b = branchOf(md.branch)
     md.conscript = false
     md.serviceLeft = 0
-    promote(g, job, b.enlisted[1], payFor('enlisted', 1), 1)
+    promote(g, job, b.enlisted[1], payFor(g, 'enlisted', 1), 1)
     log(g, `I re-enlisted in the ${job.company}.`, 'good')
     say(g, 'Re-enlisted', `You re-enlisted in the ${job.company} and were promoted to ${job.title}.`, b.emoji, 'good')
     return
@@ -596,7 +597,7 @@ export function yearlyMilitary(g: GameState): void {
   const leader = hasTalent(g, 'Leadership')
   const bar = (next >= ladder.length - 3 ? 80 : 60) - (leader ? 5 : 0)
   if (next < ladder.length && job.yearsInRole >= wait && job.performance >= bar && chance(g, leader ? 0.7 : 0.55)) {
-    promote(g, job, ladder[next], payFor(md.track, next), next)
+    promote(g, job, ladder[next], payFor(g, md.track, next), next)
     if (next === ladder.length - 1) milProfile(g).topRank = true
     log(g, `I was promoted to ${ladder[next]}.`, 'good')
     remember(g, `Promoted to ${ladder[next]} in the ${job.company}.`)
@@ -860,7 +861,7 @@ function branchMenu(g: GameState, b: Branch): MenuGroup {
         id: `military.${b.id}.enlist`,
         label: 'Enlist',
         emoji: '\u{1FA96}',
-        subtitle: `Start as a ${b.enlisted[0]} · ${money(ENLISTED_PAY[0])}/yr · ${g.character.countryId === 'us' ? 'High school diploma' : 'School-leaving certificate'}`,
+        subtitle: `Start as a ${b.enlisted[0]} · ${money(payFor(g, 'enlisted', 0))}/yr · ${g.character.countryId === 'us' ? 'High school diploma' : 'School-leaving certificate'}`,
         disabledReason: militaryReason,
         confirm: (g) => (g.character.job ? `Joining the ${unitName(g, b)} means quitting your job as ${g.character.job.title}. Continue?` : null),
         run: (g) => enlist(g, b, 'enlisted'),
@@ -870,7 +871,7 @@ function branchMenu(g: GameState, b: Branch): MenuGroup {
         id: `military.${b.id}.officer`,
         label: 'Become an Officer',
         emoji: '\u{2B50}',
-        subtitle: `Start as a ${b.officer[0]} · ${money(OFFICER_PAY[0])}/yr · University degree`,
+        subtitle: `Start as a ${b.officer[0]} · ${money(payFor(g, 'officer', 0))}/yr · University degree`,
         disabledReason: militaryReason,
         confirm: (g) => (g.character.job ? `Joining the ${unitName(g, b)} means quitting your job as ${g.character.job.title}. Continue?` : null),
         run: (g) => enlist(g, b, 'officer'),

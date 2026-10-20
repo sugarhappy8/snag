@@ -365,7 +365,7 @@ export interface BizState {
   yearCosts: number
   /** One-off income this year (insurance payouts, settlements won...). */
   yearIncome: number
-  /** Owner bonuses taken this year (already inside yearCosts); perfect foresight never refills them. */
+  /** Owner bonuses taken this year (already inside yearCosts); nothing refills them. */
   ownerDraws?: number
   /** Last year staff got a general raise (inflation catch-up). */
   raiseYear: number

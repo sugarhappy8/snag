@@ -15,7 +15,6 @@ import { ceoLetter, smartCeo, smartManagerTurn } from './board-ceo'
 import { styleOf, syncCeo } from './career'
 import { executiveOperations, executiveRetentionYear, groupRetentionYear } from './executive'
 import { returnFormerExecutiveShares } from './executive-shares'
-import { settlePerfectForesight } from './executive-foresight'
 import { prepareInternalServices, settleInternalServices } from './group-services'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
 import { groupRescue, inGroup, prepareGroupManagement, yearlyConglomerates } from './conglomerate'
@@ -528,8 +527,6 @@ export function yearlyBusinessImpl(g: GameState): void {
     // the statement counts them once as other income, taxed at headquarters.
     const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
     const s = res.stmt
-    settlePerfectForesight(g, b, s)
-    if (s.strategicIncome) log(g, `${a.name}'s 100-rated company or group leadership earned ${money(s.strategicIncome)} of strategic trading income through perfect foresight. It is included once in other income and corporate tax; this game ability protects annual net earnings, not the market share price.`, 'good')
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     recordEconomicReport(b, previousStatement, s)
     statementBridges.set(a.id, { previous: previousStatement, bookedNet: s.net })
