@@ -2,7 +2,7 @@
 // really were, coding follows the computer, and modern features (smartphones, social media,
 // crypto, apps, dating apps, esports, data science...) only exist once their technology does.
 // Lives born in PRESENT_YEAR keep every feature they had before the year system.
-import { afterAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { electronicsListings, carListings } from '../src/game/assets'
@@ -29,6 +29,10 @@ import { platformsIn, PLATFORMS, genresIn, GENRES, enginesIn, ENGINES } from '..
 import { PLATFORMS as SOCIAL_PLATFORMS, socialMediaExists, socialMediaMenu } from '../src/game/special/social'
 import type { GameState, MenuAction, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'
+import { mergedSlices, ownedHere, readSlice, recordSlice, seedSlice } from './shard-kit'
+
+// In CI each shard plays a slice of the seeds (SLICE=i/n) and the merge step checks the whole set (test/shard-kit.ts).
+const slice = readSlice()
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,20 +125,35 @@ function passiveChildhood(year: number, seed: number): { by13: boolean; computer
 describe('the home computer by era', { concurrent: false, shuffle: false }, () => {
   const n = 200
   const years = [1980, 2000] as const
-  const samples = years.flatMap(year => Array.from({ length: n }, (_, i) => ({ year, seed: i + 1 })))
-  const results = new Map<number, Map<number, ReturnType<typeof passiveChildhood>>>(years.map(year => [year, new Map()]))
+  type Childhood = ReturnType<typeof passiveChildhood>
+  type Row = Childhood & { year: number; seed: number }
+  const samples = seedSlice(
+    years.flatMap(year => Array.from({ length: n }, (_, i) => ({ year, seed: i + 1 }))),
+    'era:childhoods',
+    slice,
+  )
+  const played: Row[] = []
 
   // Keep every original seed and its separate popup driver. Each childhood has
   // the normal per-test timeout, so a stalled life is isolated from total sweep time.
   it.each(samples)('born $year, seed $seed completes the sampled childhood', ({ year, seed }) => {
-    results.get(year)!.set(seed, passiveChildhood(year, seed))
+    played.push({ year, seed, ...passiveChildhood(year, seed) })
   })
 
-  afterAll(() => {
+  it('keeps the historical contrast between a 1980 and a 2000 childhood', () => {
+    recordSlice('era:childhoods', played, slice)
+    // A slice checks only that its own seeds were played; the merge step checks the whole set.
+    if (slice.mode === 'part') {
+      expect(played).toHaveLength(samples.length)
+      return
+    }
+    const all = slice.mode === 'merge' ? mergedSlices<Row>('era:childhoods', slice) : played
+    const results = new Map<number, Map<number, Childhood>>(years.map(year => [year, new Map()]))
+    for (const row of all) results.get(row.year)!.set(row.seed, row)
     const rates = (year: number) => {
       const rows = results.get(year)!
       expect([...rows.keys()].sort((a, b) => a - b)).toEqual(Array.from({ length: n }, (_, i) => i + 1))
-      const count = (key: keyof ReturnType<typeof passiveChildhood>) => [...rows.values()].filter(row => row[key]).length / n
+      const count = (key: keyof Childhood) => [...rows.values()].filter(row => row[key]).length / n
       return { by13: count('by13'), computer: count('computer'), coded: count('coded') }
     }
     const old = rates(1980)
@@ -155,7 +174,8 @@ describe('the home computer by era', { concurrent: false, shuffle: false }, () =
   })
 })
 
-describe('computers, coding and the computer menu by era', () => {
+// The cheap describes below (about 20 short tests) run in one owner slice only.
+if (ownedHere('era:rest', slice)) describe('computers, coding and the computer menu by era', () => {
   it('names and prices computers for their era', () => {
     const g = adultIn(1984)
     expect(computerEra(g)).toBe('micro')
@@ -281,7 +301,7 @@ describe('computers, coding and the computer menu by era', () => {
   })
 })
 
-describe('social media, fame, love, games, shops and jobs by era', () => {
+if (ownedHere('era:rest', slice)) describe('social media, fame, love, games, shops and jobs by era', () => {
   it('has no social platforms before social media, and adds them as they launch', () => {
     const g = adultIn(1995, 20)
     expect(socialMediaExists(g)).toBe(false)
@@ -432,16 +452,16 @@ describe('whole lives in the past', () => {
   }
 
   it('plays lives born in 1950 from birth to death without errors', () => {
-    for (let seed = 1; seed <= 6; seed++) playLife(1950, seed)
+    for (const seed of seedSlice([1, 2, 3, 4, 5, 6], 'era:lives1950', slice)) playLife(1950, seed)
   }, 120_000)
 
   it('plays lives born in 1910 and 1980 without errors', () => {
-    for (let seed = 11; seed <= 13; seed++) playLife(1910, seed)
-    for (let seed = 21; seed <= 23; seed++) playLife(1980, seed)
+    const lives = [11, 12, 13].map(seed => ({ year: 1910, seed })).concat([21, 22, 23].map(seed => ({ year: 1980, seed })))
+    for (const { year, seed } of seedSlice(lives, 'era:lives1910-1980', slice)) playLife(year, seed)
   }, 120_000)
 })
 
-describe('lives born in PRESENT_YEAR keep everything', () => {
+if (ownedHere('era:rest', slice)) describe('lives born in PRESENT_YEAR keep everything', () => {
   it('has every original feature available today', () => {
     const g = kidWithComputer(PRESENT_YEAR, 16)
     const original = ['scratch', 'html', 'python', 'javascript', 'lua', 'sql', 'swift', 'cpp', 'rust']

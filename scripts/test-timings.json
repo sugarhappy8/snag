@@ -407,5 +407,11 @@
     "test/world2-trade.test.ts": 0.5,
     "test/year-integration.test.ts": 0.6
   },
-  "split": []
+  "split": [
+    "test/anachronism.test.ts",
+    "test/era-features.test.ts",
+    "test/main-character-life.test.ts",
+    "test/sector-story.test.ts",
+    "test/simulate.test.ts"
+  ]
 }
