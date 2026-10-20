@@ -10,25 +10,39 @@ import { familyId } from './competition-roster'
 import { DEEP_TECH, PROGRAMS, TRIALS, drugRegulator, maxStage, modelGens, programDef, type ProgramDef } from './deeptech-data'
 import { dtInd, paceOf, rdScale, runwayYears, syncBiotechStage, techSkill } from './deeptech-core'
 import { repayGrants } from './deeptech-funding'
-import { timesDone, type Drug, type TechProgram, type TechState } from './deeptech-state'
+import { MAX_PARALLEL, timesDone, type Drug, type TechProgram, type TechState } from './deeptech-state'
 import { runsIt, totalOutlets, type BizState } from './state'
 import { clampN, money } from './util'
 
-/**
- * Most programs stored on a company (deeptech-state readTech keeps eight): the lab grows into it
- * as it opens more sites.
- */
-export const MAX_PARALLEL = 8
+export { MAX_PARALLEL }
 
-/** How many programs the lab can run at once: more sites (lab space), a bigger round, a listing. */
+/**
+ * How many ordinary programs the lab can run at once: more sites (lab space), a bigger round, a listing.
+ * Capability tracks have their own pool (trackLimit) and don't count here.
+ */
 export function maxPrograms(b: Pick<BizState, 'outlets' | 'public'>, t: TechState): number {
   const sites = Math.max(1, totalOutlets(b as BizState))
   return clampN(2 + Math.floor(Math.log2(sites)) + (t.series >= 2 ? 1 : 0) + (b.public ? 1 : 0), 2, MAX_PARALLEL)
 }
 
-/** How many capabilities a lab can research at once: one per three lab slots, and always at least one. */
-export function trackLimit(b: Pick<BizState, 'outlets' | 'public'>, t: TechState): number {
-  return Math.max(1, Math.floor(maxPrograms(b, t) / 3))
+/**
+ * How many capabilities a lab can research at once: one, plus one per doubling of its sites, up to one
+ * for every capability (a capability can only have one track running anyway). 1 site is 1, 2 is 2, 4 is 3,
+ * 8 is 4, 16 is 5 and 128 is all eight.
+ */
+export function trackLimit(b: Pick<BizState, 'outlets' | 'public'>, _t: TechState): number {
+  const sites = Math.max(1, totalOutlets(b as BizState))
+  return clampN(1 + Math.floor(Math.log2(sites)), 1, CAP_IDS.length)
+}
+
+/** Capability tracks the lab is researching right now. */
+export function trackCount(b: BizState, t: TechState): number {
+  return t.programs.filter((p) => programDef(dtInd(b), p.id)?.track).length
+}
+
+/** Running programs that take one of the maxPrograms slots: everything except a capability track. */
+export function slotCount(b: BizState, t: TechState): number {
+  return t.programs.length - trackCount(b, t)
 }
 
 /** Local yearly cost of a program at a steady pace. */
@@ -69,9 +83,9 @@ export function programBlock(b: BizState, t: TechState, def: ProgramDef): string
   if (t.programs.some((p) => p.id === def.id && !p.target)) return 'Already running.'
   if (def.track) {
     const limit = trackLimit(b, t)
-    if (t.programs.filter((p) => programDef(dtInd(b), p.id)?.track).length >= limit) return `Your lab can research ${limit} ${limit === 1 ? 'capability' : 'capabilities'} at once.`
+    return trackCount(b, t) >= limit ? `Your lab can research ${limit} ${limit === 1 ? 'capability' : 'capabilities'} at once.` : null
   }
-  if (t.programs.length >= maxPrograms(b, t)) return `Your lab can run ${maxPrograms(b, t)} programs at once. Finish or cancel one first.`
+  if (slotCount(b, t) >= maxPrograms(b, t)) return `Your lab can run ${maxPrograms(b, t)} programs at once. Finish or cancel one first.`
   return null
 }
 
@@ -111,7 +125,7 @@ export function trialBlock(b: BizState, t: TechState, d: Drug): string | null {
   if (d.partner) return `${d.partner} runs this drug's trials now.`
   if (!trialStep(d)) return 'Already approved.'
   if (t.programs.some((p) => p.id === 'trial' && p.target === d.id)) return 'Its trial is already running.'
-  if (t.programs.length >= maxPrograms(b, t)) return `Your lab can run ${maxPrograms(b, t)} programs at once. Finish or cancel one first.`
+  if (slotCount(b, t) >= maxPrograms(b, t)) return `Your lab can run ${maxPrograms(b, t)} programs at once. Finish or cancel one first.`
   return null
 }
 

@@ -55,7 +55,7 @@ import {
 import { aiLine, benchRows, firstRows, summaryClause } from './deeptech-bench'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
-import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
+import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, slotCount, startProgram, startTrial, stopPrograms, trackCount, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
 import { MAX_SERIES, SERIES, milestoneListingBlock, timesDone, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
@@ -206,13 +206,13 @@ function labMenu(a: Asset): MenuGroup {
         `Tech level ${Math.round(t.level)}/100 (70 is as good as anyone on Earth; standing still means falling behind). Pace: ${t.pace}.`,
         `R&D budget ${money(rdBudget(t))}/yr · R&D account ${money(t.venture)} · company cash ${money(b.cash)} · ${runwayText(runwayYears(g, a, b, t))}.`,
         `Programs are paid every year from the R&D account, then company cash. Finished programs succeed or fail; failures still teach you something.`,
-        `The lab runs ${maxPrograms(b, t)} programs at once; open more sites (Locations) to make room for more. At the top of the ladder, next-generation work never runs out: it just costs more and gains less every time.`,
+        `The lab runs ${maxPrograms(b, t)} programs at once${ind === 'aiLab' ? `, plus ${plural(trackLimit(b, t), 'capability track')} under Benchmarks` : ''}; open more sites (Locations) to make room for more. At the top of the ladder, next-generation work never runs out: it just costs more and gains less every time.`,
       ].join('\n')
     },
     children: (g) => {
       const { b, t } = view(g, a)
       const ind = dtInd(b)
-      const nodes: MenuNode[] = [{ type: 'heading', id: `dt.labH1.${a.id}`, label: `Running (${t.programs.length}/${maxPrograms(b, t)})` }]
+      const nodes: MenuNode[] = [{ type: 'heading', id: `dt.labH1.${a.id}`, label: ind === 'aiLab' ? `Running (${slotCount(b, t)}/${maxPrograms(b, t)} programs, ${trackCount(b, t)}/${trackLimit(b, t)} research)` : `Running (${slotCount(b, t)}/${maxPrograms(b, t)})` }]
       if (t.programs.length === 0) nodes.push({ type: 'info', id: `dt.labNone.${a.id}`, text: 'Nothing is running. Without R&D, nothing moves.', emoji: '\u{1F4A4}' })
       for (const p of t.programs) {
         nodes.push(
@@ -262,11 +262,6 @@ function labMenu(a: Asset): MenuGroup {
 // ---------------------------------------------------------------------------
 // Benchmarks (AI labs)
 
-/** How many capability tracks the lab is researching right now. */
-function runningTracks(t: TechState): number {
-  return t.programs.filter((p) => programDef('aiLab', p.id)?.track).length
-}
-
 /** Where the lab's models rank against modeled rival labs, plus the capability research that moves them. Every line comes from deeptech-bench.ts. */
 function benchMenu(a: Asset): MenuGroup {
   return {
@@ -296,7 +291,7 @@ function benchMenu(a: Asset): MenuGroup {
         emoji: '\u{1F9EA}',
         subtitle: (gg) => {
           const v = view(gg, a)
-          return `${runningTracks(v.t)} of ${trackLimit(v.b, v.t)} running`
+          return `${trackCount(v.b, v.t)} of ${trackLimit(v.b, v.t)} running`
         },
         disabledReason: (gg) => dtBlock(gg, a),
         children: (gg) => {

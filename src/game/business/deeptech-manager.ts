@@ -15,7 +15,7 @@ import { bestTechPlan, burnRate, dtInd, revalue, runwayYears, sellable, techFund
 import { localEcon } from './economy'
 import { industryDef } from './industries'
 import { awardGrant, bestGrant, bridgeBlock, closeRound, grantAmount, grantKey, grantOdds, makeTermSheet, roundBlock } from './deeptech-funding'
-import { bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialCost } from './deeptech-rd'
+import { bestProgram, bestTrial, maxPrograms, programCost, slotCount, startProgram, startTrial, trialCost } from './deeptech-rd'
 import { SERIES, type TechState } from './deeptech-state'
 import { testFlightAuto } from './deeptech-menu'
 import { totalOutlets, type BizState } from './state'
@@ -56,7 +56,7 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
   t.pace = runway < 1 ? 'lean' : 'steady'
 
   // 3) Keep the lab busy, but never bet the company: a full year of everything must be covered.
-  for (let i = 0; i < 3 && t.programs.length < maxPrograms(b, t); i++) {
+  for (let i = 0; i < 3 && slotCount(b, t) < maxPrograms(b, t); i++) {
     const funds = techFunds(b, t)
     const burn = burnRate(g, a, b, t)
     // An idle lab may bet on its next milestone with half a year of burn in reserve; the mandate

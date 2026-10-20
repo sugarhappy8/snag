@@ -43,7 +43,7 @@ import {
   techPlan,
   techPriceBounds,
 } from './deeptech-core'
-import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
+import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, slotCount, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
 import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
 import { afterYearSilicon, bookSilicon, chipPerformance, launchDiscounts, launchOptions, LAUNCH_TARGET, leadsField, pendingBrandStep, squeezeOf, type LaunchId } from './silicon'
@@ -719,7 +719,7 @@ export function deepTechReportImpl(g: GameState, a: Asset, b: BizState): boolean
 
 /** The program (or clinical trial) a free lab slot should take next, if any. */
 function nextStep(g: GameState, a: Asset, b: BizState, t: TechState): { key: string; name: string; cost: number; emoji: string } | null {
-  if (t.programs.length >= maxPrograms(b, t)) return null
+  if (slotCount(b, t) >= maxPrograms(b, t)) return null
   if (dtInd(b) === 'biotech') {
     const d = bestTrial(b, t, Math.max(1, techFunds(b, t)))
     if (d && !trialBlock(b, t, d)) return { key: `trial:${d.id}`, name: trialName(d, b.countryId), cost: trialCost(b, d), emoji: '\u{1F9EA}' }
