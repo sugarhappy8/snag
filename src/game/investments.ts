@@ -2100,7 +2100,7 @@ function newsLines(g: GameState): string[] {
       else if (infl <= -0.02) lines.push(`📉 Prices fell ${rateText(-infl)} this year: deflation.`)
     } else if (fx.dep >= 0.1) lines.push(`💱 The ${currencyOf(g.character.countryId, g.year).name} lost ${rateText(fx.dep)} against the dollar.`)
   }
-  // An analyst call about next year: right about two times in three.
+  // An analyst call on the year just gone: no better than a coin flip about what comes next.
   const tip = seededTip(g, l.info)
   if (tip) lines.push(tip)
   const inst = investInstinct(g)
@@ -2132,33 +2132,43 @@ export function shockHeadline(sh: MarketShock): string {
   }
 }
 
+/** Middle value of a list (the mean of the two middle ones when the count is even). */
+function medianOf(xs: number[]): number {
+  const a = [...xs].sort((x, y) => x - y)
+  const m = a.length >> 1
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
+}
+
+/**
+ * The free analyst call. Analysts read the year just gone, never next year: only the Investing
+ * talent's gut (invest/instinct.ts) knows what comes next. A call is "strong" when the stock's
+ * return this year beat the median of that year's stocks, which says almost nothing about what
+ * follows. Real companies get a sector call, never an opinion on one name.
+ */
 function seededTip(g: GameState, info: ExInfo): string | null {
-  const f = fam(g)
-  const an = anchor(g)
-  const now = exchangeYear(f, an, info, g.year)
-  const next = exchangeYear(f, an, info, g.year + 1)
   if (stockMarketBlock(g, info)) return null
+  const f = fam(g)
+  const now = exchangeYear(f, anchor(g), info, g.year)
+  // Every change of company in a slot (bankrupt, bought out, nationalized) lists the new one with event 'ipo':
+  // what is left traded under the same name last year too.
+  const candidates = now.stocks.filter((s) => s.event !== 'ipo' && !s.ended)
+  // A market with no past year yet (its very first) has no year to rate.
+  if (!candidates.some((s) => s.ret !== 0)) return null
   const key = `${f}|tip|${info.key}|${g.year}`
   let h = 0
   for (let i = 0; i < key.length; i++) h = (h * 33 + key.charCodeAt(i)) >>> 0
-  const candidates = now.stocks.filter((s) => next.stocks[s.slot] && next.stocks[s.slot].gen === s.gen)
-  if (!candidates.length) return null
   const s = candidates[h % candidates.length]
   const def = companyDef(info, s.slot, s.gen)
-  const right = (h >>> 8) % 3 !== 0
   const firm = ANALYST_FIRMS[(h >>> 4) % ANALYST_FIRMS.length]
+  const mid = medianOf(candidates.map((c) => c.ret))
   if (def.real) {
     // No opinions about real companies: the call is about the company's whole sector on this market.
     const peers = candidates.filter((c) => companyDef(info, c.slot, c.gen).sector === def.sector)
-    const avg = peers.reduce((sum, c) => sum + next.stocks[c.slot].ret, 0) / Math.max(1, peers.length)
     const label = eraIdentity(def, g.year).label.toLowerCase()
-    const bullishSector = right ? avg > 0 : !(avg > 0)
-    return bullishSector ? `📣 ${firm} is bullish on ${label} stocks for next year.` : `📣 ${firm} is cautious on ${label} stocks going into next year.`
+    return medianOf(peers.map((c) => c.ret)) > mid ? `📣 ${firm} is bullish on ${label} stocks after a strong year.` : `📣 ${firm} is cautious on ${label} stocks after a weak year.`
   }
   const name = eraIdentity(def, g.year).name
-  const up = next.stocks[s.slot].ret > 0
-  const bullish = right ? up : !up
-  return bullish ? `📣 ${firm} rates ${name} (${def.symbol}) a strong buy for next year.` : `📣 ${firm} warns that ${name} (${def.symbol}) is overvalued going into next year.`
+  return s.ret > mid ? `📣 ${firm} rates ${name} (${def.symbol}) a buy after a ${pct(s.ret, 0)} year.` : `📣 ${firm} cuts ${name} (${def.symbol}) to a sell after a ${pct(s.ret, 0)} year.`
 }
 
 const newsMenu: MenuGroup = {

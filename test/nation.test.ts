@@ -24,6 +24,9 @@ import { bringHome, moveOffshore, runScheme, schemeBlock, schemeOf, schemeQuote,
 import { regimeBlock } from '../src/game/nation/regime'
 import { buildReport, approvalTarget } from '../src/game/nation/yearly'
 import { yearlyDrama } from '../src/game/nation/drama'
+import { killCharacter } from '../src/game/death'
+import { continueAsChild } from '../src/game/life'
+import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
 import { readNationReport } from '../src/ui/minigames/NationReport'
 import type { ChoiceModal, GameState, MenuNode } from '../src/game/types'
@@ -97,10 +100,17 @@ describe('old saves and untouched countries', () => {
     const me = editMe(g)
     me.dirty = 50_000
     writeMe(g, me)
-    g.generation = (g.generation ?? 0) + 1
-    g.character.id = 'heir'
-    expect(policyOf(g, 'us').national.taxes.income).toBe(5)
-    expect(meView(g).dirty).toBe(0)
+    // A real handoff: the President dies and a child continues the family.
+    g.character.age = 70
+    const heir = createPerson(g, { relation: 'child', age: 40, lastName: g.character.lastName, money: 1_000 })
+    killCharacter(g, 'Old Age')
+    g.queue = []
+    const n = continueAsChild(g, heir.id)
+    expect(n).not.toBe(g)
+    expect(n.generation).toBe(2)
+    expect(policyOf(n, 'us').national.taxes.income).toBe(5)
+    expect(meView(n).dirty).toBe(0)
+    expect(ME_KEY in n.flags).toBe(false)
   })
 })
 
@@ -435,5 +445,56 @@ describe('fixes from the code review', () => {
     ageUp(g); g.queue = []
     expect(policyOf(g, 'us').ratingBase).not.toBe('')
     expect(nationOverlay(g, 'us', g.year, true)!.spread).toBe(0)
+  })
+})
+
+describe('a tariff cut rolls retaliation back', () => {
+  /** A President (US, 2001) with a standing tariff on China and a retaliation already rolled against it. */
+  function standing(seed: number, add: number): GameState {
+    const g = newLeader(seed, 'us', 2001)
+    const p = editPolicy(g, 'us')
+    p.tariffs = [{ input: 'industry', partner: 'cn', add }]
+    p.retaliation = [{ from: 'cn', input: 'industry', add: 10, until: g.year + 3 }]
+    writePolicy(g, p)
+    return g
+  }
+  function billText(g: GameState): string {
+    return g.queue.map(m => (m.kind === 'notice' ? m.text : '')).join('\n')
+  }
+  const cn = (g: GameState) => policyOf(g, 'us').retaliation.filter(r => r.from === 'cn')
+
+  it('cutting a 20% tariff to 10% rolls the retaliation back instead of forward', () => {
+    let passed = 0
+    for (let seed = 1; seed <= 60; seed++) {
+      const g = standing(seed, 20)
+      if (!resolveBill(g, { k: 'tariff', input: 'industry', partner: 'cn', add: 10 }, 'none')) continue
+      passed++
+      expect(policyOf(g, 'us').tariffs.find(t => t.partner === 'cn')?.add).toBe(10)
+      const text = billText(g)
+      expect(text).not.toMatch(/hit back/)
+      expect(text).not.toMatch(/Nobody retaliated/)
+      expect(text).toMatch(/rolling back/)
+      expect(cn(g).every(r => r.until === g.year)).toBe(true)
+    }
+    expect(passed).toBeGreaterThan(20)
+  })
+
+  it('controls: a raise still rolls retaliation, and a cut to nothing still rolls it back', () => {
+    let passed = 0, hitBack = 0
+    for (let seed = 1; seed <= 60; seed++) {
+      const g = standing(seed, 10)
+      if (!resolveBill(g, { k: 'tariff', input: 'industry', partner: 'cn', add: 20 }, 'none')) continue
+      passed++
+      expect(billText(g)).not.toMatch(/rolling back/)
+      if (/hit back/.test(billText(g))) hitBack++
+    }
+    expect(passed).toBeGreaterThan(20)
+    expect(hitBack).toBeGreaterThan(0)
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = standing(seed, 20)
+      if (!resolveBill(g, { k: 'tariff', input: 'industry', partner: 'cn', add: 0 }, 'none')) continue
+      expect(billText(g)).toMatch(/rolling back/)
+      expect(cn(g).every(r => r.until === g.year)).toBe(true)
+    }
   })
 })

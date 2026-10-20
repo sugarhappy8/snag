@@ -3,7 +3,7 @@
 // and yearlyMilestones adds the age-based moments (talents, puberty, adulthood...).
 import { rollBirthBackground, initializeBirthParent, birthIntroduction } from './birth-background'
 import { initializeRoyalBirth, inheritRoyalStatus, royalRule, type RoyalBirthChoice } from './royalty'
-import { npcCompany, refreshRoyalCareers } from './npc-lives'
+import { adoptNpcCompany, npcCompany, refreshRoyalCareers } from './npc-lives'
 import { npcLife } from './npc-state'
 import { refreshValue } from './business/economy'
 import { keptFundHolders, payOutDroppedFunds, settleFundsAtDeath } from './business/hedge-year'
@@ -44,6 +44,7 @@ import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng
 import { defineScript } from './scripts'
 import { planEstate, settleReading } from './events/will-estate'
 import { personalTax } from './nation/effects'
+import { nationWorldFlags } from './nation/state'
 import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
@@ -1208,6 +1209,14 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // treat ownership as a dangling job at a vanished asset.
   for (const unit of allocatedUnits) {
     if (unit.assets.some(a => groupIds.has(a.id)) || !unit.recipient || unit.recipient.id === childId) continue
+    // A plain firm (one asset, no mortgage, no family co-owners) stays a company: the designated
+    // sibling runs it as an NPC owner. Anything else falls through to the cash conversion below.
+    const firm = !unit.group && unit.assets.length === 1 ? unit.assets[0] : null
+    const firmState = firm && firm.kind === 'business' && !(firm.mortgage?.balance ?? 0) ? readBiz(n, firm) : null
+    if (firm && firmState && !firmState.familyShares?.length && adoptNpcCompany(n, unit.recipient, firm, firmState)) {
+      delete unit.recipient.data.nepo
+      continue
+    }
     // NPCs cannot retain Asset records after the point-of-view change. Represent the inherited
     // holding once in their modeled wealth instead, using the same net-equity basis as the
     // divisible estate and never turning an underwater holding into a new personal debt.
@@ -1532,6 +1541,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...waveWorldFlags(n),
     // AI firsts are world state: an heir can't claim a milestone the family already reached.
     ...benchWorldFlags(n),
+    // A President's laws are world state too: they stay until someone repeals them. nation.me is not carried.
+    ...nationWorldFlags(n),
   }
   inheritRoyalStatus(n, heirP)
   // An heir already serving as group CEO keeps that appointment, now as the playable chair.
