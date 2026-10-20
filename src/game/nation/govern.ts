@@ -511,6 +511,8 @@ export function resolveBill(g: GameState, m: Measure, sweet: Sweetener): boolean
     }
   }
   const before = previewOf(g, m)
+  // The tariff as it stood before this bill; afterTrade needs it to tell a cut from a raise.
+  const prevTariff = m.k === 'tariff' ? currentOf(p, m) : 0
   applyMeasure(g, p, m, v)
   writePolicy(g, p)
   bumpStat(me, 'passed')
@@ -522,7 +524,7 @@ export function resolveBill(g: GameState, m: Measure, sweet: Sweetener): boolean
   const react = Math.round(before.approval * accountability(v) * .5)
   if (react) adjustApproval(g, react)
   const extras: string[] = []
-  const retaliation = afterTrade(g, m)
+  const retaliation = afterTrade(g, m, prevTariff)
   if (retaliation) extras.push(retaliation)
   const insider = insiderLine(g, m, label)
   if (insider) extras.push(insider)
@@ -558,7 +560,7 @@ export function partnersOf(g: GameState, input: TariffInput = 'all'): string[] {
 }
 
 /** Partners hit back at new tariffs, sanctions and export bans; cuts and deals calm them. */
-function afterTrade(g: GameState, m: Measure): string {
+function afterTrade(g: GameState, m: Measure, prevTariff: number): string {
   if (areaOf(m) !== 'trade') return ''
   const country = g.character.countryId
   const p = editPolicy(g, country)
@@ -569,8 +571,7 @@ function afterTrade(g: GameState, m: Measure): string {
     lines.push(`${getCountry(from).name} hit back with a ${Math.max(5, Math.round(add / 5) * 5)}% tariff on our ${input === 'all' ? 'exports' : INPUT_LABEL[input]}.`)
   }
   if (m.k === 'tariff') {
-    const before = policyOf(g, country).tariffs.find(t => t.input === m.input && t.partner === m.partner)
-    if (m.add === 0 || (before && m.add < before.add)) {
+    if (m.add === 0 || m.add < prevTariff) {
       const targets = m.partner === 'all' ? new Set(p.retaliation.map(r => r.from)) : new Set([m.partner])
       const kept = p.retaliation.filter(r => !targets.has(r.from) || r.until <= g.year)
       if (kept.length < p.retaliation.length) lines.push('Partners started rolling back their own tariffs.')
