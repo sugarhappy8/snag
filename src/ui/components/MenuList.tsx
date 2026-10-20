@@ -1,8 +1,9 @@
 // Shared menu machinery: renders MenuNode lists as BitLife-style rows and runs actions
 // (disabled reasons, input + confirm dialogs, stay-open vs close). Used by MenuSheet
 // (Occupation / Assets / Activities) and PersonSheet (person interactions).
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/types'
+import { rovingMove, rovingStop } from '../a11y/roving'
 import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
 import { confirmText, infoText, isMultiline, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report, sliderPreview } from './menuModel'
@@ -276,17 +277,33 @@ export interface MenuRowsProps {
 
 type Section = { heading: string | null; key: string; rows: ReactNode[] }
 
-/** A list of rows grouped into cards, split by heading nodes. */
+/**
+ * A list of rows grouped into cards, split by heading nodes. The action and group rows are one
+ * Tab stop (roving tabindex): the arrows, Home, End and the page keys move focus between them.
+ */
 export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here right now.' }: MenuRowsProps) {
-  const sections: Section[] = []
-  let current: Section | null = null
-  const seen = new Set<string>()
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const instance = useId()
 
+  // First pass: what shows, under which React key. Duplicate ids would break React keys; keep the first.
+  const shown: { key: string; node: MenuNode }[] = []
+  const seen = new Set<string>()
   for (const node of nodes) {
     if (!nodeVisible(node, g)) continue
-    // Duplicate ids would break React keys; keep the first.
     const key = seen.has(node.id) ? `${node.id}#${seen.size}` : node.id
     seen.add(node.id)
+    shown.push({ key, node })
+  }
+  // The keys of the tappable rows, in render order, decide which one holds tabindex 0.
+  const stop = rovingStop(
+    shown.filter((s) => s.node.type === 'action' || s.node.type === 'menu').map((s) => s.key),
+    activeId,
+  )
+
+  // Second pass: the elements.
+  const sections: Section[] = []
+  let current: Section | null = null
+  for (const { key, node } of shown) {
     if (node.type === 'heading') {
       current = { heading: node.label, key, rows: [] }
       sections.push(current)
@@ -307,7 +324,9 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
       )
       continue
     }
-    current.rows.push(<MenuRow key={key} node={node} g={g} onTap={onTap} />)
+    current.rows.push(
+      <MenuRow key={key} node={node} g={g} onTap={onTap} tabStop={key === stop} rovingGroup={instance} onRovingFocus={() => setActiveId(key)} />,
+    )
   }
 
   const visible = sections.filter((s) => s.rows.length > 0)
@@ -325,7 +344,35 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
   )
 }
 
-export function MenuRow({ node, g, onTap }: { node: MenuAction | MenuGroup; g: GameState; onTap: (node: MenuAction | MenuGroup) => void }) {
+/** Moves focus between the rows of one roving list; `group` is the `data-roving` value they share. */
+function onRovingKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>, group: string) {
+  if (e.altKey || e.ctrlKey || e.metaKey) return
+  const root = e.currentTarget.closest('.sheet-body') ?? document
+  const stops = Array.from(root.querySelectorAll<HTMLElement>('[data-roving]')).filter((el) => el.getAttribute('data-roving') === group)
+  const next = rovingMove(stops.length, stops.indexOf(e.currentTarget), e.key)
+  if (next === null) return
+  e.preventDefault()
+  stops[next]?.focus()
+}
+
+export function MenuRow({
+  node,
+  g,
+  onTap,
+  tabStop,
+  rovingGroup,
+  onRovingFocus,
+}: {
+  node: MenuAction | MenuGroup
+  g: GameState
+  onTap: (node: MenuAction | MenuGroup) => void
+  /** Roving list only: this row holds tabindex 0. */
+  tabStop?: boolean
+  /** Set to make the row part of a roving list; rows with the same value share one Tab stop. */
+  rovingGroup?: string
+  /** Roving list only: the row took focus, so it becomes the stop. */
+  onRovingFocus?: () => void
+}) {
   const reason = nodeDisabled(node, g)
   const subtitle = nodeSubtitle(node, g)
   const hint = nodeHint(node, g)
@@ -337,6 +384,10 @@ export function MenuRow({ node, g, onTap }: { node: MenuAction | MenuGroup; g: G
       onClick={() => onTap(node)}
       aria-disabled={reason ? true : undefined}
       title={reason ?? undefined}
+      tabIndex={rovingGroup ? (tabStop ? 0 : -1) : undefined}
+      data-roving={rovingGroup}
+      onFocus={rovingGroup ? onRovingFocus : undefined}
+      onKeyDown={rovingGroup ? (e) => onRovingKeyDown(e, rovingGroup) : undefined}
     >
       <span className="menu-row-icon" aria-hidden>
         {node.emoji}
