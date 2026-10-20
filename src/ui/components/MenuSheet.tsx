@@ -1,7 +1,11 @@
 // Generic renderer for a MenuGroup tree (Occupation / Assets / Activities): a bottom sheet
 // with a back-arrow navigation stack. Rows re-render from the latest game state after
 // every action. It can reopen at a remembered spot ("Back to …" chip on the game screen).
+import { FLAGS } from '../../game/flags'
+import { needsYou } from '../../game/hubs/needs'
 import type { MenuGroup } from '../../game/types'
+import { NeedsYouCard } from '../nav/NeedsYouCard'
+import { regroupForDisplay } from '../nav/sections'
 import { useApp } from '../store'
 import { groupChildren, groupHeader, MenuRows, nodeDisabled, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape, type MenuSpot } from './MenuList'
 import { Sheet } from './Sheet'
@@ -28,6 +32,10 @@ export function MenuSheet({ root, onClose, initial, onLeave }: MenuSheetProps) {
   const current = nav.trail.length > 0 ? nav.trail[nav.trail.length - 1] : root
   const nodes = nav.trail.length > 0 ? groupChildren(current, g) : rootNodes
   const header = groupHeader(current, g)
+  // Root level only (G.8): the "Needs you" card and the sectioned order. The data list stays the one that trails resolve against.
+  const atRoot = FLAGS.navRegroup && nav.trail.length === 0 && !rootReason
+  const shown = atRoot ? regroupForDisplay(root.id, nodes, g) : nodes
+  const needs = atRoot ? needsYou(nodes, g) : []
 
   return (
     <>
@@ -45,7 +53,10 @@ export function MenuSheet({ root, onClose, initial, onLeave }: MenuSheetProps) {
               {rootReason}
             </div>
           ) : (
-            <MenuRows nodes={nodes} g={g} onTap={runner.tap} />
+            <>
+              <NeedsYouCard rows={needs} onTap={runner.tap} />
+              <MenuRows nodes={shown} g={g} onTap={runner.tap} />
+            </>
           )}
         </div>
       </Sheet>

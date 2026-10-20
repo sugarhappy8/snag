@@ -1,0 +1,23 @@
+/* Navigation (R1 track N): the "Needs you" pill on a menu row and the card above a root list. Built on the global
+   tokens (global.css), so it follows light and dark mode. The pill sits in the row text, not in the aria-hidden end slot. */
+
+.menu-row-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin: 2px 0;
+  padding: 0 9px;
+  border-radius: 11px;
+  background: var(--action-red);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* The gap to the card below comes from .menu-section + .menu-section (global.css); the red edge says "look here". */
+.needs-card .menu-list {
+  border-color: color-mix(in srgb, var(--action-red) 40%, var(--border));
+}

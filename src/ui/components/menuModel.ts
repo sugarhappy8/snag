@@ -1,6 +1,8 @@
 // Pure helpers for evaluating menu nodes safely (no React, no store), shared by the menu
 // UI and unit-tested on their own. A bug in one feature menu must not take the UI down,
 // so every callback is wrapped.
+import { FLAGS } from '../../game/flags'
+import { badgeText } from '../../game/hubs/needs'
 import { HINT_EMOJI } from '../../game/talents'
 import type { GameState, MenuAction, MenuGroup, MenuInfo, MenuInput, MenuNode } from '../../game/types'
 
@@ -341,4 +343,9 @@ export function returnTarget(
     emoji: last ? last.emoji : root.emoji,
     exact: trail.length === path.length,
   }
+}
+
+/** The "Needs you" pill of a row (G.8): its badge text, or null. Dark unless FLAGS.navRegroup is on; a locked row shows none (the caller checks). */
+export function nodeBadge(node: MenuAction | MenuGroup, g: GameState): string | null {
+  return FLAGS.navRegroup ? badgeText(node, g) : null
 }
