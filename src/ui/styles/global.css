@@ -32,7 +32,7 @@
   --card: #ffffff;
   --card-2: #f6f8fb;
   --text: #1b2230;
-  --muted: #6a7486;
+  --muted: #566072;
   --border: #e1e6ee;
   --hairline: #edf0f5;
   --chip-bg: #e9eef6;
@@ -52,10 +52,10 @@
   --header-to: #1d6fd8;
   --header-text: #ffffff;
 
-  --tone-good: #1d8a45;
-  --tone-bad: #c8352f;
+  --tone-good: #17703a;
+  --tone-bad: #c2312b;
   --tone-event: #6b3fc4;
-  --age-heading: #1d6fd8;
+  --age-heading: #195fbd;
 
   /* Purple talent hints (🔮): text, soft fill and outline. */
   --hint-text: #6b33bf;
