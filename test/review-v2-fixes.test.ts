@@ -4,7 +4,6 @@ import { makeTestGame } from './helpers'
 import { becomeCeo, installManager, managerCandidate, maxOwnerSalary } from '../src/game/business/career'
 import { formGroup, groupBiz } from '../src/game/business/conglomerate-actions'
 import { groupsOf, liveGroup, saveGroup } from '../src/game/business/conglomerate-state'
-import { settlePerfectForesight } from '../src/game/business/executive-foresight'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { businessView } from '../src/game/business/manage'
 import { bizOf, readBiz } from '../src/game/business/state'
@@ -12,7 +11,6 @@ import { closeRound } from '../src/game/business/deeptech-funding'
 import { techOf } from '../src/game/business/deeptech-core'
 import { yearlyCorruption } from '../src/game/special/corruption'
 import { createPerson } from '../src/game/people'
-import { simulateYear } from '../src/game/business/economy'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import type { Industry } from '../src/game/data/markets'
 import type { GameState, MenuAction, MenuNode } from '../src/game/types'
@@ -49,7 +47,7 @@ function find(g: GameState, nodes: MenuNode[], id: string): MenuAction {
   throw new Error(`no ${id}`)
 }
 
-describe('100-rated CEO perfect foresight', () => {
+describe('100-rated CEO books no guaranteed profit', () => {
   it('never covers a company the player runs personally', () => {
     const g = makeTestGame(7, { age: 45, money: 0 })
     const b = newBiz(g, 'solar', 'us', 'Chicago', { cash: 20e6, founded: 2020, valuation: 25e6 })
@@ -57,13 +55,18 @@ describe('100-rated CEO perfect foresight', () => {
     g.assets.push(a)
     // A division of a group whose hired CEO is rated 100, but the player is its own CEO.
     const owned = bizOf(g, a)
+    becomeCeo(g, a, owned, 'Owner & CEO')
     owned.group = { id: 'grp', own: 1, joined: 2020, core: { id: 'grp', name: 'Atlas', rev: 1, founded: 2020, share: 1, ceo: 'manager', manager: { firstName: 'Ada', lastName: 'Best', gender: 'female', skill: 100, salary: 1e6, since: 2020 } } }
-    owned.ceo = 'owner'; owned.manager = null; owned.debt = 1e9; owned.debtRate = .5
-    const s = simulateYear(g, owned, 2025, maxOwnerSalary(owned), 1).stmt, cash = owned.cash
-    settlePerfectForesight(g, owned, s)
-    expect(s.strategicIncome ?? 0).toBe(0)
-    expect(owned.cash).toBe(cash)
-    expect(s.net).toBeLessThan(0)
+    owned.debt = 1e9; owned.debtRate = .5
+    owned.ownerSalary = maxOwnerSalary(owned)
+    const cash = owned.cash
+    yearlyBusinessImpl(g)
+    const after = readBiz(g, a)
+    expect(after.ceo).toBe('owner')
+    expect(after.last!.strategicIncome).toBeUndefined()
+    expect(after.last!.net).toBeLessThan(0)
+    // The loss comes straight out of the company's cash: nothing is added back.
+    expect(after.cash - cash).toBeCloseTo(after.last!.net, -1)
   })
 
   it('does not refill an owner bonus taken before a 100-rated group CEO took the division back', () => {
@@ -78,7 +81,7 @@ describe('100-rated CEO perfect foresight', () => {
     bonus.run(g, String(n))
     expect(g.character.money - personal).toBe(n)
     expect(readBiz(g, mine.a).ownerDraws).toBe(n)
-    // Heavy interest makes the 100-rated leadership book strategic income for both divisions anyway.
+    // Heavy interest makes both divisions lose money; a 100-rated leadership no longer tops that up.
     for (const x of [mine, other]) { const b = bizOf(g, x.a); b.debt = 1e9; b.debtRate = .5 }
     // Same scenario without the bonus: what the 100-rated leadership books for an ordinary year.
     const control = structuredClone(g)
@@ -88,12 +91,14 @@ describe('100-rated CEO perfect foresight', () => {
     const after = readBiz(g, mine.a), base = readBiz(control, control.assets.find(x => x.id === mine.a.id)!)
     // Autonomous management replaced the owner with a hired CEO before settlement…
     expect(after.ceo).toBe('manager')
-    // …but the strategic income does not grow by the bonus: the owner's withdrawal stays withdrawn.
-    expect(after.last!.strategicIncome ?? 0).toBeLessThanOrEqual(base.last!.strategicIncome ?? 0)
+    // …but nothing is booked back in: the owner's withdrawal stays withdrawn.
+    expect(after.last!.strategicIncome).toBeUndefined()
+    expect(base.last!.strategicIncome).toBeUndefined()
     expect(after.cash).toBeLessThan(base.cash - n * .5)
     expect(after.ownerDraws).toBeUndefined()
-    // The sister division run by a hired CEO keeps the documented protection.
-    expect((readBiz(g, other.a).last?.net ?? 0)).toBeGreaterThan(0)
+    // The sister division run by a hired CEO books its loss too: no rating guarantees a profit.
+    expect(readBiz(g, other.a).last!.strategicIncome).toBeUndefined()
+    expect(readBiz(g, other.a).last!.net).toBeLessThan(0)
     // Two full group years (control and test): room for a busy CI runner.
   }, 60_000)
 })
