@@ -13,6 +13,7 @@ import { useSyncExternalStore } from 'react'
 import { ageUp } from '../game/aging'
 import { bindMoneyContext, moneyContextOf, netWorth, notice } from '../game/core'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
+import { lifeSpark } from '../game/life-series'
 import { resolveTask } from '../game/offline'
 import {
   clearSave,
@@ -394,6 +395,7 @@ function finalizeIfDead(g: GameState): void {
   if (g.character.alive || g.flags.deathRecorded || g.queue.length > 0) return
   const c = g.character
   const deathMoney = moneyContextOf(g)
+  const spark = lifeSpark(g)
   recordDeath(g, {
     lifeId: g.lifeId,
     generation: g.generation,
@@ -410,6 +412,7 @@ function finalizeIfDead(g: GameState): void {
     occupation: typeof g.flags.finalOccupation === 'string' ? g.flags.finalOccupation : 'Unknown',
     ribbon: g.ribbon,
     obituary: g.obituary,
+    ...(spark.length >= 2 ? { spark } : {}),
   })
 }
 

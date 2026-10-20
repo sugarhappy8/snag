@@ -201,7 +201,7 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialApp
   const payout = Math.min(Math.max(0, result.stmt.net) * .2, Math.max(0, b.cash - b.debt - typicalIncome(g, l.country)))
   b.cash -= payout; p.money += payout * b.share * .8
   if (stake) earnIncome(g, payout * playerShare)
-  evolve(g, b, result.stmt, fiscal); stampWave(g, b, fiscal); recordYear(b, result.stmt); b.history = b.history.slice(-12)
+  evolve(g, b, result.stmt, fiscal); stampWave(g, b, fiscal); recordYear(b, result.stmt, { lean: true }); b.history = b.history.slice(-12)
   const expansion = g.year % 3 === 0 ? expandNpcCompany(g, b, l) : 0
   if (expansion) milestone(g, p, l, `${a.name} reinvested ${money(expansion)} in a new operating location`)
   b.valuation = valuationOf(b); refreshValue(a, b)

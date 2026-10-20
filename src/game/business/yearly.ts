@@ -541,12 +541,14 @@ export function yearlyBusinessImpl(g: GameState): void {
       failure: res.bank ? Math.max(0, -b.cash - res.bank.bankLoss) : Math.max(0, previousRevenue - s.revenue) + Math.max(0, -b.cash),
       ...res.bank,
     })
+    // evolve() clears the year's owner bonuses (they are already inside s.other); the books keep them as a memo.
+    const draws = Math.max(0, b.ownerDraws ?? 0)
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
     if (tech) afterDeepTechYear(g, a, b)
     // The tech-wave mood of the booked year, before anything values the company (business/tech-waves.ts).
     stampWave(g, b, fiscal)
-    const rec0 = recordYear(b, s)
+    const rec0 = recordYear(b, s, { draws })
     b.valuation = b.public ? updateSharePrice(g, b, fiscal) : valuationOf(b)
     rec0.valuation = b.valuation
     refreshValue(a, b)
