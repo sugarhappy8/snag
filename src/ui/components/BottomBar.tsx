@@ -31,7 +31,7 @@ export function BottomBar({ disabled, onOpen, onAge }: BottomBarProps) {
   return (
     <nav className="bottombar" aria-label="Main menu">
       {LEFT.map(tabButton)}
-      <button type="button" className="bb-age" disabled={disabled} onClick={onAge} aria-label="Age up one year">
+      <button type="button" className="bb-age" data-focus-home disabled={disabled} onClick={onAge} aria-label="Age up one year">
         <span className="bb-age-plus" aria-hidden>
           +
         </span>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ModalSurface } from '../a11y/ModalSurface'
 
 export interface SheetProps {
   title: string
@@ -15,7 +16,7 @@ export interface SheetProps {
 export function Sheet({ title, emoji, onClose, onBack, children, footer }: SheetProps) {
   return (
     <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <ModalSurface role="dialog" label={title} className="sheet">
         <header className="sheet-header">
           {onBack ? (
             <button className="sheet-nav" onClick={onBack} aria-label="Back">
@@ -34,7 +35,7 @@ export function Sheet({ title, emoji, onClose, onBack, children, footer }: Sheet
         </header>
         <div className="sheet-body">{children}</div>
         {footer ? <footer className="sheet-footer">{footer}</footer> : null}
-      </div>
+      </ModalSurface>
     </div>
   )
 }

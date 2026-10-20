@@ -48,7 +48,7 @@ export function App() {
 
   return (
     <div className="app">
-      {saveError && <aside className="save-warning" role="alert">
+      {saveError && <aside className="save-warning" role="alert" data-modal-exempt>
         <p>Progress isn’t saved. Keep this tab open. Free some browser storage or allow site storage, then retry.</p>
         <button className="btn" onClick={retrySave}>Retry save</button>
       </aside>}

@@ -7,6 +7,7 @@
 // rounded and clamped to the engine's bounds so no rounding can ever exceed them.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { formatMoney, moneyFromInput, moneyScale, showMoney } from '../../game/core'
+import { ModalSurface } from '../a11y/ModalSurface'
 import { canSlide, sliderOutput, sliderStart } from './menuModel'
 import { SliderField, useSliderScale } from './Slider'
 
@@ -27,15 +28,9 @@ export interface PopupFrameProps {
 export function PopupFrame({ children, wide, className, dialog, onBackdrop, label }: PopupFrameProps) {
   return (
     <div className={dialog ? 'popup-backdrop is-dialog' : 'popup-backdrop'} onClick={onBackdrop}>
-      <div
-        className={['popup', wide ? 'is-wide' : '', className ?? ''].filter(Boolean).join(' ')}
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <ModalSurface role="dialog" label={label} className={['popup', wide ? 'is-wide' : '', className ?? ''].filter(Boolean).join(' ')}>
         <div className="popup-scroll">{children}</div>
-      </div>
+      </ModalSurface>
     </div>
   )
 }
@@ -474,7 +469,7 @@ export function Toast({ message, onDone, ms = 2800 }: ToastProps) {
     return () => clearTimeout(t)
   }, [message, ms])
   return (
-    <div className="toast-wrap" role="status" aria-live="polite">
+    <div className="toast-wrap" role="status" aria-live="polite" data-modal-exempt>
       <div className="toast" onClick={() => done.current()}>
         {message}
       </div>

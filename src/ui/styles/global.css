@@ -487,6 +487,14 @@ label {
   animation: al-slide-up 0.3s cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 
+/* A dialog container is focused by script only (src/ui/a11y/ModalSurface.tsx). A ring around the whole card helps
+   nobody; the controls inside keep the global :focus-visible ring. */
+.sheet:focus,
+.popup:focus,
+.al-dialog:focus {
+  outline: none;
+}
+
 .sheet-header {
   flex: none;
   display: flex;
