@@ -2,18 +2,22 @@
 // what the UI would show (visible nodes, locked groups listed but not entered, errors caught like the UI catches
 // them), `hub.` groups cost no depth and never show up in a canonical path, and the lint finds what it should.
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { resetFlags, withFlags } from '../src/game/flags'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'
 import {
   actionSequence,
+  actionSequenceCached,
   buildNavState,
   canonical,
   frozen,
+  isTruncated,
   lintViolations,
   navState,
   normId,
   SECTIONED_ROOTS,
   walkTree,
+  walkTreeCached,
   type NavStateName,
   type NavTab,
   type WalkOpts,
@@ -47,7 +51,11 @@ function idsOf(g: GameState, tab: NavTab, group: MenuGroup, opts: WalkOpts = {})
 
 afterEach(() => {
   vi.restoreAllMocks()
+  resetFlags()
 })
+
+/** A building or walking test of a CEO state costs seconds; the default 15 s is too tight on a loaded CI box. */
+const HEAVY = 120_000
 
 describe('canned states', () => {
   it('1. building a state twice gives equal JSON, and navState hands out fresh clones', () => {
@@ -62,7 +70,7 @@ describe('canned states', () => {
       one.character.money += 1
       expect(JSON.stringify(navState(name)), `${name} must not see an edit made to another copy`).toBe(a)
     }
-  })
+  }, HEAVY)
 
   it('1b. each state is what the plan says it is', () => {
     const kid = navState('kid')
@@ -83,7 +91,7 @@ describe('canned states', () => {
     expect(elder.character.pension).toBe(24000)
     expect(elder.character.conditions.filter((c) => c.diagnosed && c.severity === 60)).toHaveLength(1)
     for (const name of NAMES) expect(navState(name).queue, name).toEqual([])
-  })
+  }, HEAVY)
 
   it('1c. frozen() is a deep-frozen copy', () => {
     const g = frozen('kid')
@@ -219,6 +227,58 @@ describe('walkTree', () => {
     const rel = walked.filter((w) => w.tab === 'relationships')
     expect(rel.some((w) => w.type === 'menu' && w.ids.join('/') === `person.${person.id}`)).toBe(true)
     expect(rel.some((w) => w.type === 'action' && w.ids[0] === `person.${person.id}`)).toBe(true)
+  }, HEAVY)
+
+  it('4h. isTruncated says whether the node cap or the depth cap cut the walk', () => {
+    const plain = grp('activities', [grp('one', [grp('two', [act('leaf')])])])
+    const walkPlain = (opts: WalkOpts) => walkTree(g, { ...opts, roots: only('activities', plain) })
+    expect(isTruncated(walkPlain({ maxDepth: 3 }))).toBe(false)
+    expect(isTruncated(walkPlain({ maxDepth: 2 }))).toBe(true)
+    const endless: MenuGroup = grp('activities', () => [act('a'), act('b'), endless])
+    expect(isTruncated(walkTree(g, { roots: only('activities', endless), maxNodes: 50, maxDepth: 1000 }))).toBe(true)
+    // A locked group is left alone on purpose: that is not a cut.
+    const locked = grp('activities', [grp('locked', [act('inside')], { disabledReason: () => 'Not yet.' })])
+    expect(isTruncated(walkTree(g, { roots: only('activities', locked) }))).toBe(false)
+    // The cap equal to the node count is a whole walk; one less is a cut.
+    const three = grp('activities', [act('a'), act('b'), act('c')])
+    expect(isTruncated(walkTree(g, { roots: only('activities', three), maxNodes: 3 }))).toBe(false)
+    expect(isTruncated(walkTree(g, { roots: only('activities', three), maxNodes: 2 }))).toBe(true)
+    expect(() => isTruncated([])).toThrow()
+  })
+})
+
+describe('cached walks', () => {
+  it('8. two calls under the same flags and options give one array', () => {
+    const a = walkTreeCached('kid')
+    expect(walkTreeCached('kid')).toBe(a)
+    expect(actionSequenceCached('kid')).toBe(actionSequenceCached('kid'))
+    expect(actionSequenceCached('kid')).toEqual(a.filter((w) => w.type === 'action').map(canonical))
+    expect(walkTreeCached('kid', { maxDepth: 2 })).not.toBe(a)
+    expect(isTruncated(walkTreeCached('kid'))).toBe(false)
+  })
+
+  it('8b. the flag state is part of the key, so a flag-off and a flag-on call never share an entry', () => {
+    const off = walkTreeCached('kid')
+    const seqOff = actionSequenceCached('kid')
+    const on = withFlags({ cockpits: true }, () => walkTreeCached('kid'))
+    const seqOn = withFlags({ navRegroup: true }, () => actionSequenceCached('kid'))
+    expect(on).not.toBe(off)
+    expect(seqOn).not.toBe(seqOff)
+    // Same flags again: the entry made under them, and back with the flags off: the first one.
+    withFlags({ cockpits: true }, () => expect(walkTreeCached('kid')).toBe(on))
+    withFlags({ navRegroup: true }, () => expect(actionSequenceCached('kid')).toBe(seqOn))
+    expect(walkTreeCached('kid')).toBe(off)
+    expect(actionSequenceCached('kid')).toBe(seqOff)
+    // Turning a flag off explicitly is the default state, not a new one.
+    expect(withFlags({ cockpits: false }, () => walkTreeCached('kid'))).toBe(off)
+  })
+
+  it('8c. synthetic roots are refused at run time, so a cached entry is always a walk of the real roots', () => {
+    const roots = only('assets', grp('assets', [act('a')]))
+    expect(() => walkTreeCached('kid', { roots } as WalkOpts)).toThrow(/roots/)
+    expect(() => actionSequenceCached('kid', { roots } as WalkOpts)).toThrow(/roots/)
+    // Nothing was cached by the refused calls.
+    expect(walkTreeCached('kid').some((w) => w.node.id === 'a')).toBe(false)
   })
 })
 

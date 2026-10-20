@@ -11,7 +11,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { canonical, frozen, lintOf, walkTree, walkTreeCached, type NavStateName, type Walked } from './nav-kit'
+import { canonical, frozen, isTruncated, lintOf, walkTree, walkTreeCached, type NavStateName, type Walked } from './nav-kit'
 
 const NAMES: NavStateName[] = ['kid', 'adult', 'ceo', 'elder']
 const BASELINE_PATH = fileURLToPath(new URL('./fixtures/nav-lint-baseline.json', import.meta.url))
@@ -30,6 +30,9 @@ interface Baseline {
   single: string[]
 }
 
+/** The CEO walk (about 12,000 nodes) takes seconds; the default 10 s hook and 15 s test timeouts are too tight on a loaded CI box. */
+const HEAVY = 120_000
+
 const walks = new Map<NavStateName, Walked[]>()
 const menuErrors: string[] = []
 
@@ -43,7 +46,7 @@ beforeAll(() => {
   } finally {
     spy.mockRestore()
   }
-})
+}, HEAVY)
 
 function sorted(set: Iterable<string>): string[] {
   return [...set].sort()
@@ -92,11 +95,17 @@ describe('menu tree of the canned states', () => {
       const deepest = walked.filter((w) => w.type === 'menu').reduce((m, w) => Math.max(m, w.ids.filter((id) => !id.startsWith('hub.')).length), 0)
       expect(deepest, `${name}: deepest group`).toBeLessThan(8)
       expect(walked.length, `${name}: nodes found vs the cap`).toBeLessThan(30000)
+      expect(isTruncated(walked), `${name}: the walk was cut by the depth or node cap`).toBe(false)
     }
   })
 
   it('6. walking a frozen state does not throw and does not change it (RF5)', () => {
-    for (const name of NAMES) {
+    // The CEO tree is walked once per file (the cached walk in beforeAll, on a deep-frozen state, with console.error
+    // watched: a write to a frozen object throws, the menuModel wrappers report it, and test 5 fails on it). The three
+    // cheap states are walked again here to compare their JSON before and after.
+    expect(menuErrors, 'ceo: a menu complained on the frozen state').toEqual([])
+    expect(walks.get('ceo')!.length, 'ceo').toBeGreaterThan(MIN_NODES.ceo)
+    for (const name of NAMES.filter((n) => n !== 'ceo')) {
       const g = frozen(name)
       const before = JSON.stringify(g)
       const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -112,7 +121,7 @@ describe('menu tree of the canned states', () => {
       expect(walked.length, name).toBe(walks.get(name)!.length)
       expect(JSON.stringify(g) === before, `${name}: JSON changed by the walk`).toBe(true)
     }
-  })
+  }, HEAVY)
 
   it('7. the lint ratchet: no new violation', () => {
     const { tooLong, single } = lintUnion()

@@ -8,7 +8,10 @@
 //   - the lint (groups over 12 rows without a heading, groups with one row) that test/nav-tree.test.ts ratchets.
 //
 // A walk costs seconds on the CEO state (about 12,000 nodes), so every test that walks or indexes a canned state
-// uses walkTreeCached / actionSequenceCached: a file then walks a state once per option set.
+// uses walkTreeCached / actionSequenceCached: a file then walks a state once per option set AND flag state. Menus and
+// hubs read FLAGS (navRegroup, cockpits, chartKit) when they are called, so the tree depends on the flags: the memo key
+// carries the flag values read at call time (navCacheKey). A test that compares flag-off with flag-on gets two walks,
+// never one entry twice. R1-N4's buildIndexCached must build its key with navCacheKey too.
 import { MORTGAGE_PLANS, buyHouse, houseListings } from '../src/game/assets'
 import { becomeCeo } from '../src/game/business/career'
 import { evolve, recordYear, simulateYear, valuationOf } from '../src/game/business/economy'
@@ -17,6 +20,7 @@ import { bizOf, type BizState } from '../src/game/business/state'
 import { applyPlan, autoPlan } from '../src/game/business/yearly'
 import { hireForJob } from '../src/game/careers'
 import { getJobDef } from '../src/game/data/jobs'
+import { FLAGS } from '../src/game/flags'
 import { contractCondition } from '../src/game/health'
 import { createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
@@ -41,6 +45,11 @@ export const SECTIONED_ROOTS: readonly string[] = ['activities']
 
 // ---------------------------------------------------------------------------
 // Canned states
+//
+// The family in `people` is the birth-time family createNewLife makes (parents about 30 and alive, no grown children),
+// whatever the persona's age. So the Relationships tab, R1-N3's people keyword checks and R1-N4's people entries never
+// see an elder with dead parents or an adult with grown children. The adult extras add friends and a partner only.
+// A test that needs those cases builds them on a navState() copy (createPerson, alive = false).
 
 const SEEDS: Record<NavStateName, number> = { kid: 4101, adult: 4102, ceo: 4103, elder: 4104 }
 
@@ -182,7 +191,12 @@ export interface Lint {
 
 const TOO_MANY_ROWS = 12
 
-const lintOfWalk = new WeakMap<Walked[], Lint>()
+interface WalkMeta {
+  lint: Lint
+  truncated: boolean
+}
+
+const walkMeta = new WeakMap<Walked[], WalkMeta>()
 
 function isHub(id: string): boolean {
   return id.startsWith('hub.')
@@ -201,7 +215,9 @@ function personGroup(p: Person): MenuGroup {
 /**
  * The Relationships tab is a custom sheet, not a MenuGroup, so the walk builds a root from the same two functions
  * the sheet uses: one group `person.<id>` per person, under a heading per relationship group. R1-N3 replaces it
- * with peopleMenu.
+ * with peopleMenu. Because of the headings this root can never be reported tooLong; when peopleMenu replaces it,
+ * N3 must decide again whether its root is sectioned and check or regenerate the baseline, so the lint does not
+ * loosen or tighten by accident at that merge.
  */
 function relationshipsRoot(): MenuGroup {
   return {
@@ -232,6 +248,7 @@ export function walkTree(g: GameState, opts: WalkOpts = {}): Walked[] {
   const roots: Record<NavTab, MenuGroup> = { occupation: occupationMenu, assets: assetsMenu, relationships: relationshipsRoot(), activities: activitiesMenu, ...opts.roots }
   const out: Walked[] = []
   const lint = { tooLong: new Set<string>(), single: new Set<string>() }
+  let truncated = false
 
   const list = (tab: NavTab, group: MenuGroup, ids: string[], depth: number): void => {
     const kids: unknown = groupChildren(group, g)
@@ -245,26 +262,43 @@ export function walkTree(g: GameState, opts: WalkOpts = {}): Walked[] {
     if (rows === 1) lint.single.add(normId(group.id))
     for (const n of visible) {
       if (n.type !== 'action' && n.type !== 'menu') continue
-      if (out.length >= maxNodes) return
+      if (out.length >= maxNodes) {
+        truncated = true
+        return
+      }
       const path = [...ids, n.id]
       out.push({ tab, ids: path, type: n.type, node: n, rows })
       if (n.type === 'menu' && !nodeDisabled(n, g)) {
         const next = isHub(n.id) ? depth : depth + 1
         if (next <= maxDepth) list(tab, n, path, next)
+        else truncated = true
       }
     }
   }
 
   for (const tab of TABS) list(tab, roots[tab], [], 1)
-  lintOfWalk.set(out, { tooLong: [...lint.tooLong].sort(), single: [...lint.single].sort() })
+  walkMeta.set(out, { lint: { tooLong: [...lint.tooLong].sort(), single: [...lint.single].sort() }, truncated })
   return out
+}
+
+function metaOf(walked: Walked[], who: string): WalkMeta {
+  const found = walkMeta.get(walked)
+  if (!found) throw new Error(`nav-kit: ${who} needs the array walkTree returned`)
+  return found
 }
 
 /** The lint found while `walked` was walked (it must come from walkTree or walkTreeCached). */
 export function lintOf(walked: Walked[]): Lint {
-  const found = lintOfWalk.get(walked)
-  if (!found) throw new Error('nav-kit: lintOf needs the array walkTree returned')
-  return found
+  return metaOf(walked, 'lintOf').lint
+}
+
+/**
+ * True when the walk did not see the whole tree: the node cap (maxNodes) stopped it, or a group that could be entered
+ * sat in a list at the depth cap (maxDepth) and was listed but not entered. A locked group left alone on purpose is
+ * not a cut. The lint of a truncated walk is partial, so a nav test that expects a whole walk asserts this is false.
+ */
+export function isTruncated(walked: Walked[]): boolean {
+  return metaOf(walked, 'isTruncated').truncated
 }
 
 /** Group ids that are too long or single-row in `g`'s tree, normalised, sorted, unique. */
@@ -275,13 +309,19 @@ export function lintViolations(g: GameState, opts?: WalkOpts): Lint {
 const walkCache = new Map<string, Walked[]>()
 const sequenceCache = new Map<string, string[]>()
 
-function cacheKey(name: NavStateName, opts: Omit<WalkOpts, 'roots'>): string {
-  return `${name}|${opts.maxDepth ?? ''}|${opts.maxNodes ?? ''}`
+/**
+ * The memo key of a cached walk: state, options and the FLAGS values at this moment (read, never written). Anything
+ * else that caches a walk or an index of a canned state (R1-N4's buildIndexCached) must use this key. Synthetic roots
+ * are refused: a cached entry is always a walk of the real roots, and the key does not cover roots.
+ */
+export function navCacheKey(name: NavStateName, opts: Omit<WalkOpts, 'roots'> = {}): string {
+  if ((opts as WalkOpts).roots) throw new Error('nav-kit: cached walks use the real roots; call walkTree for synthetic roots')
+  return `${name}|${opts.maxDepth ?? ''}|${opts.maxNodes ?? ''}|${JSON.stringify(FLAGS)}`
 }
 
-/** walkTree of the frozen canned state `name`, memoised per (name, options) inside one test file. Never mutate the result. */
+/** walkTree of the frozen canned state `name`, memoised per (name, options, flags) inside one test file. Never mutate the result. */
 export function walkTreeCached(name: NavStateName, opts: Omit<WalkOpts, 'roots'> = {}): Walked[] {
-  const key = cacheKey(name, opts)
+  const key = navCacheKey(name, opts)
   let hit = walkCache.get(key)
   if (!hit) {
     hit = walkTree(frozen(name), opts)
@@ -290,8 +330,9 @@ export function walkTreeCached(name: NavStateName, opts: Omit<WalkOpts, 'roots'>
   return hit
 }
 
+/** actionSequence of the same memoised walk (same key, so the same flag state). Never mutate the result. */
 export function actionSequenceCached(name: NavStateName, opts: Omit<WalkOpts, 'roots'> = {}): string[] {
-  const key = cacheKey(name, opts)
+  const key = navCacheKey(name, opts)
   let hit = sequenceCache.get(key)
   if (!hit) {
     hit = sequenceOf(walkTreeCached(name, opts))
