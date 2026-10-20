@@ -1,5 +1,5 @@
-// Player-facing settings, persisted in localStorage separately from saves: how money is shown
-// and the Time Machine's Sandbox switch.
+// Player-facing settings, persisted in localStorage separately from saves: how money is shown,
+// the Time Machine's Sandbox switch and Quiet Mode (routine notices wait in the inbox).
 //
 // The money display (local currency or US dollars, prices of the year or today's money) is
 // applied to the engine's formatter (core.ts setMoneyDisplay) whenever settings are loaded or
@@ -23,12 +23,15 @@ export interface Settings {
   prices: PricesSetting
   /** Sandbox: unlimited Time Machine jumps. */
   sandboxTimeMachine: boolean
+  /** Quiet Mode: routine notices wait in the inbox instead of popping up. On for everyone; it only acts while FLAGS.quietInbox is on. */
+  quietMode: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   money: 'local',
   prices: 'nominal',
   sandboxTimeMachine: false,
+  quietMode: true,
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +64,13 @@ export function normalizeSettings(raw: unknown): Settings {
     money: oneOf(raw.money, MONEY_SETTINGS, d.money),
     prices: oneOf(raw.prices, PRICES_SETTINGS, d.prices),
     sandboxTimeMachine: bool(raw.sandboxTimeMachine, d.sandboxTimeMachine),
+    quietMode: bool(raw.quietMode, d.quietMode),
   }
+}
+
+/** Whether Quiet Mode is on: anything but a stored false (a missing or damaged value means on). */
+export function quietModeOn(s: { quietMode?: boolean } | null | undefined): boolean {
+  return s?.quietMode !== false
 }
 
 /** Make the engine's money formatting follow these settings (currency and year prices). */

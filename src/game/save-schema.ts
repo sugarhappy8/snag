@@ -2,6 +2,7 @@
 // (migrateSave) and the structural checks that keep a damaged one out of the game. No storage
 // here, so the main save and the Time Machine's snapshots can both load through it.
 import { GAME_VERSION, SAVE_SCHEMA } from './core'
+import { INBOX_LINK_MAX } from './inbox'
 import { HIDDEN_KEYS, STAT_KEYS, type GameState, type ModalItem } from './types'
 
 export { SAVE_SCHEMA }
@@ -79,6 +80,9 @@ export function migrateLegacyAi(g: GameState): GameState {
   for (const modal of g.queue as unknown as Record<string, unknown>[]) {
     if ('ai' in modal) delete modal.ai
     if (modal.tone === 'ai') modal.tone = 'neutral'
+    // The notice weight and link (Quiet Mode, R1-T5) are optional: only 'minor' and a short string are meaningful.
+    if ('weight' in modal && modal.weight !== 'minor') delete modal.weight
+    if ('link' in modal && (typeof modal.link !== 'string' || modal.link.length > INBOX_LINK_MAX)) delete modal.link
   }
   if (Array.isArray(g.log)) {
     for (const year of g.log as unknown[]) {

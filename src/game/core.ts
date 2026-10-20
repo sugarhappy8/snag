@@ -1,4 +1,5 @@
 // Shared helpers every game module uses: stats, money, log, modals, people lookups.
+import { noticeWeightFor } from './notice-weights'
 import { chance, uid } from './rng'
 import type {
   AiTask,
@@ -447,6 +448,8 @@ export interface NoticeOptions {
 /** Show a popup with an OK button. */
 export function notice(g: GameState, title: string, text: string, opts: NoticeOptions = {}): void {
   // The support flag, weight and link are written only when set, so every other notice is saved exactly as before.
+  // A title in the routine-news table (notice-weights.ts) is minor without every call site opting in.
+  const weight = opts.weight ?? noticeWeightFor(title)
   g.queue.push({
     kind: 'notice',
     id: uid(g, 'm'),
@@ -455,7 +458,7 @@ export function notice(g: GameState, title: string, text: string, opts: NoticeOp
     emoji: opts.emoji,
     tone: opts.tone,
     ...(opts.support ? { support: true } : {}),
-    ...(opts.weight === 'minor' ? { weight: 'minor' as const } : {}),
+    ...(weight === 'minor' ? { weight: 'minor' as const } : {}),
     ...(opts.link ? { link: opts.link } : {}),
   })
 }
