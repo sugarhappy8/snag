@@ -2107,3 +2107,24 @@ label {
 .save-notice-actions .btn {
   flex: 1 1 140px;
 }
+
+/* A view that loads on demand (lazyView): the box shown while its code arrives, and the note if it never does. */
+.lazy-box {
+  min-height: 96px;
+  background: var(--card-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+}
+.lazy-failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.lazy-failure p {
+  flex: 1 1 160px;
+  margin: 0;
+}

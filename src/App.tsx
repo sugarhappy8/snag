@@ -1,6 +1,7 @@
 // App shell: routes between screens. Everything runs on the device: there is no setup step and
 // nothing to connect to, so the main menu is the first thing a player sees.
 import { Component, useEffect, type ErrorInfo, type ReactNode } from 'react'
+import { prefetchLazyViews } from './ui/lazy/lazyView'
 import { GameScreen } from './ui/screens/GameScreen'
 import { GraveyardScreen } from './ui/screens/GraveyardScreen'
 import { HomeScreen } from './ui/screens/HomeScreen'
@@ -17,6 +18,8 @@ function startup(): void {
   started = true
   // A saved life is offered as "Continue" on the home screen rather than auto-resumed.
   if (hasSavedGame() && getApp().screen !== 'home') goTo('home')
+  // Fetch the lazy views (charts, search) while the browser is idle, so the first open is usually instant.
+  prefetchLazyViews()
 }
 
 export function App() {
