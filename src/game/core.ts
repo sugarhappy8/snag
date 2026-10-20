@@ -438,12 +438,26 @@ export interface NoticeOptions {
   tone?: Tone
   /** Show the real-world support line under the text (NoticeModal.support). */
   support?: boolean
+  /** 'minor' lets the store route the notice to the Quiet Mode inbox (NoticeModal.weight). */
+  weight?: 'minor'
+  /** Where an inbox row leads (NoticeModal.link). */
+  link?: string
 }
 
 /** Show a popup with an OK button. */
 export function notice(g: GameState, title: string, text: string, opts: NoticeOptions = {}): void {
-  // The support flag is written only when set, so every other notice is saved exactly as before.
-  g.queue.push({ kind: 'notice', id: uid(g, 'm'), title, text, emoji: opts.emoji, tone: opts.tone, ...(opts.support ? { support: true } : {}) })
+  // The support flag, weight and link are written only when set, so every other notice is saved exactly as before.
+  g.queue.push({
+    kind: 'notice',
+    id: uid(g, 'm'),
+    title,
+    text,
+    emoji: opts.emoji,
+    tone: opts.tone,
+    ...(opts.support ? { support: true } : {}),
+    ...(opts.weight === 'minor' ? { weight: 'minor' as const } : {}),
+    ...(opts.link ? { link: opts.link } : {}),
+  })
 }
 
 /** Show a popup with choices resolved by a registered script (see scripts.ts). */
