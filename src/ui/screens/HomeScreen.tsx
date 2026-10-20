@@ -5,6 +5,7 @@ import { RIBBONS, type RibbonDef } from '../../game/ribbons'
 import { loadGame, loadGraveyard, loadRibbons } from '../../game/save'
 import type { GameState } from '../../game/types'
 import { getCountry } from '../../game/world'
+import { SaveNotices } from '../components/SaveNotices'
 import { getApp, goTo, hasSavedGame, resumeSavedGame, useApp } from '../store'
 import '../styles/screens.css'
 import { Flash, useFlash } from './SettingsScreen'
@@ -86,6 +87,8 @@ export function HomeScreen() {
         <h1 className="home-title">AnotherLife</h1>
         <p className="home-tagline">Live a whole life, one year at a time. Every choice is yours.</p>
       </header>
+
+      <SaveNotices />
 
       <nav className="home-menu" aria-label="Main menu">
         {saved ? (
