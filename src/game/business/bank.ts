@@ -197,7 +197,10 @@ export function bankManagerTurn(g: GameState, b: BizState): void {
     }
     book.planned = year
   }
-  if (settled) {
+  // The capital choices are made once a calendar year, right after the books close: a repeated call
+  // would otherwise buy another product line, open more branches and run a second campaign.
+  if (settled && book.capitalYear !== g.year) {
+    book.capitalYear = g.year
     const capital = bankCapital(b, book)
     const spare = Math.max(0, capital - riskWeighted(book, capital) * (min + .04))
     const order: ProductId[] = ['mortgage', 'auto', 'cards', 'wealth', 'app', 'ib']
