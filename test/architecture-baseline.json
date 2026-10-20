@@ -135,14 +135,11 @@
       "src/game/economy/simulation.ts",
       "src/game/economy/supply.ts",
       "src/game/economy/trade.ts",
-      "src/game/events/wealth-core.ts",
       "src/game/finance.ts",
       "src/game/landlord.ts",
       "src/game/nation/effects.ts",
-      "src/game/nation/state.ts",
       "src/game/nation/trade-policy.ts",
-      "src/game/shops/fleet-operations.ts",
-      "src/game/special/common.ts"
+      "src/game/shops/fleet-operations.ts"
     ],
     [
       "src/game/special/actor-events.ts",
