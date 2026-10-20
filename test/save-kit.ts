@@ -89,6 +89,8 @@ export function fakeIndexedDb(
     failWrite?: boolean
     /** Every string a get() returns has been altered, so a record read back differs from the one written. */
     corruptReadback?: boolean
+    /** open() answers after this many milliseconds, on a real timer, so tests use fake timers. */
+    slowOpen?: number
   } = {},
 ): IDBFactory {
   const databases = new Map<string, Database>()
@@ -162,7 +164,8 @@ export function fakeIndexedDb(
   const open = (name: string, version = 1): FakeOpenRequest => {
     const request: FakeOpenRequest = { result: undefined, error: null, onsuccess: null, onerror: null, onupgradeneeded: null, onblocked: null }
     if (opts.hang === 'open') return request
-    later(() => {
+    const wake = opts.slowOpen === undefined ? later : (fn: () => void) => void setTimeout(fn, opts.slowOpen)
+    wake(() => {
       if (opts.failOpen) {
         request.error = new DOMException('The database could not be opened.', 'UnknownError')
         request.onerror?.()

@@ -258,6 +258,34 @@ export function protectNewerRecord(raw: string, version: number): void {
   state.newer = { raw, version }
 }
 
+// --- Boot ----------------------------------------------------------------------------------
+// What save-hydrate.ts needs before the first render. Nothing else calls these.
+
+/** Boot only: the backend in use (the default localStorage one when none was set). */
+export function activeBackend(): SaveBackend {
+  return active()
+}
+
+/** Boot only: true once saveRecord has run in this page. */
+export function savedThisSession(): boolean {
+  return state.sessionSaved
+}
+
+/**
+ * Boot only: make `json` the newest and the stored save of the active backend without writing it.
+ * Returns false and does nothing once the page has saved: what boot read is older than that save.
+ */
+export function primeCache(json: string | null): boolean {
+  if (state.sessionSaved) return false
+  setCache(json)
+  return true
+}
+
+/** Boot only: list a notice where the one with the same id (or `replaces`) was, else last. */
+export function addSaveNotice(notice: SaveNotice, replaces?: string): void {
+  putNotice(notice, replaces)
+}
+
 /**
  * Resolves once the queue has run dry: true when the newest save is in storage (or there is
  * nothing to store), false when its write failed. Each queue step has its own watchdog: a step
