@@ -1,6 +1,6 @@
 # AnotherLife v4.0.3
 
-Fourteen fixes to money, laws, heirs and text. Saves from v4.0.2 load unchanged.
+Seventeen fixes to money, laws, heirs and text. Saves from v4.0.2 load unchanged.
 
 ## Fixes
 
@@ -27,8 +27,8 @@ Fourteen fixes to money, laws, heirs and text. Saves from v4.0.2 load unchanged.
   now gets the ordered amount and you keep the rest. A shortfall at the end is still forgiven.
 - **Deals and Olympic bonuses ignored the year and the country.** A brand now pays at most 40
   typical local incomes for each point of its fame, in the year's money. A 1932 Singapore gold
-  paid $740,000 and now pays $229,000. US pay from 2026 is unchanged, and signed deals keep
-  their pay.
+  paid $740,000 and now pays $229,000. The best US deals and Olympic bonuses from 2026 are
+  unchanged, because the new ceiling only binds below that. Signed deals keep their pay.
 - **Author adaptation fees and royalties had no ceiling.** A fee could reach $7.5M, and a royalty
   $1.8M a year for five years. The fee is now capped at 150 typical local incomes and the yearly
   base at 15 (US 2026: $6.75M and $675,000. US 1930: $2,025,000 and $202,500).
@@ -44,7 +44,7 @@ Fourteen fixes to money, laws, heirs and text. Saves from v4.0.2 load unchanged.
 - **Military pay and Street Hustler takes ignored the era and the country.** A private earned
   $21,000 in 1930. Pay now scales with the typical income of the year and country: 0.3 times in
   the US in 1930, 0.2 times in Nigeria today. US pay from 2026 is unchanged, and a job you hold
-  keeps its salary.
+  keeps its salary, even through a promotion.
 - **A podcast audience had no ceiling.** At high fame it reached billions of listeners and
   hundreds of billions a year in ads. It now stops at 30 million, about the size of the biggest
   real shows. Ad income follows the era and country like military pay. Book and merch pay don't.
