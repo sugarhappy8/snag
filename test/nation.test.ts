@@ -24,6 +24,9 @@ import { bringHome, moveOffshore, runScheme, schemeBlock, schemeOf, schemeQuote,
 import { regimeBlock } from '../src/game/nation/regime'
 import { buildReport, approvalTarget } from '../src/game/nation/yearly'
 import { yearlyDrama } from '../src/game/nation/drama'
+import { killCharacter } from '../src/game/death'
+import { continueAsChild } from '../src/game/life'
+import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
 import { readNationReport } from '../src/ui/minigames/NationReport'
 import type { ChoiceModal, GameState, MenuNode } from '../src/game/types'
@@ -97,10 +100,17 @@ describe('old saves and untouched countries', () => {
     const me = editMe(g)
     me.dirty = 50_000
     writeMe(g, me)
-    g.generation = (g.generation ?? 0) + 1
-    g.character.id = 'heir'
-    expect(policyOf(g, 'us').national.taxes.income).toBe(5)
-    expect(meView(g).dirty).toBe(0)
+    // A real handoff: the President dies and a child continues the family.
+    g.character.age = 70
+    const heir = createPerson(g, { relation: 'child', age: 40, lastName: g.character.lastName, money: 1_000 })
+    killCharacter(g, 'Old Age')
+    g.queue = []
+    const n = continueAsChild(g, heir.id)
+    expect(n).not.toBe(g)
+    expect(n.generation).toBe(2)
+    expect(policyOf(n, 'us').national.taxes.income).toBe(5)
+    expect(meView(n).dirty).toBe(0)
+    expect(ME_KEY in n.flags).toBe(false)
   })
 })
 

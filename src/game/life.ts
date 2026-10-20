@@ -44,6 +44,7 @@ import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng
 import { defineScript } from './scripts'
 import { planEstate, settleReading } from './events/will-estate'
 import { personalTax } from './nation/effects'
+import { nationWorldFlags } from './nation/state'
 import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
@@ -1532,6 +1533,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...waveWorldFlags(n),
     // AI firsts are world state: an heir can't claim a milestone the family already reached.
     ...benchWorldFlags(n),
+    // A President's laws are world state too: they stay until someone repeals them. nation.me is not carried.
+    ...nationWorldFlags(n),
   }
   inheritRoyalStatus(n, heirP)
   // An heir already serving as group CEO keeps that appointment, now as the playable chair.
