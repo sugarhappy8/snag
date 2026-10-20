@@ -32,11 +32,28 @@ describe('capability tracks', () => {
   })
 })
 describe('slots and autopilot', () => {
-  it('allows max(1, floor(slots / 3)) tracks and says how many', () => {
+  it('allows one track plus one per doubling of sites and says how many', () => {
     const { g, b, t, fam } = lab(); t.models = [rated(fam, 1, 2026, offBest(fam, 2026, 0))]; const start = (c: string) => startProgram(g, b, t, programDef('aiLab', `cap.${c}`)!)
     expect([maxPrograms(b, t), trackLimit(b, t)]).toEqual([2, 1]); expect(start('language')).not.toBeNull(); expect(programBlock(b, t, coding)).toBe('Your lab can research 1 capability at once.')
-    b.outlets[0].count = 16; t.programs = []; expect([maxPrograms(b, t), trackLimit(b, t)]).toEqual([6, 2]); start('language'); start('coding')
-    expect(programBlock(b, t, programDef('aiLab', 'cap.vision')!)).toBe('Your lab can research 2 capabilities at once.'); expect(programBlock(b, t, programDef('aiLab', 'train')!)).toBeNull()
+    b.outlets[0].count = 16; t.programs = []; expect([maxPrograms(b, t), trackLimit(b, t)]).toEqual([6, 5]); for (const c of ['language', 'coding', 'vision', 'speech', 'reasoning']) expect(start(c)).not.toBeNull()
+    expect(programBlock(b, t, programDef('aiLab', 'cap.agents')!)).toBe('Your lab can research 5 capabilities at once.'); expect(programBlock(b, t, programDef('aiLab', 'train')!)).toBeNull()
+  })
+  it('grows with the sites up to every capability, keeps its own pool beside ordinary programs, and fits a bounded save', () => {
+    const { g, b, t, fam } = lab(); t.models = [rated(fam, 1, 2026, offBest(fam, 2026, 0))]
+    const cap = (c: string) => programDef('aiLab', `cap.${c}`)!, at = (n: number) => { b.outlets[0].count = n; t.programs = [] }
+    const started = (n: number) => { at(n); return CAP_IDS.filter((c) => startProgram(g, b, t, cap(c))).length }
+    expect([1, 2, 8, 128].map(started)).toEqual([1, 2, 4, 8])
+    expect([1, 2, 4, 8, 16, 32, 64, 128, 1024].map((n) => { b.outlets[0].count = n; return trackLimit(b, t) })).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 8])
+    // 128 sites, all eight tracks running: a ninth is refused by the ceiling, the ordinary slots are untouched and fill up on their own.
+    at(128); for (const c of CAP_IDS) startProgram(g, b, t, cap(c)); const ninth = { ...cap('coding'), id: 'cap.ninth' }; PROGRAMS.aiLab.push(ninth)
+    try { expect(programBlock(b, t, ninth)).toBe('Your lab can research 8 capabilities at once.') } finally { PROGRAMS.aiLab.pop() }
+    const plain = ['train', 'api', 'enterprise', 'cluster', 'efficiency', 'safety', 'agents', 'multimodal'], more = programDef('aiLab', 'onDevice')!
+    for (const id of plain) expect(startProgram(g, b, t, programDef('aiLab', id)!), id).not.toBeNull()
+    expect([t.programs.length, maxPrograms(b, t)]).toEqual([16, 8]); expect(programBlock(b, t, more)).toBe('Your lab can run 8 programs at once. Finish or cancel one first.')
+    // Stored programs: sixteen survive a save, a seventeenth cuts the oldest.
+    const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: 'train', key: `train:${i + 1}`, name: 'Nova', emoji: 'x', years: 2, progress: 0, cost: 1, odds: 0.5, started: 2026, spent: 0, target: '' }))
+    expect(readTech({ programs: rows(16) }).programs).toHaveLength(16); expect(readTech(JSON.parse(JSON.stringify(t))).programs).toHaveLength(16)
+    const cut = readTech({ programs: rows(17) }).programs.map((p) => p.key); expect([cut.length, cut[0], cut[15]]).toEqual([16, 'train:2', 'train:17'])
   })
   it('bestProgram never picks a track, even when only tracks are startable', () => {
     const { g, a, b, t, fam } = lab({ stage: 3, venture: 5e9 }); b.cash = 5e9; t.models = [rated(fam, 1, 2026, offBest(fam, 2026, 0))]

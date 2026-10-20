@@ -38,6 +38,10 @@ export function isDeepTech(b: { industry: Industry | string }): boolean {
  */
 export const TECH_VERSION = 4
 export const MAX_TECH_SEQUENCE = 999_999_999
+/** Most ordinary programs a lab can run at once (deeptech-rd maxPrograms never goes past it). */
+export const MAX_PARALLEL = 8
+/** Most programs stored on a company: a full set of ordinary ones plus one capability track per capability. */
+export const MAX_STORED_PROGRAMS = MAX_PARALLEL + CAP_IDS.length
 
 /** Funding stages: index = TechState.series. */
 export const SERIES = ['Bootstrapped', 'Seed', 'Series A', 'Series B', 'Series C', 'Series D', 'Series E'] as const
@@ -540,7 +544,7 @@ export function readSilicon(v: Json | undefined): SiliconState {
 export function readTech(v: Json | undefined): TechState {
   const d = rec(v) ?? {}
   const pace = d.pace === 'lean' || d.pace === 'blitz' ? d.pace : 'steady'
-  const programs = uniqueLast(list(d.programs, readProgram, 60), x => x.key).slice(-8)
+  const programs = uniqueLast(list(d.programs, readProgram, 60), x => x.key).slice(-MAX_STORED_PROGRAMS)
   const rounds = uniqueLast(list(d.rounds, readRound, 60), x => `${x.series}:${x.year}:${x.raised}:${x.investor}`).slice(-12)
   const grants = uniqueLast(list(d.grants, readGrant, 80), x => `${x.id}:${x.year}`).slice(-40)
   const models = uniqueLast(list(d.models, readModel, 60), x => String(x.gen)).slice(-12)

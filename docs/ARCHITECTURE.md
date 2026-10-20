@@ -825,9 +825,12 @@ odds and the pitch hint read the same number.
 
 Research tracks. `capProgram(cap)` builds one program per capability (`cap.<id>`: two years, odds 0.65,
 cost `3M x 1.4^level`, `ipShare` 0.3, no `unlocks`). A finished track adds a research level that every
-later model uses. A track is gated on a rated model that covers the capability, `programBlock` allows
-`max(1, floor(maxPrograms / 3))` at once (`trackLimit`), and `bestProgram` never picks one, so the general
-manager and the Lab Report never start research. The Benchmarks menu (`benchMenu`) holds the Research
+later model uses. A track is gated on a rated model that covers the capability. Tracks have their own
+pool: `programBlock` allows `1 + floor(log2(sites))` at once (`trackLimit`, sites are the lab's total
+outlets), clamped to 1 through `CAP_IDS.length`, so 1 site runs 1 track, 2 run 2, 8 run 4, 128 run all
+eight. Tracks don't count against `maxPrograms`: `slotCount` counts only the ordinary programs and
+trials, and the manager, the Lab Report and `trialBlock` use it. `bestProgram` never picks a track, so
+the general manager and the Lab Report never start research. The Benchmarks menu (`benchMenu`) holds the Research
 submenu, and the lab menu points to it.
 
 Firsts and held models. Three milestones per capability sit above the 2026 market (`capMilestone`,
@@ -917,7 +920,7 @@ Outlets: open and close are sliders up to what company cash pays for (manage.max
 
 Repeatable levers: equipment upgrades and training cost (1 + 0.5k) times as much and gain 1/(1 + 0.5k) as much, where k = times already done this year. Key-staff interviews have no cap; each round costs a headhunter fee (6% of the role's pay, ×(1 + 0.5k)). Marketing budget (0–300%) and pay (70–150%) are continuous sliders; a pay cut cancels that year's raiseYear credit.
 
-Deep tech: deeptech-rd.maxPrograms = 2 + floor(log2(sites)) + (Series B or later) + (listed), clamped to 2–8 (readTech stores 8). programTerms(k) funds a program at 0.5–3× its plan: years ÷ k^0.55, failure odds × k^−0.35, cost × k. Every industry has a 'nextgen' program, open at the top stage, costing 1.35^n more each time with shrinking gains and ipShare 0.3. On success, patents book min(spent, planned budget) × ipShare (1.2 by default), so crash budgets can't pump the valuation. Fabs, GPU clusters, gigafactories, gigalines, biologics plants and SOCs have no count caps (rising cost, PLANT_MAX 200). AI training continues past 10 generations (modelGens). Satellites go up to SAT_MAX 40 with saturating revenue (satUnits). Venture rounds ask for a stage (deeptech-funding STAGE_FOR) or yearly sales; a trade with its own ladder sets DeepTechDef.seriesStage and is held to it, with no sales route and no Series B shortcut (only fusion does: its sales start after the pilot plant). A program with `unlocks` in deeptech-data (it raises the stage, or the next rung needs it first) counts five times in deeptech-rd.programScore, which ranks what the general manager and the Business talent start; a function there means it only counts while the lab is small.
+Deep tech: deeptech-rd.maxPrograms = 2 + floor(log2(sites)) + (Series B or later) + (listed), clamped to 2 to 8 for ordinary programs (MAX_PARALLEL; capability tracks have their own pool, see Research tracks; readTech stores up to MAX_STORED_PROGRAMS = 16, the 8 plus one track per capability). programTerms(k) funds a program at 0.5–3× its plan: years ÷ k^0.55, failure odds × k^−0.35, cost × k. Every industry has a 'nextgen' program, open at the top stage, costing 1.35^n more each time with shrinking gains and ipShare 0.3. On success, patents book min(spent, planned budget) × ipShare (1.2 by default), so crash budgets can't pump the valuation. Fabs, GPU clusters, gigafactories, gigalines, biologics plants and SOCs have no count caps (rising cost, PLANT_MAX 200). AI training continues past 10 generations (modelGens). Satellites go up to SAT_MAX 40 with saturating revenue (satUnits). Venture rounds ask for a stage (deeptech-funding STAGE_FOR) or yearly sales; a trade with its own ladder sets DeepTechDef.seriesStage and is held to it, with no sales route and no Series B shortcut (only fusion does: its sales start after the pilot plant). A program with `unlocks` in deeptech-data (it raises the stage, or the next rung needs it first) counts five times in deeptech-rd.programScore, which ranks what the general manager and the Business talent start; a function there means it only counts while the lab is small.
 
 Studios: gamestudio.maxPipeline(b) = max(4, floor(developers / 12)) games in development at once; team size, hiring and layoffs are sliders.
 
