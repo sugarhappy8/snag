@@ -162,6 +162,17 @@ function wobble(key: string): number {
 }
 
 /**
+ * The year a bank CEO plans on: the fiscal year about to be booked (the one after the last booked
+ * year; a book with none yet starts at its founding year). Before the books close that is last
+ * year, after they close it is this year. It never leaves that window, so a stamp that is older (a
+ * book that skipped years) or newer (a damaged record) can't make the CEO read a year the live
+ * economy no longer keeps, or one that hasn't happened.
+ */
+function planYear(g: GameState, b: BizState, book: BankBook): number {
+  return clampN(book.lastYear >= 0 ? book.lastYear + 1 : Math.round(b.founded), g.year - 1, g.year)
+}
+
+/**
  * The hired CEO (or the stand-in while the owner can't run it) sets rates, appetite and, once a
  * year after the books close, products and a campaign. Skill shrinks mistakes; no foresight.
  * Mutates only `b` and never consumes g's RNG. After a settlement it also handles the year's
@@ -174,7 +185,7 @@ export function bankManagerTurn(g: GameState, b: BizState): void {
     if (a) bankAfterYear(g, a, b, true)
   }
   const book = readBank(b)
-  const year = book.lastYear >= 0 ? book.lastYear + 1 : g.year
+  const year = planYear(g, b, book)
   const skill = b.ceo === 'manager' ? bankLeaderSkill(g, b) : 50
   const who = `${b.manager?.firstName ?? 'ceo'}${b.manager?.lastName ?? ''}|${b.founded}|${year}`
   const m = bankMarket(g, b.countryId, year), min = minCapitalRatio(b.countryId, year)
