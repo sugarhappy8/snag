@@ -5,6 +5,7 @@
 // Games are a global product: prices are global, reach depends on how connected the home
 // market is, and costs (salaries, contractors) are local.
 import { seeded } from '../assets'
+import { sizeRatio } from '../business/competition-data'
 import { localPay } from '../business/economy'
 import { contractorCost } from '../computer/dev-state'
 import { fillLocal } from '../data/locales'
@@ -222,6 +223,28 @@ export function expectedCopies(g: GameState, x: MarketInput): number {
 /** Most backers a campaign can find: about a third of the game's expected first-year audience. */
 export function backerCap(g: GameState, x: MarketInput): number {
   return whole(50 + expectedCopies(g, x) * 0.3)
+}
+
+/** People who play video games, worldwide, today. */
+const GAMERS_TODAY = 3_400_000_000
+/** The most of them one title ever sells to (the best sellers in history sit near 8%). */
+const TITLE_SHARE = 0.08
+/** The most of them one publisher, or a whole group of studios, sells a copy to in a year. */
+const PUBLISHER_SHARE = 0.1
+
+/** Everyone playing in a year: today's count on the games market's own era curve (a few million in 1975, over a billion by 2008). */
+export function gamersIn(year: number): number {
+  return Math.max(1_000_000, Math.round(GAMERS_TODAY * sizeRatio('gameStudio', year)))
+}
+
+/** Most copies one title can ever sell, in total, in a year's world. */
+export function titleCopiesCap(year: number): number {
+  return Math.round(gamersIn(year) * TITLE_SHARE)
+}
+
+/** Most copies one publisher, or every studio one owner holds together, can sell in a year. */
+export function publisherCopiesCap(year: number): number {
+  return Math.round(gamersIn(year) * PUBLISHER_SHARE)
 }
 
 /** Share of this year's buyers who still show up next year. */

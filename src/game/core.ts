@@ -568,6 +568,7 @@ export function endJob(g: GameState, which: 'job' | 'partTimeJob', reason: Caree
   const c = g.character
   const job = c[which]
   if (!job) return
+  const assetId = job.category === 'special' ? job.data?.assetId : undefined
   c.careerHistory.push({
     title: job.title,
     company: job.company,
@@ -575,6 +576,7 @@ export function endJob(g: GameState, which: 'job' | 'partTimeJob', reason: Caree
     endAge: c.age,
     reason,
     salary: job.salary,
+    ...(typeof assetId === 'string' ? { assetId } : {}),
   })
   c[which] = null
   // Coworkers and boss from that job leave your contacts unless you befriended them.

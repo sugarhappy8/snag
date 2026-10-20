@@ -316,6 +316,72 @@ describe('university and graduate school', () => {
     expect(g.queue.some((m) => m.kind === 'notice' && m.title === 'Rejected')).toBe(true)
   })
 
+  describe('PhD admission by country', () => {
+    const MASTERS_FIRST = "A PhD in India normally needs a master's degree first."
+
+    function phdRow(g: GameState): MenuAction {
+      return findNode(educationMenuNodes(g), 'edu.grad.phd', g) as MenuAction
+    }
+
+    /** True when some seed gets past the (offline) admission roll into a school place. */
+    function startsPhd(countryId: string, extra?: (g: GameState) => void): boolean {
+      for (let seed = 1; seed < 40; seed++) {
+        const g = adult(seed, { age: 22, countryId })
+        graduate(g, 'Biology')
+        extra?.(g)
+        applyToGraduateSchool(g, 'phd')
+        if (g.character.education.current || g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'school.tuition')) return true
+      }
+      return false
+    }
+
+    it('refuses an Indian bachelor holder and names the missing master', () => {
+      const g = adult(3, { age: 22, countryId: 'in' })
+      graduate(g, 'Biology')
+      expect(phdRow(g).disabledReason?.(g)).toBe(MASTERS_FIRST)
+      applyToGraduateSchool(g, 'phd')
+      expect(g.character.education.current).toBeNull()
+      expect(g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'school.tuition')).toBe(false)
+      expect(g.queue.some((m) => m.kind === 'notice' && m.text.includes(MASTERS_FIRST))).toBe(true)
+      expect(g.yearActions['applyGrad:phd']).toBeUndefined()
+      // The master's step itself is open to them.
+      expect((findNode(educationMenuNodes(g), 'edu.grad.master', g) as MenuAction).disabledReason?.(g)).toBeNull()
+    })
+
+    it('lets an Indian master holder apply, and never admits a bachelor holder', () => {
+      expect(startsPhd('in')).toBe(false)
+      expect(startsPhd('in', (g) => g.character.education.degrees.push({ kind: 'master', name: "Master's in Biology", major: 'Biology', school: 'Test University', age: 24 }))).toBe(true)
+    })
+
+    it('keeps the direct route for a US bachelor holder', () => {
+      const g = adult(3, { age: 22, countryId: 'us' })
+      graduate(g, 'Biology')
+      expect(phdRow(g).disabledReason?.(g)).toBeNull()
+      expect(startsPhd('us')).toBe(true)
+    })
+
+    it('treats other countries by their real norms', () => {
+      for (const id of ['ca', 'gb', 'au']) {
+        const g = adult(3, { age: 22, countryId: id })
+        graduate(g, 'Biology')
+        expect(phdRow(g).disabledReason?.(g), id).toBeNull()
+      }
+      for (const id of ['de', 'fr', 'jp']) {
+        const g = adult(3, { age: 22, countryId: id })
+        graduate(g, 'Biology')
+        expect(phdRow(g).disabledReason?.(g), id).toMatch(/normally needs a master's degree first/)
+      }
+    })
+
+    it('does not drop someone already mid-PhD', () => {
+      const g = adult(3, { age: 22, countryId: 'in' })
+      graduate(g, 'Biology')
+      educationInternals.enrollIn(g, 'graduate', { school: 'Test University Graduate School', major: 'Biology', funding: 'free', track: 'phd', program: 'phd', totalYears: 4 })
+      ageTo(g, 26)
+      expect(hasDegree(g, 'doctorate')).toBe(true)
+    })
+  })
+
   it('community college is free and grants an associate degree', () => {
     const g = adult(4)
     const nodes = educationMenuNodes(g)

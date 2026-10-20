@@ -18,7 +18,7 @@ import { chance, pick, randFloat, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import { hire } from '../special/common'
 import { salaryFor } from '../special/gamedev-career'
-import { addGamerFame, backerCap, copiesLabel, engineRoyalty, fam, firstYearCopies, gameTitle, genreSkill, genreTrend, homeReach, hotGenres, industryYear, netPerCopy, nextTail, priceOf, qualityFactor, reviewScores, sequelTitle, tailKeep, trendLabel } from '../special/gamedev-core'
+import { addGamerFame, backerCap, copiesLabel, engineRoyalty, fam, firstYearCopies, gameTitle, genreSkill, genreTrend, homeReach, hotGenres, industryYear, netPerCopy, nextTail, priceOf, publisherCopiesCap, qualityFactor, reviewScores, sequelTitle, tailKeep, titleCopiesCap, trendLabel } from '../special/gamedev-core'
 import {
   CRITIC_SITE,
   ENGINES,
@@ -58,11 +58,13 @@ import { allocatedCorporateTax } from './tax'
 import { assignedDevs, devGames, MAX_STUDIO_SEQUENCE, normalizeStudio, studioLine, trimStudioGames, type StudioGame, type StudioPolicy, type StudioState } from './gamestudio-state'
 import { availableStudioEngines, engineTier, isStudioEngineId, studioEngineDef, type StudioEngineId } from './gamestudio-engine-state'
 import { simulateStudioEngines, studioEngineMenu } from './gamestudio-engines'
-import { clampN, dollars, markBest, money, pct, round2, toJson } from './util'
+import { clampN, dollars, markBest, money, num, pct, rec, round2, toJson } from './util'
 import { studioMarketFactor, studioPick } from './competition'
 import { bizHas } from './era'
 
 export const DEVS_PER_OFFICE = 120
+/** Most a game's expected sales can rise from one year to the next, whatever the studio does for it. */
+const TAIL_SWING = 1.25
 
 export function isStudio(b: { industry: string }): boolean {
   return b.industry === 'gameStudio'
@@ -125,6 +127,25 @@ export function devCost(b: BizState): number {
 /** How global prices land here: production and ads cost less in cheaper countries, but not proportionally. */
 function costScale(countryId: string): number {
   return 0.55 + 0.45 * Math.min(1.1, getCountry(countryId).wealth ?? 1)
+}
+
+/**
+ * Copies the owner's other studios already sold to the world's players this year (flags.studioCopies,
+ * one line for the year, a total per studio), taken off the one publisher's share they all draw on.
+ */
+function publisherRoom(g: GameState, assetId: string, year: number): number {
+  const ledger = rec(g.flags.studioCopies)
+  const by = ledger && num(ledger.year) === year ? rec(ledger.by) ?? {} : {}
+  const others = Object.entries(by).reduce((sum, [id, copies]) => (id === assetId ? sum : sum + Math.max(0, num(copies))), 0)
+  return Math.max(0, publisherCopiesCap(year) - others)
+}
+
+/** Write this studio's copies for the year into the shared ledger (replacing its own line, so a rerun can't double count). */
+function bookPublisherCopies(g: GameState, assetId: string, year: number, copies: number): void {
+  const ledger = rec(g.flags.studioCopies)
+  const by = ledger && num(ledger.year) === year ? { ...(rec(ledger.by) ?? {}) } : {}
+  by[assetId] = whole(copies)
+  g.flags.studioCopies = { year, by }
 }
 
 /** Old saves and bought studios: turn their trading history into a back catalog once. */
@@ -217,6 +238,15 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   const wage = devCost(b) * economyOf(g, b.countryId, year).wages
   const scale = costScale(b.countryId)
   const sales: Sale[] = []
+  // The world's players are the limit: no title sells past its share of them, and every studio the
+  // owner holds shares one publisher's yearly share (used up in the order the year runs: early access, launches, back catalog).
+  const titleCap = titleCopiesCap(year)
+  let room = publisherRoom(g, a.id, year)
+  const sell = (wanted: number, sold: number): number => {
+    const copies = Math.max(0, Math.min(wanted, room, titleCap - sold))
+    room -= copies
+    return copies
+  }
   const notes: string[] = []
   let production = 0
   let certs = 0
@@ -272,7 +302,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
     }
     // Early access keeps selling while development continues.
     if (x.stage === 'ea' && x.eaTail > 0) {
-      const copies = whole(x.eaTail * iy.mult * randFloat(g, 0.85, 1.15))
+      const copies = sell(whole(x.eaTail * iy.mult * randFloat(g, 0.85, 1.15)), x.eaCopies)
       x.eaCopies = whole(x.eaCopies + copies)
       x.eaTail = whole(copies * 0.55)
       sales.push({ game: x, copies, price: priceOf(x.scope, x.platform) * 0.8 })
@@ -294,7 +324,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
     const franchise = prev ? clampN(Math.min(1, prev.copies / Math.max(1, scopeDef(prev.scope).potential * 0.3)) * (prev.players / 100) * Math.pow(0.85, Math.max(0, sequels - 1)), 0, 1) : 0
     const marketing = x.publisher ? 1.3 : clampN((0.55 + 0.3 * b.marketingLevel) * (0.75 + b.brand / 200), 0.4, 1.6)
     const reach = homeReach(b.countryId) * (x.publisher ? 1.2 : 0.95) * (1 + Math.min(0.3, (countries - 1) * 0.08))
-    const copies = whole(
+    const copies = sell(whole(
       firstYearCopies(g, {
         scope: x.scope,
         genre: x.genre,
@@ -314,7 +344,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
         (1 - b.pressure) *
         mf *
         knack,
-    )
+    ), x.copies + x.backers + x.eaCopies)
     // The last milestone comes with the launch, if the publisher thinks it's any good.
     if (x.publisher && x.advance > x.advanceGot && r.critic >= 50) {
       milestones += x.advance - x.advanceGot
@@ -349,9 +379,13 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   // 3) The back catalog.
   for (const x of st.games) {
     if (x.stage !== 'live' || x.released >= year || x.tail <= 0) continue
-    const copies = whole(x.tail * iy.mult * (1 + b.campaignBoost * 0.5) * b.demandShock * (1 - b.pressure) * knack * randFloat(g, 0.85, 1.15))
+    const wanted = whole(x.tail * iy.mult * (1 + b.campaignBoost * 0.5) * b.demandShock * (1 - b.pressure) * knack * randFloat(g, 0.85, 1.15))
+    const copies = sell(wanted, x.copies)
     x.copies = whole(x.copies + copies)
-    x.tail = nextTail(copies, x.players, x.scope)
+    // A good CEO, a sales team and campaigns lift this year's sales, but a title's audience doesn't
+    // grow on the studio's momentum: next year starts from the audience it had, at most a quarter more
+    // (carrying the whole lift forward grew a hit's tail every year, without end).
+    x.tail = nextTail(Math.min(wanted, x.tail * TAIL_SWING, titleCap - x.copies), x.players, x.scope)
     if (copies > 0) sales.push({ game: x, copies, price: x.price })
   }
 
@@ -383,6 +417,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   }
 
   revenue += milestones + engines.revenue
+  bookPublisherCopies(g, a.id, year, copiesTotal)
 
   // 5) Money out.
   const finance = 1 - 0.10 * staffPower(b, 'finance')
