@@ -4,8 +4,10 @@
 // static closure of src/main.tsx. Nothing outside the chart zone (src/ui/charts/) and the palette zone (the five
 // files in PALETTE_ZONE) imports a zone file at run time except through its gate (src/ui/charts/lazy.tsx and
 // src/ui/nav/lazy.tsx, made with lazyView), and a gate imports no zone file statically. `import type` is free.
-// The zone rules have nothing to find until src/ui/charts/ and src/ui/nav/ exist, so each rule is also run on a
-// synthetic tree in os.tmpdir() to prove it can fail.
+// The fence is live from a zone's first file, but the gate is only required once the zone's dispatcher exists
+// (src/ui/charts/ChartView.tsx, src/ui/nav/Palette.tsx): the chart helpers of R1-C2 to R1-C8 land before the gate of
+// R1-C9, and this test has to stay green in every merge order. Each rule is also run on a synthetic tree in
+// os.tmpdir() to prove it can fail.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
@@ -40,7 +42,10 @@ const CHARTS: Zone = {
   name: 'charts',
   inZone: (p) => p.startsWith('src/ui/charts/'),
   gate: 'src/ui/charts/lazy.tsx',
-  needsGate: (members) => members.length > 0,
+  // The dispatcher, as the palette zone has Palette.tsx: R1-C2 to R1-C8 add chart files before R1-C9 lands ChartView.tsx
+  // and lazy.tsx together, so a gate required from the first file could not go green in any merge order.
+  needsGate: (members) => members.includes('src/ui/charts/ChartView.tsx'),
+  loads: 'src/ui/charts/ChartView.tsx',
 }
 
 const PALETTE: Zone = {
@@ -242,6 +247,8 @@ describe('10: the checks fail on a synthetic violation', () => {
       comment: "// import { Heavy } from '../charts/Heavy'\n/* import('../charts/Heavy') */\nexport const a = 1\n",
       gate: "import { load } from '../charts/lazy'\nexport const a = load\n",
       siblingExport: "export type { Spec } from '../charts/Heavy'\nexport * from './other'\n",
+      typeAccess: "export type H = import('../charts/Heavy').Spec\n",
+      typeofImport: "export type M = typeof import('../charts/Heavy')\n",
     }
     for (const [form, body] of Object.entries(allowed)) {
       const root = tree({ ...heavy, 'src/ui/screens/A.tsx': body, 'src/ui/screens/other.ts': 'export const o = 1\n' })
@@ -266,20 +273,56 @@ describe('10: the checks fail on a synthetic violation', () => {
     expect(zoneViolations(typeOnly, CHARTS)).toEqual([])
   })
 
-  it('8: chart modules need a gate with a dynamic import, and the zone is vacuous without modules', () => {
+  it('8: the chart gate is required once ChartView.tsx exists, and the zone is vacuous before that', () => {
     expect(zoneViolations(tree({ 'src/main.tsx': 'export {}\n' }), CHARTS)).toEqual([])
-    expect(zoneViolations(tree({ 'src/ui/charts/lazy.tsx': "export const a = 1\n" }), CHARTS)).toEqual([])
+    expect(zoneViolations(tree({ 'src/ui/charts/lazy.tsx': 'export const a = 1\n' }), CHARTS)).toEqual([])
 
-    const noGate = zoneViolations(tree({ 'src/ui/charts/Heavy.tsx': 'export const Heavy = 1\n' }), CHARTS)
+    const noGate = zoneViolations(tree({ 'src/ui/charts/ChartView.tsx': 'export default function ChartView() { return null }\n' }), CHARTS)
     expect(noGate).toHaveLength(1)
     expect(noGate[0]).toContain('src/ui/charts/lazy.tsx is missing')
 
     const noDynamic = zoneViolations(
-      tree({ 'src/ui/charts/Heavy.tsx': 'export const Heavy = 1\n', 'src/ui/charts/lazy.tsx': 'export const a = 1\n' }),
+      tree({ 'src/ui/charts/ChartView.tsx': 'export default function ChartView() { return null }\n', 'src/ui/charts/lazy.tsx': 'export const a = 1\n' }),
       CHARTS,
     )
     expect(noDynamic).toHaveLength(1)
     expect(noDynamic[0]).toContain('no dynamic import')
+
+    const wrongChunk = zoneViolations(
+      tree({
+        'src/ui/charts/ChartView.tsx': 'export default function ChartView() { return null }\n',
+        'src/ui/charts/Sparkline.tsx': 'export const Sparkline = 1\n',
+        'src/ui/charts/lazy.tsx': "export const load = () => import('./Sparkline')\n",
+      }),
+      CHARTS,
+    )
+    expect(wrongChunk).toHaveLength(1)
+    expect(wrongChunk[0]).toContain('never imports src/ui/charts/ChartView.tsx')
+
+    const whole = tree({
+      'src/ui/charts/ChartView.tsx': 'export default function ChartView() { return null }\n',
+      'src/ui/charts/lazy.tsx': "export const load = () => import('./ChartView')\n",
+    })
+    expect(zoneViolations(whole, CHARTS)).toEqual([])
+  })
+
+  it('8: chart helpers that land before the dispatcher need no gate yet, but are fenced from the first file', () => {
+    // R1-C2 puts these four in src/ui/charts/ and R1-C7 and R1-C8 add more before R1-C9 brings ChartView.tsx and lazy.tsx.
+    const early = {
+      'src/ui/charts/format.ts': 'export const fmt = 1\n',
+      'src/ui/charts/geometry.ts': "import { fmt } from './format'\nexport const geo = fmt\n",
+      'src/ui/charts/table.ts': 'export const table = 1\n',
+      'src/ui/charts/useScrub.ts': 'export const useScrub = 1\n',
+    }
+    expect(zoneViolations(tree(early), CHARTS)).toEqual([])
+
+    const leaky = zoneViolations(tree({ ...early, 'src/ui/screens/A.tsx': "import { fmt } from '../charts/format'\nexport const a = fmt\n" }), CHARTS)
+    expect(leaky).toHaveLength(1)
+    expect(leaky[0]).toContain('src/ui/screens/A.tsx')
+    expect(leaky[0]).toContain('src/ui/charts/format.ts')
+
+    const typeOnly = tree({ ...early, 'src/ui/screens/A.tsx': "import type { fmt } from '../charts/format'\nexport type A = typeof fmt\n" })
+    expect(zoneViolations(typeOnly, CHARTS)).toEqual([])
   })
 
   const palette = {
@@ -379,6 +422,24 @@ describe('the scanner', () => {
       "const g = 'a glob like src/**/*.ts and import(x)'",
     ].join('\n')
     expect(dynamicSpecifiers(source)).toEqual(['./a', './b', './c', './d'])
+  })
+
+  it('ignores import() in a type position, which is erased, and keeps the ones that run', () => {
+    const source = [
+      "export type A = import('./a').T",
+      "const b: import('./b').Props = x",
+      "type C = typeof import('./c')",
+      "type D = ReturnType<typeof import('./d').make>",
+      "type E = Record<string, import('./e').Row>",
+      "const f = () => import('./f')",
+      "const g = import('./g').then((m) => m.G)",
+      "const h = import('./h').catch(() => null)",
+      "const i = import('./i')\n  .then((m) => m.I)",
+      "const j = (await import('./j')).J",
+      "const { k } = await import('./k')",
+      "const l = import('./l').finally(() => undefined)",
+    ].join('\n')
+    expect(dynamicSpecifiers(source)).toEqual(['./f', './g', './h', './i', './j', './k', './l'])
   })
 
   it('resolves relative specifiers to .ts, .tsx, .js names and directory indexes, and skips the rest', () => {

@@ -148,6 +148,32 @@ describe('lazyView before the module is loaded', () => {
   })
 })
 
+describe('lazyView with fallback={null}', () => {
+  // An explicit null means the view is decoration (a sparkline in a row): nothing to show while it loads, and no
+  // alert and button per row when its file is gone. Only an omitted fallback gets the busy box.
+  it('renders nothing while loading, and after a failed load', async () => {
+    const View = lazyView<DummyProps>('Dummy', () => Promise.reject(new Error('stale chunk')))
+    expect(html(View, null)).toBe('')
+    await expect(View.preload()).resolves.toBe(false)
+    expect(html(View, null)).toBe('')
+    expect(text(html(View))).toContain('Try again')
+    expect(html(View, createElement('p', null, 'text rows'))).toContain('Try again')
+  })
+
+  it('renders the real component once it is loaded', async () => {
+    const View = lazyView<DummyProps>('Dummy', ok)
+    expect(html(View, null)).toBe('')
+    await View.preload()
+    expect(html(View, null)).toContain('class="dummy"')
+  })
+
+  it('keeps the busy box for an omitted or undefined fallback', () => {
+    const View = lazyView<DummyProps>('Dummy', ok)
+    expect(html(View)).toContain('lazy-box')
+    expect(renderToStaticMarkup(createElement(View, { label: 'x' }))).toContain('lazy-box')
+  })
+})
+
 describe('lazyView after preload', () => {
   it('renders the real component, with every prop but fallback', async () => {
     const View = lazyView<DummyProps>('Dummy', ok)
@@ -249,6 +275,62 @@ describe('lazyView when the load fails', () => {
     expect(markup).not.toContain('aria-busy')
   })
 
+  it('keeps the failure message on screen, marked busy, while a retry is in flight', async () => {
+    let finish: (m: { default: ComponentType<DummyProps> }) => void = () => undefined
+    const load = vi
+      .fn<() => Promise<{ default: ComponentType<DummyProps> }>>()
+      .mockRejectedValueOnce(new Error('x'))
+      .mockImplementation(() => new Promise((resolve) => (finish = resolve)))
+    const View = lazyView<DummyProps>('Dummy', load)
+    await View.preload()
+    const retry = View.preload()
+
+    // The same box stays mounted, so the focused button is not pulled out from under the player.
+    const markup = text(html(View, createElement('p', null, 'text rows')))
+    expect(markup).toContain('text rows')
+    expect(markup).toContain('role="alert"')
+    expect(markup).toContain('Trying again.')
+    expect(markup).toContain('Try again')
+    expect(markup).toContain('aria-disabled="true"')
+    expect(markup).not.toContain("This view didn't load.")
+    expect(markup).not.toContain('lazy-box')
+    expect(text(html(View))).not.toContain('lazy-box')
+
+    finish({ default: Dummy })
+    expect(await retry).toBe(true)
+    const done = text(html(View))
+    expect(done).toContain('class="dummy"')
+    expect(done).not.toContain('role="alert"')
+  })
+
+  it('goes from the busy message to Reload when the retry fails too', async () => {
+    let fail: (e: Error) => void = () => undefined
+    const load = vi
+      .fn<() => Promise<{ default: ComponentType<DummyProps> }>>()
+      .mockRejectedValueOnce(new Error('x'))
+      .mockImplementation(() => new Promise((_resolve, reject) => (fail = reject)))
+    const View = lazyView<DummyProps>('Dummy', load)
+    await View.preload()
+    const retry = View.preload()
+    expect(html(View)).toContain('Trying again.')
+    fail(new Error('still gone'))
+    expect(await retry).toBe(false)
+    const after = text(html(View))
+    expect(after).toContain("This view didn't load.")
+    expect(after).toContain('Reload')
+    expect(after).not.toContain('Trying again.')
+    expect(after).not.toContain('aria-disabled')
+  })
+
+  it('shows no failure message while the first load is still running', () => {
+    const View = lazyView<DummyProps>('Dummy', () => new Promise(() => undefined))
+    void View.preload()
+    const markup = html(View, createElement('p', null, 'text rows'))
+    expect(markup).toContain('text rows')
+    expect(markup).not.toContain('role="alert"')
+    expect(html(View)).toContain('lazy-box')
+  })
+
   it('wires the buttons: Try again preloads once more, Reload flushes the save and reloads the page', async () => {
     const load = vi
       .fn<() => Promise<{ default: ComponentType<DummyProps> }>>()
@@ -299,6 +381,32 @@ describe('LazyFailure', () => {
     expect(markup).toContain('class="lazy-failure"')
     expect(markup).toContain('role="alert"')
     expect(markup).toContain('class="btn"')
+  })
+
+  it('says it is trying again while busy, and does not offer the retry twice', () => {
+    const onRetry = vi.fn()
+    const markup = text(renderToStaticMarkup(createElement(LazyFailure, { attempts: 1, busy: true, onRetry, onReload: noop })))
+    expect(markup).toContain('role="alert"')
+    expect(markup).toContain('Trying again.')
+    expect(markup).toContain('Try again')
+    expect(markup).toContain('aria-disabled="true"')
+    expect(markup).not.toContain("This view didn't load.")
+    const button = findByType(LazyFailure({ attempts: 1, busy: true, onRetry, onReload: noop }), 'button')
+    const press = button?.props.onClick as (() => void) | undefined
+    press?.()
+    expect(onRetry).not.toHaveBeenCalled()
+    expect(button?.props['aria-disabled']).toBe(true)
+  })
+
+  it('is not disabled when it is not busy, and Reload is never disabled', () => {
+    const idle = renderToStaticMarkup(createElement(LazyFailure, { attempts: 1, onRetry: noop, onReload: noop }))
+    expect(idle).not.toContain('aria-disabled')
+    const onReload = vi.fn()
+    const busyReload = LazyFailure({ attempts: 2, busy: true, onRetry: noop, onReload })
+    const button = findByType(busyReload, 'button')
+    expect(button?.props['aria-disabled']).toBeUndefined()
+    ;(button?.props.onClick as () => void)()
+    expect(onReload).toHaveBeenCalledTimes(1)
   })
 
   it('calls the handler that goes with the button', () => {

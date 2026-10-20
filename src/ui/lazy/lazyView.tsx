@@ -7,7 +7,11 @@
 // A view renders its `fallback` (the plain text rows it replaces) while loading, so the screen is never empty. If the
 // load fails, which is what a long-open tab gets after a deploy (the old hashed file is gone and the server answers
 // with index.html), the fallback stays and LazyFailure sits under it: the game degrades to its text rows and the
-// player can try again, then reload. Nothing here reloads on its own.
+// player can try again, then reload. Nothing here reloads on its own, and nothing retries behind the player's back:
+// a view that mounts after a failure shows the message at once instead of flashing it and taking it away. While a
+// retry runs, the message stays (busy), so a focused Try again button is not removed from under the player.
+// An explicit `fallback={null}` is for a decorative view in a row or a tile: nothing while loading and nothing after a
+// failure, instead of a busy box, an alert and a button in every row.
 //
 // Every view is registered, so prefetchLazyViews() can fetch them all while the browser is idle. Where a view's file
 // may be imported from is the job of test/lazy-zones.test.ts.
@@ -40,7 +44,10 @@ export function lazyStep(phase: LazyPhase, event: LazyEvent): LazyPhase {
 }
 
 export interface LazyOwnProps {
-  /** Shown while loading and after a failed load: the old text rows. */
+  /**
+   * Shown while loading and after a failed load: the old text rows. Left out, a busy box shows while loading. Pass
+   * null for a decorative view (a sparkline in a row): it then renders nothing at all until it is loaded.
+   */
   fallback?: ReactNode
 }
 
@@ -56,15 +63,17 @@ export interface LazyFailureProps {
   attempts: number
   onRetry(): void
   onReload(): void
+  /** A retry is running: say so, and keep the button (focus stays on it) but make it do nothing until it ends. */
+  busy?: boolean
 }
 
 /** What a failed load shows under the fallback: Try again the first time, Reload from the second failure on. */
-export function LazyFailure({ attempts, onRetry, onReload }: LazyFailureProps): ReactElement {
+export function LazyFailure({ attempts, onRetry, onReload, busy = false }: LazyFailureProps): ReactElement {
   return (
     <div className="lazy-failure" role="alert">
-      <p>This view didn't load.</p>
+      <p>{busy ? 'Trying again.' : "This view didn't load."}</p>
       {attempts < 2 ? (
-        <button type="button" className="btn" onClick={onRetry}>
+        <button type="button" className="btn" aria-disabled={busy || undefined} onClick={busy ? undefined : onRetry}>
           Try again
         </button>
       ) : (
@@ -74,6 +83,13 @@ export function LazyFailure({ attempts, onRetry, onReload }: LazyFailureProps): 
       )}
     </div>
   )
+}
+
+/** How many loads have failed so far, counting through a retry that is running; 0 for a first load. */
+function failuresOf(phase: LazyPhase): number {
+  if (phase.kind === 'failed') return phase.attempts
+  if (phase.kind === 'loading') return phase.attempts ?? 0
+  return 0
 }
 
 /** The save is written on every commit; the flush makes sure it has landed before the page goes. */
@@ -145,16 +161,25 @@ export function lazyView<P extends object>(
   const View = (props: P & LazyOwnProps): ReactElement | null => {
     const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
     useEffect(() => {
-      if (snap.phase.kind !== 'ready') void preload()
+      // Only a view nobody has asked for yet starts a load. After a failure the player decides (Try again, Reload).
+      if (snap.phase.kind === 'idle') void preload()
     }, [])
     const { fallback, ...rest } = props
     if (current.Loaded) return createElement(current.Loaded, rest as unknown as Attributes & P)
-    const failed = current.phase.kind === 'failed' ? current.phase : null
-    const shown = fallback ?? (failed ? null : <div className="lazy-box" aria-busy="true" />)
+    if (fallback === null) return null
+    const failures = failuresOf(current.phase)
+    const shown = fallback === undefined && failures === 0 ? <div className="lazy-box" aria-busy="true" /> : fallback
     return (
       <Fragment>
         {shown}
-        {failed && <LazyFailure attempts={failed.attempts} onRetry={() => void preload()} onReload={reloadAfterSave} />}
+        {failures > 0 && (
+          <LazyFailure
+            attempts={failures}
+            busy={current.phase.kind === 'loading'}
+            onRetry={() => void preload()}
+            onReload={reloadAfterSave}
+          />
+        )}
       </Fragment>
     )
   }

@@ -35,9 +35,15 @@ export function staticSpecifiers(source: string): string[] {
   return out
 }
 
-/** The specifiers of `import('...')` calls with a string literal. */
+/**
+ * The specifiers of `import('...')` calls with a string literal that run. The type-position forms, `typeof import('./x')`
+ * and `import('./x').Name` (finance.ts and others use them), are erased by the compiler and start no chunk, so they are
+ * skipped; `.then`, `.catch` and `.finally` mark a call that runs. Outside a zone, `import type` is still the way to
+ * name a zone type; this only keeps a type written through import() from being mistaken for a chunk.
+ */
 export function dynamicSpecifiers(source: string): string[] {
-  return [...stripComments(source).matchAll(/\bimport\(\s*['"]([^'"\n]+)['"]\s*\)/g)].map((m) => m[1])
+  const call = /(?<!\btypeof\s+)\bimport\(\s*['"]([^'"\n]+)['"]\s*\)(?!\s*\.\s*(?!then\b|catch\b|finally\b)[A-Za-z_$])/g
+  return [...stripComments(source).matchAll(call)].map((m) => m[1])
 }
 
 interface Scan {
