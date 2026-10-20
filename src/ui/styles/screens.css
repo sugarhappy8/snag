@@ -34,7 +34,7 @@
   gap: 8px;
   margin: -12px -16px 0;
   padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
-  background: linear-gradient(180deg, var(--header-from, #2a86f0), var(--header-to, #1d6fd8));
+  background: linear-gradient(180deg, var(--header-from, #1a60c1), var(--header-to, #154f9e));
   color: var(--header-text, #fff);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
 }
@@ -54,8 +54,8 @@
 }
 
 .al-back {
-  width: 40px;
-  height: 40px;
+  width: var(--target);
+  height: var(--target);
   border: 0;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.18);
@@ -73,7 +73,7 @@
 }
 
 .al-back-spacer {
-  width: 40px;
+  width: var(--target);
 }
 
 .al-topbar-right {
