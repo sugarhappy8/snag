@@ -251,12 +251,16 @@ describe('sponsored posts do not pay for bought followers', () => {
   })
 
   it('does not take a shady promo loss out of the real audience twice', () => {
+    const outcomes: string[] = []
     for (const seed of [1, 2, 3, 4, 5, 6]) {
       const g = withAccount(seed, { platform: 'friendbook', followers: 1_000_000, fake: 1_000_000 })
       runScript(g, 'special.social.promo', 'accept', { platform: 'friendbook', sponsor: 'S', product: 'P', shady: true, pay: 100 }, NOTICE)
-      // Nobody real is on the account, so nobody can unfollow.
+      // No real follower is on the account, so none can unfollow.
       expect(account(g).followers).toBe(1_000_000)
+      for (const e of g.queue) if (e.kind === 'notice') outcomes.push(e.text)
     }
+    expect(outcomes.some((t) => t.includes(' The followers were bought, so none left.'))).toBe(true)
+    expect(outcomes.some((t) => t.includes('unfollowed you'))).toBe(false)
   })
 })
 

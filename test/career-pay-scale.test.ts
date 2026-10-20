@@ -9,7 +9,8 @@ import { formatMoney } from '../src/game/core'
 import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
 import { migrateSave } from '../src/game/save-schema'
 import { runScript } from '../src/game/scripts'
-import { hire, payScale, prof } from '../src/game/special/common'
+import { hire, prof } from '../src/game/special/common'
+import { payScale } from '../src/game/special/pay-scale'
 import { hustlerJobNodes } from '../src/game/special/hustler'
 import { militaryJob, militaryMenu, payFor, yearlyMilitary } from '../src/game/special/military'
 import type { ChoiceModal, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
@@ -207,6 +208,67 @@ describe('a saved job', () => {
     game.queue = []
     yearlyMilitary(game)
     expect(militaryJob(game)?.salary).toBe(36_000)
+  })
+})
+
+describe('a promotion never cuts pay', () => {
+  /** An army career of the given level and salary, run through one year on this seed. */
+  function armyYear(seed: number, year: number, countryId: string, track: 'enlisted' | 'officer', level: number, salary: number): GameState {
+    const g = life(year, countryId, 30, seed)
+    hire(g, { defId: 'military.army', title: 'Rank', company: 'Army', category: 'military', salary, level, performance: 100, data: { branch: 'army', track, conscript: false, serviceLeft: 0, deployments: 0 } })
+    const job = g.character.job!
+    job.data.startAge = 20
+    job.data.roleStartAge = 24
+    yearlyMilitary(g)
+    return g
+  }
+
+  /** The first seed whose year promotes this career, with that year's game. */
+  function promotedOn(year: number, countryId: string, track: 'enlisted' | 'officer', level: number, salary: number): { seed: number; g: GameState } {
+    for (let seed = 1; seed <= 120; seed++) {
+      const g = armyYear(seed, year, countryId, track, level, salary)
+      if (militaryJob(g)?.level === level + 1) return { seed, g }
+    }
+    throw new Error(`no promotion for ${countryId} ${year} ${track} ${level}`)
+  }
+
+  it('keeps a v4.0.2 officer salary of 207,000 in 1930, where the table now pays about 62,000', () => {
+    expect(payFor(life(1930, 'us'), 'officer', 9)).toBeLessThan(65_000)
+    const { g } = promotedOn(1930, 'us', 'officer', 8, 207_000)
+    expect(militaryJob(g)?.salary).toBeGreaterThanOrEqual(207_000)
+    expect(militaryJob(g)?.salary).toBe(207_000)
+  })
+
+  it('keeps a v4.0.2 sergeant salary in Nigeria today', () => {
+    const { g } = promotedOn(2026, 'ng', 'enlisted', 3, 31_000)
+    expect(militaryJob(g)?.level).toBe(4)
+    expect(militaryJob(g)?.salary).toBeGreaterThanOrEqual(31_000)
+  })
+
+  it('still pays the scaled table to a career that was hired at the scaled table in 1930', () => {
+    const base = life(1930, 'us')
+    const { g } = promotedOn(1930, 'us', 'officer', 8, payFor(base, 'officer', 8))
+    expect(militaryJob(g)?.salary).toBe(payFor(base, 'officer', 9))
+    expect(militaryJob(g)?.salary).toBeLessThanOrEqual(207_000 * 0.31)
+    // And a rank that pays more than the job already earns takes the higher table pay.
+    const low = promotedOn(1930, 'us', 'officer', 3, 1)
+    expect(militaryJob(low.g)?.salary).toBe(payFor(base, 'officer', 4))
+  })
+
+  it('keeps a re-enlisting conscript\'s saved salary', () => {
+    const g = life(1930, 'us', 20)
+    hire(g, { defId: 'military.army', title: 'Private', company: 'Army', category: 'military', salary: 12_600, level: 0, performance: 50, data: { branch: 'army', track: 'enlisted', conscript: true, serviceLeft: 0, deployments: 0 } })
+    runScript(g, 'special.mil.serviceDone', 'reenlist', undefined, { kind: 'notice', id: 'n', title: '', text: '' })
+    expect(militaryJob(g)?.level).toBe(1)
+    expect(militaryJob(g)?.salary).toBeGreaterThanOrEqual(12_600)
+  })
+
+  it('draws the same dice whatever the saved salary is', () => {
+    const { seed, g: kept } = promotedOn(1930, 'us', 'officer', 8, 207_000)
+    const repriced = armyYear(seed, 1930, 'us', 'officer', 8, 1)
+    expect(militaryJob(repriced)?.level).toBe(9)
+    expect(repriced.rng).toEqual(kept.rng)
+    expect(militaryJob(repriced)?.salary).toBe(payFor(life(1930, 'us'), 'officer', 9))
   })
 })
 

@@ -10,7 +10,8 @@ import { localeOf } from '../data/locales'
 import { hasMainCharacter, hasTalent } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { ageCeiling, liftSkill } from '../mastery'
-import { addFame, blocked, claimYearly, clamp100, hire, instrumentSkill, knownInstruments, leave, masterInstrument, money, myJob, payScale, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
+import { addFame, blocked, claimYearly, clamp100, hire, instrumentSkill, knownInstruments, leave, masterInstrument, money, myJob, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
+import { payScale } from './pay-scale'
 
 // ---------------------------------------------------------------------------
 // Acts
