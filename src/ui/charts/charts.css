@@ -1,0 +1,438 @@
+/* Chart kit styles (R1 charts, src/ui/charts). Every class starts with ch-. Colours come only from the tokens in
+   global.css (--chart-*, --text, --muted, --card, --card-2, --border, --chip-bg), so both themes work without a rule here.
+   Nothing is wider than a phone column: boxes shrink (min-width 0), text wraps, and the one fixed size is under 328px.
+   The only animation is the line draw at the bottom, and only when the reader has not asked for less motion. */
+
+/* ------------------------------------------------------------------------ */
+/* Tones: a mark takes its colour, stroke and fill from one token             */
+
+.ch-tone-c1 {
+  color: var(--chart-1);
+  stroke: var(--chart-1);
+  fill: var(--chart-1);
+}
+.ch-tone-c2 {
+  color: var(--chart-2);
+  stroke: var(--chart-2);
+  fill: var(--chart-2);
+}
+.ch-tone-c3 {
+  color: var(--chart-3);
+  stroke: var(--chart-3);
+  fill: var(--chart-3);
+}
+.ch-tone-c4 {
+  color: var(--chart-4);
+  stroke: var(--chart-4);
+  fill: var(--chart-4);
+}
+.ch-tone-c5 {
+  color: var(--chart-5);
+  stroke: var(--chart-5);
+  fill: var(--chart-5);
+}
+.ch-tone-c6 {
+  color: var(--chart-6);
+  stroke: var(--chart-6);
+  fill: var(--chart-6);
+}
+.ch-tone-good {
+  color: var(--chart-good);
+  stroke: var(--chart-good);
+  fill: var(--chart-good);
+}
+.ch-tone-bad {
+  color: var(--chart-bad);
+  stroke: var(--chart-bad);
+  fill: var(--chart-bad);
+}
+.ch-tone-muted {
+  color: var(--muted);
+  stroke: var(--muted);
+  fill: var(--muted);
+}
+
+/* Visually hidden, still read by a screen reader. */
+.ch-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ch-frame,
+.ch-frame *,
+.ch-kpi,
+.ch-kpi *,
+.ch-kpi-grid,
+.ch-meter,
+.ch-meter *,
+.ch-bullet,
+.ch-bullet * {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Frame                                                                     */
+
+.ch-frame {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  color: var(--text);
+}
+
+.ch-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.ch-chip {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.ch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ch-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ch-legend-mark {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.ch-readout {
+  min-height: 1.4em;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.ch-toggle {
+  justify-self: start;
+  min-height: var(--target, 44px);
+  padding: 0 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ch-toggle:focus-visible,
+.ch-kpi-press:focus-visible {
+  outline: 3px solid var(--focus-ring, currentColor);
+  outline-offset: 2px;
+}
+
+.ch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ch-table caption {
+  padding-bottom: 4px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ch-table th,
+.ch-table td {
+  padding: 5px 6px;
+  border-top: 1px solid var(--chart-grid);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.ch-table thead th {
+  border-top: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ch-table thead th:first-child,
+.ch-table tbody th {
+  text-align: left;
+}
+
+.ch-table tbody th {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Sparkline                                                                 */
+
+.ch-spark {
+  display: block;
+  width: 100%;
+  max-width: 120px;
+  height: 24px;
+  overflow: visible;
+}
+
+.ch-spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ch-spark-dot {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* ------------------------------------------------------------------------ */
+/* KPI tile: two to a row on a phone                                         */
+
+.ch-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ch-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.ch-kpi-press {
+  min-height: var(--target, 44px);
+  cursor: pointer;
+}
+
+.ch-kpi-label {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.ch-kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.ch-kpi-delta {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ch-delta-good {
+  color: var(--chart-good);
+}
+
+.ch-delta-bad {
+  color: var(--chart-bad);
+}
+
+.ch-kpi-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.ch-kpi .ch-spark {
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Meter                                                                     */
+
+.ch-meter {
+  display: grid;
+  gap: 4px;
+}
+
+.ch-meter-head,
+.ch-bullet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 8px;
+  font-size: 13px;
+}
+
+.ch-meter-label,
+.ch-bullet-label {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ch-meter-value,
+.ch-bullet-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.ch-meter-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--chip-bg);
+  box-shadow: inset 0 0 0 1px var(--border);
+  overflow: hidden;
+}
+
+.ch-meter-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: currentColor;
+}
+
+.ch-meter-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--card);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Bullet row: a bar for you, a line for the market mean, a diamond for the best */
+
+.ch-bullet {
+  display: grid;
+  gap: 4px;
+}
+
+.ch-bullet-rank {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ch-bullet-track {
+  position: relative;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--chip-bg);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.ch-bullet-bar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: 3px;
+  background: var(--chart-1);
+}
+
+.ch-bullet-market {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text);
+}
+
+.ch-bullet-best {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  background: var(--chart-2);
+  box-shadow: 0 0 0 1px var(--card);
+  transform: rotate(45deg);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Narrow phones                                                             */
+
+@media (max-width: 374px) {
+  .ch-frame {
+    gap: 6px;
+  }
+  .ch-kpi-grid {
+    gap: 6px;
+  }
+  .ch-kpi {
+    padding: 8px 10px;
+  }
+  .ch-kpi-value {
+    font-size: 20px;
+  }
+  .ch-table th,
+  .ch-table td {
+    padding: 4px;
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Motion: a 300 ms line draw, only when the reader has not asked for less    */
+
+@media (prefers-reduced-motion: no-preference) {
+  .ch-spark-line {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: ch-draw 300ms ease-out forwards;
+  }
+
+  @keyframes ch-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+}
