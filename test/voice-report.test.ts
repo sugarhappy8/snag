@@ -754,8 +754,8 @@ describe('the word lists and limits', () => {
   })
 
   it('LIMITS are the hard caps and AIMS the aims of the voice guide', () => {
-    expect(LIMITS).toEqual({ log: 90, scene: 140, outcome: 120, tooltip: 120, digest: 110 })
-    expect(AIMS).toEqual({ log: 60, scene: 110, outcome: 100, tooltip: 100, digest: 100 })
+    expect(LIMITS).toEqual({ log: 90, scene: 140, outcome: 120, tooltip: 120, digest: 110, headline: 70, deck: 110 })
+    expect(AIMS).toEqual({ log: 60, scene: 110, outcome: 100, tooltip: 100, digest: 100, headline: 55, deck: 90 })
   })
 
   it('FLAG_NAMES are the sixteen flags, in the order unitFlags reports them', () => {

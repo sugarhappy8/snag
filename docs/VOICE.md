@@ -49,6 +49,8 @@ Characters of static text; a `${...}` hole counts as zero.
 | Scene (the setup of an event) | 140 | 110 |
 | Tooltip (what it does, then what it costs) | 120 | 100 |
 | Year digest | 110 | 100 |
+| Headline (a news story's first line) | 70 | 55 |
+| Deck (the line under a headline) | 110 | 90 |
 | Choice label | 5 words | 3 |
 
 ## Banned
