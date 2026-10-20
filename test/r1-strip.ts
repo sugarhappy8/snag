@@ -18,7 +18,9 @@
 import { BOOK_KEYS } from '../src/game/business/state'
 
 const SIM_ROWS = 10
-const YEAR_ROW_KEYS = ['year', 'revenue', 'profit', 'tax', 'units', 'price', 'staff', 'valuation', 'outlets'] as const
+// A company's year row: year and revenue are numbers; the other seven may be a number or null (JSON.stringify writes a NaN as null).
+const YEAR_ROW_NUMBERS = ['year', 'revenue'] as const
+const YEAR_ROW_MAYBE = ['profit', 'tax', 'units', 'price', 'staff', 'valuation', 'outlets'] as const
 const MARKET_ROW_KEYS = ['year', 'share', 'rank', 'size'] as const
 
 type Obj = Record<string, unknown>
@@ -31,9 +33,12 @@ function hasNumbers(o: Obj, keys: readonly string[]): boolean {
   return keys.every((k) => typeof o[k] === 'number')
 }
 
-/** A company's `history`: a non-empty list whose every item is a YearRecord (all nine old numbers present). */
+/**
+ * A company's `history`: a non-empty list whose every item is a YearRecord (all nine old keys present, a damaged number
+ * written as null still counts, so one bad row cannot make the whole list pass as something else).
+ */
 function isCompanyHistory(key: string, v: unknown): v is Obj[] {
-  return key === 'history' && Array.isArray(v) && v.length > 0 && v.every((r) => isObj(r) && hasNumbers(r, YEAR_ROW_KEYS))
+  return key === 'history' && Array.isArray(v) && v.length > 0 && v.every((r) => isObj(r) && hasNumbers(r, YEAR_ROW_NUMBERS) && YEAR_ROW_MAYBE.every((k) => typeof r[k] === 'number' || r[k] === null))
 }
 
 /** A market's `history`: a non-empty list whose every item has a year, share, rank and size and no company-row fields. */

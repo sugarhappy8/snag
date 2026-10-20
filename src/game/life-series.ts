@@ -12,6 +12,8 @@ import type { GameState, Json } from './types'
 
 /** Rows kept (the newest by age). */
 export const LIFE_SERIES_ROWS = 120
+/** Entries of a stored series a read looks at (the newest), so a hostile save cannot make a read walk tens of thousands. */
+const READ_WINDOW = 1000
 /** Points in a graveyard trail. */
 const SPARK_POINTS = 40
 /** The most any money value holds, either way. */
@@ -66,7 +68,8 @@ export function readLifeSeries(g: GameState): LifeRow[] {
   const s = g.flags.lifeSeries
   if (!s || typeof s !== 'object' || Array.isArray(s)) return []
   if (s.v !== 1 || s.id !== g.lifeId || !Array.isArray(s.rows)) return []
-  return tidy(s.rows)
+  // A real series holds at most LIFE_SERIES_ROWS, so only the newest READ_WINDOW entries of a longer one are looked at.
+  return tidy(s.rows.length > READ_WINDOW ? s.rows.slice(-READ_WINDOW) : s.rows)
 }
 
 /** The same rows as objects, oldest first (what the wealth cockpit and the net-worth line read). */

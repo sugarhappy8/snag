@@ -9,7 +9,7 @@ import { industryEraBlock } from './competition-data'
 import { techView } from './deeptech-core'
 import { CHIP_RESERVE, CHIP_SHARE, SISTER_CUT, chipBook, chipSource, readChips, type ChipSupply } from './devices-data'
 import { manageBlock } from './gate'
-import { bizOf, businessAssets, readBiz } from './state'
+import { bizOf, businessAssets, readBiz, syncBookRow } from './state'
 import type { BizState, Statement } from './state'
 import { clampN, money, num, pct, rec, str } from './util'
 import { allocatedCorporateTax } from './tax'
@@ -97,7 +97,8 @@ function amend(g: GameState, b: BizState, s: Statement, before: number): void {
   const delta = s.pbt - before - (s.corpTax - oldTax)
   s.net += delta; b.cash += delta
   const h = b.history.find(x => x.year === s.year)
-  if (h) { h.revenue = s.revenue; h.profit = s.net; h.tax = s.corpTax }
+  // The booked row follows the statement: its cost lines (the invoice sits in one) and its books-close cash move with it.
+  if (h) { h.revenue = s.revenue; h.profit = s.net; h.tax = s.corpTax; syncBookRow(h, s, delta) }
   if (!b.public) b.valuation = valuationOf(b)
 }
 export function settleInternalServices(g: GameState, fiscal: number): void {

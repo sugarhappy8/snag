@@ -121,8 +121,10 @@ export function retiredOf(b: { retired?: readonly string[] }): readonly string[]
 export const HISTORY_ROWS = 30
 /** Year rows the simulation reads, as it always did. Anything that scans the history for a result uses simHistory. */
 export const SIM_HISTORY = 10
+/** The Statement lines a year row keeps as whole dollars. recordYear writes them and syncBookRow keeps them in step. */
+export const LINE_KEYS = ['salesTax', 'cogs', 'wages', 'keyStaff', 'rent', 'marketing', 'interest', 'upkeep', 'other', 'otherIncome', 'ownerPay'] as const
 /** The books-close dollars a year row can also carry (R1 charts: the Profit and Loss and the cash walk). */
-export const BOOK_KEYS = ['cash', 'debt', 'salesTax', 'cogs', 'wages', 'keyStaff', 'rent', 'marketing', 'interest', 'upkeep', 'other', 'otherIncome', 'ownerPay', 'draws'] as const
+export const BOOK_KEYS = ['cash', 'debt', ...LINE_KEYS, 'draws'] as const
 /** The most a book field holds, either way. */
 const BOOK_MAX = 1e15
 
@@ -161,6 +163,22 @@ export interface YearRecord {
 export function bookDollars(n: number): number {
   if (!Number.isFinite(n)) return 0
   return Math.round(Math.max(-BOOK_MAX, Math.min(BOOK_MAX, n))) + 0
+}
+
+/** Write a Statement's lines into a year row as whole dollars. recordYear and syncBookRow share this one field list. */
+export function setBookLines(h: YearRecord, s: Statement): void {
+  for (const k of LINE_KEYS) h[k] = bookDollars(s[k])
+}
+
+/**
+ * Keep a booked row in step with its Statement after the books changed it (a group's internal invoice amends the closed
+ * year): the statement lines are rewritten and `cashChange` (what the same amendment did to the company's cash) is added to
+ * the row's books-close cash. A row without book keys (an NPC company's, or one from before R1) is left as it is, and a
+ * change that is not a finite number moves nothing.
+ */
+export function syncBookRow(h: YearRecord, s: Statement, cashChange = 0): void {
+  if (LINE_KEYS.some((k) => h[k] !== undefined)) setBookLines(h, s)
+  if (h.cash !== undefined) h.cash = bookDollars(h.cash + (Number.isFinite(cashChange) ? cashChange : 0))
 }
 
 /** The rows the simulation reads: the last SIM_HISTORY, however many the company keeps. */

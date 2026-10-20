@@ -33,7 +33,7 @@ import { historyFactors, waveFactorsFor } from './tech-wave-factors'
 import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
 import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
-import { bookDollars, HISTORY_ROWS, isQuoted, normalizeBiz, SIM_HISTORY, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
+import { bookDollars, HISTORY_ROWS, isQuoted, normalizeBiz, setBookLines, SIM_HISTORY, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
 import { classFactor } from './share-classes'
 import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
@@ -1016,17 +1016,7 @@ export function recordYear(b: BizState, stmt: Statement, opts: { draws?: number;
   if (!opts.lean) {
     rec.cash = bookDollars(b.cash)
     rec.debt = bookDollars(b.debt)
-    rec.salesTax = bookDollars(stmt.salesTax)
-    rec.cogs = bookDollars(stmt.cogs)
-    rec.wages = bookDollars(stmt.wages)
-    rec.keyStaff = bookDollars(stmt.keyStaff)
-    rec.rent = bookDollars(stmt.rent)
-    rec.marketing = bookDollars(stmt.marketing)
-    rec.interest = bookDollars(stmt.interest)
-    rec.upkeep = bookDollars(stmt.upkeep)
-    rec.other = bookDollars(stmt.other)
-    rec.otherIncome = bookDollars(stmt.otherIncome)
-    rec.ownerPay = bookDollars(stmt.ownerPay)
+    setBookLines(rec, stmt)
     rec.draws = bookDollars(opts.draws ?? 0)
   }
   b.history = [...b.history.filter((h) => h.year !== rec.year), rec].slice(-(opts.lean ? SIM_HISTORY : HISTORY_ROWS))

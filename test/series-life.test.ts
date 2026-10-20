@@ -169,6 +169,20 @@ describe('readLifeSeries and lifeRows', () => {
     }
   })
 
+  it('4: a hostile series of thousands of rows is read from its newest thousand, never walked whole', () => {
+    const g = life()
+    // 5000 junk entries before the valid rows: the window is the newest 1000, so the 120 valid rows at the end all come back.
+    const tail = Array.from({ length: 120 }, (_, i) => good(i))
+    setSeries(g, { v: 1, id: g.lifeId, rows: [...Array.from({ length: 5000 }, () => 'junk'), ...tail] })
+    expect(readLifeSeries(g).map((r) => r[0])).toEqual(tail.map((r) => r[0]))
+    // Valid rows buried under more than a thousand newer entries are out of the window (a real series is never that long).
+    setSeries(g, { v: 1, id: g.lifeId, rows: [good(7), ...Array.from({ length: 1000 }, () => null)] })
+    expect(readLifeSeries(g)).toEqual([])
+    // A series at the window's edge is read whole.
+    setSeries(g, { v: 1, id: g.lifeId, rows: [good(7), ...Array.from({ length: 999 }, () => null)] })
+    expect(readLifeSeries(g).map((r) => r[0])).toEqual([7])
+  })
+
   it('a later row for the same age wins', () => {
     const g = life()
     setSeries(g, { v: 1, id: g.lifeId, rows: [[5, 2005, 1, 1, 1, 1, 1, 1], [6, 2006, 2, 2, 2, 2, 2, 2], [5, 2005, 9, 9, 9, 9, 9, 9]] })
