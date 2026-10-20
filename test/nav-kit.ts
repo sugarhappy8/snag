@@ -21,6 +21,7 @@ import { applyPlan, autoPlan } from '../src/game/business/yearly'
 import { hireForJob } from '../src/game/careers'
 import { getJobDef } from '../src/game/data/jobs'
 import { FLAGS } from '../src/game/flags'
+import { SECTIONED_ROOTS } from '../src/game/hubs/sections'
 import { contractCondition } from '../src/game/health'
 import { createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
@@ -39,9 +40,9 @@ const TABS: readonly NavTab[] = ['occupation', 'assets', 'relationships', 'activ
 
 /**
  * Roots whose long list is sectioned at render time (R1-N2 regroups Activities in MenuSheet), so the lint does not
- * ask for headings in the data. R1-N2 imports this constant.
+ * ask for headings in the data. R1-N2 moved the list to src/game/hubs/sections.ts; this re-export keeps the old import.
  */
-export const SECTIONED_ROOTS: readonly string[] = ['activities']
+export { SECTIONED_ROOTS }
 
 // ---------------------------------------------------------------------------
 // Canned states

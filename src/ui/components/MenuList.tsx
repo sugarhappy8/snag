@@ -6,9 +6,10 @@ import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/type
 import { rovingMove, rovingStop } from '../a11y/roving'
 import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
-import { confirmText, infoText, isMultiline, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report, sliderPreview } from './menuModel'
+import { confirmText, infoText, isMultiline, nodeBadge, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report, sliderPreview } from './menuModel'
 import { TalentHint } from './TalentHint'
 import { HINT_EMOJI } from '../../game/talents'
+import '../styles/nav.css'
 
 export { groupChildren, groupHeader, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, resolveTrail } from './menuModel'
 
@@ -376,6 +377,7 @@ export function MenuRow({
   const reason = nodeDisabled(node, g)
   const subtitle = nodeSubtitle(node, g)
   const hint = nodeHint(node, g)
+  const badge = reason ? null : nodeBadge(node, g)
   const cls = ['menu-row', reason ? 'is-disabled' : '', hint ? 'has-hint' : ''].filter(Boolean).join(' ')
   return (
     <button
@@ -394,6 +396,7 @@ export function MenuRow({
       </span>
       <span className="menu-row-text">
         <span className="menu-row-label">{node.label}</span>
+        {badge ? <span className="menu-row-badge">{badge}</span> : null}
         {subtitle ? <span className="menu-row-sub">{subtitle}</span> : null}
         {hint ? <TalentHint text={hint} className="menu-row-hint" /> : null}
       </span>
