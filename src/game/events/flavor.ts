@@ -8,6 +8,7 @@ import type { GameState, Json, Person, Tone } from '../types'
 import { country, friends, grandkids, inUniversity, mother, father, pets, playSport, siblings } from './helpers'
 import { anachronistic, eraOk, eraStrip, kidPrize, movieKind, radioShow, showName, venueExists } from './era'
 import { eraFlavorPools } from './era-life'
+import { ringRead, ringWrite } from '../text/memory'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
 
@@ -567,7 +568,14 @@ function poolsFor(g: GameState): Pool[] {
   return pools
 }
 
+/** The recent-lines window lives in the shared text memory (text/memory.ts): one ring of the last 60 'pool:index' keys across all pools. */
+const FLAVOR_RING = 'flavor'
+const FLAVOR_RING_CAP = 60
+
 function recentKeys(g: GameState): string[] {
+  const ring = ringRead(g, FLAVOR_RING)
+  if (ring) return ring
+  // A save from v4.0.2 kept the same window in flags.flavorRecent. It is read once here and dropped when the year's lines are written.
   const raw = g.flags.flavorRecent
   return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []
 }
@@ -634,7 +642,8 @@ export function addFlavorLines(g: GameState): void {
     recent.push(chosen.key)
     added++
   }
-  g.flags.flavorRecent = recent.slice(-60)
+  ringWrite(g, FLAVOR_RING, recent, FLAVOR_RING_CAP)
+  delete g.flags.flavorRecent
 }
 
 function weightedPool(g: GameState, pools: Pool[]): Pool | null {
