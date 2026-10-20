@@ -9,7 +9,7 @@ import { marketViewOf } from './competition'
 import { valuationOf } from './economy'
 import { isFinanceFirm } from './finance-firm'
 import { franchiseUnits } from './franchise'
-import { findBusiness, readBiz, totalOutlets, type BizState } from './state'
+import { findBusiness, readBiz, simHistory, totalOutlets, type BizState } from './state'
 import { clampN, money, num, rec } from './util'
 
 export interface MilestoneDef {
@@ -51,7 +51,8 @@ function fiscalYear(g: GameState, b: BizState): number {
 /** The first booked year in the company's history that met `ok` (the fiscal year when none). */
 function firstYear(g: GameState, b: BizState, past: boolean, ok: (r: BizState['history'][number]) => boolean): number {
   if (!past) return fiscalYear(g, b)
-  return b.history.find(ok)?.year ?? fiscalYear(g, b)
+  // The ten rows the simulation always saw: a company keeps thirty now, and an old row must not change a result.
+  return simHistory(b).find(ok)?.year ?? fiscalYear(g, b)
 }
 
 /** Own outlets plus franchised ones: every place customers find the brand. */
@@ -106,7 +107,7 @@ export const MILESTONES: MilestoneDef[] = [
     id: 'profit',
     emoji: '\u{1F4B5}',
     label: 'First profitable year',
-    progress: (_g, b) => ((b.last?.net ?? 0) > 0 || b.history.some((r) => r.profit > 0) ? 1 : 0),
+    progress: (_g, b) => ((b.last?.net ?? 0) > 0 || simHistory(b).some((r) => r.profit > 0) ? 1 : 0),
     when: (g, b, past) => firstYear(g, b, past || !((b.last?.net ?? 0) > 0), (r) => r.profit > 0),
   },
   revenue('rev1m', 1_000_000),

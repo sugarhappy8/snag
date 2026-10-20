@@ -33,7 +33,7 @@ import { historyFactors, waveFactorsFor } from './tech-wave-factors'
 import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
 import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
-import { isQuoted, normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
+import { bookDollars, HISTORY_ROWS, isQuoted, normalizeBiz, SIM_HISTORY, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
 import { classFactor } from './share-classes'
 import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
@@ -994,7 +994,14 @@ export function refreshValue(a: Asset, b: BizState): void {
   a.upkeep = 0
 }
 
-export function recordYear(b: BizState, stmt: Statement): YearRecord {
+/**
+ * Close the books of a fiscal year into the company's history. Call it after evolve(), so cash and debt are the books-close
+ * values. A player company also keeps the Statement lines as whole dollars (the R1 charts read them) and up to HISTORY_ROWS
+ * rows; `lean` (NPC companies) writes the nine old fields and keeps SIM_HISTORY, exactly as before. `draws` is the owner
+ * bonuses of the year, already inside `other`: a memo for the cash walk, never a second cost. Booking a year twice replaces
+ * its row.
+ */
+export function recordYear(b: BizState, stmt: Statement, opts: { draws?: number; lean?: boolean } = {}): YearRecord {
   const rec: YearRecord = {
     year: stmt.year,
     revenue: stmt.revenue,
@@ -1006,7 +1013,23 @@ export function recordYear(b: BizState, stmt: Statement): YearRecord {
     valuation: b.valuation,
     outlets: totalOutlets(b),
   }
-  b.history = [...b.history, rec].slice(-10)
+  if (!opts.lean) {
+    rec.cash = bookDollars(b.cash)
+    rec.debt = bookDollars(b.debt)
+    rec.salesTax = bookDollars(stmt.salesTax)
+    rec.cogs = bookDollars(stmt.cogs)
+    rec.wages = bookDollars(stmt.wages)
+    rec.keyStaff = bookDollars(stmt.keyStaff)
+    rec.rent = bookDollars(stmt.rent)
+    rec.marketing = bookDollars(stmt.marketing)
+    rec.interest = bookDollars(stmt.interest)
+    rec.upkeep = bookDollars(stmt.upkeep)
+    rec.other = bookDollars(stmt.other)
+    rec.otherIncome = bookDollars(stmt.otherIncome)
+    rec.ownerPay = bookDollars(stmt.ownerPay)
+    rec.draws = bookDollars(opts.draws ?? 0)
+  }
+  b.history = [...b.history.filter((h) => h.year !== rec.year), rec].slice(-(opts.lean ? SIM_HISTORY : HISTORY_ROWS))
   return rec
 }
 
