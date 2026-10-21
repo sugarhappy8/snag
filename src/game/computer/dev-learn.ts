@@ -2,7 +2,7 @@
 // coding camp for kids, coding contests and hackathons; and, before any of that, getting a
 // computer (asking your parents, or a used laptop off the local classifieds).
 import { electronicsStoreMenu, localGoodsMult, nicePrice, seeded, yearKey } from '../assets'
-import { ownsComputer } from '../computer'
+import { ownsComputer } from './access'
 import { addHidden, addRelationship, addStat, count, formatMoney, log, notice, pronouns, remember, spend, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
 import { eraLines } from '../events/era'

@@ -8,6 +8,7 @@
 // State: the profile's projects (in development) and games (released credits), see
 // gamedev-state.ts. Money: your own games pay you taxable income; launch-week sales are paid
 // (and taxed) right away, the rest of the year's sales arrive with the yearly tick.
+import { gameMakingMenu } from '../computer/contract'
 import { computerBlock, earnNow, firstReason, useComputer } from '../computer/dev-common'
 import { practice } from '../computer/dev-learn'
 import { buildProject, PROJECT_KINDS } from '../computer/dev-projects'
@@ -1461,5 +1462,8 @@ export const makeGamesMenu: MenuGroup = {
     return nodes
   },
 }
+
+// The computer's Make Games shortcut asks for this menu through a port (computer/contract.ts), so it need not import this file.
+gameMakingMenu.use(() => makeGamesMenu)
 
 export const makeInternals = { SCOPE_SCRIPT, GENRE_SCRIPT, PLATFORM_SCRIPT, ENGINE_SCRIPT, NAME_SCRIPT, CROWD_SCRIPT, PUB_SCRIPT, devlog, contractor, crowdfund, pitchPublishers, earlyAccess, shelve, patchGame, releaseDlc, runSale, study, streamDev, eaPayout }

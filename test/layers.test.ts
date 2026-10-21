@@ -515,6 +515,51 @@ describe('the real src', () => {
   }, 60_000)
 })
 
+/**
+ * R2-K5 (K.2a): the first twelve import statements cut out of the import cycles. Each row is one back-edge that held a domain in the
+ * business cycle (or the economy cycle) and is now gone: a move that left a re-export, a type-only or neighbouring import, or a port
+ * (kernel/ports.ts). The ratchets already fail when a module joins a cycle; this names the edges, so the failure says which cut came
+ * undone and what replaced it.
+ */
+const CUT_EDGES: readonly { edge: string; how: string }[] = [
+  { edge: 'src/game/computer/dev-common.ts -> src/game/computer.ts', how: 'import ./access (computer/access.ts holds the computer predicates)' },
+  { edge: 'src/game/computer/dev-learn.ts -> src/game/computer.ts', how: 'import ./access' },
+  { edge: 'src/game/computer/dev.ts -> src/game/computer.ts', how: 'import ./access' },
+  { edge: 'src/game/computer/money-common.ts -> src/game/computer.ts', how: 'import ./access' },
+  { edge: 'src/game/computer/online.ts -> src/game/computer.ts', how: 'import ./access' },
+  { edge: 'src/game/computer/dev-state.ts -> src/game/business/economy.ts', how: 'import localPay from data/local-pay.ts' },
+  { edge: 'src/game/special/gamedev-core.ts -> src/game/business/economy.ts', how: 'import localPay from data/local-pay.ts' },
+  { edge: 'src/game/computer/dev-venture.ts -> src/game/business/economy.ts', how: 'call economicCycle from ../economy (cycleOf is only that call)' },
+  { edge: 'src/game/underworld.ts -> src/game/business/economy.ts', how: 'call the revalueCompany port (business/contract.ts)' },
+  { edge: 'src/game/computer/dev-projects.ts -> src/game/special/gamedev-make.ts', how: 'call the gameMakingMenu port (computer/contract.ts)' },
+  { edge: 'src/game/business/ai-bench.ts -> src/game/assets.ts', how: 'import seeded from ../rng' },
+  { edge: 'src/game/business/competition-roster.ts -> src/game/assets.ts', how: 'import seeded from ../rng' },
+]
+
+describe('the first twelve cuts (R2-K5)', () => {
+  it('none of the twelve import statements is back', async () => {
+    const g = await realGraphOnce()
+    const back = CUT_EDGES.filter(({ edge }) => {
+      const [from, to] = edge.split(' -> ')
+      return (g.get(from!) ?? []).includes(to!)
+    })
+    expect(back.map(({ edge, how }) => `${edge}: ${how}`)).toEqual([])
+  }, 60_000)
+
+  it('the old homes still reach what moved, so the other importers did not change (test/hub-entry.test.ts checks it is the same function)', async () => {
+    const g = await realGraphOnce()
+    expect(g.get('src/game/computer.ts')).toContain('src/game/computer/access.ts')
+    expect(g.get('src/game/business/economy.ts')).toContain('src/game/data/local-pay.ts')
+  }, 60_000)
+
+  it('the cycle set shrank: at most 108 modules sit in an import cycle, and at most 18 cycle edges cross a directory', async () => {
+    const g = await realGraphOnce()
+    const inCycles = (JSON.parse(readFileSync(join(ROOT, 'test', 'architecture-baseline.json'), 'utf8')) as { components: string[][] }).components.flat()
+    expect(inCycles.length).toBeLessThanOrEqual(108)
+    expect(cycleDirEdges(g).length).toBeLessThanOrEqual(18)
+  }, 60_000)
+})
+
 describe('the baseline file', () => {
   const sorted = (xs: readonly string[]): boolean => xs.every((x, i) => i === 0 || xs[i - 1]! < x)
 

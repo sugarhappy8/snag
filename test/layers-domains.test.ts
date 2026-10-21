@@ -48,10 +48,11 @@ const EMPTY: LayerBaseline = { v: 1, upward: [], cycleDirEdges: [] }
 /**
  * The most eager reads that may sit in files that are part of an import cycle. The plan measured 25 on v4.1.1 with a scan that
  * skipped the body of a function that is called at once; this scan reads that body, which adds one real hazard
- * (business/tech-waves.ts RIVAL_KINDS reads WAVE_KINDS while the module loads), so today's count is 26. A cut that takes a file
- * out of its cycle lowers the count; lower this number with it.
+ * (business/tech-waves.ts RIVAL_KINDS reads WAVE_KINDS while the module loads), so the count was 26. A cut that takes a file
+ * out of its cycle lowers the count; lower this number with it. R2-K5 took the computer files and the crime files out of the
+ * business cycle and the count fell to 20 (the reads left are in the 59-module business cycle and the special/ cycle, which R2-K6 splits).
  */
-const HAZARD_CEILING = 26
+const HAZARD_CEILING = 20
 
 /** A graph from a plain object: module -> modules it imports. */
 function graphOf(edges: Record<string, string[]>): Graph {

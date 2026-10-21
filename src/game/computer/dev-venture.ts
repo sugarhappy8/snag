@@ -10,8 +10,8 @@
 // Profit is paid to you as taxable income (your share); losses come out of the company's cash,
 // then your pocket. Events: outages, going viral, clones, a big customer, acquisition offers,
 // data breaches, co-founder drama, investors, and type-specific chaos.
-import { cycleOf } from '../business/economy'
 import { COMPANY_WORDS } from '../data/jobs'
+import { economicCycle } from '../economy'
 import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, formatCents, formatMoney, log, notice, peopleBy, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal, localPick, localTerm } from '../data/locales'
 import { worldYear } from '../invest/engine'
@@ -207,7 +207,7 @@ function pull(v: VentureData): number {
 function econOf(g: GameState, v: VentureData): number {
   const w = worldYear(fam(g), g.year)
   const world = between((1 + 0.05 * w.z) * (w.crash ? 0.85 : 1) * (w.boom ? 1.08 : 1), 0.7, 1.25)
-  const local = cycleOf(g, v.countryId, g.year)
+  const local = economicCycle(g, v.countryId, g.year)
   const ls = localShare(v)
   return between(ls * (Number.isFinite(local) ? local : 1) + (1 - ls) * world, 0.5, 1.4)
 }

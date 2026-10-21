@@ -10,7 +10,7 @@
 //   dev-venture   ventures: founding, yearly simulation, events, dashboard and actions
 //   dev-freelance freelance gigs on invented platforms
 //   dev-cv        CV entries and the self-taught developer check
-import { computerLocked, ownsComputer } from '../computer'
+import { computerLocked, ownsComputer } from './access'
 import { addRelationship, addStat, count, log, notice, scriptChoice } from '../core'
 import { getJobDef } from '../data/jobs'
 import { chance, pick, randInt } from '../rng'

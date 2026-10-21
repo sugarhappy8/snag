@@ -51,7 +51,7 @@ import { employerRef, gadgetName, pickBrand, type GadgetSpec } from './shops/eve
 import { hasTech, type TechId } from './history/timeline'
 import { eraPick, eraPickPlain } from './events/era'
 import { createPerson } from './people'
-import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from './rng'
+import { bell, chance, hashString, pick, rand, randInt, seeded, uid, weightedPick, type SRng } from './rng'
 import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import type { Asset, AssetKind, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Mortgage, Person, RelationKind, StatKey } from './types'
@@ -135,50 +135,11 @@ function capitalize(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Seeded listings: stable within a year, no g.rng consumption.
+// Seeded listings: stable within a year, no g.rng consumption. The generator itself (seeded, SRng) lives in rng.ts since R2-K5, so
+// a module that only wants a keyed, draw-free RNG need not import this file; it is re-exported here for the importers that still do.
 
-export interface SRng {
-  next(): number
-  int(min: number, max: number): number
-  float(min: number, max: number): number
-  chance(p: number): boolean
-  pick<T>(xs: readonly T[]): T
-  weighted<T>(xs: readonly T[], w: (x: T) => number): T
-}
-
-function hashString(s: string): number {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h | 0
-}
-
-export function seeded(key: string): SRng {
-  let state = hashString(key)
-  const next = (): number => {
-    const [v, s] = nextRandom(state)
-    state = s
-    return v
-  }
-  return {
-    next,
-    int: (min, max) => min + Math.floor(next() * (max - min + 1)),
-    float: (min, max) => min + next() * (max - min),
-    chance: (p) => next() < p,
-    pick: (xs) => xs[Math.floor(next() * xs.length)],
-    weighted: (xs, w) => {
-      const total = xs.reduce((s, x) => s + Math.max(0, w(x)), 0)
-      let roll = next() * total
-      for (const x of xs) {
-        roll -= Math.max(0, w(x))
-        if (roll < 0) return x
-      }
-      return xs[xs.length - 1]
-    },
-  }
-}
+export { seeded }
+export type { SRng }
 
 export function yearKey(g: GameState, what: string): string {
   const c = g.character

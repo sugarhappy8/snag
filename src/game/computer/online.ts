@@ -5,7 +5,7 @@
 // the calendar: a 1998 teen in Lagos has a cyber cafe, not a modem), and each has a price: phone
 // minutes (billed by the minute outside North America), a virus, an in-app surprise, or time at
 // the screen (useComputer counts it against the yearly screen-time limit).
-import { ownsComputer } from '../computer'
+import { ownsComputer } from './access'
 import { addStat, count, formatMoney, log, notice, spend } from '../core'
 import { eraPrice, wealthOf } from '../events/era-late-kit'
 import { hasTech, techOdds } from '../history/timeline'

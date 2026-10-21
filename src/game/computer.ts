@@ -7,38 +7,10 @@ import { moneyNodes, yearlyMoney } from './computer/money'
 import { cafeAvailable } from './activities/pastimes'
 import { onlineNodes, yearlyOnline } from './computer/online'
 import { codingSkill } from './computer/skills'
-import type { Asset, GameState, MenuGroup } from './types'
+import { computerAsset, computerLocked, ownsComputer } from './computer/access'
+import type { GameState, MenuGroup } from './types'
 
-const COMPUTER_NAME = /\b(laptop|gaming pc|computer|desktop|pc|macbook|workstation|chromebook)\b/i
-
-/** Assets that count as a computer (the Electronics Store's Laptop and Gaming PC, and similar). */
-export function isComputer(a: Asset): boolean {
-  return (a.kind === 'other' || a.kind === 'collectible') && COMPUTER_NAME.test(a.name) && a.condition > 0
-}
-
-export function computerAsset(g: GameState): Asset | undefined {
-  return g.assets.find(isComputer)
-}
-
-export function ownsComputer(g: GameState): boolean {
-  return !!computerAsset(g)
-}
-
-/**
- * Parents (or a court) can take the computer away: g.flags.computerLockedUntil = the age it comes
- * back. Returns a reason while it's locked, else null.
- */
-export function computerLocked(g: GameState): string | null {
-  const until = g.flags.computerLockedUntil
-  if (typeof until !== 'number' || g.character.age >= until) return null
-  const who = typeof g.flags.computerLockedBy === 'string' ? g.flags.computerLockedBy : 'Your parents'
-  return `${who} took your computer away until you're ${until}.`
-}
-
-/** True when the player has a computer they can actually use right now. */
-export function canUseComputer(g: GameState): boolean {
-  return ownsComputer(g) && !computerLocked(g)
-}
+export { canUseComputer, computerAsset, computerLocked, isComputer, ownsComputer } from './computer/access'
 
 /** Activities › Computer. */
 export const computerMenu: MenuGroup = {
