@@ -2,8 +2,9 @@
 // localStorage the ribbon collection, the graveyard and the Time Machine's start-of-year snapshots.
 import { readSpark } from './life-series'
 import { refreshRoyalCareers } from './npc-lives'
-import { isFiniteNumber, isGameShell, isLoadableGame, isRecord, migrateLegacyAi, migrateSave } from './save-schema'
-import { readRecord, removeRecord, saveRecord, setLocalQuotaEvictor } from './save-store'
+import { assembleSave, encodeSave, inlineSave, isChunkedHead, neededChunkIds } from './save-codec'
+import { isFiniteNumber, isGameShell, isLoadableGame, isRecord, migrateLegacyAi, migrateSave, SAVE_SCHEMA } from './save-schema'
+import { chunksAvailable, readChunk, readRecord, removeRecord, saveRecord, setLocalQuotaEvictor, type ChunkedWrite } from './save-store'
 import { refreshFamilyTalents } from './talents'
 import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 import { isStartOfYear, stopOf, TIME_MACHINE_STOPS, type TimeStop } from './timeMachine'
@@ -44,15 +45,27 @@ function write(key: string, value: unknown): boolean {
  * Time Machine gave back the room its snapshots were using (evictLocalSnapshot): snapshots never
  * cost you the game. With IndexedDB the write is queued and this is true; a write that fails shows
  * in getSaveStatus().persistFailed, and flushSave() resolves false.
+ *
+ * A backend with a chunk store keeps the life as a head plus chunks (save-codec.ts): the economy, the
+ * completed years of the life log and the world are written only when they changed, so a tap writes
+ * the head. A backend without one keeps it as the one self-contained record, the same game.
  */
 export function saveGame(g: GameState): boolean {
-  let json: string
+  let head: string
+  let chunked: ChunkedWrite | undefined
   try {
-    json = JSON.stringify(g)
+    if (chunksAvailable()) {
+      const enc = encodeSave(g)
+      head = enc.head
+      chunked = { chunks: enc.chunks, plain: () => inlineSave(g) }
+    } else {
+      head = inlineSave(g)
+    }
   } catch {
+    // The state can't be turned into JSON (or a chunk passes its cap): nothing was written.
     return false
   }
-  return saveRecord(json)
+  return saveRecord(head, chunked)
 }
 
 /** The saved life brought up to the current schema, as a fresh object; null when there is none it can play. No side effects. */
@@ -65,7 +78,18 @@ export function loadGame(): GameState | null {
   } catch {
     return null
   }
-  const saved = migrateSave(value)
+  let saved: ReturnType<typeof migrateSave>
+  if (isChunkedHead(value)) {
+    // A later version's record is never read further, let alone touched.
+    if ((value.schemaVersion as number) > SAVE_SCHEMA) return null
+    const texts = new Map<string, string | null>()
+    for (const id of neededChunkIds(value)) texts.set(id, readChunk(id))
+    const assembled = assembleSave(value, texts)
+    if (assembled.kind !== 'ready') return null
+    saved = migrateSave(assembled.game, { versions: assembled.versions })
+  } else {
+    saved = migrateSave(value)
+  }
   if (saved.kind !== 'ready') return null
   refreshRoyalCareers(saved.game)
   refreshFamilyTalents(saved.game)

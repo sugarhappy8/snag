@@ -8,7 +8,12 @@
 // (or the page is closing with the queue not dry) the newest save is also written, plain, to the
 // legacy localStorage key: a backup the next boot reconciles with the database. This file only moves
 // strings: parsing and migrating them is save.ts's business.
-import { connectionLost, localSaveBackend, markIdbInUse, SAVE_KEY, type SaveBackend, type SyncSaveBackend } from './save-backends'
+//
+// R2-S6 (K.5): a save can also be a HEAD plus CHUNK records (save-codec.ts). The queue still moves one string, the head, and the
+// chunks ride beside it: a chunk the storage doesn't hold yet is written first, the head is the one commit point, and the chunks
+// the new head no longer names are swept after it, so a failed step never loses the save that was there. Everything that must
+// stand alone (the backup, the spill, what an asynchronous backend's reads answer) is the self-contained form of the same save.
+import { connectionLost, localSaveBackend, markIdbInUse, SAVE_KEY, type AsyncSaveBackend, type SaveBackend, type SyncSaveBackend } from './save-backends'
 import { deleteQuarantine, QUARANTINE_SLOTS, quarantineRecord, readQuarantine, type SaveNotice } from './save-quarantine'
 import { encodeSnapshotRecord } from './snapshot-codec'
 
@@ -29,6 +34,23 @@ export interface SaveStatus {
  * Time Machine jump that waits on flushSave spinning.
  */
 export const STORE_OP_TIMEOUT_MS = 20_000
+
+/** The chunks of a save whose record is a head (R2-S6), handed over with it. */
+export interface ChunkedWrite {
+  /** Every chunk the head refers to (id to plain text), not only the new ones: the store writes what storage does not have yet. */
+  readonly chunks: ReadonlyMap<string, string>
+  /**
+   * The self-contained form of the same game, for backups, spill and reads: computed lazily, at most once (the store keeps the
+   * answer). It must describe the game as it was saved, so the state saved must not be edited afterwards.
+   */
+  readonly plain: () => string
+}
+
+/** A head's chunks, and its plain form once someone asked for it. */
+interface Extra {
+  readonly write: ChunkedWrite
+  plain: string | null
+}
 
 /** Everything resetSaveStoreForTests puts back, in one place. */
 interface State {
@@ -60,6 +82,15 @@ interface State {
   backup: string | null
   /** The marker that this browser keeps its life in IndexedDB has been set from this page. */
   marked: boolean
+  /**
+   * The chunked saves by their head text: at most the newest, the stored and the pending one (pruned after every change of
+   * those three). A head that is not in here is a plain record, and its own text is its plain form.
+   */
+  extras: Map<string, Extra>
+  /** The chunk ids known to be in storage. Only meaningful once `primed`; cleared by a removal and by a change of backend. */
+  persisted: Set<string>
+  /** `persisted` was read from storage (boot, or the first chunked save of the page). */
+  primed: boolean
   status: SaveStatus
 }
 
@@ -79,6 +110,9 @@ function initialState(): State {
     sessionSaved: false,
     backup: null,
     marked: false,
+    extras: new Map(),
+    persisted: new Set(),
+    primed: false,
     status: { notices: [], persistFailed: false },
   }
 }
@@ -110,6 +144,8 @@ function active(): SaveBackend {
  */
 export function setSaveBackend(backend: SaveBackend | null): void {
   state.backend = backend
+  // What a backend holds is its own: another one's chunks are not in it.
+  forgetPersisted(state)
 }
 
 /**
@@ -194,6 +230,74 @@ function dropNotice(id: string): void {
 function setCache(json: string | null): void {
   state.newest = json
   state.stored = json
+  prune(state)
+}
+
+// --- The chunks ----------------------------------------------------------------------------
+
+/** Keeps the chunks of `head` (a save that is a head plus chunks) until the save has been written and a later one has replaced it. */
+function remember(s: State, head: string, chunked: ChunkedWrite): void {
+  s.extras.set(head, { write: chunked, plain: null })
+}
+
+/** Drops what the table keeps for a head that is no longer the newest, the stored or the pending save. */
+function prune(s: State): void {
+  for (const head of [...s.extras.keys()]) if (head !== s.newest && head !== s.stored && head !== s.pending) s.extras.delete(head)
+}
+
+/** The self-contained text of the save `json` stands for: its plain form when it is a head, else itself. */
+function plainText(s: State, json: string): string {
+  const extra = s.extras.get(json)
+  if (extra === undefined) return json
+  return (extra.plain ??= extra.write.plain())
+}
+
+/** The chunk ids of this backend are not known any more (it was swapped, or the save was removed): read them again before they are trusted. */
+function forgetPersisted(s: State): void {
+  s.persisted = new Set()
+  s.primed = false
+}
+
+/** The chunks of `json` for a backend that can hold them; undefined for a plain record and for a backend with nowhere to put chunks. */
+function chunkedFor(s: State, backend: SaveBackend, json: string): ChunkedWrite | undefined {
+  return backend.chunks === undefined ? undefined : s.extras.get(json)?.write
+}
+
+/** The stored chunks that the head just written does not name (and that are ours: a chunk store lists only its own generation). */
+function staleChunks(s: State, wanted: ReadonlyMap<string, string>): string[] {
+  const stale: string[] = []
+  for (const id of s.persisted) if (!wanted.has(id)) stale.push(id)
+  return stale
+}
+
+/**
+ * One save onto a synchronous backend. A head with chunks: each chunk the storage doesn't have yet is put first (a refusal fails
+ * the save and the head is not written, so the save that was there still has every chunk it names), then the head is written
+ * (the commit), then the chunks nothing names any more are swept. Nothing else is touched while a newer version's record waits for
+ * its copy. A plain record, and a backend with nowhere to put chunks, is one write of the self-contained text.
+ */
+function writeSync(s: State, backend: SyncSaveBackend, json: string): boolean {
+  const chunked = chunkedFor(s, backend, json)
+  const store = backend.chunks
+  if (chunked === undefined || store === undefined) return backend.write(plainText(s, json))
+  if (!s.primed) {
+    s.persisted = new Set(store.ids())
+    s.primed = true
+  }
+  for (const [id, text] of chunked.chunks) {
+    if (s.persisted.has(id)) continue
+    if (!store.put(id, text)) return false
+    s.persisted.add(id)
+  }
+  if (!backend.write(json)) return false
+  if (s.newer === null) {
+    const stale = staleChunks(s, chunked.chunks)
+    if (stale.length > 0) {
+      store.remove(stale)
+      for (const id of stale) s.persisted.delete(id)
+    }
+  }
+  return true
 }
 
 /**
@@ -203,24 +307,31 @@ function setCache(json: string | null): void {
  * queues too while the queue is busy (so an older write can't land over this one), and while a
  * newer record is waiting for its copy. A save queued while the queue is stalled raises the warning
  * at once: it can't be stored before the step that hangs settles.
+ *
+ * With `chunked`, `json` is a head (save-codec.ts) and the chunks it names are `chunked.chunks`: they are stored first, the head
+ * after them, and the ones it no longer names after that (see writeSync, writeQueued). On a backend with nowhere to put chunks,
+ * the save is written whole, as its self-contained form.
  */
-export function saveRecord(json: string): boolean {
+export function saveRecord(json: string, chunked?: ChunkedWrite): boolean {
   const s = state
   s.sessionSaved = true
   s.newest = json
+  if (chunked !== undefined) remember(s, json, chunked)
   const backend = active()
   if (backend.kind === 'sync' && !s.busy && s.newer === null) {
     let ok: boolean
     try {
-      ok = backend.write(json)
+      ok = writeSync(s, backend, json)
     } catch {
       ok = false
     }
     if (ok) s.stored = json
+    prune(s)
     setPersistFailed(!ok)
     return ok
   }
   s.pending = json
+  prune(s)
   kick()
   if (s.stalled) {
     backUp(s, json)
@@ -236,12 +347,36 @@ export function saveRecord(json: string): boolean {
  */
 export function readRecord(): string | null {
   const backend = active()
-  if (backend.kind === 'async') return state.status.persistFailed ? state.stored : state.newest
+  if (backend.kind === 'async') {
+    // What a reload would load, as one self-contained text: a head with its chunks is never handed out from the cache.
+    const cached = state.status.persistFailed ? state.stored : state.newest
+    return cached === null ? null : plainText(state, cached)
+  }
   try {
     return backend.read()
   } catch {
     return null
   }
+}
+
+/**
+ * The chunk record `id` of the saved record readRecord returns, as stored (plain text). Only a synchronous backend can answer in
+ * place: null on an asynchronous one (its reads are the self-contained form, which needs no chunk), when the backend has no chunk
+ * store, when there is no such record, or when storage can't be read.
+ */
+export function readChunk(id: string): string | null {
+  const backend = active()
+  if (backend.kind !== 'sync' || backend.chunks === undefined) return null
+  try {
+    return backend.chunks.get(id)
+  } catch {
+    return null
+  }
+}
+
+/** True when the active backend can hold the chunks of a save: saveGame then writes a head and chunks, and else one self-contained record. */
+export function chunksAvailable(): boolean {
+  return active().chunks !== undefined
 }
 
 /**
@@ -260,9 +395,15 @@ export function removeRecord(): void {
   dropBackup(s)
   if (s.newer === null) {
     const backend = active()
+    forgetPersisted(s)
     if (backend.kind === 'sync') {
       try {
         backend.remove()
+      } catch {
+        // storage disabled: there is nothing to remove
+      }
+      try {
+        backend.chunks?.remove(backend.chunks.ids())
       } catch {
         // storage disabled: there is nothing to remove
       }
@@ -298,10 +439,12 @@ function backUp(s: State, json: string): boolean {
   if (active().kind !== 'async' || s.newer !== null) return false
   let ok: boolean
   try {
-    ok = legacyStore().write(json)
+    // The backup stands alone: the plain form of a head with chunks, never the head.
+    ok = legacyStore().write(plainText(s, json))
   } catch {
     ok = false
   }
+  // `json` (the head, when there is one) names the save the backup is of, as `newest` and `stored` do.
   if (ok) s.backup = json
   return ok
 }
@@ -347,12 +490,18 @@ export function savedThisSession(): boolean {
 }
 
 /**
- * Boot only: make `json` the newest and the stored save of the active backend without writing it.
+ * Boot only: make `json` the newest and the stored save of the active backend without writing it. `ids` are the chunk
+ * records the storage held at boot (a chunk store's ids()): the first chunked save then writes only what is not among
+ * them, and sweeps the ones its head doesn't name. Without `ids` they are read at the first chunked save.
  * Returns false and does nothing once the page has saved: what boot read is older than that save.
  */
-export function primeCache(json: string | null): boolean {
+export function primeCache(json: string | null, ids?: readonly string[]): boolean {
   if (state.sessionSaved) return false
   setCache(json)
+  if (ids !== undefined) {
+    state.persisted = new Set(ids)
+    state.primed = true
+  }
   return true
 }
 
@@ -420,6 +569,12 @@ function stall(s: State): void {
   answerFlushes(s, false)
 }
 
+/** Every chunk record the store lists. */
+async function removeAllChunks(store: NonNullable<AsyncSaveBackend['chunks']>): Promise<void> {
+  const ids = await store.ids()
+  if (ids.length > 0) await store.remove(ids)
+}
+
 /**
  * Runs the queue dry: a removal first (it was asked for after the write in flight, and every save
  * still waiting was made after it), then the newest save waiting. A loop whose state was reset stops.
@@ -434,11 +589,15 @@ async function drain(s: State): Promise<void> {
       const backend = active()
       try {
         await watched(s, Promise.resolve(backend.remove()))
+        // The chunks go after the head, so a record never names a chunk that is gone (a save this removal discarded may have put some).
+        if (backend.kind === 'async' && backend.chunks !== undefined) await watched(s, removeAllChunks(backend.chunks))
         // Storage has caught up with the removal: nothing is left unsaved, even if it stalled first.
         if (s === state) setPersistFailed(false)
       } catch {
         // refused: the record stays, as a refused removal always has
       }
+      // Whatever the chunk store held is gone, or is for the next save to list again.
+      if (s === state) forgetPersisted(s)
     } else if (s.pending !== null) {
       const json = s.pending
       s.pending = null
@@ -482,14 +641,23 @@ async function writeQueued(s: State, json: string): Promise<void> {
   }
   let ok: boolean
   let failure: unknown
+  let sweep: (() => Promise<void>) | null = null
   try {
-    const record = backend.kind === 'async' ? await watched(s, encodeSnapshotRecord(json)) : json
-    // A removal came after this save: it discards itself before it reaches storage...
-    if (!current()) return
     if (backend.kind === 'sync') {
-      ok = backend.write(record)
+      // A removal came after this save: it discards itself before it reaches storage...
+      if (!current()) return
+      ok = writeSync(s, backend, json)
     } else {
-      await watched(s, backend.write(record))
+      const chunked = chunkedFor(s, backend, json)
+      if (chunked !== undefined && backend.chunks !== undefined) {
+        const written = await writeChunked(s, backend, backend.chunks, json, chunked, current)
+        if (written === null) return
+        sweep = written
+      } else {
+        const record = await watched(s, encodeSnapshotRecord(plainText(s, json)))
+        if (!current()) return
+        await watched(s, backend.write(record))
+      }
       ok = true
     }
   } catch (err) {
@@ -500,16 +668,66 @@ async function writeQueued(s: State, json: string): Promise<void> {
   if (!current()) return
   if (ok) {
     s.stored = json
+    prune(s)
     if (backend.kind === 'async' && !s.marked) {
       // The database took a save: from now on a record in the legacy key is a backup, not the game.
       s.marked = true
       markIdbInUse()
     }
     setPersistFailed(false)
+    if (sweep !== null) {
+      // The head is the commit: the chunks it no longer names are only garbage, and a sweep that fails is for the next save to retry.
+      try {
+        await sweep()
+      } catch {
+        // storage failed: the garbage stays until a later save sweeps it
+      }
+    }
   } else {
     // The newest save, not necessarily this one: later ones may have been made while it was failing.
     if (backend.kind === 'async') backUp(s, s.newest ?? json)
     setPersistFailed(true, connectionLost(failure))
+  }
+}
+
+/**
+ * The chunks of a head, then the head, onto IndexedDB. The ids it doesn't hold yet are encoded and put in one transaction, then
+ * the head is encoded and written, each step under the watchdog and followed by the generation check (a removal came after this
+ * save: null, and nothing more is written). Returns the sweep to run once the head is stored, which removes the chunks the head
+ * doesn't name; a chunk put that fails throws, with the head not written. Coalescing is safe because every call sends the whole
+ * set it names against what is known to be stored, never "what is new since the last encode".
+ */
+async function writeChunked(
+  s: State,
+  backend: AsyncSaveBackend,
+  store: NonNullable<AsyncSaveBackend['chunks']>,
+  head: string,
+  chunked: ChunkedWrite,
+  current: () => boolean,
+): Promise<(() => Promise<void>) | null> {
+  if (!s.primed) {
+    const ids = await watched(s, store.ids())
+    if (!current()) return null
+    s.persisted = new Set(ids)
+    s.primed = true
+  }
+  const entries: [id: string, record: string][] = []
+  for (const [id, text] of chunked.chunks) if (!s.persisted.has(id)) entries.push([id, await watched(s, encodeSnapshotRecord(text))])
+  if (!current()) return null
+  if (entries.length > 0) {
+    await watched(s, store.put(entries))
+    // The records landed, but this save may have been discarded meanwhile: then the removal after it lists them and takes them.
+    if (!current()) return null
+    for (const [id] of entries) s.persisted.add(id)
+  }
+  const record = await watched(s, encodeSnapshotRecord(head))
+  if (!current()) return null
+  await watched(s, backend.write(record))
+  return async () => {
+    const stale = staleChunks(s, chunked.chunks)
+    if (stale.length === 0 || s.newer !== null) return
+    await watched(s, store.remove(stale))
+    if (s === state) for (const id of stale) s.persisted.delete(id)
   }
 }
 
@@ -548,6 +766,11 @@ export async function deleteSaveCopy(id: string): Promise<void> {
   } catch {
     // storage failed: the copy and its notice stay
   }
+}
+
+/** Tests only: how many heads the side table of chunked saves keeps (at most the newest, the stored and the pending one). */
+export function chunkTableSizeForTests(): number {
+  return state.extras.size
 }
 
 /** Back to how a page starts: the default backend, and nothing cached, queued, protected or listed. */

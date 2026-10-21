@@ -10,7 +10,7 @@ import * as save from '../src/game/save'
 import { idbMarked, idbSaveBackend, localSaveBackend, memorySaveBackend, SAVE_KEY } from '../src/game/save-backends'
 import type { AsyncSaveBackend } from '../src/game/save-backends'
 import { QUARANTINE_SLOTS } from '../src/game/save-quarantine'
-import { SAVE_SCHEMA } from '../src/game/save-schema'
+import { migrateSave, SAVE_SCHEMA } from '../src/game/save-schema'
 import {
   activeBackendName,
   deleteSaveCopy,
@@ -1240,10 +1240,15 @@ describe('the save.ts facade', () => {
       if (key === SAVE_KEY && storage.data.has(snapshot)) throw full()
       setItem(key, value)
     })
-    const game = JSON.parse(fixture) as GameState
+    // R2-S6: the record is a head with chunks beside it now, not the one JSON text of the game, so what this pins is that
+    // the save lands once the room is given back and loads back as the game (a game at the current schema, as the engine holds it).
+    const migrated = migrateSave(JSON.parse(fixture))
+    if (migrated.kind !== 'ready') throw new Error('the fixture must migrate')
+    const game = migrated.game
     expect(save.saveGame(game)).toBe(true)
     expect(storage.data.has(snapshot)).toBe(false)
-    expect(storage.data.get(SAVE_KEY)).toBe(JSON.stringify(game))
+    expect(storage.data.has(SAVE_KEY)).toBe(true)
+    expect(JSON.stringify(save.loadGame())).toBe(JSON.stringify(game))
   })
 
   it('saveGame is false, and writes nothing, when the game cannot be turned into JSON', () => {
