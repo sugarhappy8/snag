@@ -64,6 +64,18 @@ export function nextBatch(prev: DeskBatch | null, reports: readonly DeskReport[]
   return { year, total }
 }
 
+/**
+ * How many of the waiting reports are in the batch: the ones of the batch's year, counted the way nextBatch counts them
+ * (a missing year is the year 0). This is what deskPosition wants as `remaining`. The queue can hold reports of a later
+ * year behind the batch; counting those would stop the stepper from advancing. 0 with no batch.
+ */
+export function remainingIn(batch: DeskBatch | null, reports: readonly DeskReport[]): number {
+  if (batch === null) return 0
+  let n = 0
+  for (const r of reports) if ((r.year ?? 0) === batch.year) n++
+  return n
+}
+
 /** "2 of 6": the batch's total minus the reports still waiting, plus one. Null for a single report, and for a count that makes no sense. */
 export function deskPosition(batch: DeskBatch | null, remaining: number): DeskPosition | null {
   if (batch === null || !(batch.total >= 2) || !Number.isFinite(remaining) || remaining < 1) return null

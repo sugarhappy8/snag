@@ -15,8 +15,9 @@ import { readReportCharts } from '../src/game/charts/report'
 import { flagOn, resetFlags, withFlags } from '../src/game/flags'
 import type { Asset, ChoiceModal, GameState, Json, MinigameModal, ModalItem, NoticeModal } from '../src/game/types'
 import type { BookHead } from '../src/ui/minigames/bookModel'
-import { deskPosition, KEEP_ALL_LABEL, nextBatch, reportsIn, shouldShowDesk, type DeskBatch } from '../src/ui/minigames/yearEnd'
+import { deskPosition, KEEP_ALL_LABEL, nextBatch, remainingIn, reportsIn, shouldShowDesk, type DeskBatch } from '../src/ui/minigames/yearEnd'
 import { ownerGame } from './charts-kit'
+import { contrastRatio, readThemeTokens } from './contrast-kit'
 
 const mock = vi.hoisted(() => ({ state: { game: null as unknown }, finish: vi.fn() }))
 
@@ -256,6 +257,58 @@ describe('nextBatch and deskPosition', () => {
   })
 })
 
+describe('remainingIn', () => {
+  const a = { id: 'a', year: 2031 as number | null }
+  const b = { id: 'b', year: 2031 as number | null }
+  const x = { id: 'x', year: 2032 as number | null }
+  const y = { id: 'y', year: 2032 as number | null }
+  const z = { id: 'z', year: 2032 as number | null }
+
+  function words(batch: DeskBatch | null, reports: { id: string; year: number | null }[]): string | null {
+    const p = deskPosition(batch, remainingIn(batch, reports))
+    return p ? `${p.index} of ${p.of}` : null
+  }
+
+  it('counts the waiting reports of the batch year and no others', () => {
+    expect(remainingIn({ year: 2031, total: 2 }, [a, b, x, y, z])).toBe(2)
+    expect(remainingIn({ year: 2031, total: 2 }, [b, x, y, z])).toBe(1)
+    expect(remainingIn({ year: 2032, total: 3 }, [x, y, z])).toBe(3)
+    expect(remainingIn({ year: 2030, total: 2 }, [a, b])).toBe(0)
+  })
+
+  it('reads a report with no year as the year 0, the way nextBatch does', () => {
+    const none = { id: 'n', year: null }
+    expect(remainingIn({ year: 0, total: 2 }, [none, { id: 'm', year: null }, a])).toBe(2)
+    expect(remainingIn({ year: 2031, total: 2 }, [none, a])).toBe(1)
+  })
+
+  it('is 0 without a batch or without reports, and never throws', () => {
+    expect(remainingIn(null, [a, b])).toBe(0)
+    expect(remainingIn({ year: 2031, total: 2 }, [])).toBe(0)
+  })
+
+  it('keeps the stepper moving when other years wait behind the batch (a queue of 2031 and 2032 reports)', () => {
+    // Two 2031 reports and three 2032 reports. The old count (every report in the queue) stuck at "1 of 2" after the first.
+    let batch: DeskBatch | null = nextBatch(null, [a, b, x, y, z])
+    expect(batch).toEqual({ year: 2031, total: 2 })
+    expect(words(batch, [a, b, x, y, z])).toBe('1 of 2')
+    batch = nextBatch(batch, [b, x, y, z])
+    expect(batch).toEqual({ year: 2031, total: 2 })
+    expect(words(batch, [b, x, y, z])).toBe('2 of 2')
+    // The 2031 batch is done: the 2032 reports are a batch of their own, and it starts at 1.
+    batch = nextBatch(batch, [x, y, z])
+    expect(batch).toEqual({ year: 2032, total: 3 })
+    expect(words(batch, [x, y, z])).toBe('1 of 3')
+    batch = nextBatch(batch, [z])
+    expect(words(batch, [z])).toBe('3 of 3')
+  })
+
+  it('gives no position for a lone report of the batch year with others behind it, and none for a lone report of its own', () => {
+    expect(words({ year: 2031, total: 1 }, [a, x, y])).toBeNull()
+    expect(words(nextBatch(null, [a]), [a])).toBeNull()
+  })
+})
+
 describe('shouldShowDesk', () => {
   it('needs the flag and a position', () => {
     const pos = { index: 2, of: 6 }
@@ -475,6 +528,22 @@ describe('Keep every plan', () => {
     })
   })
 
+  it('counts only the reports of the batch year when a later year waits behind them', () => {
+    const X = report('x', 2032, 'Firm x')
+    const Y = report('y', 2032, 'Firm y')
+    const Z = report('z', 2032, 'Firm z')
+    withFlags({ annualReport2: true }, () => {
+      // One of the two 2031 reports is done: three 2032 reports follow, and they are not part of this batch.
+      const second = deskOf(open([B, X, Y, Z], B, { year: 2031, total: 2 }).tree)
+      expect(second.props.position).toEqual({ index: 2, of: 2 })
+      expect(second.props.year).toBe(2031)
+      const first = deskOf(open([A, B, X, Y, Z], A, { year: 2031, total: 2 }).tree)
+      expect(first.props.position).toEqual({ index: 1, of: 2 })
+      // The last 2031 report with others behind it is a batch of one: no desk.
+      expect(findAll(open([B, X, Y, Z], B, { year: 2031, total: 1 }).tree, (el) => el.type === LazyYearEndDesk)).toHaveLength(0)
+    })
+  })
+
   it('shows no desk for one report, with the flag off, or for another game', () => {
     withFlags({ annualReport2: true }, () => {
       expect(findAll(open([A]).tree, (el) => el.type === LazyYearEndDesk)).toHaveLength(0)
@@ -514,6 +583,25 @@ describe('the desk keeps its place from one report to the next', () => {
       // And once that batch is done too, a lone report is no batch.
       expect(step([NOTICE])).toBeNull()
       expect(step([report('f', 2031)])).toBeNull()
+    } finally {
+      persist.on = false
+      persist.slots = []
+    }
+  })
+
+  it('reads 1 of 2, 2 of 2, then 1 of 3 when a second year waits behind the first', async () => {
+    expect(await LazyYearEndDesk.preload()).toBe(true)
+    const X = report('x', 2032, 'Firm x')
+    const Y = report('y', 2032, 'Firm y')
+    const Z = report('z', 2032, 'Firm z')
+    persist.on = true
+    persist.slots = []
+    try {
+      const two = [report('a', 2031), report('b', 2031)] as [MinigameModal, MinigameModal]
+      expect(step([...two, X, Y, Z])).toBe('1 of 2')
+      expect(step([two[1], X, Y, Z])).toBe('2 of 2')
+      expect(step([X, Y, Z])).toBe('1 of 3')
+      expect(step([Z])).toBe('3 of 3')
     } finally {
       persist.on = false
       persist.slots = []
@@ -689,6 +777,33 @@ describe('business.css', () => {
     expect(rule('.yd-chips')).toContain('overflow-x: auto')
     expect(rule('.yd-keep')).toContain('min-height: var(--target')
     expect(rule('.year-end-desk')).toContain('flex-direction: column')
+  })
+
+  it('sits the blue ghost button, the title and the chips on surfaces they read on at 4.5:1, light and dark', () => {
+    const { light, dark } = readThemeTokens(readFileSync(new URL('../src/ui/styles/global.css', import.meta.url), 'utf8'))
+    // The button is a btn-ghost (blue text), and .yd-keep must not paint a colour of its own.
+    expect(renderToStaticMarkup(createElement(YearEndDesk, DESK_PROPS))).toMatch(/class="btn btn-ghost yd-keep"/)
+    expect(rule('.yd-keep')).not.toMatch(/(^|[\s;])color\s*:/)
+    const surfaceOf = (selector: string): string => {
+      const m = /background\s*:\s*var\(--([a-z0-9-]+)\)\s*;/.exec(rule(selector))
+      expect(m, `${selector} paints its background with one token`).not.toBeNull()
+      return m![1]!
+    }
+    const checks: [string, string[]][] = [
+      ['.yd-block', ['blue', 'text', 'muted']],
+      ['.yd-chip', ['text', 'muted']],
+      ['.yd-step', ['text']],
+    ]
+    for (const [theme, map] of [['light', light], ['dark', dark]] as const) {
+      for (const [selector, fgs] of checks) {
+        const bg = surfaceOf(selector)
+        for (const fg of fgs) expect(contrastRatio(map[fg]!, map[bg]!), `${theme}: --${fg} on --${bg} (${selector})`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('lines the block up with the popup gutter when the report is the text layout, with no book around it', () => {
+    expect(rule('.popup:not(.is-report) .yd-block')).toMatch(/padding-inline\s*:\s*0\s*;/)
   })
 
   it('uses tokens only, no raw colour, no dash character, no fixed width above 328px', () => {

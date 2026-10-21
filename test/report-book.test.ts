@@ -626,7 +626,8 @@ describe('readReportData and isBook', () => {
 
 describe('ModalHost', () => {
   function host(data: Json): string {
-    mock.state.game = { queue: [modalOf(data)] }
+    // `assets` is there for the company strip, which the card builds when annualReport2 is on; no companies, so no strip.
+    mock.state.game = { queue: [modalOf(data)], assets: [] }
     try {
       return renderToStaticMarkup(createElement(ModalHost))
     } finally {
@@ -641,6 +642,19 @@ describe('ModalHost', () => {
     expect(plain).not.toContain('is-report')
     expect(plain).toMatch(/class="popup is-wide"/)
     for (const chart of HOSTILE_CHARTS) expect(host({ ...SAMPLE, chart } as unknown as Json), JSON.stringify(chart)).not.toContain('is-report')
+  })
+
+  // The card also reads the game for the company strip when annualReport2 is on (R1-C12), so the fake game has to look like
+  // one, and the card has to come out the same with the flag on as with it off. This is the day the lead turns the flag on.
+  it('draws the same card with annualReport2 on, from a game with no companies', () => {
+    withFlags({ annualReport2: true }, () => {
+      const book = host({ ...SAMPLE, chart: FULL } as unknown as Json)
+      expect(book).toMatch(/class="popup [^"]*\bis-report\b/)
+      const plain = host(SAMPLE as unknown as Json)
+      expect(plain).not.toContain('is-report')
+      expect(plain).toMatch(/class="popup is-wide"/)
+      for (const chart of HOSTILE_CHARTS) expect(host({ ...SAMPLE, chart } as unknown as Json), JSON.stringify(chart)).not.toContain('is-report')
+    })
   })
 })
 

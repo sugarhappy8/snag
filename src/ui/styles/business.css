@@ -931,6 +931,8 @@ button.ar-chip.is-on {
   text-align: left;
 }
 
+/* The block sits on --card, the popup's own surface: the blue ghost button on it is 4.9:1 in the dark theme, where --card-2 */
+/* gave 4.4:1. The bottom rule and the frames of the step and the chips set it apart instead of a different fill. */
 .yd-block {
   display: flex;
   flex-direction: column;
@@ -938,7 +940,12 @@ button.ar-chip.is-on {
   min-width: 0;
   padding: 12px 16px 6px;
   border-bottom: 1px solid var(--border);
-  background: var(--card-2);
+  background: var(--card);
+}
+
+/* The text layout (no book, so no is-report) keeps the popup's own gutter, and the block joins it instead of padding inside it. */
+.popup:not(.is-report) .yd-block {
+  padding-inline: 0;
 }
 
 .yd-head {

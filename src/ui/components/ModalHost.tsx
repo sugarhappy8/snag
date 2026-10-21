@@ -8,7 +8,7 @@ import type { ChoiceModal, GameState, InputModal, MinigameModal, NoticeModal, To
 import { LazyYearEndDesk } from '../charts/lazy'
 import { MINIGAMES } from '../minigames'
 import { isBook } from '../minigames/bookModel'
-import { deskPosition, nextBatch, reportsIn, shouldShowDesk, type DeskBatch } from '../minigames/yearEnd'
+import { deskPosition, nextBatch, remainingIn, reportsIn, shouldShowDesk, type DeskBatch } from '../minigames/yearEnd'
 import {
   chooseOption,
   dismissNotice,
@@ -295,7 +295,7 @@ export function MinigameCard({ modal, batch = null }: { modal: MinigameModal; ba
   const on = isReport && flagOn('annualReport2')
   const strip = useMemo(() => (on && game ? companyStrip(game) : undefined), [on, game])
   const reports = useMemo(() => (isReport && game ? reportsIn(game.queue) : []), [isReport, game])
-  const position = on ? deskPosition(batch, reports.length) : null
+  const position = on ? deskPosition(batch, remainingIn(batch, reports)) : null
   // Keep every plan: 'skip' for each queued report through the same finishMinigame the card uses, and nothing else, so no
   // plan logic is touched. The card has done its one job after this, so a second tap or a later Done does nothing.
   const keepAll = () => {
@@ -319,6 +319,9 @@ export function MinigameCard({ modal, batch = null }: { modal: MinigameModal; ba
   return (
     <PopupFrame wide label={modal.title} className={modal.game === 'annualReport' && isBook(modal.data) ? 'is-report' : undefined}>
       <h2 className="popup-title">{modal.title}</h2>
+      {/* Known limit: if the desk chunk lands after the player has started on this report, lazyView swaps its fallback for the
+          desk and the report mounts again inside it, so unsaved edits on the card are lost. The idle prefetch normally loads the
+          chunk first; it is skipped on Save-Data and 2g, and the desk is dormant in v4.0.2 play (one report a year). */}
       {position && shouldShowDesk(on, position) ? (
         <LazyYearEndDesk
           year={reports.find((r) => r.id === modal.id)?.year ?? null}
