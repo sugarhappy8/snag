@@ -479,7 +479,7 @@ function TalentInstinct({ id, hint, unitLabel, priceStep: step, using, onUse }: 
   )
 }
 
-export function AnnualReport({ modal, onDone }: MinigameProps) {
+export function AnnualReport({ modal, onDone, strip }: MinigameProps) {
   const [r] = useState(() => readReportData(modal.data))
   const [price, setPrice] = useState(r.price)
   const [production, setProduction] = useState(r.production)
@@ -712,5 +712,5 @@ export function AnnualReport({ modal, onDone }: MinigameProps) {
     marketNote: r.marketNote,
     lines: r.lines,
   }
-  return <LazyReportBook head={head} charts={r.charts} plan={planBody} actions={actions} fallback={layout} />
+  return <LazyReportBook head={head} charts={r.charts} plan={planBody} actions={actions} strip={strip} fallback={layout} />
 }

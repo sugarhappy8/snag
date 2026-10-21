@@ -917,3 +917,144 @@ button.ar-chip.is-on {
   color: var(--muted);
   font-size: 12px;
 }
+
+/* ------------------------------------------------------------------------ */
+/* Year-End Desk (R1-C12): the header block above the book when two or more reports queue (src/ui/charts/YearEndDesk.tsx). */
+/* It is not sticky: it scrolls away, so the book's own header, tab row and button bar are the only things that stay in view. */
+/* Tokens only, and every target is 44px. The chips scroll sideways and the row is a tab stop so the keyboard can reach them. */
+
+.year-end-desk {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  text-align: left;
+}
+
+/* The block sits on --card, the popup's own surface: the blue ghost button on it is 4.9:1 in the dark theme, where --card-2 */
+/* gave 4.4:1. The bottom rule and the frames of the step and the chips set it apart instead of a different fill. */
+.yd-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 16px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+/* The text layout (no book, so no is-report) keeps the popup's own gutter, and the block joins it instead of padding inside it. */
+.popup:not(.is-report) .yd-block {
+  padding-inline: 0;
+}
+
+.yd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yd-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.yd-step {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.yd-chips {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 2px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  list-style: none;
+}
+
+.yd-chips:focus-visible {
+  outline: 3px solid var(--focus-ring, currentColor);
+  outline-offset: 2px;
+}
+
+.yd-chip {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: var(--target, 44px);
+  max-width: 280px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  scroll-snap-align: start;
+}
+
+/* The open report is marked by a heavier frame and a bold name as well as the accent, so the mark never rests on colour alone. */
+.yd-chip[aria-current='step'] {
+  padding: 5px 9px;
+  border: 2px solid var(--blue);
+}
+
+.yd-chip[aria-current='step'] .yd-chip-name {
+  font-weight: 800;
+}
+
+.yd-chip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.yd-chip-name {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yd-chip-num {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.yd-chip-num strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.yd-chip-num small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.yd-chip .ch-spark {
+  flex: none;
+  width: 64px;
+}
+
+.yd-keep {
+  align-self: flex-start;
+  min-height: var(--target, 44px);
+  padding: 0 8px;
+}

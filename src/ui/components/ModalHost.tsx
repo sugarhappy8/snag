@@ -1,11 +1,14 @@
 // Shows the head of the modal queue above everything: notices, choices, inputs and minigames.
 // Built-in tasks ('aiTask' modals) are never shown: the store resolves them on the spot.
-import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { companyStrip } from '../../game/charts/books'
 import { getPerson, personAvatar, relationLabel } from '../../game/core'
-import { FLAGS } from '../../game/flags'
+import { FLAGS, flagOn } from '../../game/flags'
 import type { ChoiceModal, GameState, InputModal, MinigameModal, NoticeModal, Tone } from '../../game/types'
+import { LazyYearEndDesk } from '../charts/lazy'
 import { MINIGAMES } from '../minigames'
 import { isBook } from '../minigames/bookModel'
+import { deskPosition, nextBatch, remainingIn, reportsIn, shouldShowDesk, type DeskBatch } from '../minigames/yearEnd'
 import {
   chooseOption,
   dismissNotice,
@@ -50,6 +53,12 @@ export function ModalHost() {
     if (taskAtHead) processQueue()
   }, [taskAtHead, head?.id])
 
+  // The Year-End Desk (R1-C12) keeps its place in the batch here and not in MinigameCard: that card is keyed by the head's id,
+  // so it is built again for every report and would forget how many there were. nextBatch is idempotent for one queue, so a
+  // render that runs twice is harmless, and nothing goes in the store. Behind annualReport2 it stays null.
+  const deskBatch = useRef<DeskBatch | null>(null)
+  deskBatch.current = flagOn('annualReport2') ? nextBatch(deskBatch.current, game ? reportsIn(game.queue) : []) : null
+
   // A run of plain notices at the head shares one card (G.11 step 1, behind FLAGS.noticeDigest). Every other plan,
   // the lone notice, a choice, an input, a minigame, falls through to the code below, which is today's.
   const plan = game ? planHead(game.queue, FLAGS.noticeDigest) : null
@@ -66,7 +75,7 @@ export function ModalHost() {
     case 'input':
       return <InputCard key={head.id} modal={head} />
     case 'minigame':
-      return <MinigameCard key={head.id} modal={head} />
+      return <MinigameCard key={head.id} modal={head} batch={deskBatch.current} />
     default:
       return null
   }
@@ -270,7 +279,7 @@ function FieldInputCard({ modal }: { modal: InputModal }) {
   )
 }
 
-function MinigameCard({ modal }: { modal: MinigameModal }) {
+export function MinigameCard({ modal, batch = null }: { modal: MinigameModal; batch?: DeskBatch | null }) {
   const Game = MINIGAMES[modal.game]
   const done = useRef(false)
   const onDone = (result: string) => {
@@ -278,18 +287,54 @@ function MinigameCard({ modal }: { modal: MinigameModal }) {
     done.current = true
     finishMinigame(modal.id, result)
   }
+
+  // The company strip and the Year-End Desk (R1-C12): the annual report only, and only behind annualReport2. companyStrip and
+  // reportsIn read the game and write nothing; the memos keep them from running again until the game changes.
+  const game = useApp((s) => s.game)
+  const isReport = modal.game === 'annualReport'
+  const on = isReport && flagOn('annualReport2')
+  const strip = useMemo(() => (on && game ? companyStrip(game) : undefined), [on, game])
+  const reports = useMemo(() => (isReport && game ? reportsIn(game.queue) : []), [isReport, game])
+  const position = on ? deskPosition(batch, remainingIn(batch, reports)) : null
+  // Keep every plan: 'skip' for each queued report through the same finishMinigame the card uses, and nothing else, so no
+  // plan logic is touched. The card has done its one job after this, so a second tap or a later Done does nothing.
+  const keepAll = () => {
+    if (done.current) return
+    done.current = true
+    for (const r of reports) finishMinigame(r.id, 'skip')
+  }
+
+  const body = Game ? (
+    <Game modal={modal} onDone={onDone} strip={strip} />
+  ) : (
+    <div className="stack center">
+      <p className="popup-text">This game isn't available right now.</p>
+      <button className="btn btn-primary btn-block" onClick={() => onDone('skip')}>
+        Continue
+      </button>
+    </div>
+  )
+  const data = modal.data
+  const name = data !== null && typeof data === 'object' && !Array.isArray(data) && typeof data.businessName === 'string' ? data.businessName : ''
   return (
     <PopupFrame wide label={modal.title} className={modal.game === 'annualReport' && isBook(modal.data) ? 'is-report' : undefined}>
       <h2 className="popup-title">{modal.title}</h2>
-      {Game ? (
-        <Game modal={modal} onDone={onDone} />
+      {/* Known limit: if the desk chunk lands after the player has started on this report, lazyView swaps its fallback for the
+          desk and the report mounts again inside it, so unsaved edits on the card are lost. The idle prefetch normally loads the
+          chunk first; it is skipped on Save-Data and 2g, and the desk is dormant in v4.0.2 play (one report a year). */}
+      {position && shouldShowDesk(on, position) ? (
+        <LazyYearEndDesk
+          year={reports.find((r) => r.id === modal.id)?.year ?? null}
+          position={position}
+          strip={strip ?? []}
+          currentName={name}
+          onKeepAll={keepAll}
+          fallback={body}
+        >
+          {body}
+        </LazyYearEndDesk>
       ) : (
-        <div className="stack center">
-          <p className="popup-text">This game isn't available right now.</p>
-          <button className="btn btn-primary btn-block" onClick={() => onDone('skip')}>
-            Continue
-          </button>
-        </div>
+        body
       )}
     </PopupFrame>
   )
