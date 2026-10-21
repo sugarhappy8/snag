@@ -2,8 +2,8 @@
 // yearly loop, measures them, and prints how the pooled repeated-line share compares with R1's 0.0831 (test/fixtures/
 // text-baseline-13.json). For now it checks only that the measure is sound: every number is finite, no log line carries an
 // unfilled slot, and a replay is byte-identical. R2-P9 adds the families that must stay converted (FAMILIES below: a line
-// that moved onto a state line may repeat only so often over the 13 lives), and R2-P10 turns the gate on (the ratio to R1 at
-// most 0.5) and holds the line there.
+// that moved onto a state line may repeat only so often over the 13 lives), and R2-P10 adds the families of the lines that
+// got variants, and turns the gate on (the ratio to R1 at most 0.5) and holds the line there.
 //
 // With NIGHTLY_METRICS_DIR set it also writes text.repeatedShare, text.sameWithin10.sum and text.lines.sum for the nightly.
 // To see the families while converting: scripts/text-probe.ts (the command is at the top of that file).
@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest'
 import { yearlyWealth } from '../src/game/events/wealth'
 import { readTies, updateTies } from '../src/game/events/wealth-core'
 import { setAllowance } from '../src/game/events/wealth-kids'
+import { GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../src/game/history/events-future'
 import { createPerson } from '../src/game/people'
 import { sportsProfile, yearlySponsors } from '../src/game/special/sports-core'
 import { fillSlots } from '../src/game/text/state'
@@ -117,8 +118,8 @@ describe('13-life text probe', () => {
 
 /**
  * One family of status lines. `re` matches the normalized text (lower case, digits as #, no money sign) of the line as the
- * game wrote it before R2-P9 and of every variant of its rows, so a family cannot go quiet in this test just because its
- * words changed. The probe cuts a family's text at 100 characters, so a pattern never reaches for the end of a line.
+ * game wrote it before R2-P9 and of every variant of its rows or pools, so a family cannot go quiet in this test just because
+ * its words changed. The probe cuts a family's text at 100 characters, so a pattern never reaches for the end of a line.
  * `was` is the line as R1 wrote it and `slots` fill the variants; the pattern test below checks `re` against both.
  */
 interface Family {
@@ -126,10 +127,18 @@ interface Family {
   re: RegExp
   /** The most repeats beyond the first the 13 lives may add up to. */
   maxExtra: number
-  rows: readonly (keyof typeof STATE_TABLE)[]
+  /** The state-table rows the family speaks through (R2-P9). */
+  rows?: readonly (keyof typeof STATE_TABLE)[]
+  /** The pools of lines it speaks through (R2-P10), and how a line of a pool reaches the log when the site puts something around it. */
+  pools?: readonly (readonly string[])[]
+  frame?: (line: string) => string
   was: string
   slots: Readonly<Record<string, string>>
 }
+
+const escapeRe = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** Every line the rhythm headlines can read: the pools, and the two lines R1 wrote (they stay in the pools, so this only guards that). */
+const NEWS_LINES = [...GAMES_HEADLINES, ...WORLD_CUP_HEADLINES, 'The Summer Olympics open', 'The World Cup kicks off']
 
 const FAMILIES: readonly Family[] = [
   {
@@ -172,11 +181,23 @@ const FAMILIES: readonly Family[] = [
     was: 'My sister Marit paid back $2,500 of what she owes me ($1,200 to go).',
     slots: { who: 'My sister Marit', whom: 'my sister Marit', he: 'she', money: '$2,500', left: '$1,200' },
   },
+  // ---- R2-P10: the lines that got variants ----
+  {
+    // A life sees about every second edition, so some lines meet again by chance: 46 repeats in the 13 lives before R2-P10,
+    // 27 with three lines by edition, 12 with eight (the bound leaves two for the next change of wording).
+    name: 'news rhythm',
+    re: new RegExp(`^\\u{1F4F0} #: (${NEWS_LINES.map((l) => escapeRe(normalize(l))).join('|')})\\.`, 'u'),
+    maxExtra: 14,
+    pools: [GAMES_HEADLINES, WORLD_CUP_HEADLINES],
+    frame: (line) => `\u{1F4F0} 2040: ${line}.`,
+    was: '\u{1F4F0} 2040: The Summer Olympics open.',
+    slots: {},
+  },
 ]
 
 const family = (name: string): Family => FAMILIES.find((f) => f.name === name)!
 
-describe('R2-P9 families', () => {
+describe('R2-P9 and R2-P10 families', () => {
   for (const f of FAMILIES) {
     it(
       `${f.name}: the 13 lives repeat it at most ${f.maxExtra} times`,
@@ -190,17 +211,22 @@ describe('R2-P9 families', () => {
     )
   }
 
-  it('each pattern matches the line as R1 wrote it and every variant of its rows, and no other family\'s', () => {
-    for (const f of FAMILIES) {
-      expect(f.re.test(normalize(f.was)), `${f.name}: the R1 line`).toBe(true)
-      for (const key of f.rows) {
+  it('each pattern matches the line as R1 wrote it and every variant of its rows and pools, and no other family\'s', () => {
+    const variantsOf = (f: Family): { where: string; text: string }[] => [
+      ...(f.rows ?? []).flatMap((key) => {
         const row = STATE_TABLE[key]
         expect(row, `${f.name}: row ${key} exists`).toBeDefined()
-        for (const v of row.variants) {
-          const line = normalize(fillSlots(v, f.slots))
-          expect(f.re.test(line), `${f.name}: ${key}: ${line}`).toBe(true)
-          for (const other of FAMILIES) if (other !== f) expect(other.re.test(line), `${other.name} also matches ${line}`).toBe(false)
-        }
+        return row.variants.map((v) => ({ where: key, text: fillSlots(v, f.slots) }))
+      }),
+      ...(f.pools ?? []).flatMap((pool, i) => pool.map((v) => ({ where: `pool ${i}`, text: (f.frame ?? ((x: string) => x))(fillSlots(v, f.slots)) }))),
+    ]
+    for (const f of FAMILIES) {
+      expect(f.re.test(normalize(f.was)), `${f.name}: the R1 line`).toBe(true)
+      expect(variantsOf(f).length, `${f.name}: has rows or pools`).toBeGreaterThan(0)
+      for (const { where, text } of variantsOf(f)) {
+        const line = normalize(text)
+        expect(f.re.test(line), `${f.name}: ${where}: ${line}`).toBe(true)
+        for (const other of FAMILIES) if (other !== f) expect(other.re.test(line), `${other.name} also matches ${line}`).toBe(false)
       }
     }
   })
