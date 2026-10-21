@@ -1,0 +1,413 @@
+{
+  "v": 1,
+  "lives": 13,
+  "seeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113
+  ],
+  "untilAge": 85,
+  "passive": [
+    {
+      "title": "Report Card",
+      "count": 44,
+      "tone": "neutral",
+      "sample": "Your report card from Escuela Básica Cienfuegos came in. Overall grade: C+.\n\nMr. Medina wrote: \"Participates well and turns work in on time.\"",
+      "never": null
+    },
+    {
+      "title": "Rest in Peace",
+      "count": 41,
+      "tone": "bad",
+      "sample": "The family dog, Bella, died at the age of 14.\n\nThey took their last breath curled up in their favorite spot.",
+      "never": "tone"
+    },
+    {
+      "title": "Season Over",
+      "count": 26,
+      "tone": "neutral",
+      "sample": "The Barahona Rhinos Women finished 8th in the Women's Dominican Baseball League. Puerto Plata Rhinos Women won the title. I hit .268 with 23 home runs.",
+      "never": null
+    },
+    {
+      "title": "Graduation",
+      "count": 16,
+      "tone": "good",
+      "sample": "You graduated from Politécnico Gregorio Luperón! You graduated with honors!",
+      "never": null
+    },
+    {
+      "title": "Debt Collectors",
+      "count": 14,
+      "tone": "bad",
+      "sample": "Collection agencies are hounding you over your $1,462 debt. You started answering the phone in a fake accent.",
+      "never": "tone"
+    },
+    {
+      "title": "Puberty",
+      "count": 13,
+      "sample": "You grew eight centimeters over the school holidays and your moods have a mind of their own. Welcome to puberty!",
+      "never": null
+    },
+    {
+      "title": "You're an Adult!",
+      "count": 13,
+      "tone": "good",
+      "sample": "Happy 18th birthday! You're officially an adult. You can now get a full-time job, move out, sign contracts and make your own questionable decisions. You can legally drink now, too.",
+      "never": null
+    },
+    {
+      "title": "Family Computer!",
+      "count": 7,
+      "tone": "good",
+      "sample": "Your dad came home with a Commodore Amiga 500 home computer ($4,700). It lives in the spare room. It has a hard drive with a whole 40 megabytes, a floppy drive and a beige case the size of a suitcase. There is a sign-up sheet on the fridge for computer time. Your name is on every line.\n\nActivities › Computer is now open.",
+      "never": null
+    },
+    {
+      "title": "Feeling Weak",
+      "count": 7,
+      "tone": "bad",
+      "sample": "You've been feeling terrible lately and you're running out of steam. You should really see a doctor.",
+      "never": "tone"
+    },
+    {
+      "title": "Special Talent",
+      "count": 6,
+      "tone": "good",
+      "sample": "You aced a test meant for kids twice your age. Your teachers think you might be a genius! You have a special talent for academics.",
+      "never": null
+    },
+    {
+      "title": "One Small Step",
+      "count": 5,
+      "tone": "good",
+      "sample": "Your family huddled around the radio as an astronaut stepped onto the Moon. You tried to picture it in your head.",
+      "never": null
+    },
+    {
+      "title": "Wedding Bells",
+      "count": 5,
+      "sample": "Your mother Leah got remarried to Eliyahu Mizrahi. Meet your new stepfather!\n\nHe brought a kid along: Yuval.",
+      "never": null
+    },
+    {
+      "title": "Baby Brother!",
+      "count": 3,
+      "tone": "good",
+      "sample": "Your mother gave birth to a baby boy named Liam. You're a big sister now!",
+      "never": null
+    },
+    {
+      "title": "Baby Sister!",
+      "count": 2,
+      "tone": "good",
+      "sample": "Your mother gave birth to a baby girl named Renata. You're a big sister now!",
+      "never": null
+    },
+    {
+      "title": "Champions!",
+      "count": 2,
+      "tone": "good",
+      "sample": "The FC Hanoi won the Vietnamese Premier League championship! I kept 12 clean sheets. You were doused in a cooler of sports drink.",
+      "never": null
+    },
+    {
+      "title": "Divorce",
+      "count": 2,
+      "tone": "bad",
+      "sample": "Your parents are getting a divorce. You will have two birthday parties from now on, at least.",
+      "never": "tone"
+    },
+    {
+      "title": "Dumped",
+      "count": 2,
+      "tone": "bad",
+      "sample": "Mildred broke up with you.\n\n\"It's not you, it's me.\" (It was you.)",
+      "never": "tone"
+    },
+    {
+      "title": "Lockdown",
+      "count": 2,
+      "tone": "bad",
+      "sample": "A coronavirus pandemic closed your school. Lessons moved to the kitchen table, and you only saw your friends from a distance.",
+      "never": "tone"
+    },
+    {
+      "title": "Retired",
+      "count": 2,
+      "tone": "good",
+      "sample": "No team offered you a contract, so you retired after 14 seasons. The Barahona Rhinos Women held a ceremony in your honor.",
+      "never": null
+    },
+    {
+      "title": "War at Home",
+      "count": 2,
+      "tone": "bad",
+      "sample": "The First Indochina War reached your doorstep. Your family kept its head down, stretched every meal and waited anxiously for news of loved ones.",
+      "never": "tone"
+    },
+    {
+      "title": "Diagnosis",
+      "count": 1,
+      "tone": "bad",
+      "sample": "Your mother took you to the doctor, who diagnosed you with polio. The treatment didn't work this time.",
+      "never": "tone"
+    },
+    {
+      "title": "Found",
+      "count": 1,
+      "sample": "The police tracked down your hiding place and arrested you for draft evasion.",
+      "never": "legal"
+    },
+    {
+      "title": "Promotion",
+      "count": 1,
+      "tone": "good",
+      "sample": "You've been promoted to Specialist! Your new salary is $18,700.",
+      "never": "money"
+    },
+    {
+      "title": "Rejected",
+      "count": 1,
+      "tone": "bad",
+      "sample": "University of Taif School of Dentistry rejected your application. The committee didn't think you were the right fit this year.",
+      "never": "tone"
+    },
+    {
+      "title": "Tsunami",
+      "count": 1,
+      "tone": "bad",
+      "sample": "A massive tsunami struck the coasts of the Indian Ocean the day after Christmas. Your family was safe, but the whole country is grieving and helping the survivors.",
+      "never": "tone"
+    }
+  ],
+  "outcome": [
+    {
+      "title": "Family Time",
+      "count": 29,
+      "tone": "good",
+      "sample": "You visited an art museum with your mother Yaritza. She loved it!",
+      "never": null
+    },
+    {
+      "title": "Bad Pet!",
+      "count": 16,
+      "sample": "You spent a week training Bella. It seems to be working!",
+      "never": null
+    },
+    {
+      "title": "Sibling Rivalry",
+      "count": 11,
+      "sample": "You told your mother Leah. Noga got in trouble and is now plotting revenge.",
+      "never": null
+    },
+    {
+      "title": "Charity Gala",
+      "count": 8,
+      "tone": "good",
+      "sample": "You gave $480 to the Whisker Haven Animal Rescue. It felt good.",
+      "never": null
+    },
+    {
+      "title": "Internet Diagnosis",
+      "count": 8,
+      "sample": "After three hours of searching symptoms online, you've concluded you have breast cancer, stomach cancer, and hepatitis A. Possibly all at once.",
+      "never": "health"
+    },
+    {
+      "title": "Medical Bills",
+      "count": 8,
+      "tone": "good",
+      "sample": "You gave your mother Yaritza $7,500. She hugged you so hard your back cracked. She is recovering well and telling every nurse about you.",
+      "never": "health"
+    },
+    {
+      "title": "Squabble",
+      "count": 8,
+      "sample": "You and Wanda squabbled over the last cookie. You won. Barely.",
+      "never": null
+    },
+    {
+      "title": "Cozy",
+      "count": 7,
+      "tone": "good",
+      "sample": "You lit candles and played board games by candlelight. Honestly, it was kind of nice.",
+      "never": null
+    },
+    {
+      "title": "Funeral",
+      "count": 7,
+      "sample": "You donated Yaritza's body to science. Somewhere, a medical student is very grateful. It's not what Yaritza wanted, and a few relatives made sure you knew it.",
+      "never": "health"
+    },
+    {
+      "title": "Hero",
+      "count": 7,
+      "tone": "good",
+      "sample": "You grabbed a stick and drove the dog away. The man is badly hurt, but alive thanks to you.",
+      "never": "health"
+    },
+    {
+      "title": "Looked away",
+      "count": 7,
+      "tone": "bad",
+      "sample": "You looked the other way and kept walking. You will think about this for a long time.",
+      "never": "tone"
+    },
+    {
+      "title": "Nostalgia",
+      "count": 7,
+      "tone": "neutral",
+      "sample": "You exchanged a few messages with Peter about old teachers who are definitely dead now.",
+      "never": "health"
+    },
+    {
+      "title": "Personal space",
+      "count": 7,
+      "tone": "neutral",
+      "sample": "You told them to get away from you. They saluted and ran off.",
+      "never": null
+    },
+    {
+      "title": "Responsible",
+      "count": 7,
+      "tone": "good",
+      "sample": "You dropped Pickles off at the shelter, where the owner showed up the next morning in tears.",
+      "never": null
+    },
+    {
+      "title": "Skeptic",
+      "count": 7,
+      "tone": "neutral",
+      "sample": "You said no. They looked at you with deep pity and whispered, \"They're already here.\"",
+      "never": null
+    },
+    {
+      "title": "Snitch",
+      "count": 7,
+      "tone": "neutral",
+      "sample": "You told on the little boy. They got a time-out and you got your race car back.",
+      "never": null
+    },
+    {
+      "title": "Endorsement Deal",
+      "count": 6,
+      "tone": "good",
+      "sample": "You signed a 3-year deal to be the face of Blancpain luxury watches, worth $8,300 a year. Your first ad shoot involved a lot of slow-motion hair flipping.",
+      "never": null
+    },
+    {
+      "title": "Finders keepers",
+      "count": 6,
+      "tone": "neutral",
+      "sample": "You kept Bear. Somewhere, a family is putting up posters.",
+      "never": null
+    },
+    {
+      "title": "Generous",
+      "count": 6,
+      "tone": "neutral",
+      "sample": "You let the stranger have it. They looked very confused.",
+      "never": null
+    },
+    {
+      "title": "Mid-Life Crisis",
+      "count": 6,
+      "tone": "good",
+      "sample": "You took up the electric guitar. Your family thinks you've lost it, but you feel alive.",
+      "never": null
+    },
+    {
+      "title": "Polite",
+      "count": 6,
+      "tone": "neutral",
+      "sample": "You asked a street magician to please watch their language. They called you a nerd and walked off.",
+      "never": null
+    },
+    {
+      "title": "The truth is out there",
+      "count": 6,
+      "tone": "neutral",
+      "sample": "You said absolutely. They handed you a pamphlet and a tinfoil hat. You kept both.",
+      "never": null
+    },
+    {
+      "title": "You saved their life!",
+      "count": 6,
+      "tone": "good",
+      "sample": "You yanked her foot free and dove off the tracks with her as the train roared past. Hero!",
+      "never": null
+    },
+    {
+      "title": "Friendship unlocked",
+      "count": 5,
+      "tone": "good",
+      "sample": "You and Altagracia are now friends!",
+      "never": null
+    },
+    {
+      "title": "Long-Lost Family",
+      "count": 5,
+      "tone": "good",
+      "sample": "You gave your long-lost cousin from the other side of the family Vũ $2,500.",
+      "never": null
+    },
+    {
+      "title": "New friend!",
+      "count": 5,
+      "tone": "good",
+      "sample": "You and Eduardo are now friends!",
+      "never": null
+    },
+    {
+      "title": "Not my problem",
+      "count": 5,
+      "tone": "neutral",
+      "sample": "You left it where it was. Someone else will deal with it.",
+      "never": null
+    },
+    {
+      "title": "Off the grid",
+      "count": 5,
+      "tone": "neutral",
+      "sample": "You stayed home for a month and read every book in the house. It was actually kind of peaceful.",
+      "never": null
+    },
+    {
+      "title": "On hold",
+      "count": 5,
+      "tone": "bad",
+      "sample": "You waited on hold with the power company for 3 hours. The power came back while you were on hold.",
+      "never": "tone"
+    },
+    {
+      "title": "Re-signed",
+      "count": 5,
+      "tone": "good",
+      "sample": "You re-signed with the Barahona Rhinos Women for 1 year at $12,000 per year.",
+      "never": "money"
+    }
+  ],
+  "chosen": [
+    "Report Card",
+    "Season Over",
+    "Graduation",
+    "Puberty",
+    "You're an Adult!",
+    "Family Computer!",
+    "Special Talent",
+    "One Small Step",
+    "Wedding Bells",
+    "Champions!"
+  ]
+}
