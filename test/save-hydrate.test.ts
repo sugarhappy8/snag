@@ -7,7 +7,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { ageUp } from '../src/game/aging'
 import { createNewLife } from '../src/game/life'
 import * as save from '../src/game/save'
-import { idbSaveBackend, memorySaveBackend, SAVE_KEY } from '../src/game/save-backends'
+import type { AsyncSaveBackend } from '../src/game/save-backends'
+import { IDB_MARKER_KEY, idbMarked, idbSaveBackend, memorySaveBackend, SAVE_KEY } from '../src/game/save-backends'
 import { diagnoseRecord, hydrateSaves, newerOf } from '../src/game/save-hydrate'
 import { QUARANTINE_SLOTS } from '../src/game/save-quarantine'
 import { isLoadableGame, migrateSave, SAVE_SCHEMA } from '../src/game/save-schema'
@@ -609,5 +610,294 @@ describe('the boot functions of the store', () => {
     const memory = memorySaveBackend()
     setSaveBackend(memory)
     expect(activeBackend()).toBe(memory)
+  })
+})
+
+// --- A browser whose life lives in IndexedDB ---------------------------------------------------
+
+/** `older` with one stat changed: the same life, year and age, but not the same game. */
+function sameMomentOtherAction(): string {
+  const g = JSON.parse(older) as GameState
+  g.character.stats.looks = (g.character.stats.looks + 17) % 100
+  return JSON.stringify(g)
+}
+
+describe('the marker that this browser keeps its life in IndexedDB', () => {
+  it('is set by an import, and by a boot that loads from IndexedDB, and not by an empty first visit', async () => {
+    const factory = fakeIndexedDb()
+    await hydrateSaves({ factory })
+    expect(idbMarked()).toBe(false)
+
+    storage.data.set(SAVE_KEY, older)
+    resetSaveStoreForTests()
+    expect(await hydrateSaves({ factory })).toMatchObject({ imported: true })
+    expect(storage.data.get(IDB_MARKER_KEY)).toBe('1')
+
+    storage.data.delete(IDB_MARKER_KEY)
+    resetSaveStoreForTests()
+    expect(await hydrateSaves({ factory })).toMatchObject({ source: 'idb' })
+    expect(idbMarked()).toBe(true)
+  })
+
+  it('is not set when the import failed and the page plays from localStorage', async () => {
+    storage.data.set(SAVE_KEY, older)
+    await hydrateSaves({ factory: fakeIndexedDb({ failWrite: true }) })
+    expect(idbMarked()).toBe(false)
+  })
+})
+
+describe('a life in IndexedDB that the page cannot reach', () => {
+  async function migrate(factory: IDBFactory): Promise<void> {
+    storage.data.set(SAVE_KEY, older)
+    expect(await hydrateSaves({ factory })).toMatchObject({ backend: 'idb', imported: true })
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    resetSaveStoreForTests()
+  }
+
+  it('says so, with a notice that stays, when the database hangs on a later visit', async () => {
+    const factory = fakeIndexedDb()
+    await migrate(factory)
+    fakeTimers()
+    const pending = hydrateSaves({ factory: fakeIndexedDb({ hang: 'open' }) })
+    await vi.advanceTimersByTimeAsync(3000)
+    const out = await pending
+    expect(out).toMatchObject({ backend: 'local', source: 'none', fellBack: true })
+    expect(save.loadGame()).toBeNull()
+    expect(getSaveStatus().notices).toEqual([{ id: IDB_MARKER_KEY, kind: 'unreachable', bytes: 0 }])
+  })
+
+  it('says so when the database refuses to open', async () => {
+    await migrate(fakeIndexedDb())
+    await hydrateSaves({ factory: fakeIndexedDb({ failOpen: true }) })
+    expect(getSaveStatus().notices.map((n) => n.kind)).toEqual(['unreachable'])
+  })
+
+  it('says nothing to a browser that never kept a life there', async () => {
+    await hydrateSaves({ factory: fakeIndexedDb({ failOpen: true }) })
+    expect(getSaveStatus().notices).toEqual([])
+  })
+
+  it('says nothing when the database answers', async () => {
+    const factory = fakeIndexedDb()
+    await migrate(factory)
+    expect(await hydrateSaves({ factory })).toMatchObject({ backend: 'idb', source: 'idb', fellBack: false })
+    expect(getSaveStatus().notices).toEqual([])
+  })
+
+  it('keeps using the database when the IndexedDB switch is off, because the life is there', async () => {
+    const factory = fakeIndexedDb()
+    await migrate(factory)
+    const out = await hydrateSaves({ idb: false, factory })
+    expect(out).toEqual({ backend: 'idb', source: 'idb', fellBack: false, imported: false })
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+    expect(getSaveStatus().notices).toEqual([])
+  })
+
+  it('still plays a backup copy in localStorage, and still says the database did not answer', async () => {
+    await migrate(fakeIndexedDb())
+    storage.data.set(SAVE_KEY, later)
+    const out = await hydrateSaves({ factory: fakeIndexedDb({ failOpen: true }) })
+    expect(out).toMatchObject({ backend: 'local', source: 'local', fellBack: true })
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+    expect(getSaveStatus().notices.map((n) => n.kind)).toEqual(['unreachable'])
+  })
+
+  it('files a life started meanwhile in localStorage as the one to keep, and the database one as the older copy', async () => {
+    const factory = fakeIndexedDb()
+    await migrate(factory)
+    // Life B was started while the database did not answer: it lives in localStorage now.
+    storage.data.set(SAVE_KEY, otherLife)
+    const out = await hydrateSaves({ factory })
+    expect(out).toEqual({ backend: 'idb', source: 'legacy', fellBack: false, imported: true })
+    const lifeB = JSON.parse(otherLife) as GameState
+    expect(save.loadGame()?.lifeId).toBe(lifeB.lifeId)
+    const notices = getSaveStatus().notices
+    expect(notices).toHaveLength(1)
+    expect(notices[0].kind).toBe('stale')
+    expect(await decodeSnapshotRecord((await readSaveCopy(notices[0].id)) ?? '')).toBe(migratedJson(older))
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+  })
+
+  it('gives a backup written at the same year and age the win over the database record, and keeps the record', async () => {
+    const factory = fakeIndexedDb()
+    await migrate(factory)
+    const moved = sameMomentOtherAction()
+    storage.data.set(SAVE_KEY, moved)
+    expect(await hydrateSaves({ factory })).toMatchObject({ source: 'legacy', imported: true })
+    expect(JSON.stringify(save.loadGame())).toBe(migratedJson(moved))
+    const [kept] = getSaveStatus().notices
+    expect(kept.kind).toBe('stale')
+    expect(await decodeSnapshotRecord((await readSaveCopy(kept.id)) ?? '')).toBe(migratedJson(older))
+  })
+
+  it('judges a backup from an earlier year the newer one all the same (a Time Machine jump goes back)', async () => {
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, later)
+    storage.data.set(IDB_MARKER_KEY, '1')
+    storage.data.set(SAVE_KEY, older)
+    expect(await hydrateSaves({ factory })).toMatchObject({ source: 'legacy', imported: true })
+    expect(JSON.stringify(save.loadGame())).toBe(migratedJson(older))
+  })
+
+  it('without the marker, the later year and age still decides, and a tie goes to the database', async () => {
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, later)
+    storage.data.set(SAVE_KEY, older)
+    expect(await hydrateSaves({ factory })).toMatchObject({ source: 'idb', imported: false })
+  })
+
+  it('drops a localStorage record that is the same game as the database one, with no copy and no notice', async () => {
+    const factory = fakeIndexedDb()
+    await migrate(factory)
+    storage.data.set(SAVE_KEY, older)
+    expect(await hydrateSaves({ factory })).toMatchObject({ source: 'idb', imported: false })
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(getSaveStatus().notices).toEqual([])
+    expect(QUARANTINE_SLOTS.some((slot) => storage.data.has(slot))).toBe(false)
+  })
+})
+
+describe('boot reads the legacy key before the database record', () => {
+  it('a tab that boots while another tab imports still finds the life', async () => {
+    const backend = controlledBackend()
+    // The other tab finishes its import (database written, legacy key removed) while this tab's database read is in flight.
+    const read = backend.read
+    backend.read = async () => {
+      const answer = await read()
+      storage.data.delete(SAVE_KEY)
+      backend.stored = migratedJson(older)
+      return answer
+    }
+    backend.write = async (record) => {
+      backend.stored = record
+    }
+    storage.data.set(SAVE_KEY, older)
+    const out = await hydrateSaves({ backend })
+    expect(out).toMatchObject({ source: 'legacy', imported: true })
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+})
+
+describe('a boot that cannot finish', () => {
+  it('lets go of a copy that hangs after 3000 ms, and of a scan that hangs after 3000 ms more, and leaves the record where it is', async () => {
+    fakeTimers()
+    const backend = controlledBackend('not json')
+    backend.overflow.keys = () => new Promise<string[]>(() => undefined)
+    let outcome: Awaited<ReturnType<typeof hydrateSaves>> | undefined
+    const pending = hydrateSaves({ backend }).then((out) => {
+      outcome = out
+    })
+    await vi.advanceTimersByTimeAsync(2999)
+    expect(outcome).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    // No copy could be made, so the damaged record stays in the main slot and says so.
+    await vi.advanceTimersByTimeAsync(3000)
+    await pending
+    expect(outcome).toMatchObject({ backend: 'idb', source: 'none', fellBack: false })
+    expect(getSaveStatus().notices).toEqual([{ id: SAVE_KEY, kind: 'damaged', bytes: 'not json'.length }])
+    expect(await backend.read()).toBe('not json')
+  })
+
+  it('still lists the copies in the slots when the overflow of the database does not answer', async () => {
+    fakeTimers()
+    storage.data.set(SLOT_1, 'garbage')
+    const backend = controlledBackend()
+    backend.overflow.keys = () => new Promise<string[]>(() => undefined)
+    const pending = hydrateSaves({ backend })
+    await vi.advanceTimersByTimeAsync(3000)
+    await pending
+    expect(getSaveStatus().notices).toEqual([{ id: SLOT_1, kind: 'damaged', bytes: 'garbage'.length }])
+  })
+
+  it('gives up on the whole boot at the budget and falls back to localStorage, and says so to a browser that keeps its life in the database', async () => {
+    fakeTimers()
+    storage.data.set(IDB_MARKER_KEY, '1')
+    let outcome: Awaited<ReturnType<typeof hydrateSaves>> | undefined
+    const pending = hydrateSaves({ factory: fakeIndexedDb({ hang: 'open' }), budgetMs: 1000 }).then((out) => {
+      outcome = out
+    })
+    await vi.advanceTimersByTimeAsync(999)
+    expect(outcome).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    await pending
+    expect(outcome).toEqual({ backend: 'local', source: 'none', fellBack: true, imported: false })
+    expect(getSaveStatus().notices).toEqual([{ id: IDB_MARKER_KEY, kind: 'unreachable', bytes: 0 }])
+  })
+
+  it('a step still waiting when the budget runs out changes nothing when it finishes late', async () => {
+    fakeTimers()
+    const backend = controlledBackend(later)
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const keys = backend.overflow.keys
+    backend.overflow.keys = async () => {
+      await gate
+      return keys()
+    }
+    // A leftover localStorage record loses to the later IndexedDB save: it is copied, and only then removed.
+    storage.data.set(SAVE_KEY, older)
+    let outcome: Awaited<ReturnType<typeof hydrateSaves>> | undefined
+    const pending = hydrateSaves({ backend, budgetMs: 1000, timeoutMs: 5000 }).then((out) => {
+      outcome = out
+    })
+    await vi.advanceTimersByTimeAsync(1000)
+    await pending
+    expect(outcome).toEqual({ backend: 'local', source: 'none', fellBack: true, imported: false })
+    expect(activeBackendName()).toBe('local')
+
+    // The page plays on from localStorage...
+    expect(saveRecord('{"new":1}')).toBe(true)
+    // ...and the copy that was still being made finishes late: it must not take the new save away.
+    release()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(storage.data.get(SAVE_KEY)).toBe('{"new":1}')
+    expect(activeBackendName()).toBe('local')
+  })
+})
+
+describe('an import that lands after the budget', () => {
+  it('leaves the localStorage record alone, so the page that went on without it still has its life', async () => {
+    fakeTimers()
+    storage.data.set(SAVE_KEY, older)
+    const backend = controlledBackend()
+    const pending = hydrateSaves({ backend, budgetMs: 1000, timeoutMs: 5000 })
+    await writeReaches(backend)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await pending).toEqual({ backend: 'local', source: 'none', fellBack: true, imported: false })
+
+    // The database takes the write at last, and the read-back matches: a boot that was still running would now remove the key.
+    backend.settle()
+    // The codec's streams run on real time: give the read-back a good second to land.
+    const until = Date.now() + 1500
+    while (Date.now() < until) await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(storage.data.get(SAVE_KEY)).toBe(older)
+    expect(activeBackendName()).toBe('local')
+    expect(save.loadGame()?.lifeId).toBe(lifeId)
+  })
+})
+
+describe('the same record is kept once', () => {
+  /** The database of `factory`, except that every write is refused: an import into it fails. */
+  async function failingImportBackend(factory: IDBFactory): Promise<AsyncSaveBackend> {
+    const real = await idbSaveBackend(factory)
+    return { ...real, write: () => Promise.reject(new Error('refused')) }
+  }
+
+  it('a failing import does not copy the older database record again on every boot', async () => {
+    // The database holds an older save; the localStorage one is later and wins, but cannot be imported.
+    const factory = fakeIndexedDb()
+    await putIdbRecord(factory, older)
+    storage.data.set(SAVE_KEY, later)
+    for (let boot = 1; boot <= 4; boot++) {
+      resetSaveStoreForTests()
+      const out = await hydrateSaves({ backend: await failingImportBackend(factory) })
+      expect(out).toMatchObject({ backend: 'local', fellBack: true, imported: false })
+    }
+    const copies = QUARANTINE_SLOTS.filter((slot) => storage.data.has(slot))
+    expect(copies).toHaveLength(1)
+    expect(storage.data.get(copies[0])).toBe(older)
+    expect(storage.data.get(SAVE_KEY)).toBe(later)
   })
 })

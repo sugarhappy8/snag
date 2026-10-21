@@ -228,6 +228,43 @@ describe('quarantineRecord', () => {
     expect(await idb.read()).toBe('raw')
   })
 
+  describe('a record that is kept already', () => {
+    it('is not kept again: the notice is the existing copy, in a slot or in the overflow, and nothing is written', async () => {
+      const storage = installStorage()
+      const idb = await openIdb()
+      const first = await quarantineRecord(idb, 'same record', 'stale')
+      expect(first).toStrictEqual({ id: SLOT_1, kind: 'stale', bytes: 'same record'.length })
+      const setItem = vi.spyOn(storage, 'setItem')
+      expect(await quarantineRecord(idb, 'same record', 'stale')).toStrictEqual(first)
+      expect(setItem).not.toHaveBeenCalled()
+      expect(QUARANTINE_SLOTS.filter((slot) => storage.data.has(slot))).toEqual([SLOT_1])
+
+      // Fill the slots, so that the next copy goes to the overflow: that one is not kept twice either.
+      await quarantineRecord(idb, 'two', 'damaged')
+      await quarantineRecord(idb, 'three', 'damaged')
+      const overflow = await quarantineRecord(idb, 'four', 'damaged')
+      expect(overflow).toStrictEqual({ id: 'bad-1', kind: 'damaged', bytes: 4 })
+      expect(await quarantineRecord(idb, 'four', 'damaged')).toStrictEqual(overflow)
+      expect(await idb.overflow.keys()).toEqual(['bad-1'])
+    })
+
+    it('still counts as kept when five other copies fill every place', async () => {
+      installStorage()
+      const idb = await openIdb()
+      await keep(idb, 5)
+      expect(await quarantineRecord(idb, 'copy 3', 'damaged')).toStrictEqual({ id: SLOT_3, kind: 'damaged', bytes: 'copy 3'.length })
+      expect(await quarantineRecord(idb, 'a sixth', 'damaged')).toBeNull()
+    })
+
+    it('is the same for a synchronous backend', async () => {
+      const storage = installStorage()
+      const backend = localSaveBackend()
+      await quarantineRecord(backend, 'x', 'damaged')
+      await quarantineRecord(backend, 'x', 'damaged')
+      expect([...storage.data.keys()]).toEqual([SLOT_1])
+    })
+  })
+
   describe('confirming a copy', () => {
     it('does not report a slot copy it can not read back the same, takes it out again, and tries overflow', async () => {
       const storage = installStorage()
@@ -434,6 +471,29 @@ describe('scanQuarantine', () => {
       { id: 'bad-2', kind: 'newer', bytes: 5, version: 3 },
     ])
     expect(asked).toEqual(texts)
+  })
+
+  it('hands each notice to onFound as it is made, before the overflow has answered', async () => {
+    const storage = installStorage({ [SLOT_1]: 'garbage' })
+    const idb = await openIdb()
+    await idb.overflow.put('bad-1', 'more garbage')
+    const found: string[] = []
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const keys = idb.overflow.keys
+    idb.overflow.keys = async () => {
+      await gate
+      return keys()
+    }
+    const scanning = scanQuarantine(idb, asDamaged, (n) => found.push(n.id))
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    expect(found).toEqual([SLOT_1])
+    release()
+    expect((await scanning).map((n) => n.id)).toEqual([SLOT_1, 'bad-1'])
+    expect(found).toEqual([SLOT_1, 'bad-1'])
+    expect(storage.data.size).toBe(1)
   })
 
   it('skips empty slots, and takes the size from the text a slot holds', async () => {

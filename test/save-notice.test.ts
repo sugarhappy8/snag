@@ -6,9 +6,9 @@ import { createElement, isValidElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSaveStatus, readSaveCopy, type SaveNotice } from '../src/game/save'
-import { memorySaveBackend, SAVE_KEY } from '../src/game/save-backends'
+import { IDB_MARKER_KEY, memorySaveBackend, SAVE_KEY } from '../src/game/save-backends'
 import { hydrateSaves } from '../src/game/save-hydrate'
-import { resetSaveStoreForTests } from '../src/game/save-store'
+import { addSaveNotice, resetSaveStoreForTests } from '../src/game/save-store'
 import { DEFAULT_SETTINGS } from '../src/settings'
 import { memoryLocalStorage } from './save-kit'
 
@@ -47,7 +47,8 @@ vi.mock('../src/ui/download', async (importOriginal) => {
 })
 
 const { downloadText, saveCopyFilename } = await import('../src/ui/download')
-const { downloadSaveCopy, noticeActions, noticeCopy, removeSaveCopy, saveWarningCopy, SaveNoticeList, SaveNotices } = await import('../src/ui/components/SaveNotices')
+const { downloadSaveCopy, isDbUnreachable, newLifeWarning, noticeActions, noticeCopy, removeSaveCopy, saveWarningCopy, SaveNoticeList, SaveNotices } =
+  await import('../src/ui/components/SaveNotices')
 const { HomeScreen } = await import('../src/ui/screens/HomeScreen')
 
 const SLOT = `${SAVE_KEY}.bad`
@@ -56,6 +57,7 @@ const damaged: SaveNotice = { id: SLOT, kind: 'damaged', bytes: 8 }
 const tooOld: SaveNotice = { id: `${SLOT}.2`, kind: 'tooOld', bytes: 100, version: 1 }
 const newer: SaveNotice = { id: `${SLOT}.3`, kind: 'newer', bytes: 100, version: 3 }
 const stale: SaveNotice = { id: 'bad-1', kind: 'stale', bytes: 100 }
+const unreachable: SaveNotice = { id: IDB_MARKER_KEY, kind: 'unreachable', bytes: 0 }
 
 let storage: ReturnType<typeof memoryLocalStorage>
 
@@ -101,8 +103,15 @@ describe('noticeCopy', () => {
     })
   })
 
+  it('says the database did not answer, and what a new life does meanwhile, for a life that is out of reach', () => {
+    expect(noticeCopy(unreachable)).toEqual({
+      title: 'Your saved life is out of reach',
+      text: "This browser keeps it in a database that didn't answer. Reload to try again. A new life started now is kept apart from it.",
+    })
+  })
+
   it('keeps to the voice: straight apostrophes, no dashes', () => {
-    for (const n of [damaged, tooOld, newer, stale]) {
+    for (const n of [damaged, tooOld, newer, stale, unreachable]) {
       const { title, text } = noticeCopy(n)
       expect(`${title} ${text}`).not.toMatch(/[\u2014\u2013\u2019]/)
     }
@@ -136,6 +145,10 @@ describe('noticeActions', () => {
     for (const kind of ['damaged', 'tooOld', 'stale'] as const) {
       expect(noticeActions({ id: SAVE_KEY, kind, bytes: 5 })).toEqual(['download'])
     }
+  })
+
+  it('offers only a reload for a life that is out of reach: there is nothing to download or delete', () => {
+    expect(noticeActions(unreachable)).toEqual(['reload'])
   })
 
   it('offers a download and a delete for a kept copy', () => {
@@ -224,6 +237,47 @@ describe('SaveNoticeList', () => {
     expect(onDownload).toHaveBeenCalledExactlyOnceWith(newer.id)
     byLabel.get('Reload')?.[0]()
     expect(onReload).toHaveBeenCalledExactlyOnceWith()
+  })
+})
+
+describe('isDbUnreachable and the New Life warning', () => {
+  it('sees the notice for a life that is out of reach, and no other', () => {
+    expect(isDbUnreachable()).toBe(false)
+    addSaveNotice(damaged)
+    expect(isDbUnreachable()).toBe(false)
+    addSaveNotice(unreachable)
+    expect(isDbUnreachable()).toBe(true)
+  })
+
+  it('warns about a living life as before, about a life out of reach, and about both', () => {
+    expect(newLifeWarning(null, false)).toBeNull()
+    expect(newLifeWarning('Ada Lovelace', false)).toEqual({
+      title: 'Abandon your current life?',
+      text: 'Ada Lovelace is still alive. Starting a new life ends theirs on the spot: no grave, no ribbon, no heirs.',
+    })
+    const out = newLifeWarning(null, true)
+    expect(out?.title).toBe('Start a new life anyway?')
+    expect(out?.text).toContain('Reload to try again first')
+    expect(out?.text).toContain('out of reach')
+    const both = newLifeWarning('Ada Lovelace', true)
+    expect(both?.title).toBe('Abandon your current life?')
+    expect(both?.text).toContain('Ada Lovelace is still alive')
+    expect(both?.text).toContain('out of reach')
+  })
+
+  it('keeps to the voice: no dashes', () => {
+    for (const w of [newLifeWarning('Ada Lovelace', true), newLifeWarning(null, true)]) {
+      expect(`${w?.title} ${w?.text}`).not.toMatch(/[—–]/)
+    }
+  })
+
+  it('Home shows the notice with a Reload button and no Download', () => {
+    addSaveNotice(unreachable)
+    const out = renderToStaticMarkup(createElement(HomeScreen))
+    expect(out).toContain('Your saved life is out of reach')
+    expect(out).toContain('>Reload<')
+    expect(out).not.toContain('Download copy')
+    expect(out).toContain('New Life')
   })
 })
 

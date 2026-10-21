@@ -102,7 +102,13 @@ does, `bootApp` renders anyway and the page plays from whatever localStorage hol
 
 1. **Backend.** With the flag on it opens IndexedDB (`anotherlife-save`) and reads the main record, all inside one budget of
    3,000 ms. If the open fails, is refused or hangs, or the first read hangs, the page uses localStorage, `fellBack` is
-   true, and a late answer from the database is ignored: it never switches the backend back and never writes.
+   true, and a late answer from the database is ignored: it never switches the backend back and never writes. The
+   localStorage key is read first and the database second, so a tab that boots while another tab imports finds the life
+   in at least one of them. A browser that has kept a life in IndexedDB carries a marker (`anotherlife.idb.v1`, set when the
+   database holds a loaded or imported save or has taken a write): it uses IndexedDB even with the flag off, and when the
+   database can't be reached Home shows a "Your saved life is out of reach" notice (Reload only), and New Life asks
+   before it starts a life kept apart from it. The whole boot has a budget of 8,000 ms; past it the page plays from
+   localStorage, and every step that was still waiting changes nothing when it finishes.
 2. **Candidates.** The IndexedDB record, and the localStorage record next to it (the one v4.0.2 wrote, called legacy
    here; it has the same key name). With localStorage as the backend there is one candidate.
 3. **A winner**, by this table. Read it top to bottom: the first row that fits applies. Every readable or damaged record
@@ -114,13 +120,17 @@ does, `bootApp` renders anyway and the page plays from whatever localStorage hol
 | nothing | nothing | New game. Plays from IndexedDB. |
 | nothing | a readable save | Copied into IndexedDB, read back and compared. Only then is the localStorage record removed. If the copy fails, differs or takes over 3,000 ms, the page plays from localStorage and the record is untouched. |
 | a readable save | nothing | Plays from IndexedDB. |
-| a readable save | a readable save, same `lifeId` | The later `(year, age)` wins. A tie goes to IndexedDB. A winning localStorage record is imported over the IndexedDB one, which was copied first. |
-| a readable save | a readable save, other `lifeId` | IndexedDB wins. |
+| a readable save | the same game | IndexedDB plays. The localStorage record is dropped without a copy: the database caught up with a backup. |
+| a readable save | a readable save, and the marker is set | The localStorage record wins and is imported over the IndexedDB one, which was copied first. With the marker, a localStorage record is a backup written because the database could not be reached or the page was closing, so it is the newer one, whatever its year and age (a Time Machine jump goes back a year). |
+| a readable save | a readable save, same `lifeId`, no marker | The later `(year, age)` wins. A tie goes to IndexedDB. A winning localStorage record is imported over the IndexedDB one, which was copied first. |
+| a readable save | a readable save, other `lifeId`, no marker | IndexedDB wins. |
 | damaged or too old | anything else | The bad record is copied and cleared. The other plays if it can. |
 | a later version's save | anything else | Stays where it is and is protected: the first save copies it before writing, and writing fails closed if the copy can't be made. A readable localStorage record becomes a copy. |
 
 4. **Copies.** A losing record is copied byte for byte before anything can overwrite it, and cleared only after the copy is
-   confirmed. Up to 5 copies are kept: 3 localStorage slots, and 2 more in IndexedDB that exist only while IndexedDB is
+   confirmed. A record that is already kept, byte for byte, is not kept again (a boot that fails every visit would otherwise
+   fill the five places with one record). The copy, the clearing and the listing each have 3,000 ms; a step that is too slow
+   leaves the record where it is. Up to 5 copies are kept: 3 localStorage slots, and 2 more in IndexedDB that exist only while IndexedDB is
    open. A page on localStorage keeps at most 3. With the cap reached, the loser stays where it is. For a losing legacy
    record that has a consequence: if the player then abandons the IndexedDB life, the next boot finds that lone
    localStorage record and imports it. It needs five kept copies, both stores present and an abandon, and it is accepted.
@@ -134,27 +144,41 @@ open or read, fail a write, corrupt a read-back, or answer late.
 ### The flag
 
 `FLAGS.idbSaves` is `true` from v4.1.0. With it off, `hydrateSaves({ idb: false })` still diagnoses and keeps copies, but all
-saving stays on localStorage and writes stay synchronous, as in v4.0.2. To see that path, open the game with
-`?flags=-idbSaves` (see Rollback for the hazard). Tests set it with `withFlags({ idbSaves: true }, ...)` or `false`.
+saving stays on localStorage and writes stay synchronous, as in v4.0.2, for a browser that has never kept a life in
+IndexedDB. A browser that has (the marker is set) uses the database whatever the flag says: the flag decides whether a
+browser starts using IndexedDB, not whether a life that has moved there stays visible. To see the localStorage path, open the
+game with `?flags=-idbSaves` on a browser without a moved life. Tests set it with `withFlags({ idbSaves: true }, ...)` or `false`.
 
-The parameter is read from the URL only; nothing remembers it. On a device whose save has moved, a visit with
-`?flags=-idbSaves` or `?flags=none` finds Home empty and offers a new game while the life sits in IndexedDB. A visit
-without the parameter brings the life back.
+The flags come from the `?flags=` parameter if there is one, otherwise from the list stored under `anotherlife.flags` in
+localStorage (`flags.ts`).
 
 ### After boot
 
 With IndexedDB a write finishes after `saveRecord` returns, so the store mirrors `getSaveStatus().persistFailed` into
 `saveError`, and "Progress isn't saved" shows when a write fails later. A Time Machine jump waits for `flushSave()` before
-it counts as saved (`saveForTravel` in `ui/store.ts`). The queue is asked to run dry when the page hides.
+it counts as saved (`saveForTravel` in `ui/store.ts`).
+
+A connection the browser drops (WebKit "Connection to Indexed Database server lost", or the site's data cleared in another
+tab) is forgotten when it closes, and a call that fails because of it reopens the database once and runs again
+(`idbBackend` in `save-backends.ts`). When a write still fails, or a step hangs for 20 seconds, the store also writes the
+newest save, plain, to the legacy localStorage key as a backup, and the bar says the database is the problem
+(`getSaveStatus().database`). The backup is taken away again as soon as the database has the newest save, and by
+`removeRecord`. The next boot reads it beside the database record: it wins (see the table).
+
+A promise can't hold a closing page open, and a queued save is only written after the codec has run, so when the page hides
+(`pagehide`, or `visibilitychange` to hidden) `bootApp` calls `spillSave`: if the database does not have the newest save
+yet, it is written synchronously, plain, to the legacy key, and the queue then runs dry if the page stays alive. A
+same-year action made just before the tab closes is recovered from that backup at the next boot.
 
 ### Rollback
 
 After an import the localStorage key is gone. A v4.0.x build opened on the same address sees no save until the new build
-returns. If a life was started there, the next boot keeps IndexedDB and files the other life as an older copy.
+returns. If a life was started there, the next boot (the marker is set) keeps the localStorage life, imports it, and files the
+IndexedDB life as an older copy that Home lists and offers to download.
 
-Don't switch the flag off again once players have imported. Off means "read localStorage only", which is empty by then,
-so their lives stay in IndexedDB and Home offers a new game. Treat the flag as one way after release, and after a trial
-on a device with a real save.
+Switching the flag off no longer hides a moved life: a browser with the marker keeps using IndexedDB. If the database can't be
+reached on a visit, Home says so and New Life asks first. A life started then is kept apart from the saved one until the
+database answers; the next visit that reaches it keeps the newer of the two and files the other as a copy.
 
 ### How R2's chunk store plugs in
 

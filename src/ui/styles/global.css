@@ -2144,7 +2144,8 @@ label {
 }
 .save-notice-damaged,
 .save-notice-tooOld,
-.save-notice-newer {
+.save-notice-newer,
+.save-notice-unreachable {
   border-left-color: var(--orange);
 }
 .save-notice-title {

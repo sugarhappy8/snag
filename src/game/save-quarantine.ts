@@ -15,9 +15,11 @@ export const QUARANTINE_MAX = 5
 /**
  * Why a record was set aside. `damaged` couldn't be read; `tooOld` is older than the oldest version
  * the game migrates; `newer` was written by a later version; `stale` reads fine but is no longer the
- * save, such as the old localStorage record left behind when IndexedDB took over.
+ * save, such as the old localStorage record left behind when IndexedDB took over. `unreachable` is not
+ * a copy: the life this browser keeps in IndexedDB could not be reached at boot (its id is
+ * IDB_MARKER_KEY, and nothing is stored under it).
  */
-export type SaveNoticeKind = 'damaged' | 'stale' | 'tooOld' | 'newer'
+export type SaveNoticeKind = 'damaged' | 'stale' | 'tooOld' | 'newer' | 'unreachable'
 
 /** One kept copy as Home lists it. `id` is what readQuarantine and deleteQuarantine take: a slot's key or an overflow key. */
 export interface SaveNotice {
@@ -112,12 +114,18 @@ function inTurn<T>(backend: SaveBackend, job: () => Promise<T>): Promise<T> {
  * Keeps `raw`, exactly as given, in the first free slot; when that write is refused or can't be read
  * back, or every slot is taken, in the overflow store of an IndexedDB backend. The notice comes back
  * only after the copy has been read back and found equal. Null means it wasn't kept (five are kept
- * already, or nothing would take it), and nothing has changed. A kept copy is never overwritten.
+ * already, or nothing would take it), and nothing has changed. A kept copy is never overwritten. A
+ * record that is already kept, byte for byte, is not kept again: the notice is the existing copy's
+ * (a boot that is retried every visit would otherwise fill all five places with the same record).
  */
 export function quarantineRecord(backend: SaveBackend, raw: string, kind: SaveNoticeKind, version?: number): Promise<SaveNotice | null> {
   return inTurn(backend, async () => {
     // The overflow keys, or null when they can't be listed: the slots can still be used, the overflow can't.
     const keys = backend.kind === 'async' ? await attempt(() => backend.overflow.keys(), null) : []
+    for (const slot of QUARANTINE_SLOTS) if (peek(slot) === raw) return notice(slot, raw, kind, version)
+    if (backend.kind === 'async' && keys !== null) {
+      for (const key of keys) if ((await attempt(() => backend.overflow.get(key), null)) === raw) return notice(key, raw, kind, version)
+    }
     // Nothing is awaited between choosing a slot and writing to it, so nothing else in this page can take
     // it meanwhile. A slot that can't be read is neither free nor kept: it isn't written to blind.
     const held = QUARANTINE_SLOTS.filter((slot) => typeof peek(slot) === 'string').length
@@ -135,16 +143,20 @@ export function quarantineRecord(backend: SaveBackend, raw: string, kind: SaveNo
 /**
  * One notice per kept copy: the slots in order, then the overflow keys in key order. What a copy is
  * comes from `diagnose` (an error from it is not caught here); its size comes from the text as stored.
- * A copy that can't be read is left out.
+ * A copy that can't be read is left out. `onFound` hears of each notice as soon as it is made, so a
+ * caller that gives up waiting on a slow overflow still has the slots' notices.
  */
 export async function scanQuarantine(
   backend: SaveBackend,
   diagnose: (raw: string) => Promise<{ kind: SaveNoticeKind; version?: number }>,
+  onFound?: (found: SaveNotice) => void,
 ): Promise<SaveNotice[]> {
   const notices: SaveNotice[] = []
   const list = async (id: string, raw: string): Promise<void> => {
     const { kind, version } = await diagnose(raw)
-    notices.push(notice(id, raw, kind, version))
+    const found = notice(id, raw, kind, version)
+    notices.push(found)
+    onFound?.(found)
   }
   for (const slot of QUARANTINE_SLOTS) {
     const raw = peek(slot)

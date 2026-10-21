@@ -52,6 +52,7 @@ Nothing in a v4.0.3 save needs converting. A few screens start from this version
 ## If you go back
 
 The move to IndexedDB removes the old local storage save. An older build opened on the same address
-sees no save until you return to v4.1.0, and a life started there is filed as an older copy. Opening
-v4.1.0 with `?flags=none` after the move has the same look: Home is empty while your life sits in
+sees no save until you return to v4.1.0, and a life started there is kept as the newer life: your
+earlier life is filed as an older copy on Home that you can download. Opening v4.1.0 with
+`?flags=none` after the move still finds your life, because a browser that has moved keeps using
 IndexedDB.

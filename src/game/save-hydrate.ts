@@ -3,9 +3,12 @@
 // game to play. The record v4.0.2 left in localStorage is copied into IndexedDB and only then removed
 // from localStorage; a record that can't be played (damaged, too old, a later version's, or beaten by
 // a better one) is kept byte for byte as a copy before anything makes room for it. Nothing here
-// rejects: every failure ends with the page playing from localStorage, as v4.0.2 did.
+// rejects: every failure ends with the page playing from localStorage, as v4.0.2 did. A browser that
+// has kept a life in IndexedDB is marked (idbMarked): from then on a record in the legacy key is a
+// backup written because the database could not be reached or the page was closing, so it is the
+// newer one, and when the database can't be reached a notice says the life is out of reach.
 import type { AsyncSaveBackend, SaveBackend } from './save-backends'
-import { idbSaveBackend, localSaveBackend, SAVE_KEY } from './save-backends'
+import { IDB_MARKER_KEY, idbMarked, idbSaveBackend, localSaveBackend, markIdbInUse, SAVE_KEY } from './save-backends'
 import type { SaveNoticeKind } from './save-quarantine'
 import { quarantineRecord, scanQuarantine } from './save-quarantine'
 import { migrateSave } from './save-schema'
@@ -46,8 +49,10 @@ export interface HydrateOptions {
   factory?: IDBFactory
   /** false: do not use IndexedDB at all (the FLAGS.idbSaves switch). Default true. */
   idb?: boolean
-  /** Budget for opening IndexedDB and reading its record, and again for the import write; default 3000. */
+  /** Budget for opening IndexedDB and reading its record, again for the import write, and for each copy and scan; default 3000. */
   timeoutMs?: number
+  /** Budget for the whole boot; past it the page plays from localStorage. Default 8000. */
+  budgetMs?: number
   /** Replaces MIN_SCHEMA (tests only). */
   minSchema?: number
 }
@@ -64,16 +69,47 @@ export interface HydrateOutcome {
 }
 
 const DEFAULT_TIMEOUT_MS = 3000
+const DEFAULT_BUDGET_MS = 8000
+
+/** The boot's own flag: once it is `over` the page has gone on without it, and a step still waiting must not change anything. */
+interface Run {
+  over: boolean
+}
+
+const ABANDONED = new Error('Boot gave up')
 
 /** Never rejects. Awaited by main.tsx before the first render. */
 export async function hydrateSaves(opts: HydrateOptions = {}): Promise<HydrateOutcome> {
+  const run: Run = { over: false }
+  const marked = idbMarked()
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    return await boot(opts)
+    const budget = new Promise<typeof TIMED_OUT>((resolve) => {
+      timer = setTimeout(() => resolve(TIMED_OUT), opts.budgetMs ?? DEFAULT_BUDGET_MS)
+    })
+    const outcome = await Promise.race([boot(opts, run, marked), budget])
+    if (outcome !== TIMED_OUT) return outcome
+    console.error('Loading the saved game took too long: playing from localStorage.')
   } catch (err) {
-    setSaveBackend(null)
     console.error('Loading the saved game failed:', err)
-    return { backend: 'local', source: 'none', fellBack: true, imported: false }
+  } finally {
+    clearTimeout(timer)
   }
+  run.over = true
+  setSaveBackend(null)
+  if (marked) addUnreachableNotice()
+  return { backend: 'local', source: 'none', fellBack: true, imported: false }
+}
+
+/** The life this browser keeps in IndexedDB couldn't be reached: Home says so until the page is reloaded. */
+function addUnreachableNotice(): void {
+  addSaveNotice({ id: IDB_MARKER_KEY, kind: 'unreachable', bytes: 0 })
+}
+
+/** Takes the localStorage record away, but only while it is still `raw`: another tab may have written a newer backup meanwhile. */
+function removeLegacyIf(raw: string): void {
+  const legacy = localSaveBackend()
+  if (legacy.read() === raw) legacy.remove()
 }
 
 // --- Waiting -------------------------------------------------------------------------------
@@ -119,9 +155,14 @@ interface Chosen {
   fellBack: boolean
 }
 
-/** Picks the backend with setSaveBackend and reads its record. IndexedDB that fails or hangs means localStorage. */
-async function chooseBackend(opts: HydrateOptions, timeoutMs: number): Promise<Chosen> {
-  if (opts.backend === undefined && opts.idb === false) {
+/**
+ * Picks the backend with setSaveBackend and reads its record. IndexedDB that fails or hangs means
+ * localStorage. A browser that has kept a life in IndexedDB (`marked`) uses it even with the switch
+ * off: the switch decides whether a browser starts using the database, not whether a life that has
+ * moved there stays visible.
+ */
+async function chooseBackend(opts: HydrateOptions, timeoutMs: number, marked: boolean, check: () => void): Promise<Chosen> {
+  if (opts.backend === undefined && opts.idb === false && !marked) {
     setSaveBackend(null)
     return { record: await activeBackend().read(), fellBack: false }
   }
@@ -133,6 +174,7 @@ async function chooseBackend(opts: HydrateOptions, timeoutMs: number): Promise<C
     return { backend, record: await backend.read() }
   }
   const opened = await within(open(), timeoutMs).catch((): typeof TIMED_OUT => TIMED_OUT)
+  check()
   if (opened === TIMED_OUT) {
     attempt.abandoned = true
     setSaveBackend(null)
@@ -147,7 +189,7 @@ async function chooseBackend(opts: HydrateOptions, timeoutMs: number): Promise<C
  * and only then does the localStorage record go. Any failure, mismatch or silence past `timeoutMs`
  * is false and leaves localStorage as it was.
  */
-async function importLegacy(backend: AsyncSaveBackend, game: GameState, timeoutMs: number): Promise<boolean> {
+async function importLegacy(backend: AsyncSaveBackend, game: GameState, raw: string, timeoutMs: number, check: () => void): Promise<boolean> {
   const json = JSON.stringify(game)
   const attempt = { abandoned: false }
   const copy = async (): Promise<boolean> => {
@@ -166,25 +208,33 @@ async function importLegacy(backend: AsyncSaveBackend, game: GameState, timeoutM
   } catch {
     return false
   }
+  check()
   primeCache(json)
-  localSaveBackend().remove()
+  removeLegacyIf(raw)
   return true
 }
 
 /**
  * Keeps a record that lost (or can't be played) as a copy, and clears it from its store once the
- * copy is confirmed. False when no copy could be made (five are kept): the record stays where it is.
- * An IndexedDB loser is not cleared when the legacy game is about to be written over it.
+ * copy is confirmed. False when no copy could be made (five are kept, or storage didn't answer in
+ * time): the record stays where it is. An IndexedDB loser is not cleared when the legacy game is
+ * about to be written over it. A record that is already kept, byte for byte, counts as copied.
  */
-async function shelve(loser: Candidate, overwritten: boolean): Promise<boolean> {
+async function shelve(loser: Candidate, overwritten: boolean, timeoutMs: number, check: () => void): Promise<boolean> {
   const backend = activeBackend()
-  const copy = await quarantineRecord(backend, loser.raw, kindOf(loser), versionOf(loser))
-  if (copy === null) return false
+  const copy = await within(quarantineRecord(backend, loser.raw, kindOf(loser), versionOf(loser)), timeoutMs)
+  check()
+  if (copy === TIMED_OUT || copy === null) return false
   try {
-    if (loser.from === 'legacy') localSaveBackend().remove()
-    else if (!(loser.from === 'idb' && overwritten)) await backend.remove()
+    if (loser.from === 'legacy') {
+      removeLegacyIf(loser.raw)
+    } else if (!(loser.from === 'idb' && overwritten)) {
+      await within(Promise.resolve(backend.remove()), timeoutMs)
+      check()
+    }
   } catch (err) {
-    // The copy is safe; the record stays in its store and is copied again next boot.
+    if (err === ABANDONED) throw err
+    // The copy is safe; the record stays in its store and is not copied again next boot (it is kept already).
     console.error('Could not clear a record that was kept as a copy:', err)
   }
   return true
@@ -199,11 +249,20 @@ function inPlace(c: Candidate): void {
 
 // --- Boot ----------------------------------------------------------------------------------
 
-async function boot(opts: HydrateOptions): Promise<HydrateOutcome> {
+/** The same game once migrated: a record and its copy (a backup the database caught up with) need no second copy. */
+const sameGame = (a: Ready, b: Ready): boolean => JSON.stringify(a.found.game) === JSON.stringify(b.found.game)
+
+async function boot(opts: HydrateOptions, run: Run, marked: boolean): Promise<HydrateOutcome> {
   if (savedThisSession()) return { backend: activeBackendName(), source: 'none', fellBack: false, imported: false, skipped: 'already-saved' }
+  const check = (): void => {
+    if (run.over) throw ABANDONED
+  }
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const minSchema = opts.minSchema === undefined ? undefined : { minSchema: opts.minSchema }
-  const chosen = await chooseBackend(opts, timeoutMs)
+  // The legacy key first, then the database: a tab importing at the same moment writes the database before it
+  // removes the key, so this order always finds the life in at least one of them.
+  const legacyRaw = localSaveBackend().read()
+  const chosen = await chooseBackend(opts, timeoutMs, marked, check)
   let fellBack = chosen.fellBack
   const backend = activeBackend()
 
@@ -213,10 +272,11 @@ async function boot(opts: HydrateOptions): Promise<HydrateOutcome> {
   }
   if (backend.kind === 'async') {
     await consider('idb', chosen.record)
-    await consider('legacy', localSaveBackend().read())
+    await consider('legacy', legacyRaw)
   } else {
     await consider('local', chosen.record)
   }
+  check()
 
   let source: HydrateOutcome['source'] = 'none'
   let imported = false
@@ -230,11 +290,23 @@ async function boot(opts: HydrateOptions): Promise<HydrateOutcome> {
     const keptNewer = candidates.find((c) => c.found.kind === 'newer')
     const ready = candidates.filter(isReady)
     let winner: Ready | null = null
+    let duplicate: Candidate | null = null
     if (keptNewer) {
       protectNewerRecord(keptNewer.raw, versionOf(keptNewer) ?? 0)
       inPlace(keptNewer)
     } else if (ready.length === 2) {
-      winner = newerOf(ready[0].found.game, ready[1].found.game) === 'idb' ? ready[0] : ready[1]
+      const [fromIdb, fromLegacy] = ready
+      if (sameGame(fromIdb, fromLegacy)) {
+        // The database caught up with a backup: one game in two places, so nothing is lost by dropping the backup.
+        winner = fromIdb
+        duplicate = fromLegacy
+      } else if (marked) {
+        // This browser keeps its life in the database, so a localStorage record was written because the database
+        // could not be reached or the page was closing: it is the newer one, whatever year and age say.
+        winner = fromLegacy
+      } else {
+        winner = newerOf(fromIdb.found.game, fromLegacy.found.game) === 'idb' ? fromIdb : fromLegacy
+      }
     } else if (ready.length === 1) {
       winner = ready[0]
     }
@@ -242,7 +314,11 @@ async function boot(opts: HydrateOptions): Promise<HydrateOutcome> {
     const importing = winner !== null && winner.from === 'legacy'
     let unkept = false
     for (const loser of candidates.filter((c) => c !== winner && c !== keptNewer)) {
-      if (await shelve(loser, importing)) continue
+      if (loser === duplicate) {
+        removeLegacyIf(loser.raw)
+        continue
+      }
+      if (await shelve(loser, importing, timeoutMs, check)) continue
       // Download of the main key reads the IndexedDB record, which would mislead for a legacy loser.
       if (loser.from === 'legacy') continue
       // The import would write over this one with no copy of it: play from localStorage instead.
@@ -253,13 +329,16 @@ async function boot(opts: HydrateOptions): Promise<HydrateOutcome> {
     if (winner !== null && winner.from === 'idb') {
       primeCache(JSON.stringify(winner.found.game))
       source = 'idb'
+      markIdbInUse()
     } else if (winner !== null && winner.from === 'local') {
       source = 'local'
     } else if (winner !== null && winner.from === 'legacy' && backend.kind === 'async') {
-      if (!unkept && (await importLegacy(backend, winner.found.game, timeoutMs))) {
+      if (!unkept && (await importLegacy(backend, winner.found.game, winner.raw, timeoutMs, check))) {
         source = 'legacy'
         imported = true
+        markIdbInUse()
       } else {
+        check()
         setSaveBackend(null)
         fellBack = true
         source = 'local'
@@ -267,20 +346,30 @@ async function boot(opts: HydrateOptions): Promise<HydrateOutcome> {
     }
   }
 
-  await listKeptCopies(minSchema)
+  check()
+  // The life this browser keeps in IndexedDB is out of reach: say so, because Home would otherwise look empty.
+  if (marked && fellBack) addUnreachableNotice()
+  await listKeptCopies(minSchema, timeoutMs, check)
   return { backend: activeBackendName(), source, fellBack, imported }
 }
 
-/** Lists the copies already kept, those made just now among them. A failure here changes nothing else. */
-async function listKeptCopies(minSchema: { minSchema: number } | undefined): Promise<void> {
+/** Lists the copies already kept, those made just now among them. A failure, or a store too slow to answer, changes nothing else. */
+async function listKeptCopies(minSchema: { minSchema: number } | undefined, timeoutMs: number, check: () => void): Promise<void> {
   try {
     const diagnose = async (raw: string): Promise<{ kind: SaveNoticeKind; version?: number }> => {
       const found = await diagnoseRecord(raw, minSchema)
       if (found.kind === 'ready') return { kind: 'stale' }
       return found.kind === 'damaged' ? { kind: 'damaged' } : { kind: found.kind, version: found.version }
     }
-    for (const notice of await scanQuarantine(activeBackend(), diagnose)) addSaveNotice(notice)
+    // Each notice is listed as it is found, so a slow overflow doesn't hold back the copies in the slots.
+    const scan = scanQuarantine(activeBackend(), diagnose, (found) => {
+      check()
+      addSaveNotice(found)
+    })
+    await within(scan, timeoutMs)
+    check()
   } catch (err) {
+    if (err === ABANDONED) throw err
     console.error('Could not list the saved copies:', err)
   }
 }

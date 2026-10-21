@@ -15,6 +15,25 @@ export function saveWarningCopy(status: SaveStatus): string {
     : 'Progress isn’t saved. Keep this tab open. Free some browser storage or allow site storage, then retry.'
 }
 
+/** True while Home is telling the player that the life this browser keeps in its database could not be reached. */
+export function isDbUnreachable(): boolean {
+  return getSaveStatus().notices.some((n) => n.kind === 'unreachable')
+}
+
+/**
+ * What the New Life screen asks before it starts a life: about the living life it would end, about a
+ * saved life it can't reach (a life started now is kept apart from it), or both. Null when there is
+ * nothing to ask.
+ */
+export function newLifeWarning(livingLife: string | null, unreachable: boolean): { title: string; text: string } | null {
+  const apart = "Your saved life is in this browser's database, which didn't answer, so it is out of reach. A life started now is kept apart from it."
+  if (livingLife !== null) {
+    const ends = `${livingLife} is still alive. Starting a new life ends theirs on the spot: no grave, no ribbon, no heirs.`
+    return { title: 'Abandon your current life?', text: unreachable ? `${ends} ${apart}` : ends }
+  }
+  return unreachable ? { title: 'Start a new life anyway?', text: `${apart} Reload to try again first.` } : null
+}
+
 /** What a notice says. The version sentence of a too old save is left out when its version isn't known. */
 export function noticeCopy(n: SaveNotice): { title: string; text: string } {
   switch (n.kind) {
@@ -29,11 +48,17 @@ export function noticeCopy(n: SaveNotice): { title: string; text: string } {
       return { title: 'This save is from a newer version', text: 'Reload to update, or download a copy. New Life keeps a copy too.' }
     case 'stale':
       return { title: 'Found an older copy of your save', text: "It's kept in case you need it." }
+    case 'unreachable':
+      return {
+        title: 'Your saved life is out of reach',
+        text: "This browser keeps it in a database that didn't answer. Reload to try again. A new life started now is kept apart from it.",
+      }
   }
 }
 
-/** The buttons a notice gets. A record left in the main slot (its id is SAVE_KEY) can't be deleted from here. */
+/** The buttons a notice gets. A record left in the main slot (its id is SAVE_KEY) can't be deleted from here, and an unreachable life has nothing to download. */
 export function noticeActions(n: SaveNotice): readonly NoticeAction[] {
+  if (n.kind === 'unreachable') return ['reload']
   if (n.kind === 'newer') return ['reload', 'download']
   if (n.id === SAVE_KEY) return ['download']
   return ['download', 'delete']
