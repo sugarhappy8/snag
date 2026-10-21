@@ -5,6 +5,8 @@ import { marketOf } from '../data/markets'
 import { baseLoanRate } from '../finance'
 import { economyOf, lendingConditions, recordEconomicActivity } from '../economy'
 import { settleLateFamilyOwners } from './dynasty-ownership'
+import { reportCharts } from '../charts/report'
+import { flagOn } from '../flags'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -237,6 +239,8 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
   const expected = planFor(g, b, g.year, { price: suggested, calm: true, cycle: () => lastCycle }).demand
   const maxProd = maxProduction(g, b)
   const lines = b.last ? statementLines(b, b.last) : [line('First year', 'Your doors open soon. Set your launch price and production.')]
+  // Annual Report 2.0 (R1-C10): readBiz hands the builders a normalized copy, so a damaged saved history never reaches them.
+  const chart = flagOn('annualReport2') ? reportCharts(g, a, readBiz(g, a), marketViewOf(g, b)) : null
   return {
     assetId: a.id,
     businessName: a.name,
@@ -257,6 +261,7 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
     marketNote: [marketNote(g, b, lastCycle), economicReportSummary(b)].filter(Boolean).join(' ') + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : ''),
     lines,
     ...(hasTalent(g, 'Business') ? { talentHint: planHint(g, a, b) } : {}),
+    ...(chart ? { chart: toJson(chart) } : {}),
   }
 }
 
