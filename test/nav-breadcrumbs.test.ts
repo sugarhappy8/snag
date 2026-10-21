@@ -15,6 +15,7 @@ import { pathAfterOpen, pathAfterPopTo, pathAfterPush } from '../src/ui/componen
 import { Breadcrumbs, crumbsOf, type Crumb } from '../src/ui/nav/Breadcrumbs'
 import { isPinned, lifeOf, resetPrefsForTest, togglePin, updatePrefs, usePrefs, type UiPrefs } from '../src/ui/nav/prefs'
 import { Sheet } from '../src/ui/components/Sheet'
+import { NAV_OFF } from './nav-kit'
 
 // Built-in tasks resolve to nothing here (the pattern of test/ui-return.test.ts), so only what a test queues shows up.
 const offline = vi.hoisted(() => {
@@ -48,7 +49,7 @@ function prefsNow(): UiPrefs {
 }
 
 beforeEach(() => {
-  resetFlags()
+  setFlags(NAV_OFF)
   resetPrefsForTest()
   vi.spyOn(console, 'error').mockImplementation(() => {})
   offline.resolveTask.mockReset()
@@ -256,7 +257,7 @@ describe('13. MenuSheet with the real store', () => {
     render(createElement(MenuSheet, { root: activitiesMenu, onClose: () => {}, initial }))
 
   it('shows the strip under the header at depth 1 with the flag on', () => {
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     const html = sheet()
     expect(html).toMatch(/<nav[^>]*aria-label="Breadcrumb"/)
     expect(html).toContain('aria-label="Go to Activities"')
@@ -270,12 +271,12 @@ describe('13. MenuSheet with the real store', () => {
   })
 
   it('shows no strip at the root, where there is only one crumb', () => {
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     expect(sheet(null)).not.toContain('Breadcrumb')
   })
 
   it('shows a longer trail as it is, root first', () => {
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     const computer = activitiesMenu.children(game()).find((n): n is MenuGroup => n.type === 'menu' && n.id === 'computer')!
     const inner = menuList.groupChildren(computer, game()).find((n): n is MenuGroup => n.type === 'menu')
     if (!inner) throw new Error('the computer menu has no group to open')
@@ -288,16 +289,16 @@ describe('13. MenuSheet with the real store', () => {
   })
 
   it('shows the pin star only with navPalette as well', () => {
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     expect(sheet()).not.toContain('aria-pressed')
-    setFlags({ navRegroup: true, navPalette: true })
+    setFlags({ ...NAV_OFF, navRegroup: true, navPalette: true })
     const html = sheet()
     expect(html).toMatch(/<button[^>]*aria-pressed="false"[^>]*>/)
     expect(html).toContain('aria-label="Pin Computer"')
   })
 
   it('shows the star pressed once the place is pinned for this life', () => {
-    setFlags({ navRegroup: true, navPalette: true })
+    setFlags({ ...NAV_OFF, navRegroup: true, navPalette: true })
     updatePrefs((p) => togglePin(p, game().lifeId, { tab: 'activities', path: ['computer'] }).prefs)
     const html = sheet()
     expect(html).toContain('aria-label="Unpin Computer"')
@@ -305,13 +306,13 @@ describe('13. MenuSheet with the real store', () => {
   })
 
   it('does not show a pin made for another life', () => {
-    setFlags({ navRegroup: true, navPalette: true })
+    setFlags({ ...NAV_OFF, navRegroup: true, navPalette: true })
     updatePrefs((p) => togglePin(p, 'some-other-life', { tab: 'activities', path: ['computer'] }).prefs)
     expect(sheet()).toContain('aria-label="Pin Computer"')
   })
 
   it('shows no star with navPalette alone (the star lives in the strip)', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     const html = sheet()
     expect(html).not.toContain('aria-pressed')
     expect(html).not.toContain('Breadcrumb')
@@ -451,7 +452,7 @@ describe('16. flags off', () => {
 
   it('navRegroup adds the strip and nothing else, so the flag-off markup is the v4.0.2 markup', () => {
     const off = sheet()
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     const on = sheet()
     expect(on).not.toBe(off)
     const strip = /<div class="crumbs">.*?<\/div>/.exec(on)
@@ -461,7 +462,7 @@ describe('16. flags off', () => {
 
   it('navPalette alone changes no markup', () => {
     const off = sheet()
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     expect(sheet()).toBe(off)
   })
 })
@@ -487,7 +488,7 @@ describe('recents written by the sheets (behind navPalette)', () => {
   const plain = (id: string): MenuAction => ({ type: 'action', id, label: id, emoji: 'E', run: () => {} })
 
   it('MenuSheet: the tab is the root id and the path is the open groups', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     const o = optionsOf(createElement(MenuSheet, { root: activitiesMenu, onClose: () => {}, initial: COMPUTER }))
     o.onRan?.(plain('somethingCool'))
     expect(lifeOf(prefsNow(), game().lifeId).recents).toEqual([{ tab: 'activities', path: ['computer'], id: 'somethingCool' }])
@@ -500,7 +501,7 @@ describe('recents written by the sheets (behind navPalette)', () => {
   })
 
   it('MenuSheet: a root that is not one of the four tabs writes nothing', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     const stray: MenuGroup = { type: 'menu', id: 'hub.company', label: 'X', emoji: 'E', children: () => [] }
     const o = optionsOf(createElement(MenuSheet, { root: stray, onClose: () => {} }))
     o.onRan?.(plain('a'))
@@ -508,14 +509,14 @@ describe('recents written by the sheets (behind navPalette)', () => {
   })
 
   it('MenuSheet: the assets root is the assets tab', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     const o = optionsOf(createElement(MenuSheet, { root: assetsMenu, onClose: () => {} }))
     o.onRan?.(plain('buy'))
     expect(lifeOf(prefsNow(), game().lifeId).recents).toEqual([{ tab: 'assets', path: [], id: 'buy' }])
   })
 
   it('PersonSheet: the tab is relationships and the path starts with person.<id>', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     let personId = ''
     store.act((g) => {
       personId = createPerson(g, { relation: 'friend', age: 25, firstName: 'Priya', lastName: 'Nair' }).id
@@ -536,7 +537,7 @@ describe('GameScreen.rememberSpot: the chip and the recents', () => {
   })
 
   it('also makes the same place the newest recent with navPalette on', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     rememberSpot(game(), 'activities', spot)
     expect(store.getApp().returnPoint).toMatchObject({ sheet: 'activities', path: ['computer'] })
     expect(lifeOf(prefsNow(), game().lifeId).recents).toEqual([{ tab: 'activities', path: ['computer'] }])
@@ -549,7 +550,7 @@ describe('GameScreen.rememberSpot: the chip and the recents', () => {
   })
 
   it('keeps the recent when the chip goes away', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     rememberSpot(game(), 'activities', spot)
     store.clearReturnPoint()
     expect(store.getApp().returnPoint).toBeNull()
@@ -557,7 +558,7 @@ describe('GameScreen.rememberSpot: the chip and the recents', () => {
   })
 
   it('writes nothing into the game state', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     const before = JSON.stringify(game())
     rememberSpot(game(), 'activities', spot)
     expect(JSON.stringify(game())).toBe(before)
@@ -577,7 +578,7 @@ describe('PersonSheet breadcrumbs', () => {
   }
 
   it('shows Relationships, the name and the group inside a group, with the flag on', () => {
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     const { id, group } = personWithGroup()
     const name = personName(game().people.find((p) => p.id === id)!)
     const html = render(createElement(PersonSheet, { personId: id, onClose: () => {}, onBack: () => {}, initial: { path: [group.id], scrolls: [0, 0] } }))
@@ -588,14 +589,14 @@ describe('PersonSheet breadcrumbs', () => {
 
   it('shows no strip on the person page itself, or with the flag off', () => {
     const { id, group } = personWithGroup()
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     expect(render(createElement(PersonSheet, { personId: id, onClose: () => {}, onBack: () => {} }))).not.toContain('Breadcrumb')
-    resetFlags()
+    setFlags(NAV_OFF)
     expect(render(createElement(PersonSheet, { personId: id, onClose: () => {}, onBack: () => {}, initial: { path: [group.id], scrolls: [0, 0] } }))).not.toContain('Breadcrumb')
   })
 
   it('crumb 0 goes back to the list, crumb 1 to the person, deeper ones one level less than their depth', () => {
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     const { id, group } = personWithGroup()
     const onBack = vi.fn()
     const realNav = menuList.useMenuNav
@@ -634,7 +635,7 @@ describe('PersonSheet breadcrumbs', () => {
 
 describe('MenuSheet crumbs call popTo', () => {
   it('onGo(d) is nav.popTo(d); the star toggles the place and toasts when 12 are pinned', () => {
-    setFlags({ navRegroup: true, navPalette: true })
+    setFlags({ ...NAV_OFF, navRegroup: true, navPalette: true })
     const realNav = menuList.useMenuNav
     const popTo = vi.fn()
     const navSpy = vi.spyOn(menuList, 'useMenuNav').mockImplementation((resolve, initial) => {
@@ -666,7 +667,7 @@ describe('MenuSheet crumbs call popTo', () => {
   })
 
   it('the 13th pin changes nothing', () => {
-    setFlags({ navRegroup: true, navPalette: true })
+    setFlags({ ...NAV_OFF, navRegroup: true, navPalette: true })
     const lifeId = game().lifeId
     for (let i = 0; i < 12; i++) updatePrefs((p) => togglePin(p, lifeId, { tab: 'assets', path: [`g${i}`] }).prefs)
     const before = prefsNow()

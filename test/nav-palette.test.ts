@@ -50,7 +50,7 @@ import { search, tapsToReach } from '../src/ui/nav/searchRank'
 import { runIndexJob, resetSearchIndexForTest, useSearchIndex } from '../src/ui/nav/useSearchIndex'
 import { closure, dynamicImports, listSources, resolve as resolveImport, staticImports } from './lazy-kit'
 import { deepFreeze } from './fuzz-kit'
-import { buildIndexCached, frozen, navState, type NavTab } from './nav-kit'
+import { NAV_OFF, buildIndexCached, frozen, navState, type NavTab } from './nav-kit'
 
 // Built-in tasks resolve to nothing here (the pattern of test/ui-return.test.ts), so only what a test queues shows up.
 const offline = vi.hoisted(() => {
@@ -71,7 +71,7 @@ const TABS: NavTab[] = ['occupation', 'assets', 'relationships', 'activities']
 const DASH = new RegExp(`[${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}]`)
 
 beforeEach(() => {
-  resetFlags()
+  setFlags(NAV_OFF)
   resetPrefsForTest()
   resetSearchIndexForTest()
   clearIndexCache()
@@ -863,7 +863,7 @@ describe('9. the runner', () => {
     const action = act('hug')
     ranFrom(game().lifeId, { tab: 'relationships', personId: 'p3', path: ['talk'] }, action)
     expect(lifeOf(prefsNow(), game().lifeId).recents).toEqual([])
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     ranFrom(game().lifeId, { tab: 'relationships', personId: 'p3', path: ['talk'] }, action)
     ranFrom(game().lifeId, { tab: 'activities', path: [] }, doAnythingAction)
     ranFrom(game().lifeId, null, action)

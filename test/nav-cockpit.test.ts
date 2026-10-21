@@ -28,7 +28,7 @@ import { LazyChartView, LazyKpiTile, LazySparkline } from '../src/ui/nav/kit'
 import { emptyPrefs, pushRecent, resetPrefsForTest, togglePin, updatePrefs, type UiPrefs } from '../src/ui/nav/prefs'
 import { ChartViewLazy } from '../src/ui/charts/lazy'
 import { deepFreeze } from './fuzz-kit'
-import { frozen, navState } from './nav-kit'
+import { NAV_OFF, frozen, navState } from './nav-kit'
 
 // Built-in tasks resolve to nothing here (the pattern of test/ui-return.test.ts), so only what a test queues shows up.
 const offline = vi.hoisted(() => {
@@ -47,7 +47,7 @@ const BAD = /NaN|undefined|Infinity/
 const render = (el: ReactElement): string => renderToStaticMarkup(el)
 
 beforeEach(() => {
-  resetFlags()
+  setFlags(NAV_OFF)
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -676,7 +676,7 @@ describe('10. CockpitPanel', () => {
 
   it('shows each tile as text before the kit is loaded, and the real tiles after', async () => {
     const f = await fresh()
-    f.setFlags({ cockpits: true })
+    f.setFlags({ ...NAV_OFF, cockpits: true })
     const g = ceoWithRows()
     const m = cockpitOf('assets', g)
     expect(m.chart).not.toBeNull()
@@ -699,7 +699,7 @@ describe('10. CockpitPanel', () => {
 
   it('shows the occupation tiles and the thin cockpits', async () => {
     const f = await fresh()
-    f.setFlags({ cockpits: true })
+    f.setFlags({ ...NAV_OFF, cockpits: true })
     await f.ready()
     const adult = navState('adult')
     const html = f.panel(adult, 'occupation')
@@ -711,7 +711,7 @@ describe('10. CockpitPanel', () => {
   })
 
   it('shows the pinned and recent places of this tab from the live prefs', () => {
-    setFlags({ cockpits: true })
+    setFlags({ ...NAV_OFF, cockpits: true })
     const g = navState('adult')
     resetPrefsForTest()
     expect(panel(g)).not.toContain('cockpit-jump')
@@ -739,7 +739,7 @@ describe('11. the sheets', () => {
 
   it('puts the cockpit above the Needs you card and the rows at the root of Assets', () => {
     inDanger()
-    setFlags({ cockpits: true, navRegroup: true })
+    setFlags({ ...NAV_OFF, cockpits: true, navRegroup: true })
     const html = render(createElement(MenuSheet, { root: assetsMenu, onClose: () => {} }))
     expect(html).toContain('cockpit-panel')
     expect(html).toContain('needs-card')
@@ -754,7 +754,7 @@ describe('11. the sheets', () => {
 
   it('adds neither the cockpit nor the card below the root', () => {
     inDanger()
-    setFlags({ cockpits: true, navRegroup: true })
+    setFlags({ ...NAV_OFF, cockpits: true, navRegroup: true })
     const html = render(createElement(MenuSheet, { root: assetsMenu, onClose: () => {}, initial: { path: ['businesses'], scrolls: [0, 0] } }))
     expect(html).not.toContain('cockpit-panel')
     expect(html).not.toContain('needs-card')
@@ -769,7 +769,7 @@ describe('11. the sheets', () => {
 
   it('has a cockpit at the root of Occupation and Activities too', async () => {
     install(navState('adult'))
-    setFlags({ cockpits: true })
+    setFlags({ ...NAV_OFF, cockpits: true })
     const { occupationMenu, activitiesMenu } = await import('../src/game/menus')
     const occ = render(createElement(MenuSheet, { root: occupationMenu, onClose: () => {} }))
     expect(occ).toContain('cockpit-panel')
@@ -791,7 +791,7 @@ describe('11. the sheets', () => {
     expect(rows.length).toBeGreaterThan(0)
     expect(rows[0]!.node.id).toBe(personGroupId(g.people.find((p) => p.alive && p.relation === 'parent')!.id))
 
-    setFlags({ cockpits: true })
+    setFlags({ ...NAV_OFF, cockpits: true })
     const html = render(createElement(RelationshipsSheet, { onClose: () => {} }))
     expect(html).toContain('cockpit-panel')
     expect(html).toContain('needs-card')
@@ -799,7 +799,7 @@ describe('11. the sheets', () => {
     expect(order(html, 'cockpit-panel', 'needs-card')).toBe(true)
     expect(order(html, 'needs-card', 'rel-row')).toBe(true)
 
-    resetFlags()
+    setFlags(NAV_OFF)
     const off = render(createElement(RelationshipsSheet, { onClose: () => {} }))
     expect(off).not.toContain('cockpit')
     expect(off).not.toContain('needs-card')

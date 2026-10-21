@@ -29,7 +29,7 @@ import {
   usePrefs,
   type UiPrefs,
 } from '../src/ui/nav/prefs'
-import { navState } from './nav-kit'
+import { NAV_OFF, navState } from './nav-kit'
 
 // Built-in tasks resolve to nothing here (the pattern of test/ui-return.test.ts), so a new life starts quietly.
 const offline = vi.hoisted(() => {
@@ -103,6 +103,7 @@ function expectValid(p: UiPrefs): void {
 }
 
 beforeEach(() => {
+  setFlags(NAV_OFF)
   resetPrefsForTest()
 })
 
@@ -665,7 +666,7 @@ describe('recordRecent (the one write the sheets and the game screen make)', () 
   })
 
   it('pushes the place for that life while navPalette is on, newest first', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     recordRecent('L', place('one'))
     recordRecent('L', group('computer'))
     recordRecent('M', place('two'))
@@ -674,7 +675,7 @@ describe('recordRecent (the one write the sheets and the game screen make)', () 
   })
 
   it('leaves the snapshot alone when the same place is recorded again', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     recordRecent('L', place('one'))
     const first = usePrefsNow()
     recordRecent('L', place('one'))
@@ -682,7 +683,7 @@ describe('recordRecent (the one write the sheets and the game screen make)', () 
   })
 
   it('ignores a place the reader would drop', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     const before = usePrefsNow()
     recordRecent('L', { tab: 'nope', path: [] } as unknown as PlaceRef)
     expect(usePrefsNow()).toBe(before)

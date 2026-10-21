@@ -20,7 +20,7 @@ import { bizOf, type BizState } from '../src/game/business/state'
 import { applyPlan, autoPlan } from '../src/game/business/yearly'
 import { hireForJob } from '../src/game/careers'
 import { getJobDef } from '../src/game/data/jobs'
-import { FLAGS } from '../src/game/flags'
+import { FLAGS, type FlagOverrides } from '../src/game/flags'
 import { peopleMenu } from '../src/game/hubs/people'
 import { SECTIONED_ROOTS } from '../src/game/hubs/sections'
 import { contractCondition } from '../src/game/health'
@@ -32,6 +32,13 @@ import { getCountry } from '../src/game/world'
 import { groupChildren, nodeDisabled, nodeVisible } from '../src/ui/components/menuModel'
 import { buildIndex, type SearchIndex } from '../src/ui/nav/searchIndex'
 import { deepFreeze } from './fuzz-kit'
+
+/**
+ * The three nav flags, all named off (R1-N10). A test that wants a flag off, or one flag alone, spells all three
+ * (setFlags(NAV_OFF), setFlags({ ...NAV_OFF, navRegroup: true })), so it doesn't lean on the defaults that the lead's
+ * release commit flips.
+ */
+export const NAV_OFF: Readonly<FlagOverrides> = Object.freeze({ navRegroup: false, navPalette: false, cockpits: false })
 
 export type NavTab = 'occupation' | 'assets' | 'relationships' | 'activities'
 export type NavStateName = 'kid' | 'adult' | 'ceo' | 'elder'

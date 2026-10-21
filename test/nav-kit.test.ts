@@ -2,7 +2,7 @@
 // what the UI would show (visible nodes, locked groups listed but not entered, errors caught like the UI catches
 // them), `hub.` groups cost no depth and never show up in a canonical path, and the lint finds what it should.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { resetFlags, withFlags } from '../src/game/flags'
+import { resetFlags, setFlags, withFlags } from '../src/game/flags'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'
 import {
@@ -13,6 +13,7 @@ import {
   frozen,
   isTruncated,
   lintViolations,
+  NAV_OFF,
   navState,
   normId,
   SECTIONED_ROOTS,
@@ -258,19 +259,20 @@ describe('cached walks', () => {
   })
 
   it('8b. the flag state is part of the key, so a flag-off and a flag-on call never share an entry', () => {
+    setFlags(NAV_OFF)
     const off = walkTreeCached('kid')
     const seqOff = actionSequenceCached('kid')
-    const on = withFlags({ cockpits: true }, () => walkTreeCached('kid'))
-    const seqOn = withFlags({ navRegroup: true }, () => actionSequenceCached('kid'))
+    const on = withFlags({ ...NAV_OFF, cockpits: true }, () => walkTreeCached('kid'))
+    const seqOn = withFlags({ ...NAV_OFF, navRegroup: true }, () => actionSequenceCached('kid'))
     expect(on).not.toBe(off)
     expect(seqOn).not.toBe(seqOff)
     // Same flags again: the entry made under them, and back with the flags off: the first one.
-    withFlags({ cockpits: true }, () => expect(walkTreeCached('kid')).toBe(on))
-    withFlags({ navRegroup: true }, () => expect(actionSequenceCached('kid')).toBe(seqOn))
+    withFlags({ ...NAV_OFF, cockpits: true }, () => expect(walkTreeCached('kid')).toBe(on))
+    withFlags({ ...NAV_OFF, navRegroup: true }, () => expect(actionSequenceCached('kid')).toBe(seqOn))
     expect(walkTreeCached('kid')).toBe(off)
     expect(actionSequenceCached('kid')).toBe(seqOff)
     // Turning a flag off explicitly is the default state, not a new one.
-    expect(withFlags({ cockpits: false }, () => walkTreeCached('kid'))).toBe(off)
+    expect(withFlags({ ...NAV_OFF, cockpits: false }, () => walkTreeCached('kid'))).toBe(off)
   })
 
   it('8c. synthetic roots are refused at run time, so a cached entry is always a walk of the real roots', () => {
