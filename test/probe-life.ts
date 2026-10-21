@@ -28,6 +28,8 @@ export interface ProbeOptions {
    * nothing else changes.
    */
   keepAlive?: boolean
+  /** Called with 0 before the first year, then 1, 2, ... after each ageUp. Read-only: it must not change the life. */
+  onYear?: (g: GameState, yearsPlayed: number) => void
 }
 
 export function probeLife(opts: ProbeOptions): GameState {
@@ -62,6 +64,7 @@ export function probeLife(opts: ProbeOptions): GameState {
   }
   if (founded < opts.businesses) throw new Error(`probeLife: only ${founded} of ${opts.businesses} industries are open to a founder in ${countryId} in ${g.year}`)
 
+  opts.onYear?.(g, 0)
   for (let y = 0; y < opts.years; y++) {
     g.queue = []
     if (opts.keepAlive) {
@@ -69,6 +72,7 @@ export function probeLife(opts: ProbeOptions): GameState {
       g.character.conditions = []
     }
     ageUp(g)
+    opts.onYear?.(g, y + 1)
   }
   return g
 }

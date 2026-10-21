@@ -27,6 +27,8 @@ export interface PlayOptions {
   untilAge?: number
   /** A measurement aid: money is set to 60,000,000 the year the character first reaches 25 (default false). */
   rich?: boolean
+  /** Called with 0 after birth, then 1, 2, ... after each year's popups are answered. Read-only: it must not change the life. */
+  onYear?: (g: GameState, yearsPlayed: number) => void
 }
 
 export interface PlayedPopup {
@@ -212,6 +214,8 @@ export function playLife(opts: PlayOptions): { g: GameState; years: PlayedYear[]
     years.push({ age: g.character.age, year: g.year, popups, lines: yearLines(g) })
   }
   play()
+  opts.onYear?.(g, 0)
+  let yearsPlayed = 0
   while (g.character.alive && g.character.age < untilAge) {
     ageUp(g)
     if (opts.rich && !rich && g.character.age >= 25) {
@@ -219,6 +223,7 @@ export function playLife(opts: PlayOptions): { g: GameState; years: PlayedYear[]
       g.character.money = RICH_MONEY
     }
     play()
+    opts.onYear?.(g, ++yearsPlayed)
   }
   return { g, years }
 }
