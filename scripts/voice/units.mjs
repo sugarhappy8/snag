@@ -79,7 +79,7 @@ const LOOKUP_CTX = new Set(['key', 'compare', 'case', 'index']);
 const EXCLUDED_KEYS = new Set(['id', 'key', 'type', 'kind', 'flag', 'slot', 'icon', 'emoji', 'tone']);
 const TOOLTIP_KEYS = new Set(['hint', 'desc', 'description', 'header', 'tip', 'sub', 'note']);
 /** Calls that pick one of their list or arguments: the text inside belongs to the argument they sit in. */
-const PICKERS = new Set(['pick', 'v']);
+const PICKERS = new Set(['pick', 'v', 'pickLine', 'pickSite']);
 /** Words before a "(" that do not make it a call. */
 const NOT_A_CALLEE = new Set([...EXPR_KEYWORDS, 'if', 'while', 'for', 'switch', 'catch', 'function', 'async', 'with', 'export', 'default']);
 
