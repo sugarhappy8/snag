@@ -632,7 +632,9 @@ button.ar-chip.is-on {
 /* centred card at most 860px high. The header, the tab row and the button bar stay in view while the panel scrolls. */
 /* Tokens only, so light and dark follow, and nothing is wider than a 328px column. */
 
-.popup.is-report {
+/* The card is also .is-wide (440px in global.css, which loads after this sheet), so the width is stated for both. */
+.popup.is-report,
+.popup.is-wide.is-report {
   max-width: 480px;
   height: 100%;
 }
@@ -655,6 +657,10 @@ button.ar-chip.is-on {
   flex-direction: column;
   min-height: 0;
   padding: 0;
+  /* The header (48px) and the tab row (44px) stick to the top and the button bar to the bottom, all inside this scroller, */
+  /* so a control behind one counts as in view. The padding keeps a focused control clear of them (WCAG 2.4.11). */
+  scroll-padding-top: 96px;
+  scroll-padding-bottom: calc(72px + var(--safe-bottom));
 }
 
 /* The text layout stands in for the book while its chunk loads, so it keeps a gutter of its own. */

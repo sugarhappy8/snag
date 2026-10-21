@@ -42,13 +42,15 @@ function tileProps(spec: ChartSpec): KpiTileProps {
 
 /**
  * A chart in its frame, and its footnote under it (the cash walk and the cost structure carry one; the frame does not
- * draw it). The report was built when it was queued, so the chip names the prices on screen now, like the axes do.
+ * draw it). A kpi spec is drawn as a tile that prints its own note, so it gets no footnote, or the note would be said
+ * twice. The report was built when it was queued, so the chip names the prices on screen now, like the axes do.
  */
 function Chart({ spec }: { spec: ChartSpec }): ReactElement {
+  const tilePrintsNote = spec.kind === 'kpi' && spec.series.length > 0
   return (
     <div className="rb-block">
       <ChartView spec={withLiveBasis(spec)} />
-      {spec.note ? <p className="rb-foot">{spec.note}</p> : null}
+      {spec.note && !tilePrintsNote ? <p className="rb-foot">{spec.note}</p> : null}
     </div>
   )
 }

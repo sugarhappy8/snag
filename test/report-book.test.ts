@@ -240,8 +240,13 @@ describe('tabKey', () => {
   it('names the tabs, with a spoken name for P&L', () => {
     expect(BOOK_TABS).toEqual(['summary', 'pl', 'cash', 'market', 'plan'])
     expect(TAB_LABELS).toEqual({ summary: 'Summary', pl: 'P&L', cash: 'Cash', market: 'Market', plan: 'Plan' })
-    expect(TAB_NAMES.pl).toBe('Profit and loss')
+    expect(TAB_NAMES.pl).toBe('P&L, profit and loss')
     for (const tab of BOOK_TABS) expect(TAB_NAMES[tab].length).toBeGreaterThan(0)
+  })
+
+  // WCAG 2.5.3 (label in name): a speech-control user says what they see, so the accessible name starts with the visible label.
+  it('starts every spoken name with the label on the tab', () => {
+    for (const tab of BOOK_TABS) expect(TAB_NAMES[tab].startsWith(TAB_LABELS[tab]), tab).toBe(true)
   })
 })
 
@@ -264,7 +269,7 @@ describe('ReportBook', () => {
       expect(tabs.filter((t) => attr(t.tag, 'tabindex') === '0')).toEqual(selected)
       expect(tabs.filter((t) => attr(t.tag, 'tabindex') === '-1')).toHaveLength(4)
       // The accessible name of each tab is its spoken name.
-      expect(tabs.map((t) => attr(t.tag, 'aria-label'))).toEqual(BOOK_TABS.map((t) => TAB_NAMES[t]))
+      expect(tabs.map((t) => attr(t.tag, 'aria-label'))).toEqual(BOOK_TABS.map((t) => TAB_NAMES[t].replace('&', '&amp;')))
       // One panel, labelled by the selected tab, controlled by every tab.
       const panel = /<div\b[^>]*role="tabpanel"[^>]*>/.exec(html)![0]
       expect(attr(panel, 'aria-labelledby')).toBe(attr(selected[0]!.tag, 'id'))
@@ -408,6 +413,22 @@ describe('the other tabs', () => {
     for (const title of ['Share of the market', 'Who leads the market', 'Market size']) expect(html).toContain(title)
     expect(html.indexOf('Share of the market')).toBeLessThan(html.indexOf('Who leads the market'))
     expect(html.indexOf('Who leads the market')).toBeLessThan(html.indexOf('Market size'))
+  })
+
+  // A kpi spec is drawn as a tile that prints its own note, so the footnote under the chart would say it twice.
+  it('Market: a market size tile says its note once', () => {
+    const size = tile('Market size', [50_000_000, 52_000_000, 55_000_000, 56_000_000, 60_000_000], 'flat')
+    const html = renderBook({ initialTab: 'market', charts: { ...FULL, size } })
+    expect(html).toContain('<span class="ch-kpi-note">flat</span>')
+    expect(count(html, '>flat<')).toBe(1)
+    expect(html).not.toContain('<p class="rb-foot">flat</p>')
+  })
+
+  it('keeps the footnote of a chart whose frame does not draw one, and of a tile with nothing to draw', () => {
+    expect(count(renderBook({ initialTab: 'cash' }), 'class="rb-foot"')).toBe(1)
+    const empty: ChartSpec = { ...tile('Market size', [], 'flat'), series: [] }
+    const html = renderBook({ initialTab: 'market', charts: { ...FULL, size: empty } })
+    expect(html).toContain('<p class="rb-foot">flat</p>')
   })
 
   it('Plan: the plan body and nothing else from the other tabs', () => {
@@ -726,6 +747,35 @@ describe('business.css', () => {
     expect(rule('.rb-tabs')).toContain('scroll-snap-type: x proximity')
     expect(rule('.rb-tab')).toContain('min-height: var(--target')
     expect(rule('.rb-bar')).toContain('safe-bottom')
+  })
+
+  // The scroller is the popup around the book and the three sticky bands sit inside it, so the browser counts a control
+  // under a band as already in view. scroll-padding tells it where the clear part of the scroller starts and ends.
+  it('keeps a focused control clear of the sticky header, tab row and bottom bar (WCAG 2.4.11)', () => {
+    const body = rule('.popup.is-report .popup-scroll')
+    const top = /scroll-padding-top\s*:\s*(\d+(?:\.\d+)?)px\s*;/.exec(body)
+    expect(top, 'scroll-padding-top').not.toBeNull()
+    const header = Number(/height\s*:\s*(\d+)px/.exec(rule('.rb-head'))![1])
+    const tabs = Number(/var\(--target,\s*(\d+)px\)/.exec(rule('.rb-tab'))![1])
+    expect(Number(top![1])).toBeGreaterThanOrEqual(header + tabs)
+    const bottom = /scroll-padding-bottom\s*:\s*calc\(\s*(\d+(?:\.\d+)?)px\s*\+\s*var\(--safe-bottom\)\s*\)\s*;/.exec(body)
+    expect(bottom, 'scroll-padding-bottom').not.toBeNull()
+    // The bar is 10px, a 48px button, 10px and a 1px border, plus the safe area.
+    expect(Number(bottom![1])).toBeGreaterThanOrEqual(10 + 48 + 10 + 1)
+  })
+
+  // ModalHost renders the card wide, so it carries .is-wide (440px, global.css) as well as .is-report, and global.css is
+  // imported after this sheet (src/main.tsx). At equal specificity the later sheet wins, so the 480px needs a third class.
+  it('keeps the book 480px wide although the card also carries .is-wide', () => {
+    const classes = (selector: string): number => (selector.match(/\.[a-z][\w-]*/gi) ?? []).length
+    const wide = [...mine.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter((m) => /max-width\s*:\s*480px/.test(m[2]!))
+      .flatMap((m) => m[1]!.replace(/\/\*[\s\S]*?\*\//g, '').split(',').map((n) => n.trim()))
+      .filter((n) => n.includes('.is-report') && !n.includes(' '))
+    expect(wide.length).toBeGreaterThan(0)
+    const global = readFileSync(new URL('../src/ui/styles/global.css', import.meta.url), 'utf8')
+    expect(/\.popup\.is-wide\s*\{[^}]*max-width\s*:\s*440px/.test(global)).toBe(true)
+    expect(wide.some((n) => n.includes('.is-wide') && classes(n) > classes('.popup.is-wide'))).toBe(true)
   })
 
   it('has no fixed width above 328px in the new rules, and no raw colour', () => {

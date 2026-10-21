@@ -13,8 +13,11 @@ export type BookTab = (typeof BOOK_TABS)[number]
 /** What the tab says on the button. */
 export const TAB_LABELS: Record<BookTab, string> = { summary: 'Summary', pl: 'P&L', cash: 'Cash', market: 'Market', plan: 'Plan' }
 
-/** What a screen reader calls the tab: the short label "P&L" is spoken as the words. */
-export const TAB_NAMES: Record<BookTab, string> = { summary: 'Summary', pl: 'Profit and loss', cash: 'Cash', market: 'Market', plan: 'Plan' }
+/**
+ * What a screen reader calls the tab: the short label "P&L" is spoken with the words. Every name starts with the visible
+ * label (WCAG 2.5.3, label in name), so a speech-control user who says what they see finds the tab.
+ */
+export const TAB_NAMES: Record<BookTab, string> = { summary: 'Summary', pl: 'P&L, profit and loss', cash: 'Cash', market: 'Market', plan: 'Plan' }
 
 /**
  * The tab to open after `key` is pressed on `current`: ArrowRight and ArrowLeft move to the next and the previous tab and
