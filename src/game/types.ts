@@ -3,6 +3,7 @@
 
 // Type-only, so it is erased at build time and this file stays an import-free leaf at runtime.
 import type { ChartSpec } from './charts/spec'
+import type { WorldState } from './world/types'
 
 export type Gender = 'male' | 'female'
 export type Sexuality = 'straight' | 'gay' | 'bisexual'
@@ -708,6 +709,8 @@ export interface GameState {
   yearActions: Record<string, number>
   /** Misc flags. */
   flags: Record<string, Json>
+  /** The world's own state (ledger, indexes, level of detail). Absent reads as empty; see world/state.ts. */
+  world?: WorldState
   /** Set when the character dies: the ribbon awarded and the obituary text. */
   ribbon: string | null
   obituary: string | null
