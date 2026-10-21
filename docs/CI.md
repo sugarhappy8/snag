@@ -78,3 +78,40 @@ the latest attempt.
 
 In branch protection, require `CI gate` and nothing else from this workflow. The matrix job names change with the shard
 count, the gate does not.
+
+## Golden digests
+
+The fast tier plays three seeded lives and compares them with a committed file, so a change that moves a draw is caught
+on the pull request, and the failure says where. `test/golden-digest.test.ts` plays the `pr` plan of `test/golden-run.ts`
+(a birth life of 1950 to age 20, a rich life of 1990 to age 32, a 1975 founder with 2 companies for 20 years) and takes a
+digest at years 5, 10 and 20 and at the end. A digest is one canonical-JSON FNV hash per slice of the state
+(`test/golden-kit.ts`): `rng`, `character`, `people`, `assets`, `world`, `economy`, `flagsWorld`, `flagsPersonal` and
+`text`. The file is `test/fixtures/golden-digests.json`, and the test has one case per slice.
+
+A failure names the slice, the first life and checkpoint it moved at, the two digests and the Node major of the file
+against the running one. It means a draw moved, was added or was removed, or a rule that reads state changed. The slice is
+the clue: `text` alone is a text draw or a line, `rng` with the others is an extra or a missing draw. To see the first path
+inside a slice, call `explainMove(a, b, slice)` from the kit on two played states.
+
+    node scripts/golden.mjs check  [--plan pr|deep|all]          play and compare; exit 1 if a digest moved (default: pr)
+    node scripts/golden.mjs update --reason "why" [--plan ...]   rewrite the file and add a history entry (default: all)
+    node scripts/golden.mjs show   [--plan ...]                  print the committed digests; plays nothing
+
+Moving a digest on purpose needs a written reason: 20 to 200 characters on one line, at least four words, no long dash,
+and not only a stock phrase like "rebaseline". `update` plays the plans, and if nothing moved it says so and writes
+nothing. Otherwise it records `{ at, plan, reason, moved }` in the file's `history` (the newest 40) and prints the line to
+paste into the commit message, `Golden: moved <slices>: <reason>`. Those lines are the release's written list of every
+seeded number that moved and why.
+
+Run `update` under Node 22, the version CI uses. Floating-point results can differ between Node majors (Node 24 moves one
+float of a 1990 life by one unit in the last place, which moves its `people` digest), so the file records the major and
+`update` refuses another one without `--allow-node`.
+
+Never merge the file by hand. It is one line per life and checkpoint, so two branches that move different lives do not
+conflict, but two that move the same line do, and a hand-picked line is a digest nobody played. After a rebase, take the
+file from the base branch and run `update` again, with the reason for what your branch moved.
+
+The `deep` plan (eight birth lives to age 90 and four founders for 60 years, with 12, 6, 3 and 1 companies) is not played
+on a pull request. `GOLDEN_DEEP=1 npx vitest run test/golden-digest.test.ts` or `node scripts/golden.mjs check --plan deep`
+plays it (about 30 seconds); the nightly deep tier is meant to set it. A pull request that moves a digest regenerates both
+plans with the default `update`, so the nightly does not fail on what the pull request already explained.
