@@ -47,6 +47,8 @@ export function copySize(chars: number): string {
 export function noticeCopy(n: SaveNotice): { title: string; text: string } {
   switch (n.kind) {
     case 'damaged':
+      // A save that played with a part started fresh (a chunk was missing or unreadable) is not one that couldn't be played.
+      if (n.partial === true) return { title: "Part of your save didn't load", text: 'That part started fresh, and a copy is kept on this device. Download it if you want to look.' }
       return { title: "Your save didn't load", text: 'A copy is kept on this device. Download it before you start a new life.' }
     case 'tooOld':
       return {

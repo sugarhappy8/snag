@@ -7,15 +7,19 @@
 // of the game wrote is copied to quarantine before anything overwrites it. When the database fails
 // (or the page is closing with the queue not dry) the newest save is also written, plain, to the
 // legacy localStorage key: a backup the next boot reconciles with the database. This file only moves
-// strings: parsing and migrating them is save.ts's business.
+// strings: parsing and migrating them is save.ts's business (readSaveCopy is the one place that reads a
+// head back, to hand the player a save that stands alone).
 //
 // R2-S6 (K.5): a save can also be a HEAD plus CHUNK records (save-codec.ts). The queue still moves one string, the head, and the
 // chunks ride beside it: a chunk the storage doesn't hold yet is written first, the head is the one commit point, and the chunks
 // the new head no longer names are swept after it, so a failed step never loses the save that was there. Everything that must
 // stand alone (the backup, the spill, what an asynchronous backend's reads answer) is the self-contained form of the same save.
 import { connectionLost, localSaveBackend, markIdbInUse, SAVE_KEY, type AsyncSaveBackend, type SaveBackend, type SyncSaveBackend } from './save-backends'
+import { assembleStored, type ChunkSource } from './save-chunk-read'
+import { isChunkedHead } from './save-codec'
 import { deleteQuarantine, QUARANTINE_SLOTS, quarantineRecord, readQuarantine, type SaveNotice } from './save-quarantine'
-import { encodeSnapshotRecord } from './snapshot-codec'
+import { migrateSave, SAVE_SCHEMA } from './save-schema'
+import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 
 /** What the save warning and Home's notices show. */
 export interface SaveStatus {
@@ -734,14 +738,45 @@ async function writeChunked(
 // --- The copies ----------------------------------------------------------------------------
 
 /**
- * The exact text of the copy kept under `id`; with id SAVE_KEY, the record in the main slot as
- * stored (one left in place: a newer version's, or one there was no room to copy). Null when there
- * is none or storage fails; never an error.
+ * The exact text of the copy kept under `id`; with id SAVE_KEY, the record in the main slot (one left in place: a newer version's,
+ * or one there was no room to copy). A main-slot record that is a head with chunks, every one of them in storage, is handed out as
+ * the one self-contained save they make: a head alone could not be played once its chunks were swept. Otherwise it is as stored.
+ * Null when there is none or storage fails; never an error.
  */
 export async function readSaveCopy(id: string): Promise<string | null> {
   const backend = active()
   try {
-    return id === SAVE_KEY ? await backend.read() : await readQuarantine(backend, id)
+    if (id !== SAVE_KEY) return await readQuarantine(backend, id)
+    const record = await backend.read()
+    return record === null ? null : ((await selfContained(backend, record)) ?? record)
+  } catch {
+    return null
+  }
+}
+
+/** The chunk records of a backend as a ChunkSource; undefined for a backend with nowhere to keep them. */
+function chunkSourceOf(backend: SaveBackend): ChunkSource | undefined {
+  if (backend.kind === 'sync') {
+    const store = backend.chunks
+    return store === undefined ? undefined : async (ids) => new Map(ids.map((id) => [id, store.get(id)] as const))
+  }
+  const store = backend.chunks
+  if (store === undefined) return undefined
+  return async (ids) => {
+    const rows = await store.get(ids)
+    return new Map(ids.map((id, i) => [id, rows[i] ?? null] as const))
+  }
+}
+
+/** The whole game a head and its chunks make, as the self-contained JSON text; null when `record` is no head, a later version's, or a chunk is missing or hostile. */
+async function selfContained(backend: SaveBackend, record: string): Promise<string | null> {
+  try {
+    const head: unknown = JSON.parse(await decodeSnapshotRecord(record))
+    if (!isChunkedHead(head) || (head.schemaVersion as number) > SAVE_SCHEMA) return null
+    const assembled = await assembleStored(head, chunkSourceOf(backend))
+    if (assembled.kind !== 'ready' || assembled.lost.length > 0) return null
+    const found = migrateSave(assembled.game, { versions: assembled.versions })
+    return found.kind === 'ready' ? JSON.stringify(found.game) : null
   } catch {
     return null
   }
