@@ -156,12 +156,17 @@ const probes = new Map<NavStateName, Probe>()
 /**
  * The index of a frozen canned state, built once per file through the memoised helper (so a write would have thrown),
  * with Math.random and console.error watched and the build timed. Call it inside on() only.
+ *
+ * The first frozen('ceo') also creates the life, two companies and four simulated years (navState, memoised). That is
+ * the fixture, not the index, so navState runs before the clock starts (still under the spies) and ms is the clone, the
+ * freeze and buildIndex. Otherwise a loaded box could fail the 8 second guard on a healthy index.
  */
 function probe(name: NavStateName): Probe {
   let hit = probes.get(name)
   if (!hit) {
     const random = vi.spyOn(Math, 'random')
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    navState(name)
     const t0 = performance.now()
     const index = buildIndexCached(name)
     const ms = performance.now() - t0

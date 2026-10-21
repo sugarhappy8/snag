@@ -103,8 +103,29 @@ prints, a number that isn't finite is 0 and never `NaN`, and nothing reads a yea
 
 ## 9. The flip
 
-The lead turns on all eight flags and bumps the version in one commit (`test/flags.test.ts` fails on half of it). Before it,
-run the nav files, `ui-return`, `ui-shell`, `time-machine`, `screens`, `talents-ui`, `main-character-ui`, `fidelity`,
-`company-dashboard`, `business`, `conglomerate-play`, `gamedev-review`, `fuzz-regressions` and `workshop` with the three
-defaults set to true, one file at a time. A test that read the first rows of a company screen is the likely mover: the rows
-are now one level down, under a tile. Change a pinned expectation only where the new rule legitimately moves it, and say why.
+The lead turns on all eight flags and bumps the version in one commit (`test/flags.test.ts` fails on half of it). R1-N10
+simulated the flip for the three nav defaults in a scratch copy, and only for the files its spec lists: the nav files,
+`ui-return`, `ui-shell`, `time-machine`, `screens`, `talents-ui`, `main-character-ui`, `fidelity`, `company-dashboard`,
+`business`, `conglomerate-play`, `gamedev-review`, `fuzz-regressions` and `workshop`, plus the five seeded simulation tests.
+Those need no pinned number changed. That is a narrower claim than "CI stays green": it says nothing about a file outside
+the list.
+
+A second scratch pass ran 37 more files that call `businessAssetView` or `businessScreen` (the three defaults true, one file
+at a time, every other flag at its default). Five failed (eight cases), all for the same cause. With `cockpits` on, `businessScreen`
+returns a short top plus four tiles (`hub.run`, `hub.money`, `hub.lead`, `hub.exit`), so a node that used to sit in the
+top-level list now sits inside a tile, and a test that finds or indexes it at the top level gets nothing back:
+
+| File | Cases | What it reads at the top level |
+|---|---|---|
+| `test/devices-menu.test.ts` | "follows Products, for devices only" | `indexOf` of `biz.devices` next to `biz.products` (both are in the Run tile) |
+| `test/deeptech-review.test.ts` | "keeps an underage owner (an heir) out of the boardroom" | `.find` for `dt.lab` (the Run tile) |
+| `test/deeptech.test.ts` | "runs R&D programs that cost money every year..." and "shows Business-talent hints only with the talent" | a flat `nodes.find` for `dt.lab` (the Run tile), in both cases |
+| `test/books-menu.test.ts` | three cases of "the chartKit flag" | `biz.books` next to `biz.economicReport` (both are in the Money tile) |
+| `test/share-classes-menu.test.ts` | "is under Capital and beside Go Public" | `biz.ipo` and the row after it (the Exit tile) |
+
+`test/competition-era.test.ts` passes, and so do `own-trade`, `silicon-menu`, `board`, `ceo`, `conglomerate` and the
+`heavy-*` files, which read through deep walkers. Add these five files to the lead's pre-flip list, fix them in the release commit,
+and say why in the message: the assertion stays, only the search goes through the tile (a deep walk of the groups, or the
+tile's own `children`). Don't re-baseline anything. Before the flip, run every file that reads a company screen (grep the
+tests for `businessAssetView(`, `businessScreen(` and `biz.`), flipped, one file at a time; other tracks add company rows
+too, and the full suite in CI is the last word.

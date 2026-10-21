@@ -10,9 +10,9 @@
 //   NAV_LINT_UPDATE=1 NODE_OPTIONS=--max-old-space-size=2048 npx vitest run --maxWorkers=1 test/nav-tree.test.ts
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { resetFlags, withFlags } from '../src/game/flags'
-import { actionSequenceCached, canonical, frozen, isTruncated, lintOf, normId, walkTree, walkTreeCached, type NavStateName, type Walked } from './nav-kit'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetFlags, setFlags, withFlags } from '../src/game/flags'
+import { NAV_OFF, actionSequenceCached, canonical, frozen, isTruncated, lintOf, normId, walkTree, walkTreeCached, type NavStateName, type Walked } from './nav-kit'
 
 const NAMES: NavStateName[] = ['kid', 'adult', 'ceo', 'elder']
 const BASELINE_PATH = fileURLToPath(new URL('./fixtures/nav-lint-baseline.json', import.meta.url))
@@ -37,13 +37,26 @@ const HEAVY = 120_000
 const walks = new Map<NavStateName, Walked[]>()
 const menuErrors: string[] = []
 
+// The memo key of a cached walk carries the flag values (navCacheKey), and the lint baseline is the flags-off tree. So
+// every walk here names the three nav flags (NAV_OFF), and a case that wants one on spells all three, never the defaults
+// that the lead's release commit flips. The beforeEach is for the cases; beforeAll runs before it and names them itself.
+beforeEach(() => {
+  setFlags(NAV_OFF)
+})
+
+afterEach(() => {
+  resetFlags()
+})
+
 beforeAll(() => {
   // The first (and only cached) walk of each state happens here, with console.error watched.
   const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
     menuErrors.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(' ').slice(0, 300))
   })
   try {
-    for (const name of NAMES) walks.set(name, walkTreeCached(name))
+    withFlags(NAV_OFF, () => {
+      for (const name of NAMES) walks.set(name, walkTreeCached(name))
+    })
   } finally {
     spy.mockRestore()
   }
@@ -158,13 +171,12 @@ describe('menu tree of the canned states', () => {
 })
 
 describe('cockpit parity (R1-N8)', () => {
-  afterEach(() => {
-    resetFlags()
-  })
-
   it('8. FLAGS.cockpits adds hub groups to the company screens and changes no action sequence, on the ceo state through every tab', () => {
-    const off = actionSequenceCached('ceo')
-    const on = withFlags({ cockpits: true }, () => actionSequenceCached('ceo'))
+    // Both runs name every nav flag, so neither leans on a default. They must be two cache entries (two walks): were the
+    // key to drop the flags, `on` would be `off` handed back and the toEqual below would prove nothing.
+    const off = withFlags(NAV_OFF, () => actionSequenceCached('ceo'))
+    const on = withFlags({ ...NAV_OFF, cockpits: true }, () => actionSequenceCached('ceo'))
+    expect(on, 'flags-on and flags-off share one cache entry').not.toBe(off)
     expect(on.length, 'ceo: actions found').toBeGreaterThan(2000)
     // The seeded drivers pick actions by position: the order matters, not only the set.
     expect(on).toEqual(off)
@@ -177,7 +189,7 @@ describe('cockpit parity (R1-N8)', () => {
   }, HEAVY)
 
   it('8b. the cockpit walk really has the tiles, no duplicate canonical path, and no hub group trips the lint', () => {
-    const walked = withFlags({ cockpits: true }, () => walkTreeCached('ceo'))
+    const walked = withFlags({ ...NAV_OFF, cockpits: true }, () => walkTreeCached('ceo'))
     expect(isTruncated(walked), 'ceo: the walk was cut by the depth or node cap').toBe(false)
     const hubs = walked.filter((w) => w.type === 'menu' && w.ids[w.ids.length - 1]!.startsWith('hub.'))
     // Two companies, each with four tiles, on at least the Occupation and the two Assets routes.
