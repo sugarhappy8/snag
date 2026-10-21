@@ -105,23 +105,27 @@ does, `bootApp` renders anyway and the page plays from whatever localStorage hol
    true, and a late answer from the database is ignored: it never switches the backend back and never writes.
 2. **Candidates.** The IndexedDB record, and the localStorage record next to it (the one v4.0.2 wrote, called legacy
    here; it has the same key name). With localStorage as the backend there is one candidate.
-3. **A winner**, by this table. Every record that doesn't win is kept as a copy (step 4).
+3. **A winner**, by this table. Read it top to bottom: the first row that fits applies. Every readable or damaged record
+   that doesn't win is kept as a copy (step 4). A later version's save is never a loser; it stays where it is.
 
 | IndexedDB holds | localStorage holds | Result |
 |---|---|---|
+| anything | a later version's save | This page plays from localStorage and leaves IndexedDB alone: whatever it holds, even a damaged record, is not copied or cleared. The localStorage record is protected as in the later-version row below. |
 | nothing | nothing | New game. Plays from IndexedDB. |
 | nothing | a readable save | Copied into IndexedDB, read back and compared. Only then is the localStorage record removed. If the copy fails, differs or takes over 3,000 ms, the page plays from localStorage and the record is untouched. |
 | a readable save | nothing | Plays from IndexedDB. |
 | a readable save | a readable save, same `lifeId` | The later `(year, age)` wins. A tie goes to IndexedDB. A winning localStorage record is imported over the IndexedDB one, which was copied first. |
 | a readable save | a readable save, other `lifeId` | IndexedDB wins. |
-| damaged or too old | anything | The bad record is copied and cleared. The other plays if it can. |
-| a later version's save | anything | Stays where it is and is protected: the first save copies it before writing, and writing fails closed if the copy can't be made. A readable localStorage record becomes a copy. |
-| anything | a later version's save | This page plays from localStorage and leaves IndexedDB alone. |
+| damaged or too old | anything else | The bad record is copied and cleared. The other plays if it can. |
+| a later version's save | anything else | Stays where it is and is protected: the first save copies it before writing, and writing fails closed if the copy can't be made. A readable localStorage record becomes a copy. |
 
 4. **Copies.** A losing record is copied byte for byte before anything can overwrite it, and cleared only after the copy is
-   confirmed. Up to 5 copies are kept (3 localStorage slots, 2 in IndexedDB). With 5 kept, the loser stays where it is.
+   confirmed. Up to 5 copies are kept: 3 localStorage slots, and 2 more in IndexedDB that exist only while IndexedDB is
+   open. A page on localStorage keeps at most 3. With the cap reached, the loser stays where it is. For a losing legacy
+   record that has a consequence: if the player then abandons the IndexedDB life, the next boot finds that lone
+   localStorage record and imports it. It needs five kept copies, both stores present and an abandon, and it is accepted.
    Home lists every copy with Download copy and Delete copy (`SaveNotices.tsx`); a save from a newer version offers Reload
-   instead. A record left in the main slot can be downloaded but not deleted from there.
+   and Download copy, with no Delete. A record left in the main slot can be downloaded but not deleted from there.
 
 Tests: `test/save-hydrate.test.ts` (the table, the fallbacks, the import checks, the v4.0.2 shape and the schema 1 fixture),
 `test/save-boot.test.ts`, `test/save-notice.test.ts`. The fake database in `test/save-kit.ts` can fail to open, hang on
@@ -132,6 +136,11 @@ open or read, fail a write, corrupt a read-back, or answer late.
 `FLAGS.idbSaves` is `false` until the lead's release commit. With it off, `hydrateSaves({ idb: false })` still diagnoses and
 keeps copies, but all saving stays on localStorage and writes stay synchronous, as in v4.0.2. To try it before release, open
 the game with `?flags=idbSaves`. Tests turn it on with `withFlags({ idbSaves: true }, ...)`.
+
+The parameter is read from the URL only; nothing remembers it. On a device with a real save, a trial has the same hazard
+as a release (see Rollback): open the game with `?flags=idbSaves` on every visit, or set `localStorage['anotherlife.flags']`
+to `idbSaves` once. After one visit with the parameter and a later one without it, Home is empty and offers a new game
+while the life sits in IndexedDB.
 
 ### After boot
 
@@ -145,15 +154,25 @@ After an import the localStorage key is gone. A v4.0.x build opened on the same 
 returns. If a life was started there, the next boot keeps IndexedDB and files the other life as an older copy.
 
 Don't switch the flag off again once players have imported. Off means "read localStorage only", which is empty by then,
-so their lives stay in IndexedDB and Home offers a new game. Treat the flag as one way after release.
+so their lives stay in IndexedDB and Home offers a new game. Treat the flag as one way after release, and after a trial
+on a device with a real save.
 
 ### How R2's chunk store plugs in
 
-R2 splits a save into a core chunk and a world chunk and reads old single-record saves for one release. The seam is here.
-`main.tsx` keeps awaiting `hydrateSaves` and keeps the `HydrateOutcome` shape, so nothing else changes.
-`diagnoseRecord` is the one place that turns stored text into a game, so joining the chunks goes in front of
-`migrateSave`. `chooseBackend` reads and `importLegacy` writes, so the chunk reader and writer go there. The decision
-table stays: a record that can't be joined is `damaged` and is copied like any other.
+R2 splits a save into a core chunk and a world chunk and reads old single-record saves for one release. `main.tsx` keeps
+awaiting `hydrateSaves` and the `HydrateOutcome` shape stays. Stored text is read and written in three places, and the
+chunk code has to cover all of them:
+
+- **Read at boot.** `chooseBackend` reads the main record, and `diagnoseRecord` is the boot-time place that turns stored
+  text into a game (`decodeSnapshotRecord`, `JSON.parse`, `migrateSave`). Joining the chunks goes in front of `migrateSave`.
+- **Read after boot.** `loadGame` in `save.ts` parses and migrates again, from `readRecord` in `save-store.ts`. With
+  IndexedDB that is the in-memory cache: boot primes it with `primeCache` and each save replaces it. With localStorage (the
+  flag off, or boot fell back) it is the live record, as the backend stored it. The same joining applies there.
+- **Write.** `importLegacy` writes the one-time import. Every later save goes through `writeQueued` in `save-store.ts`
+  (`encodeSnapshotRecord`, then `backend.write`), and a synchronous backend writes inside `saveRecord` itself. A chunk
+  writer that only reached the import would chunk one save and leave all the others whole.
+
+The decision table stays: a record that can't be joined is `damaged` and is copied like any other.
 
 ## 5. Lazy views
 
@@ -182,7 +201,9 @@ also checks that nothing a gate loads is in the static closure of `src/main.tsx`
    The loader must resolve `{ default: Component }`.
 2. Use it where the text rows were, and pass those rows as `fallback`. They show while it loads and if the load fails.
    Pass `fallback={null}` for a decorative view in a row or tile: nothing shows until it's ready.
-3. Test it by awaiting `LazyThing.preload()` and then rendering. Call `resetLazyViewsForTests()` in `beforeEach`.
+3. Test it by awaiting `LazyThing.preload()` and then rendering. A test that creates its own views with `lazyView` calls
+   `resetLazyViewsForTests()` in `beforeEach`. The call empties the registry, so a gate view, which registers when the gate
+   is imported, is forgotten by the first call only. A test that needs a gate view cold creates its own instead.
 4. A new zone gets a `Zone` entry in `test/lazy-zones.test.ts` (its files, its gate, what the gate must load).
 
 When a load fails, which a tab left open across a deploy gets (the old hashed file is gone and the server answers with
@@ -200,4 +221,5 @@ which is 60,000 bytes. CI runs it in the `checks` job right after the build. A c
 
 The baseline is the v4.0.3 build, not the branch with R1 code in it. To capture or refresh it, build that release, run
 `node scripts/bundle-budget.mjs --update` there and commit the file. A baseline of 0 means "not captured yet" and fails the
-check on purpose. Test: `test/bundle-budget.test.ts`, which needs no build.
+check on purpose. The committed baseline is 0 until the lead captures it, so the check, and the `checks` job that runs it,
+fails until then. Test: `test/bundle-budget.test.ts`, which needs no build.
