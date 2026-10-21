@@ -245,3 +245,47 @@ Each acceptance line of the roadmap's R2 block has one primary owner (the task w
 3. R2-L19 is 330 lines of Ledger-world work the roadmap listed only as a player-visible result. If it is cut, the "Everything else" row stays and the line moves to R3 (Ledger-world section 5 point 1).
 4. Roadmap says "one full CI per integration run"; it is yours (no task). Also yours: refreshing `scripts/test-timings.json` after merge, regenerating the golden file under Node 22 (R2-P11 prepares it), and tuning `PROBE_ACTIONS` (R2-L5) if a shard passes 12 minutes.
 5. The Kernel rebase accepts three upward edges (section 4). If you would rather not, the alternative is a one-row change to the layer table in R2-K3 (`business/util.ts` and `business/family-share-state.ts` into the world layer) and `nation/rates.ts` into L2.
+
+## 10. Lead decisions on the planners' open questions (2026-10-22)
+
+These close every open question the five plans raised. Implementers follow them; anything else unclear: follow the code and the plan's intent and say so in the task report.
+
+Ledger and world:
+1. R2-L19 (cash walk without a residual) stays in R2: it is the player-visible "exact cash walk".
+2. Negative inflation: keep the economy unchanged and declare `mint:revaluation` (capped) so conservation stays exact.
+3. Bond par erodes with the deflator like cash (the engine stores purchasing power).
+4. `why` stays optional; it becomes required only if R2-L12 leaves zero unreasoned calls. Survivors are listed in docs/LEDGER.md.
+5. Spread probe scope as planned: markets (R2-L13) and same-year house flips (R2-L6) asserted; goods and vehicles measured; older-house offers wait for A.K4.
+6. The plan's caps and budgets are accepted as written (lending 2.5e9, immigrants 5e8, revaluation and burns 1e12, SPREADS markets 0.001 sellers 0.03 retail 0.10, TRANSACTION_TAX_PER_LEVEL 0.001, WORLD_BUDGET 25,000 nodes and 450,000 bytes). If a probe shows one is wrong, change it with the measured reason.
+7. `yearlyWorld` runs last in R2 (it only indexes); Kernel adds the settle phase; W1 to W6 come later.
+8. Person refs are `person:<id>` until R4 brings `sid`.
+9. A tycoon with more than 20 companies indexes the 20 most valuable as named firms; the rest count as pooled.
+
+Kernel:
+10. Keep today's yearly order exactly (parity). Moving careers after firms is a later, deliberate re-record, not R2.
+11. The settle phase for W7 at the end plus an early world phase are accepted.
+12. Built-ins self-register (special.ts, manage.ts sections); extensions add one line to modules/index.ts. That is what "a track adds one line" means.
+13. `ModuleDef.lod` and `.budget` stay loose reserved records for K.6.
+14. `seeded` moves to src/game/rng.ts (Kernel is right; wave 0's note 1.7.6 is superseded).
+15. The measured 14 import cuts (147 cycle modules to 90) replace "about 40 edges".
+16. test/korean-cash.test.ts may switch from the YEARLY_HOOKS splice to `withYearly` with its assertions untouched.
+17. The three digest vocabularies are not unified in R2 (follow-up after R2).
+
+Save:
+18. No save v3 kill-switch flag: dual-read is the safety net.
+19. `ModuleDef.slices` is `readonly string[]` of slice keys; `world.<name>` is a dynamic sub-slice.
+20. The heavy v4.1.1 fixture shrinks to 20 years and 4 companies (about 90 KB).
+21. The mobile factor check (desktop ms times the printed calibration ratio) is accepted until a real device run exists.
+22. Platform's golden file is regenerated after Save merges (R2-P11).
+
+Platform:
+23. Leftover GameState fields route as planned; the text slice also holds cache-class flags, notes, memories and the obituary.
+24. The deep golden plan runs nightly only; pull requests check the pr plan.
+25. K.7b may run about 700 lines over its 1,500; trim only if a task runs long.
+26. Stream isolation stays in the fast tier while it is under about 20 s.
+27. R2-P3 owns replay, reload and fork identity (RF5) for the whole state.
+28. The text stream API is what wave 0 shipped in src/game/kernel/streams.ts and src/game/text/draw.ts (textUnit, textRand): read it, do not assume.
+
+Process:
+29. The four tracks branch from release/v5.0.0 at the rebaseline commit (361249e). The wave 0 CI fix-up (test files only) lands on release/v5.0.0 while the tracks run; each track merges release/v5.0.0 before its final check. A test failing on a track branch that is listed in moved-seeds.md as pending belongs to the lead's fix-up, not to the track.
+30. Machine limits: at most 6 test or tsc runs at once (wt/bin/vt and wt/bin/tc enforce it), one build at a time (wt/bin/vb).
