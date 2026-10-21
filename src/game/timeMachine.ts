@@ -8,12 +8,17 @@
 //   - the jump is counted (TIME_MACHINE_JUMPS per life unless Sandbox mode is on);
 //   - the dice are re-stirred, otherwise pressing "+ Age" would replay the very same disaster.
 //     That covers g.rng; the engine's per-year seeded rolls (stock and crypto years, business
-//     cycles, stableRoll) read the timeline forks below, so the years after the jump play out
+//     cycles, stableRoll) read the timeline forks (kernel/forks.ts), so the years after the jump play out
 //     afresh while every year up to it stays exactly as it was. Real history (eras, crashes,
 //     wars) is the same in every timeline: knowing it is fair game, as in real life.
 // Everything here is pure: no storage, no React, no Math.random.
 import { log, moneyContextOf, remember, roleLabel } from './core'
+import { FORKS_FLAG, forkTag, timelineForks, type TimelineFork } from './kernel/forks'
 import type { GameState, Json } from './types'
+
+// The fork readers moved to the kernel (R2); every importer of this module keeps its imports.
+export { forkTag, outcomeTag, timelineForks, timelineTag } from './kernel/forks'
+export type { TimelineFork } from './kernel/forks'
 
 /** How many past years are kept (the start of each of the last N birthdays). */
 export const TIME_MACHINE_STOPS = 10
@@ -126,72 +131,15 @@ export function stirSeed(seed: number, salt: number): number {
 // ---------------------------------------------------------------------------
 // Timeline forks
 //
-// The engine rolls some things from seeds keyed by the family and the calendar year rather than
-// from g.rng (stock, index, crypto and gold years; business and deep-tech cycles; stableRoll's
-// hidden yearly trends), so that hints can be honest. Without a fork, a jump would replay those
-// years exactly and turn the Time Machine into a crystal ball for the markets. Every jump to the
-// start of year Y records a fork: seeded rolls for years after Y get the fork's salt, years up to
-// Y keep the seeds they had (so prices, holdings and everything already lived stay the same).
-// A life that never jumped has no forks, and every helper then returns its input unchanged.
-// Kept in g.flags.timelineForks (plain JSON) so heirs can inherit the family's timeline.
+// What a fork is, and the readers (timelineForks, forkTag, timelineTag, outcomeTag), live in kernel/forks.ts.
+// What stays here is what a jump does with them: add a fork, and encode the forks into a family string.
 
-/** Where a jump split the timeline: years after `year` are rolled with `salt`. */
-export interface TimelineFork {
-  year: number
-  salt: string
-}
-
-const FORKS_FLAG = 'timelineForks'
 /** Separates a family seed from its encoded forks in timelineFamily(). */
 const FORK_MARK = '@'
-
-/** The forks of this life's timeline, oldest jump first (years ascending). */
-export function timelineForks(g: Pick<GameState, 'flags'>): TimelineFork[] {
-  const raw = g.flags[FORKS_FLAG]
-  if (!Array.isArray(raw)) return []
-  const out: TimelineFork[] = []
-  for (const f of raw) {
-    if (!isObj(f)) continue
-    const { year, salt } = f
-    if (typeof year === 'number' && Number.isFinite(year) && typeof salt === 'string' && /^[a-z0-9]+$/.test(salt)) {
-      out.push({ year: Math.floor(year), salt })
-    }
-  }
-  return out
-}
 
 /** The forks after one more jump to the start of `year` (forks at or after it no longer matter). */
 export function addFork(forks: readonly TimelineFork[], year: number, salt: string): TimelineFork[] {
   return [...forks.filter((f) => f.year < year), { year, salt }]
-}
-
-/** Seed tag for rolls of `year` under `forks`: '' when the year is shared with the original timeline. */
-export function forkTag(forks: readonly TimelineFork[], year: number): string {
-  if (!Number.isFinite(year)) return ''
-  // Newest jump first: a year after it was lived in its timeline; one before it belongs to an
-  // older timeline (or the original one).
-  for (let i = forks.length - 1; i >= 0; i--) if (year > forks[i].year) return `~${forks[i].salt}`
-  return ''
-}
-
-/**
- * Add to a per-year seed key of `g`'s life, e.g. `${g.lifeId}${timelineTag(g, year)}|...|${year}`.
- * '' for lives that never used the Time Machine (their seeds don't change).
- */
-export function timelineTag(g: GameState, year: number): string {
-  return forkTag(timelineForks(g), year)
-}
-
-/**
- * timelineTag for a roll whose result only shows once `year` is over: the business cycle a
- * company's fiscal `year` is booked with at the next birthday, or a hidden trend of `year` that
- * decides how this year's attempts turn out. Unlike prices (on screen the moment the year
- * starts), these were never seen at the start of the year you jumped back to, so that year
- * rolls new dice too; otherwise a jump would tell you how the year ends. '' for lives that
- * never jumped, and for every year that ended before the latest jump.
- */
-export function outcomeTag(g: Pick<GameState, 'flags'>, year: number): string {
-  return Number.isFinite(year) ? forkTag(timelineForks(g), year + 1) : ''
 }
 
 /**
