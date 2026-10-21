@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { bindMoneyContext, moneyContextOf, moneyDisplay, setMoneyDisplay, shortMoney, withMoneyContext } from '../src/game/core'
 // Importing the currencies registers the real converter (yen, euros), as the game does at startup.
 import '../src/game/data/currencies'
-import { CHART_LIMITS } from '../src/game/charts/spec'
-import { deltaLabel, fit, moneyLabel, pctLabel, priceBasisYear, priceChip, whole } from '../src/game/charts/money'
+import { CHART_LIMITS, type ChartSpec } from '../src/game/charts/spec'
+import { deltaLabel, fit, liveBasisYear, moneyLabel, pctLabel, priceBasisYear, priceChip, whole, withLiveBasis } from '../src/game/charts/money'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 import type { GameState } from '../src/game/types'
 import { makeTestGame } from './helpers'
@@ -45,6 +45,62 @@ describe('priceBasisYear and priceChip', () => {
   it('writes the chip the Frame shows', () => {
     expect(priceChip(2031)).toBe('prices of 2031')
     expect(priceChip(2026)).toBe('prices of 2026')
+  })
+})
+
+describe('liveBasisYear and withLiveBasis', () => {
+  const money = (over: Partial<ChartSpec> = {}): ChartSpec => ({
+    v: 1,
+    kind: 'line',
+    title: 'Net profit',
+    unit: 'money',
+    x: [2027, 2028],
+    series: [{ id: 'net', label: 'Net profit', tone: 'c1', values: [1, 2] }],
+    basis: 2026,
+    summary: 'Net profit rose.',
+    ...over,
+  })
+
+  it('follows the money display and the life on screen, as the axes and the table do', () => {
+    bindMoneyContext(us(2050))
+    setMoneyDisplay({ nominal: true })
+    expect(liveBasisYear()).toBe(2050)
+    setMoneyDisplay({ nominal: false })
+    expect(liveBasisYear()).toBe(PRESENT_YEAR)
+    // No life on screen: money is plain dollars, so there is no other year to name.
+    bindMoneyContext(null)
+    setMoneyDisplay({ nominal: true })
+    expect(liveBasisYear()).toBe(PRESENT_YEAR)
+  })
+
+  it('agrees with the basis a builder gives the same life', () => {
+    for (const nominal of [true, false]) {
+      const g = us(2044)
+      bindMoneyContext(g)
+      setMoneyDisplay({ nominal })
+      expect(liveBasisYear()).toBe(priceBasisYear(g))
+    }
+  })
+
+  it('puts the live basis on a queued spec that carries one, and changes nothing else', () => {
+    bindMoneyContext(us(2050))
+    setMoneyDisplay({ nominal: true })
+    const queued = money({ basis: 2026 })
+    const shown = withLiveBasis(queued)
+    expect(shown.basis).toBe(2050)
+    expect({ ...shown, basis: 2026 }).toEqual(queued)
+    expect(queued.basis).toBe(2026)
+  })
+
+  it('returns the same object when the basis is already right, and leaves a spec with no basis alone', () => {
+    bindMoneyContext(us(2050))
+    setMoneyDisplay({ nominal: false })
+    const right = money({ basis: PRESENT_YEAR })
+    expect(withLiveBasis(right)).toBe(right)
+    const single = money()
+    delete single.basis
+    expect(withLiveBasis(single)).toBe(single)
+    expect('basis' in withLiveBasis(single)).toBe(false)
   })
 })
 

@@ -10,6 +10,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { bizOf } from '../src/game/business/state'
 import { toJson } from '../src/game/business/util'
 import { reportData } from '../src/game/business/yearly'
+import { bindMoneyContext, moneyDisplay, setMoneyDisplay } from '../src/game/core'
 import type { StripRow } from '../src/game/charts/books'
 import { readReportCharts, type ReportCharts } from '../src/game/charts/report'
 import type { ChartSpec } from '../src/game/charts/spec'
@@ -18,6 +19,7 @@ import type { Json, MinigameModal } from '../src/game/types'
 import type { ReportBookProps } from '../src/ui/charts/ReportBook'
 import type { BookHead, BookTab } from '../src/ui/minigames/bookModel'
 import { countSvgNodes, ownerGame } from './charts-kit'
+import { makeTestGame } from './helpers'
 
 const mock = vi.hoisted(() => ({ state: { game: null as unknown } }))
 
@@ -275,6 +277,38 @@ describe('ReportBook', () => {
       expect(html).not.toMatch(/NaN|undefined|Infinity|\[object Object\]/)
     })
   }
+
+  describe('the price chip', () => {
+    const saved = { ...moneyDisplay() }
+    afterEach(() => {
+      setMoneyDisplay({ mode: saved.mode, nominal: saved.nominal })
+      bindMoneyContext(null)
+    })
+
+    // The report waits in the modal queue (the queue is saved), so the basis it carries can be older than the Settings the
+    // player has when it opens. The axes and the table follow the live money display, and the chip names the same prices.
+    for (const tab of ['pl', 'cash', 'market'] as const) {
+      it(`names the prices on screen now, not the prices of the day the report was queued (${tab})`, () => {
+        const g = makeTestGame(1, { countryId: 'us' })
+        g.year = 2050
+        bindMoneyContext(g)
+        setMoneyDisplay({ nominal: true })
+        const asLived = renderBook({ initialTab: tab })
+        expect(asLived).toContain('<span class="ch-chip">prices of 2050</span>')
+        expect(asLived).not.toContain('prices of 2031')
+        setMoneyDisplay({ nominal: false })
+        const today = renderBook({ initialTab: tab })
+        expect(today).toContain('<span class="ch-chip">prices of 2026</span>')
+        expect(today).not.toContain('prices of 2031')
+        expect(today).not.toContain('prices of 2050')
+      })
+    }
+
+    it('draws no chip on a chart that carries no basis', () => {
+      const html = renderBook({ initialTab: 'pl', charts: THIN })
+      expect(html).not.toContain('ch-chip')
+    })
+  })
 
   it('is a lazy view of its own, named for the registry', () => {
     expect(LazyReportBook.displayName).toBe('Lazy(report-book)')

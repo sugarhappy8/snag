@@ -8,6 +8,7 @@
 // Only the open tab's panel is rendered. Money labels use the live bound money context, like every component.
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import type { StripRow } from '../../game/charts/books'
+import { withLiveBasis } from '../../game/charts/money'
 import type { ReportCharts } from '../../game/charts/report'
 import type { ChartSpec } from '../../game/charts/spec'
 import { rovingStop } from '../a11y/roving'
@@ -39,11 +40,14 @@ function tileProps(spec: ChartSpec): KpiTileProps {
   return p.delta ? { ...p, delta: { ...p.delta, good: p.delta.dir === 'flat' ? null : p.delta.dir === 'up' } } : p
 }
 
-/** A chart in its frame, and its footnote under it (the cash walk and the cost structure carry one; the frame does not draw it). */
+/**
+ * A chart in its frame, and its footnote under it (the cash walk and the cost structure carry one; the frame does not
+ * draw it). The report was built when it was queued, so the chip names the prices on screen now, like the axes do.
+ */
 function Chart({ spec }: { spec: ChartSpec }): ReactElement {
   return (
     <div className="rb-block">
-      <ChartView spec={spec} />
+      <ChartView spec={withLiveBasis(spec)} />
       {spec.note ? <p className="rb-foot">{spec.note}</p> : null}
     </div>
   )

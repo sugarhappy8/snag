@@ -1,10 +1,10 @@
 // Money labels and text fitting for chart builders (R1 charts, D.2). Pure: they read the life and the display
 // setting and write nothing. Values stay in internal dollars (the engine keeps constant PRESENT_YEAR dollars, see
 // history/timeline.ts), so no series is ever deflated here; only the label changes with the player's display setting.
-import { moneyContextOf, moneyDisplay, shortMoney, withMoneyContext } from '../core'
+import { currentMoneyContext, moneyContextOf, moneyDisplay, shortMoney, withMoneyContext } from '../core'
 import { PRESENT_YEAR } from '../history/timeline'
 import type { GameState } from '../types'
-import { CHART_LIMITS, SPEC_LIMITS } from './spec'
+import { CHART_LIMITS, SPEC_LIMITS, type ChartSpec } from './spec'
 
 /**
  * The year whose prices the money labels of one chart use. With "prices as they were" on, labels are in the prices of
@@ -12,6 +12,28 @@ import { CHART_LIMITS, SPEC_LIMITS } from './spec'
  */
 export function priceBasisYear(g: GameState): number {
   return moneyDisplay().nominal ? g.year : PRESENT_YEAR
+}
+
+/**
+ * The price year the money on screen is read in right now: the year of the life on screen with "prices as they were" on,
+ * today's money otherwise (with no life on screen money is plain dollars, so today's). The axes and the table of a chart
+ * are formatted live, so this is the year they are in, whatever the chart was built with.
+ */
+export function liveBasisYear(): number {
+  const ctx = currentMoneyContext()
+  return moneyDisplay().nominal && ctx !== null && Number.isFinite(ctx.year) ? Math.round(ctx.year) : PRESENT_YEAR
+}
+
+/**
+ * A chart that has waited (the Annual Report sits in the modal queue, and the queue is saved) with the chip of the prices
+ * on screen now. Its `basis` was fixed when it was built, but the player can change the money display before it opens,
+ * and the axes and the table follow the live display; the chip must name the same prices. A spec with no basis (a
+ * single-year chart) comes back as it is, and so does one whose basis is already right.
+ */
+export function withLiveBasis<T extends ChartSpec>(spec: T): T {
+  if (spec.basis === undefined) return spec
+  const basis = liveBasisYear()
+  return basis === spec.basis ? spec : { ...spec, basis }
 }
 
 /** The chip the frame shows next to a multi-year money chart. */
