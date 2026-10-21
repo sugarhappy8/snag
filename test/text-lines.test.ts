@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { LIMITS, staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { futureHeadlines, GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../src/game/history/events-future'
 import { eraSafe } from '../src/game/history/events-guard'
+import { BOUNDARY_LINES } from '../src/game/events/wealth-resolve'
 import { ADMIRER_LINES, SCAM_LINES } from '../src/game/events/wealth-world'
 import { PRO_SEASON_LINES } from '../src/game/special/athlete'
 import { isMemKey } from '../src/game/text/memory'
@@ -237,6 +238,7 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'athlete.proSeason', lines: PRO_SEASON_LINES, role: 'log', slots: ['nth', 'team', 'stats'] },
   { id: 'wealth.scam', lines: SCAM_LINES, role: 'log', slots: ['money'] },
   { id: 'wealth.admirer', lines: ADMIRER_LINES, role: 'log', slots: ['money'] },
+  { id: 'wealth.boundary', lines: BOUNDARY_LINES, role: 'log', slots: ['who'] },
 ]
 
 describe('the pools of R2-P10', () => {

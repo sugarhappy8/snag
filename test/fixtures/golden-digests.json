@@ -41,7 +41,7 @@
     "5": {"rng":"d6a65005999ecea0","character":"6ccaca6b9e545898","people":"48822020074a2269","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"b170863e152256e3","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"ba99653af3d980a5","text":"7558e8e3e43e23c6"},
     "10": {"rng":"69a5834e399a6d83","character":"cf3e374cafb55b93","people":"06935efb2ec55478","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"c5417d7f98244528","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"f91a69ddc91ce872","text":"bcd4e574c42e8aff"},
     "20": {"rng":"49ff886b5d261532","character":"4da6b68cb45a15b5","people":"744be06d5ef6cdbe","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"4c85aacd6bb98e98","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"ac8b6c7ccec17423","text":"2b7bb37f073a2434"},
-    "end": {"rng":"a9e0af8c93dd6249","character":"adba84194e983062","people":"e5cfc1aa165659ef","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"3e671eca3f4a114f","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"9fd45e6489b3ca51","text":"3ee87c5f96b1f9a0"}
+    "end": {"rng":"a9e0af8c93dd6249","character":"adba84194e983062","people":"e5cfc1aa165659ef","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"3e671eca3f4a114f","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"9fd45e6489b3ca51","text":"8a4f6f2ab5f7910f"}
    },
    "founder-1975": {
     "5": {"rng":"3c479319cf659d40","character":"d87853d338d066d4","people":"81f528f854604153","assets":"32bee1cfc1be2450","world":"35dd109a87e3aae5","economy":"3b3ee33c8c9fe8f3","flagsWorld":"ab64eaa34a4ad7d2","flagsPersonal":"4fb7bf0c85c698a5","text":"aef6a57d77e6e82e"},
@@ -73,9 +73,9 @@
    "rich-1975": {
     "10": {"rng":"7be04d85e8860b9c","character":"53e8e1cc503b366f","people":"4a6c7c5216755f81","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"c413dcb35b0be47e","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"c5d15e2a85fdd77d","text":"810490493d330264"},
     "20": {"rng":"f13d4eeebd3accfd","character":"9eb5233f693af0be","people":"592d5b054033abe8","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"0e54d0f409858b61","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"7ce5d93f1d20360c","text":"c5ef436b0e776798"},
-    "40": {"rng":"14791e4b215862d8","character":"271852cdb4a5ef46","people":"b2281e0b62bac500","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"c8fae4cf7875f7b4","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"6b27e9cacf1d07a3","text":"52d3a7372fbb9bfa"},
-    "60": {"rng":"e34e156f7a52d4e6","character":"06fc209b9cf6b43a","people":"93a996809851229f","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"3a3c8847793718d6","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"17a850c280366dcd","text":"b3badb4817c35949"},
-    "end": {"rng":"2bbd21bdd7df3d98","character":"c6f4c87dcdaab7ae","people":"32f84d0eb99d1f89","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"89234146357abcfb","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"ce959f800cced399","text":"e2677a39398c502a"}
+    "40": {"rng":"14791e4b215862d8","character":"271852cdb4a5ef46","people":"b2281e0b62bac500","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"c8fae4cf7875f7b4","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"6b27e9cacf1d07a3","text":"01a584eec2fdb9b5"},
+    "60": {"rng":"e34e156f7a52d4e6","character":"06fc209b9cf6b43a","people":"93a996809851229f","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"3a3c8847793718d6","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"17a850c280366dcd","text":"9129b60a08b96ba9"},
+    "end": {"rng":"2bbd21bdd7df3d98","character":"c6f4c87dcdaab7ae","people":"32f84d0eb99d1f89","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"89234146357abcfb","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"ce959f800cced399","text":"714fc047a45d2210"}
    },
    "birth-1925": {
     "10": {"rng":"ffa08ed69081e949","character":"1122b54024612953","people":"2a88b3ef58c1c35e","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"782941f86ed1da67","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"7127bc1ce3035103","text":"6b9c6ec9d9ad7242"},
@@ -86,9 +86,9 @@
    "rich-1935": {
     "10": {"rng":"80204b896b6b950a","character":"9157414454f2ce19","people":"b9d2b1bf3313d65a","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"368cdafad2741bfd","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"2259f382f168dbd7","text":"d9373c86e74256e1"},
     "20": {"rng":"e59552bc160c49ef","character":"fe0503aa6450e0e5","people":"c33e0d447920d1b3","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"c282bf754a9c39c0","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"ab99d27c75b97215","text":"b2dc78b3c82bf6f4"},
-    "40": {"rng":"c78e5b274c19a06c","character":"4935932cbd1676d1","people":"2aee2544774f5d2b","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"7b7852060b7178d5","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"49053db57412bac0","text":"c852df8753b9f24c"},
-    "60": {"rng":"f49eb251e2d41f46","character":"6ebfd0c857ecabb7","people":"19d31f7be2264690","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"297b111e34ca1491","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"312154c1bb818c0e","text":"b31c49a886d84e75"},
-    "end": {"rng":"568fb23d9ef7e1a4","character":"bdb7bc9753090998","people":"55f7d0b8a5b6c0eb","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"5a2148c03bc93ec1","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"db123fe99a44d292","text":"160a76e1222d554e"}
+    "40": {"rng":"c78e5b274c19a06c","character":"4935932cbd1676d1","people":"2aee2544774f5d2b","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"7b7852060b7178d5","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"49053db57412bac0","text":"312d19d2bfb661e9"},
+    "60": {"rng":"f49eb251e2d41f46","character":"6ebfd0c857ecabb7","people":"19d31f7be2264690","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"297b111e34ca1491","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"312154c1bb818c0e","text":"56aa2622c6c201ff"},
+    "end": {"rng":"568fb23d9ef7e1a4","character":"bdb7bc9753090998","people":"55f7d0b8a5b6c0eb","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"5a2148c03bc93ec1","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"db123fe99a44d292","text":"063f156d5ff11346"}
    },
    "birth-1962": {
     "10": {"rng":"3543e671c1515c50","character":"c49a050d10b29ce8","people":"c6f71035b6758830","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"d7d0a4ed4a01c3a0","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"0cd57d7c68b3d7ad","text":"01823c213ee227a2"},
@@ -99,9 +99,9 @@
    "rich-2026": {
     "10": {"rng":"31d079b7e73f8b62","character":"41f2c0429c871e3d","people":"6e9be5d0ec9038a7","assets":"06ccad45a05e1920","world":"35dd109a87e3aae5","economy":"f3b74081e99afa78","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"a95eb42967c0eb1c","text":"60ab599a70a304b3"},
     "20": {"rng":"e903143e2ba9b915","character":"f60c347e279e0fd7","people":"0dd504694d163344","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"d969e49543ac19b2","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"e6afe01c00dc90e1","text":"af148a16bd1023c7"},
-    "40": {"rng":"1c2d2152b1de6acf","character":"9d0491de74957805","people":"53b810b288e091e1","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"2ed7d8229194616d","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"942f2cd3e0f21738","text":"780035563b5f9435"},
-    "60": {"rng":"097a4f89758e04f0","character":"45959ccee9e49623","people":"fe75314c9cb1b62f","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"588e6b0b87e05dba","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"fed59fc170f08e24","text":"80dd76e0ae1bcde9"},
-    "end": {"rng":"c60076598ca9a68c","character":"ba78cab3c04c6730","people":"f3658107deeb3822","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"eb80ee07d01b5da8","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"9bf8f89cc2487a05","text":"c21652196e599d80"}
+    "40": {"rng":"1c2d2152b1de6acf","character":"9d0491de74957805","people":"53b810b288e091e1","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"2ed7d8229194616d","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"942f2cd3e0f21738","text":"3f425f4355e1320e"},
+    "60": {"rng":"097a4f89758e04f0","character":"45959ccee9e49623","people":"fe75314c9cb1b62f","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"588e6b0b87e05dba","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"fed59fc170f08e24","text":"eabc872d1d5bb690"},
+    "end": {"rng":"c60076598ca9a68c","character":"ba78cab3c04c6730","people":"f3658107deeb3822","assets":"7461179b0794bbb6","world":"35dd109a87e3aae5","economy":"eb80ee07d01b5da8","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"9bf8f89cc2487a05","text":"98302e6683d63e3b"}
    },
    "founder-1926-x12": {
     "10": {"rng":"80ffd04ee8999b2d","character":"9aeb30c0b465f9bb","people":"8983519b3d469c6c","assets":"20f1494cfad1fefd","world":"35dd109a87e3aae5","economy":"de233b042b54f465","flagsWorld":"596b5344486ba08d","flagsPersonal":"2215119fd3df1878","text":"2e86f61829a8b827"},
@@ -139,6 +139,7 @@
   {"at":"R2-P9 index","plan":"all","reason":"text only: index crash and boom days on state lines, one per kind in five years","moved":["text"]},
   {"at":"R2-P9 endorse","plan":"all","reason":"text only: endorsement income on a state line, once in five years","moved":["text"]},
   {"at":"R2-P9 loan","plan":"all","reason":"text only: part payments of a loan on a state line, once per halving of the debt","moved":["text"]},
-  {"at":"R2-P10 scam","plan":"all","reason":"text only: the Games and World Cup rhythm headlines by edition, the pro season frames, the scam and admirer lines in variants","moved":["text"]}
+  {"at":"R2-P10 scam","plan":"all","reason":"text only: the Games and World Cup rhythm headlines by edition, the pro season frames, the scam and admirer lines in variants","moved":["text"]},
+  {"at":"R2-P10 boundaries","plan":"all","reason":"text only: the money boundary line in five variants","moved":["text"]}
  ]
 }

@@ -15,9 +15,11 @@ import { readTies, updateTies } from '../src/game/events/wealth-core'
 import { setAllowance } from '../src/game/events/wealth-kids'
 import { GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../src/game/history/events-future'
 import { askDef } from '../src/game/events/wealth-catalog'
+import { ASK_SCRIPT, BOUNDARY_LINES, presentAskDirect } from '../src/game/events/wealth-resolve'
 import { ADMIRER_LINES, SCAM_LINES } from '../src/game/events/wealth-world'
 import type { Ask } from '../src/game/events/wealth-ask'
 import { createPerson } from '../src/game/people'
+import { runScript } from '../src/game/scripts'
 import { PRO_SEASON_LINES, yearlyAthlete } from '../src/game/special/athlete'
 import { hire } from '../src/game/special/common'
 import { sportsProfile, yearlySponsors } from '../src/game/special/sports-core'
@@ -224,6 +226,14 @@ const FAMILIES: readonly Family[] = [
     pools: [ADMIRER_LINES],
     was: 'I spent $8,000 on an admirer who left when the gifts stopped.',
     slots: { money: '$8,000' },
+  },
+  {
+    name: 'boundaries',
+    re: /^(i set money boundaries with |i told .+ i was done talking about money\.|i said no to .+ and meant it\.|i drew a line with .+ about money\.|money was off the table with .+ for a while\.)/,
+    maxExtra: 6,
+    pools: [BOUNDARY_LINES],
+    was: 'I set money boundaries with my sister Marit.',
+    slots: { who: 'my sister Marit' },
   },
 ]
 
@@ -497,6 +507,52 @@ describe('R2-P10 sites, played directly', () => {
         g.year += 1
         sendToScammer(g)
         treatAdmirer(g)
+      }
+    })
+  })
+
+  /** A rich life with a sister, a father and a brother, any of whom may ask for money. */
+  function withRelatives(): GameState {
+    const g = richStranger()
+    g.character.age = 45
+    createPerson(g, { relation: 'sibling', age: 41, relationship: 80, firstName: 'Marit', gender: 'female' })
+    createPerson(g, { relation: 'parent', age: 72, relationship: 80, firstName: 'Yasiel', gender: 'male' })
+    createPerson(g, { relation: 'sibling', age: 38, relationship: 80, firstName: 'Ismail', gender: 'male' })
+    return g
+  }
+
+  /** Answers the ask of the person at `index` with "Set boundaries", through the real popup, and returns nothing. */
+  function setBoundaries(g: GameState, index: number): void {
+    const p = g.people[index]
+    presentAskDirect(g, { k: 'sibling.rent', pid: p.id, name: p.firstName, title: 'Rent', emoji: '\u{1F3E0}', text: 'Can you help with rent?', amt: 1_200, what: 'help with rent' })
+    const m = g.queue.shift()
+    if (!m || m.kind !== 'choice') throw new Error('no choice popup')
+    expect(m.choices.map((c) => c.id), 'the popup offers boundaries').toContain('bound')
+    runScript(g, m.scriptId ?? ASK_SCRIPT, 'bound', m.data, m)
+    g.queue = []
+  }
+
+  it('boundaries set with several people read in different words: every frame inside the first cycle, never the same one twice running', () => {
+    const g = withRelatives()
+    for (let i = 0; i < 7; i++) {
+      g.year += 1
+      setBoundaries(g, i % 3)
+    }
+    const said = lines(g).filter((t) => family('boundaries').re.test(normalize(t)))
+    expect(said, said.join(' | ')).toHaveLength(7)
+    const frames = framesOf(said, BOUNDARY_LINES)
+    expect(frames.every((f) => f >= 0), said.join(' | ')).toBe(true)
+    expect(new Set(frames.slice(0, BOUNDARY_LINES.length)).size, said.join(' | ')).toBe(BOUNDARY_LINES.length)
+    for (let i = 1; i < frames.length; i++) expect(frames[i], `boundaries ${i} and ${i + 1}: ${said[i]}`).not.toBe(frames[i - 1])
+    // Each line names the person it was set with, as "my sister Marit".
+    for (let i = 0; i < said.length; i++) expect(said[i], said[i]).toContain(`my ${['sister', 'father', 'brother'][i % 3]} ${['Marit', 'Yasiel', 'Ismail'][i % 3]}`)
+  })
+
+  it('the boundary line is text only: plain pick and the next line leave g.rng and every other state alone', () => {
+    leaksNothing(withRelatives, (g) => {
+      for (let i = 0; i < 4; i++) {
+        g.year += 1
+        setBoundaries(g, i % 3)
       }
     })
   })
