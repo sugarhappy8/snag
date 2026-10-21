@@ -132,6 +132,14 @@ const FAMILIES: readonly Family[] = [
     was: 'Around me: Spending, lending and employment are adjusting gradually.',
     slots: { cause: 'Spending, lending and employment are adjusting gradually.' },
   },
+  {
+    name: 'index days',
+    re: /^the .+ (crashed|boomed|fell|dropped|jumped|gained|slid|lost|climbed|surged) #%/,
+    maxExtra: 6,
+    rows: ['index.crash', 'index.boom'],
+    was: 'The IBC crashed 29% this year. Good thing I had nothing in it.',
+    slots: { index: 'IBC', move: '29%' },
+  },
 ]
 
 describe('R2-P9 families', () => {

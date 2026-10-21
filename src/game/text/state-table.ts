@@ -57,12 +57,15 @@ export const STATE_TABLE = {
     band: () => 0,
   },
   // Index days for someone with nothing in the market (investments.ts yearlyInvestments). The value is the size of the move
-  // (a fraction), {index} the index's name and {move} the news's wording of the move.
+  // (a fraction), {index} the index's name and {move} the news's wording of the move. Five variants each: a country with a
+  // shaky market has four or five of these days in a life, and the fourth must not reuse the first one's words.
   'index.crash': {
     variants: [
       'The {index} crashed {move} this year. Good thing I had nothing in it.',
       'The {index} fell {move}. I was glad to be out of it.',
       'The {index} dropped {move}, and I had nothing to lose.',
+      'The {index} slid {move} this year, and I had no money in it.',
+      'The {index} lost {move} while my money stayed put.',
     ],
     band: bandBy(0.2, 0.35),
   },
@@ -71,6 +74,8 @@ export const STATE_TABLE = {
       'The {index} boomed {move} this year. I wish I had invested.',
       'The {index} jumped {move}, and I watched it from the sidelines.',
       'The {index} gained {move} without me.',
+      'The {index} climbed {move} this year, and I missed the ride.',
+      'The {index} surged {move} while my money sat still.',
     ],
     band: bandBy(0.2, 0.35),
   },
