@@ -143,6 +143,22 @@ export function startNpcCompany(g: GameState, p: Person, industry?: Industry): b
   saveNpcLife(p, l)
   return true
 }
+/**
+ * A family firm passes to a living adult relative (the designated sibling of a player who died) and
+ * runs on as their company, instead of being turned into cash. Refuses when the person is dead,
+ * under 21 or already holds any company record. Draws nothing from g.rng.
+ */
+export function adoptNpcCompany(g: GameState, p: Person, a: Asset, b: BizState): boolean {
+  if (!p.alive || p.age < 21 || npcCompany(p, g.year) || (p.data.npcCompany ?? null) !== null) return false
+  const l = initializeNpc(g, p)
+  b.npcOwnerId = p.id; b.ceo = 'manager'
+  b.manager = { firstName: p.firstName, lastName: p.lastName, gender: p.gender, skill: l.skill, salary: 0, since: g.year }
+  a.details = b as unknown as Record<string, Json>
+  refreshValue(a, b); storeCompany(p, a)
+  p.occupation = 'Business Owner'; l.employer = a.name
+  saveNpcLife(p, l)
+  return true
+}
 function claim(g: GameState, id: string): Asset | undefined { return g.assets.find(a => a.kind === 'investment' && a.details.npcCompanyId === id) }
 /** One affordable, forecast-positive expansion at a time; the same site planner as player CEOs. */
 export function expandNpcCompany(g: GameState, b: BizState, l: NpcLife): number {
@@ -185,7 +201,7 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialApp
   const payout = Math.min(Math.max(0, result.stmt.net) * .2, Math.max(0, b.cash - b.debt - typicalIncome(g, l.country)))
   b.cash -= payout; p.money += payout * b.share * .8
   if (stake) earnIncome(g, payout * playerShare)
-  evolve(g, b, result.stmt, fiscal); stampWave(g, b, fiscal); recordYear(b, result.stmt); b.history = b.history.slice(-12)
+  evolve(g, b, result.stmt, fiscal); stampWave(g, b, fiscal); recordYear(b, result.stmt, { lean: true }); b.history = b.history.slice(-12)
   const expansion = g.year % 3 === 0 ? expandNpcCompany(g, b, l) : 0
   if (expansion) milestone(g, p, l, `${a.name} reinvested ${money(expansion)} in a new operating location`)
   b.valuation = valuationOf(b); refreshValue(a, b)

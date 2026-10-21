@@ -117,13 +117,13 @@ describe('startup', () => {
     expect(settingsAtStartup).toContain('sk-secret-key')
     expect(settingsAfterStartup).toBeDefined()
     expect(settingsAfterStartup).not.toMatch(/sk-|apiKey|provider|baseUrl|model|aiLevel|setupDone|temperature|showAiBadges/)
-    expect(JSON.parse(settingsAfterStartup!)).toEqual({ money: 'usd', prices: 'today', sandboxTimeMachine: true })
-    expect(store.getApp().settings).toEqual({ money: 'usd', prices: 'today', sandboxTimeMachine: true })
+    expect(JSON.parse(settingsAfterStartup!)).toEqual({ money: 'usd', prices: 'today', sandboxTimeMachine: true, quietMode: true })
+    expect(store.getApp().settings).toEqual({ money: 'usd', prices: 'today', sandboxTimeMachine: true, quietMode: true })
   })
 
   it('never stores anything but the known settings', () => {
     store.updateSettings({ money: 'local', apiKey: 'sk-sneaky' } as never)
-    expect(store.getApp().settings).toEqual({ money: 'local', prices: 'today', sandboxTimeMachine: true })
+    expect(store.getApp().settings).toEqual({ money: 'local', prices: 'today', sandboxTimeMachine: true, quietMode: true })
     expect(storage.get('anotherlife.settings.v1')).not.toContain('sk-sneaky')
     store.updateSettings({ money: 'usd' })
   })

@@ -5,17 +5,18 @@ import { marketOf } from '../data/markets'
 import { baseLoanRate } from '../finance'
 import { economyOf, lendingConditions, recordEconomicActivity } from '../economy'
 import { settleLateFamilyOwners } from './dynasty-ownership'
+import { readReportCharts, reportCharts, type ReportCharts } from '../charts/report'
+import { flagOn } from '../flags'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
-import type { AnnualReportData, Asset, ChoiceOption, GameState, NoticeModal } from '../types'
+import type { AnnualReportData, Asset, ChoiceOption, GameState, Json, NoticeModal } from '../types'
 import { getCountry } from '../world'
 import { boardYear } from './board'
 import { ceoLetter, smartCeo, smartManagerTurn } from './board-ceo'
 import { styleOf, syncCeo } from './career'
 import { executiveOperations, executiveRetentionYear, groupRetentionYear } from './executive'
 import { returnFormerExecutiveShares } from './executive-shares'
-import { settlePerfectForesight } from './executive-foresight'
 import { prepareInternalServices, settleInternalServices } from './group-services'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
 import { groupRescue, inGroup, prepareGroupManagement, yearlyConglomerates } from './conglomerate'
@@ -228,6 +229,22 @@ function marketNote(g: GameState, b: BizState, lastCycle: number): string {
   return parts.join(' ')
 }
 
+/**
+ * The three texts of an Annual Report, the ones that write money in words: the statement lines, the market note and, when
+ * `withChart` is true, the Annual Report 2.0 charts (their verdict, tile notes and summaries). Pure. Money is written under
+ * the money display in force when this is called, so a report written at the close of the year and one written when the
+ * card opens say the same sums in the same prices only if the player reads money the same way at both moments (reportDataNow).
+ */
+export function reportCopy(g: GameState, a: Asset, b: BizState, withChart: boolean): { lines: AnnualReportData['lines']; marketNote: string; chart: ReportCharts | null } {
+  const bounds = planBounds(g, a.id, b)
+  const lastCycle = b.last?.cycle ?? cycleOf(g, b.countryId, g.year - 1)
+  const lines = b.last ? statementLines(b, b.last) : [line('First year', 'Your doors open soon. Set your launch price and production.')]
+  // Annual Report 2.0 (R1-C10): readBiz hands the builders a normalized copy, so a damaged saved history never reaches them.
+  const chart = withChart ? reportCharts(g, a, readBiz(g, a), marketViewOf(g, b)) : null
+  const marketText = [marketNote(g, b, lastCycle), economicReportSummary(b)].filter(Boolean).join(' ') + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : '')
+  return { lines, marketNote: marketText, chart }
+}
+
 /** Everything the Annual Report minigame needs (satisfies AnnualReportData exactly). */
 export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportData {
   const def = industryDef(b.industry)
@@ -237,7 +254,7 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
   const suggested = round2(clampN(plan.suggested, bounds.min, bounds.max))
   const expected = planFor(g, b, g.year, { price: suggested, calm: true, cycle: () => lastCycle }).demand
   const maxProd = maxProduction(g, b)
-  const lines = b.last ? statementLines(b, b.last) : [line('First year', 'Your doors open soon. Set your launch price and production.')]
+  const { lines, marketNote: marketText, chart } = reportCopy(g, a, b, flagOn('annualReport2'))
   return {
     assetId: a.id,
     businessName: a.name,
@@ -255,9 +272,40 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
     maxProduction: maxProd,
     inventory: Math.max(0, Math.round(b.inventory)),
     expectedDemand: Math.max(0, Math.round(expected)),
-    marketNote: [marketNote(g, b, lastCycle), economicReportSummary(b)].filter(Boolean).join(' ') + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : ''),
+    marketNote: marketText,
     lines,
     ...(hasTalent(g, 'Business') ? { talentHint: planHint(g, a, b) } : {}),
+    ...(chart ? { chart: toJson(chart) } : {}),
+  }
+}
+
+/**
+ * An Annual Report that was queued earlier, with its sentences written again under the money display on screen now.
+ *
+ * The report is built when the year closes and waits in the saved modal queue, but the book draws its numbers when it
+ * opens (the axes, the tile values and chips, the waterfall rows and the price chip are all formatted live), while the
+ * verdict, the tile notes, the market note and the statement lines were written then. Opened under another display than the
+ * one it was built under ("prices as they were" switched on or off in between, or a save made by another build), a tile
+ * printed "+ $8,803" with "up $9,260" under it. This writes `lines`, `marketNote`, the Business instinct (its text names
+ * prices) when the report has one and, for a report that carries a book, `chart` again from the books, so every figure on
+ * the card is in the prices the chip names; the plan (price, production, ranges) stays as queued. The data comes back as it
+ * is, the very same object, when the company is gone, its last statement is not the report's year, or anything goes wrong.
+ * Pure: it writes nothing and draws no random number.
+ */
+export function reportDataNow(g: GameState, data: Json): Json {
+  try {
+    const d = rec(data)
+    const a = d ? findBusiness(g, str(d.assetId)) : undefined
+    if (!d || !a) return data
+    const b = readBiz(g, a)
+    if (!b.last || b.last.year !== d.year) return data
+    const copy = reportCopy(g, a, b, readReportCharts(d.chart) !== null)
+    const out: Record<string, Json> = { ...d, lines: toJson(copy.lines), marketNote: copy.marketNote }
+    if (rec(d.talentHint) !== null && hasTalent(g, 'Business')) out.talentHint = toJson(planHint(g, a, b))
+    if (copy.chart) out.chart = toJson(copy.chart)
+    return out
+  } catch {
+    return data
   }
 }
 
@@ -528,8 +576,6 @@ export function yearlyBusinessImpl(g: GameState): void {
     // the statement counts them once as other income, taxed at headquarters.
     const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
     const s = res.stmt
-    settlePerfectForesight(g, b, s)
-    if (s.strategicIncome) log(g, `${a.name}'s 100-rated company or group leadership earned ${money(s.strategicIncome)} of strategic trading income through perfect foresight. It is included once in other income and corporate tax; this game ability protects annual net earnings, not the market share price.`, 'good')
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     recordEconomicReport(b, previousStatement, s)
     statementBridges.set(a.id, { previous: previousStatement, bookedNet: s.net })
@@ -544,12 +590,14 @@ export function yearlyBusinessImpl(g: GameState): void {
       failure: res.bank ? Math.max(0, -b.cash - res.bank.bankLoss) : Math.max(0, previousRevenue - s.revenue) + Math.max(0, -b.cash),
       ...res.bank,
     })
+    // evolve() clears the year's owner bonuses (they are already inside s.other); the books keep them as a memo.
+    const draws = Math.max(0, b.ownerDraws ?? 0)
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
     if (tech) afterDeepTechYear(g, a, b)
     // The tech-wave mood of the booked year, before anything values the company (business/tech-waves.ts).
     stampWave(g, b, fiscal)
-    const rec0 = recordYear(b, s)
+    const rec0 = recordYear(b, s, { draws })
     b.valuation = b.public ? updateSharePrice(g, b, fiscal) : valuationOf(b)
     rec0.valuation = b.valuation
     refreshValue(a, b)

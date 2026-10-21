@@ -48,17 +48,13 @@ Ratings 85–99 have much stronger demand, efficiency, execution and market-fore
 advantages. Their judgments and deep-tech plans have smaller errors. They can still
 lose money if costs or debt overwhelm operating earnings.
 
-A **100-rated hired CEO** has an explicit perfect-foresight game ability: annual company
-net earnings are positive. When ordinary earnings cannot achieve the profit/cash floor,
-additional strategic trading income is booked once, displayed separately, and taxed.
-Costs and losses are not erased; deposits and client assets are not appropriated. This
-protects annual earnings, not a public share price, an owner's personal investments,
-or the resale value of capital equipment. It applies in the normal yearly business
-settlement across ordinary, game-studio and deep-tech companies. Banks and investment
-firms (v2.2) earn only what their books earn: their statements opt out. It does not
-apply to a 100-skilled player or replace the need to retain a hired CEO.
-An active 100-rated conglomerate CEO also provides this protection to supervised
-divisions, including existing family appointments below that rating.
+No rating guarantees a profit, 100 included. A hired CEO or group CEO at skill 100 books
+the same yearly settlement as any other: a loss year is a loss year, in ordinary, game-studio
+and deep-tech companies and in the divisions a group CEO supervises. Banks and investment
+firms earn only what their books earn. Until v4.0.3 a 100-rated CEO covered a missed year
+with "strategic trading income"; that rule is gone because it created money from nothing.
+The `strategicIncome` row on a statement is kept only so a last statement saved by v4.0.2
+still displays. Nothing sets it any more.
 
 CEOs commercialize inventions already assigned or licensed to their company. They choose
 product prices, pay to build and upgrade fabs within company funds and board budgets,
@@ -87,7 +83,7 @@ The production build and TypeScript validation pass. Focused regressions cover t
 cash conservation, reserve/minority protection, funded ventures and hiring floors, salary
 delegation, private/public buybacks, vested merger awards, bulk service assignment,
 invention commercialization, quant capacity, client-book segregation and the 100-rated
-earnings rule across company types and group supervision.
+earnings rule (removed in v4.0.3) across company types and group supervision.
 
 The broader checks included 438 passing tests across 29 files. After the final ownership
 and group-supervision changes, 177 tests across 15 affected files passed, including the

@@ -1,0 +1,171 @@
+/* Notice digest (R1-T4): one card for a run of plain notices. Built on the global tokens (global.css), so it follows
+   light and dark mode. The card is a .popup, which already scrolls, so nothing here has a fixed height. */
+
+.digest-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.digest-item {
+  padding-left: 10px;
+  border-left: 3px solid var(--hairline);
+}
+
+.digest-item.tone-good {
+  border-left-color: var(--tone-good);
+}
+
+.digest-item.tone-bad {
+  border-left-color: var(--tone-bad);
+}
+
+.digest-item.tone-event {
+  border-left-color: var(--tone-event);
+}
+
+.digest-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* The tone glyph beside a notice's own emoji: the tone is shown in a shape too, not only in the border colour. */
+.digest-mark {
+  margin-left: 2px;
+  font-size: 13px;
+}
+
+.digest-text {
+  display: block;
+  font-size: 14.5px;
+  line-height: 1.45;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* Life log fold (R1-T8): years older than the last three are one row each (LifeLog.tsx). The row is a button inside the
+   year heading, so it reads as the same heading and a screen reader finds it by its level. Tokens only, so it follows
+   light and dark mode; the focus ring comes from the global :focus-visible rule. */
+
+.lifelog-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lifelog-toggle .lifelog-calyear {
+  margin-left: auto;
+}
+
+.lifelog-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.lifelog-glyph {
+  flex: none;
+  width: 1ch;
+  text-align: center;
+}
+
+.lifelog-year.is-collapsed .lifelog-age {
+  margin-bottom: 0;
+}
+
+.lifelog-year.is-collapsed + .lifelog-year.is-collapsed {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* Inbox sheet (R1-T6): where routine notices wait while Quiet Mode is on (InboxSheet.tsx). Tokens only, so it follows
+   light and dark mode. A new row is marked by the border and by the word "New", as a badge and for screen readers, not
+   by colour alone. */
+
+.inbox-group {
+  margin: 0 0 16px;
+}
+
+.inbox-heading {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.inbox-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.inbox-row.is-new {
+  border-left: 3px solid var(--tone-event);
+}
+
+/* The word "New" on an unread row: text, so it does not rely on the colour of the border. */
+.inbox-new {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid var(--tone-event);
+  border-radius: 999px;
+  color: var(--tone-event);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.inbox-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inbox-open {
+  flex: none;
+  min-height: 44px;
+}
+
+.inbox-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inbox-quiet {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}

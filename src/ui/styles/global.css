@@ -32,7 +32,7 @@
   --card: #ffffff;
   --card-2: #f6f8fb;
   --text: #1b2230;
-  --muted: #6a7486;
+  --muted: #566072;
   --border: #e1e6ee;
   --hairline: #edf0f5;
   --chip-bg: #e9eef6;
@@ -48,20 +48,42 @@
   --stat-green: #34c35a;
   --stat-track: #e4e9f0;
 
-  --header-from: #2a86f0;
-  --header-to: #1d6fd8;
+  /* Everything drawn on the header gradient (.hdr, .sheet-header, .al-topbar) reaches 4.5:1 on both ends, in both
+     themes (test/ui-contrast.test.ts). Fainter text uses --header-soft, never opacity. */
+  --header-from: #1a60c1;
+  --header-to: #154f9e;
   --header-text: #ffffff;
+  --header-soft: #e6effc;
+  --header-money: #b9ffcf;
+  --header-money-neg: #ffe1de;
 
-  --tone-good: #1d8a45;
-  --tone-bad: #c8352f;
+  /* The focus ring reaches 3:1 on every surface (test/ui-contrast.test.ts). One touch target size for icon buttons. */
+  --focus-ring: #1556ab;
+  --target: 44px;
+
+  --tone-good: #17703a;
+  --tone-bad: #c2312b;
   --tone-event: #6b3fc4;
-  --age-heading: #1d6fd8;
+  --age-heading: #195fbd;
 
   /* Purple talent hints (🔮): text, soft fill and outline. */
   --hint-text: #6b33bf;
   --hint-bg: #f3ecfd;
   --hint-border: #d9c6f6;
   --hint-ring: #a77ae8;
+
+  /* Chart marks (src/ui/charts). Each reaches 3:1 on --bg, --card and --card-2 in both themes
+     (test/chart-contrast.test.ts). Series are told apart by hue and by marker shape, never by colour alone.
+     Good and bad have their own pair: the --action-* fills fall below 3:1 in dark mode. The grid is the border colour. */
+  --chart-1: #0072b2;
+  --chart-2: #c0480a;
+  --chart-3: #007a5a;
+  --chart-4: #9b4f86;
+  --chart-5: #8a6a00;
+  --chart-6: #4c5a6e;
+  --chart-good: #177638;
+  --chart-bad: #c5302b;
+  --chart-grid: var(--border);
 
   --app-width: 480px;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -105,6 +127,8 @@
     --header-from: #1f5fbf;
     --header-to: #17489a;
 
+    --focus-ring: #8fc0ff;
+
     --tone-good: #5fd38a;
     --tone-bad: #ff7d75;
     --tone-event: #b79bff;
@@ -114,6 +138,15 @@
     --hint-bg: #2a2142;
     --hint-border: #4b3a78;
     --hint-ring: #a982f0;
+
+    --chart-1: #56b4e9;
+    --chart-2: #f08a4b;
+    --chart-3: #2fc79a;
+    --chart-4: #e39ac8;
+    --chart-5: #e6b422;
+    --chart-6: #a9b6c8;
+    --chart-good: #5fd38a;
+    --chart-bad: #ff7d75;
 
     color-scheme: dark;
   }
@@ -196,8 +229,15 @@ svg {
 }
 
 :focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--blue) 55%, transparent);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* On the blue gradients the ring is white (it is 6:1 or better on both ends). */
+.hdr :focus-visible,
+.sheet-header :focus-visible,
+.al-topbar :focus-visible {
+  outline-color: #fff;
 }
 
 input[type='text'],
@@ -487,6 +527,14 @@ label {
   animation: al-slide-up 0.3s cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 
+/* A dialog container is focused by script only (src/ui/a11y/ModalSurface.tsx). A ring around the whole card helps
+   nobody; the controls inside keep the global :focus-visible ring. */
+.sheet:focus,
+.popup:focus,
+.al-dialog:focus {
+  outline: none;
+}
+
 .sheet-header {
   flex: none;
   display: flex;
@@ -500,8 +548,8 @@ label {
 
 .sheet-nav {
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: var(--target);
+  height: var(--target);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -532,8 +580,8 @@ label {
 
 .sheet-nav-spacer {
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: var(--target);
+  height: var(--target);
 }
 
 .sheet-title {
@@ -692,7 +740,7 @@ label {
   flex: none;
   position: relative;
   z-index: 2;
-  padding: calc(6px + var(--safe-top)) 12px 12px;
+  padding: var(--safe-top) 12px 12px;
   background: linear-gradient(180deg, var(--header-from), var(--header-to));
   color: var(--header-text);
   box-shadow: 0 2px 10px rgba(10, 40, 90, 0.22);
@@ -702,7 +750,7 @@ label {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
+  min-height: var(--target);
 }
 
 .hdr-brand {
@@ -720,13 +768,13 @@ label {
   margin-left: 6px;
   font-weight: 600;
   font-size: 12.5px;
-  opacity: 0.8;
+  color: var(--header-soft);
 }
 
 .hdr-icon {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: var(--target);
+  height: var(--target);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -831,7 +879,7 @@ label {
 .hdr-role {
   font-size: 13.5px;
   font-weight: 600;
-  opacity: 0.92;
+  color: var(--header-soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -848,21 +896,21 @@ label {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  opacity: 0.8;
+  color: var(--header-soft);
 }
 
 .hdr-money-value {
   font-size: 19px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
-  color: #b9ffcf;
+  color: var(--header-money);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .hdr-money-value.is-negative {
-  color: #ffc2bd;
+  color: var(--header-money-neg);
 }
 
 /* Life log ----------------------------------------------------------------- */
@@ -1645,6 +1693,19 @@ label {
   opacity: 0.8;
 }
 
+/* A price trend at the end of a stock row (R1-C14). The box holds its place until the chart chunk is in. */
+.menu-spark-ph {
+  display: block;
+  width: 56px;
+  height: 18px;
+}
+
+.menu-spark-ph .ch-spark {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+}
+
 .menu-info {
   display: flex;
   gap: 10px;
@@ -2064,3 +2125,84 @@ label {
   gap: 12px;
 }
 .save-warning p { flex: 1 1 240px; margin: 0; }
+
+/* Home: the kept copies of saves that could not be played (SaveNotices). Inert unless a notice exists. */
+.save-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.save-notice {
+  box-sizing: border-box;
+  padding: 14px 16px;
+  background: var(--card);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+  border-left: 5px solid var(--muted);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.save-notice-damaged,
+.save-notice-tooOld,
+.save-notice-newer,
+.save-notice-unreachable {
+  border-left-color: var(--orange);
+}
+.save-notice-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.save-notice-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.save-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.save-notice-actions .btn {
+  flex: 1 1 140px;
+}
+.save-notice-confirm {
+  margin-top: 12px;
+}
+.save-notice-confirm .save-notice-text {
+  color: var(--text);
+  font-weight: 700;
+}
+.save-notices-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.save-notices-message:empty {
+  display: none;
+}
+
+/* A view that loads on demand (lazyView): the box shown while its code arrives, and the note if it never does. */
+.lazy-box {
+  min-height: 96px;
+  background: var(--card-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+}
+.lazy-failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.lazy-failure p {
+  flex: 1 1 160px;
+  margin: 0;
+}

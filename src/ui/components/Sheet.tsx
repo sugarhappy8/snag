@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ModalSurface } from '../a11y/ModalSurface'
 
 export interface SheetProps {
   title: string
@@ -9,13 +10,15 @@ export interface SheetProps {
   onBack?: () => void
   children: ReactNode
   footer?: ReactNode
+  /** A strip between the header and the body (the breadcrumbs). It does not scroll with the body. */
+  subheader?: ReactNode
 }
 
 /** Bottom sheet over the game screen, used for menus, people and the profile. */
-export function Sheet({ title, emoji, onClose, onBack, children, footer }: SheetProps) {
+export function Sheet({ title, emoji, onClose, onBack, children, footer, subheader }: SheetProps) {
   return (
     <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <ModalSurface role="dialog" label={title} className="sheet">
         <header className="sheet-header">
           {onBack ? (
             <button className="sheet-nav" onClick={onBack} aria-label="Back">
@@ -32,9 +35,10 @@ export function Sheet({ title, emoji, onClose, onBack, children, footer }: Sheet
             ✕
           </button>
         </header>
+        {subheader}
         <div className="sheet-body">{children}</div>
         {footer ? <footer className="sheet-footer">{footer}</footer> : null}
-      </div>
+      </ModalSurface>
     </div>
   )
 }

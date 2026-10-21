@@ -15,6 +15,7 @@ import {
   readTies,
   repayOdds,
   typicalIncome,
+  updateTies,
   wealthTier,
 } from '../src/game/events/wealth-core'
 import { carPrice, setAllowance, VENTURE_PARTIAL } from '../src/game/events/wealth-kids'
@@ -407,6 +408,37 @@ describe('answering', () => {
     }
     expect(readTies(g, kid).owes).toBe(0)
     expect(g.character.money - start).toBeLessThanOrEqual(a.amt)
+  })
+
+  it('a debtor who dodges you says so at most once in five years, and it still costs the bond', () => {
+    const avoid = /has been avoiding me ever since I lent/
+    let firstSeen = 0
+    for (let seed = 1; seed <= 10; seed++) {
+      const g = richGame(seed, 10_000_000)
+      const [kid] = family(g, [30])
+      kid.money = 0
+      kid.relationship = 70
+      updateTies(g, kid, (x) => {
+        x.owes = 20_000
+        x.owesSince = g.year
+      })
+      g.queue = []
+      const start = kid.relationship
+      const years: number[] = []
+      for (let y = 0; y < 20; y++) {
+        wealthYear(g)
+        g.queue = []
+        kid.money = 0
+        for (const row of g.log) for (const e of row.entries) if (avoid.test(e.text)) years.push(row.year)
+        g.log.forEach((row) => (row.entries = row.entries.filter((e) => !avoid.test(e.text))))
+      }
+      expect(years.length, `seed ${seed}`).toBeLessThanOrEqual(4)
+      for (let i = 1; i < years.length; i++) expect(years[i]! - years[i - 1]!, `seed ${seed}`).toBeGreaterThanOrEqual(5)
+      expect(kid.relationship, `seed ${seed}`).toBeLessThan(start)
+      expect(readTies(g, kid).marks.avoid, `seed ${seed}`).toBeGreaterThan(0)
+      if (years.length > 0) firstSeen += 1
+    }
+    expect(firstSeen).toBeGreaterThanOrEqual(8)
   })
 
   it('heirs inherit the people, not their parent\'s allowances or loans', () => {

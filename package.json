@@ -1,7 +1,7 @@
 {
   "name": "anotherlife",
   "private": true,
-  "version": "4.0.2",
+  "version": "4.1.0",
   "type": "module",
   "description": "A BitLife-style life simulator that runs entirely in the browser: live a whole life one year at a time.",
   "scripts": {
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "voice": "node scripts/voice-report.mjs",
+    "size": "node scripts/bundle-budget.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
     "vitest": "^5.0.3",

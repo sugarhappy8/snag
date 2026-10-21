@@ -2,6 +2,7 @@
 // The list mirrors the real game's 40 ribbons (36 regular + 4 secret), with branded
 // names swapped for originals. computeRibbon() is called by killCharacter().
 import { counter, netWorth } from './core'
+import { realFollowers } from './followers'
 import type { GameState, Person } from './types'
 
 export interface RibbonDef {
@@ -185,7 +186,7 @@ export function computeRibbon(g: GameState): string | null {
   if (age >= 120) return 'geriatric'
   if (worth >= 20_000_000) return 'loaded'
   if (militaryYears >= 20 || (Math.max(counter(g, 'minefieldsCleared'), counter(g, 'deployments')) >= 3 && yearsWithTitle(g, TOP_MILITARY_TITLE) > 0)) return 'veteran'
-  if (c.social && c.social.verified && c.social.followers >= 1_000_000) return 'influencer'
+  if (c.social && c.social.verified && realFollowers(c.social) >= 1_000_000) return 'influencer'
   if (c.hidden.fame >= 50) return 'famous'
   if (!hadJob && counter(g, 'marriages') >= 1 && worth >= 1_500_000) return 'goldDigger'
   const gamblingProfit = sum(g, 'gamblingProfit', 'casinoWinnings')

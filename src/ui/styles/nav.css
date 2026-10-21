@@ -1,0 +1,653 @@
+/* Navigation (R1 track N): the "Needs you" pill on a menu row and the card above a root list. Built on the global
+   tokens (global.css), so it follows light and dark mode. The pill sits in the row text, not in the aria-hidden end slot. */
+
+.menu-row-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin: 2px 0;
+  padding: 0 9px;
+  border-radius: 11px;
+  background: var(--action-red);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* The gap to the card below comes from .menu-section + .menu-section (global.css); the red edge says "look here". */
+.needs-card .menu-list {
+  border-color: color-mix(in srgb, var(--action-red) 40%, var(--border));
+}
+
+/* Breadcrumbs (R1-N5): the strip between a sheet's header and its body. It sits in the sheet's column, so it stays put while
+   the body scrolls. The list scrolls sideways when the trail is long; a label is cut at 18 characters by CSS alone. */
+
+.crumbs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: var(--target);
+  padding: 0 4px 0 8px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.crumbs-nav {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.crumbs-list {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.crumbs-list::-webkit-scrollbar {
+  display: none;
+}
+
+.crumb {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The chevron is decoration: the empty alternative text keeps it out of the spoken list. */
+.crumb + .crumb::before {
+  content: '\203A';
+  content: '\203A' / '';
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.crumb-link,
+.crumb-current {
+  display: inline-block;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.crumb-link {
+  min-height: var(--target);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--age-heading);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.crumb-link:hover {
+  text-decoration: underline;
+}
+
+.crumb-current {
+  padding: 0 8px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.crumbs-pin {
+  flex: none;
+  width: var(--target);
+  height: var(--target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.crumbs-pin[aria-pressed='true'] {
+  color: var(--age-heading);
+}
+
+.crumbs-pin:hover {
+  background: var(--chip-bg);
+}
+
+/* Palette (R1-N6): the search box over the game. The backdrop is a .sheet-backdrop so the sheets underneath leave Escape to
+   it; the panel sits at the top, so the keyboard of a phone does not cover the results. Theme tokens only. */
+
+/* The bar PaletteGate (src/ui/nav/lazy.tsx) shows while the palette code loads, or after it failed to: fixed over the screen so
+   the life log does not move, with Close (and Try again) so the player is never left behind a search that cannot open. */
+
+.palette-wait {
+  position: fixed;
+  top: calc(var(--safe-top) + 12px);
+  left: 12px;
+  right: 12px;
+  z-index: 60;
+  box-sizing: border-box;
+  max-width: calc(var(--app-width) - 24px);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.palette-wait-text {
+  flex: 1 1 140px;
+}
+
+.palette-wait .btn {
+  min-height: var(--target);
+}
+
+div.sheet-backdrop.palette-backdrop {
+  align-items: flex-start;
+  padding: calc(var(--safe-top) + 12px) 12px 12px;
+  background: var(--backdrop);
+  animation: al-fade-in 0.18s ease both;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--app-width);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px - var(--safe-top));
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* The panel is focused by script only (src/ui/a11y/ModalSurface.tsx); the controls inside keep the global focus ring. */
+.palette:focus {
+  outline: none;
+}
+
+.palette-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.palette-head {
+  flex: none;
+  padding: 10px 12px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--target);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.palette-input::placeholder {
+  color: var(--muted);
+}
+
+.palette-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(8px + var(--safe-bottom));
+}
+
+.palette-heading {
+  margin: 14px 14px 6px;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.palette-item {
+  display: flex;
+  align-items: stretch;
+  background: var(--card);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.palette-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--target);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px 8px 14px;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.palette-row.is-active {
+  background: color-mix(in srgb, var(--blue) 14%, var(--card));
+  box-shadow: inset 3px 0 0 var(--age-heading);
+}
+
+.palette-row.is-locked .palette-emoji,
+.palette-row.is-locked .palette-text {
+  opacity: 0.55;
+}
+
+.palette-emoji {
+  flex: none;
+  width: 32px;
+  text-align: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.palette-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.palette-label {
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.palette-sub {
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.palette-row .menu-row-badge {
+  flex: none;
+  align-self: center;
+}
+
+.palette-lock {
+  flex: none;
+  align-self: center;
+  max-width: 45%;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--chip-bg);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.palette-pin {
+  flex: none;
+  width: var(--target);
+  height: var(--target);
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.palette-pin[aria-pressed='true'] {
+  color: var(--age-heading);
+}
+
+.palette-pin:hover {
+  background: var(--chip-bg);
+}
+
+.palette-hint {
+  flex: none;
+  margin: 0;
+  padding: 8px 16px calc(8px + var(--safe-bottom));
+  border-top: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+/* A touch screen has no Alt key to press. */
+@media (hover: none) {
+  .palette-hint {
+    display: none;
+  }
+}
+
+.palette-note,
+.palette-empty {
+  margin: 0;
+  padding: 12px 16px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+/* Header bell (R1-N7): the inbox button reuses .hdr-icon, so it gets the same 44 px target. The count sits on its top right
+   corner in the same red as the Needs you pill; the label already says the number, so the pill is for the eye only. */
+
+.hdr-bell {
+  position: relative;
+}
+
+.hdr-bell-count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--action-red);
+  color: var(--header-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Cockpits (R1-N9): the panel at the root of a tab, above its list. Tiles, the net-worth chart, one card for each company and
+   the Pinned and recent strip. Theme tokens only; every control is at least var(--target) high. The chart kit loads on
+   demand, so the tile and the chart have text stand-ins (.cockpit-kpi-fallback) that look like the real ones. */
+
+.cockpit-panel {
+  margin-bottom: 18px;
+}
+
+.cockpit-body > * + * {
+  margin-top: 12px;
+}
+
+.cockpit-summary {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.cockpit-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cockpit-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cockpit-kpi-fallback {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+button.cockpit-kpi-fallback {
+  min-height: var(--target);
+  cursor: pointer;
+}
+
+.cockpit-kpi-fallback .ch-kpi-label,
+.cockpit-kpi-fallback .ch-kpi-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cockpit-kpi-fallback .ch-kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.cockpit-meter {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--stat-track);
+}
+
+.cockpit-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--age-heading);
+}
+
+.cockpit-chart {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.cockpit-chart-fallback {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.cockpit-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cockpit-cards > .menu-heading {
+  margin: 4px 6px 0;
+}
+
+.cockpit-card,
+.cockpit-more {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--target);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cockpit-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+}
+
+.cockpit-card:hover,
+.cockpit-more:hover,
+.cockpit-jump-link:hover {
+  background: var(--card-2);
+}
+
+.cockpit-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.cockpit-card-emoji {
+  flex: none;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.cockpit-card-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* The chip says the state in words and a glyph; the colour is only a second hint on its edge. */
+.cockpit-chip {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--chip-bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.cockpit-chip-thriving {
+  border-color: var(--chart-good);
+}
+
+.cockpit-chip-struggling,
+.cockpit-chip-danger {
+  border-color: var(--chart-bad);
+}
+
+.cockpit-card-sub,
+.cockpit-card-line {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cockpit-card .ch-spark {
+  width: 100%;
+  max-width: 200px;
+}
+
+.cockpit-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  color: var(--age-heading);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cockpit-jump-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cockpit-jump-link {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: var(--target);
+  padding: 0 14px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--target) / 2);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cockpit-jump-emoji {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.cockpit-jump-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-card:focus-visible,
+.cockpit-more:focus-visible,
+.cockpit-jump-link:focus-visible,
+button.cockpit-kpi-fallback:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

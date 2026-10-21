@@ -2,6 +2,8 @@
 // Investors (rounds, bridges, grants, IPO readiness) and each industry's own screen (fabs,
 // compute and models, robot demos, the drug pipeline, launch control, the factory floor, the
 // qubit lab, the threat center). Menu builders only read state; actions re-read the business.
+import { chartInfo, lineSpec, scorecardSpec } from '../charts'
+import type { ChartSpec } from '../charts/spec'
 import { addStat, formatCents, formatMoney, log, notice, remember, scriptChoice, useYearAction } from '../core'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
@@ -52,7 +54,7 @@ import {
   techSkill,
   techView,
 } from './deeptech-core'
-import { aiLine, benchRows, firstRows, summaryClause } from './deeptech-bench'
+import { aiLine, benchRows, benchSeries, firstRows, summaryClause } from './deeptech-bench'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
 import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, slotCount, startProgram, startTrial, stopPrograms, trackCount, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
@@ -262,6 +264,38 @@ function labMenu(a: Asset): MenuGroup {
 // ---------------------------------------------------------------------------
 // Benchmarks (AI labs)
 
+/** The lab's overall score by year, as a line: the years before its first rated model are gaps. The last year is the one the board is for. */
+function benchLine(g: GameState, a: Asset): ChartSpec | null {
+  const year = benchYear(g)
+  const scores = benchSeries(familyId(g.lifeId), view(g, a).t, year)
+  const values = scores.map((v) => (v > 0 ? v : null))
+  const real = values.flatMap((v, i) => (v === null ? [] : [{ v, i }]))
+  if (real.length < 2) return null
+  const x = scores.map((_, i) => year - (scores.length - 1 - i))
+  const first = real[0]!
+  const last = real[real.length - 1]!
+  return lineSpec({
+    title: 'Overall benchmark score',
+    unit: 'count',
+    x,
+    label: 'Overall',
+    values,
+    summary: `Your overall score was ${last.v} in ${x[last.i]}, from ${first.v} in ${x[first.i]}.`,
+  })
+}
+
+/** The two benchmark charts (R1-C14), only for a lab with a rated model, like the text rows under them. */
+function benchCharts(g: GameState, a: Asset): MenuNode[] {
+  if (!labStanding(familyId(g.lifeId), view(g, a).t, benchYear(g))) return []
+  return [
+    ...chartInfo(`dt.bench.chart.${a.id}`, '\u{1F4C8}', (_g, spec) => spec?.summary ?? '', (gg) => benchLine(gg, a)),
+    ...chartInfo(`dt.bench.caps.${a.id}`, '\u{1F4CA}', (_g, spec) => spec?.summary ?? '', (gg) => {
+      const s = labStanding(familyId(gg.lifeId), view(gg, a).t, benchYear(gg))
+      return s ? scorecardSpec('Where your best model stands', s.caps) : null
+    }),
+  ]
+}
+
 /** Where the lab's models rank against modeled rival labs, plus the capability research that moves them. Every line comes from deeptech-bench.ts. */
 function benchMenu(a: Asset): MenuGroup {
   return {
@@ -279,6 +313,7 @@ function benchMenu(a: Asset): MenuGroup {
       const fam = familyId(g.lifeId)
       const year = benchYear(g)
       const nodes: MenuNode[] = benchRows(fam, t, year).map((line) => infoNode(a, `bench.${line.id}`, line.text, isCapId(line.id) ? CAPS[line.id].emoji : '\u{1F4CA}'))
+      nodes.push(...benchCharts(g, a))
       if (!CAP_IDS.some((c) => capOpen(c) <= year)) return nodes
       if (labStanding(fam, t, year)) {
         const firsts = firstRows(fam, t, year, readAiFirsts(g))

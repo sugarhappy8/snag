@@ -4,9 +4,11 @@
 // answers reads from a cache and writes through a queue: one write in flight, a later save replacing
 // the one waiting (the latest wins), a removal running after the write in flight, and a step that
 // storage never answers raising the warning after STORE_OP_TIMEOUT_MS. A record that a newer version
-// of the game wrote is copied to quarantine before anything overwrites it. This file only moves
+// of the game wrote is copied to quarantine before anything overwrites it. When the database fails
+// (or the page is closing with the queue not dry) the newest save is also written, plain, to the
+// legacy localStorage key: a backup the next boot reconciles with the database. This file only moves
 // strings: parsing and migrating them is save.ts's business.
-import { localSaveBackend, SAVE_KEY, type SaveBackend, type SyncSaveBackend } from './save-backends'
+import { connectionLost, localSaveBackend, markIdbInUse, SAVE_KEY, type SaveBackend, type SyncSaveBackend } from './save-backends'
 import { deleteQuarantine, QUARANTINE_SLOTS, quarantineRecord, readQuarantine, type SaveNotice } from './save-quarantine'
 import { encodeSnapshotRecord } from './snapshot-codec'
 
@@ -16,6 +18,8 @@ export interface SaveStatus {
   readonly notices: readonly SaveNotice[]
   /** The newest save isn't in storage: the last write failed (or hangs), and none has worked since. */
   readonly persistFailed: boolean
+  /** Present only while persistFailed: the database is at fault (its connection was lost, or a step hung), not a full disk. */
+  readonly database?: true
 }
 
 /**
@@ -52,6 +56,10 @@ interface State {
   newer: { readonly raw: string; readonly version: number } | null
   /** saveRecord has run in this page: what it saved is newer than anything boot reads from storage. */
   sessionSaved: boolean
+  /** The save this page last wrote, plain, to the legacy localStorage key as a backup; null when it wrote none (or took it away). */
+  backup: string | null
+  /** The marker that this browser keeps its life in IndexedDB has been set from this page. */
+  marked: boolean
   status: SaveStatus
 }
 
@@ -69,6 +77,8 @@ function initialState(): State {
     stalled: false,
     newer: null,
     sessionSaved: false,
+    backup: null,
+    marked: false,
     status: { notices: [], persistFailed: false },
   }
 }
@@ -82,8 +92,13 @@ const listeners = new Set<() => void>()
 let evictor: () => boolean = () => false
 let fallback: SyncSaveBackend | null = null
 
+/** The default backend: localStorage under SAVE_KEY. Also where the backup of a save the database could not take goes. */
+function legacyStore(): SyncSaveBackend {
+  return (fallback ??= localSaveBackend(() => evictor()))
+}
+
 function active(): SaveBackend {
-  return state.backend ?? (fallback ??= localSaveBackend(() => evictor()))
+  return state.backend ?? legacyStore()
 }
 
 // --- The backend ---------------------------------------------------------------------------
@@ -140,9 +155,16 @@ function setStatus(status: SaveStatus): void {
   notify()
 }
 
-/** Called on every write's outcome: listeners hear of it only when it flips. */
-function setPersistFailed(failed: boolean): void {
-  if (state.status.persistFailed !== failed) setStatus({ ...state.status, persistFailed: failed })
+/**
+ * Called on every write's outcome: listeners hear of it only when the status changes, which is when
+ * persistFailed flips or the first failure turns out to be the database's. `database` only gets
+ * added to while a failure stands.
+ */
+function setPersistFailed(failed: boolean, database = false): void {
+  const cur = state.status
+  const blamesDatabase = failed && (database || (cur.persistFailed && cur.database === true))
+  if (cur.persistFailed === failed && (cur.database === true) === blamesDatabase) return
+  setStatus(blamesDatabase ? { notices: cur.notices, persistFailed: true, database: true } : { notices: cur.notices, persistFailed: failed })
 }
 
 /** Lists `notice` where the one listed under `replaces` (by default its own id) was, else last. */
@@ -200,7 +222,10 @@ export function saveRecord(json: string): boolean {
   }
   s.pending = json
   kick()
-  if (s.stalled) setPersistFailed(true)
+  if (s.stalled) {
+    backUp(s, json)
+    setPersistFailed(true, true)
+  }
   return true
 }
 
@@ -231,6 +256,8 @@ export function removeRecord(): void {
   s.generation++
   s.pending = null
   setCache(null)
+  // A backup of the life being forgotten would bring it back at the next boot.
+  dropBackup(s)
   if (s.newer === null) {
     const backend = active()
     if (backend.kind === 'sync') {
@@ -256,6 +283,82 @@ export function removeRecord(): void {
  */
 export function protectNewerRecord(raw: string, version: number): void {
   state.newer = { raw, version }
+}
+
+// --- The backup ----------------------------------------------------------------------------
+
+/**
+ * Writes `json`, plain, to the legacy localStorage key: a backup of the newest save for when the
+ * database can't take it or the page is going. Only for an asynchronous backend (a synchronous one is
+ * its own store), and never while a newer version's record is still waiting for its copy (that fails
+ * closed). The next boot reads it beside the database record (save-hydrate.ts); it is taken away
+ * again as soon as the database has the newest save. True when it was written. Never throws.
+ */
+function backUp(s: State, json: string): boolean {
+  if (active().kind !== 'async' || s.newer !== null) return false
+  let ok: boolean
+  try {
+    ok = legacyStore().write(json)
+  } catch {
+    ok = false
+  }
+  if (ok) s.backup = json
+  return ok
+}
+
+/** Takes away the backup this page wrote, if it did. A refused removal leaves it for the boot to settle. */
+function dropBackup(s: State): void {
+  if (s.backup === null) return
+  s.backup = null
+  try {
+    legacyStore().remove()
+  } catch {
+    // storage disabled: there is nothing to remove
+  }
+}
+
+/**
+ * The page is closing or going to the background (pagehide, visibilitychange to hidden) and a promise
+ * can't hold it open: if the newest save isn't in the database yet (a write still queued, in flight
+ * or failed), write it synchronously and plain as a backup, and return whether that happened. The
+ * boot picks it up if the page never comes back, and the queue removes it if the page does and the
+ * database catches up. Nothing happens for a synchronous backend, or when the database has the save.
+ */
+export function spillSave(): boolean {
+  const s = state
+  const json = s.newest
+  if (json === null || s.newer !== null || active().kind !== 'async') return false
+  if (s.pending === null && !s.busy && !s.status.persistFailed) return false
+  if (s.backup === json) return true
+  return backUp(s, json)
+}
+
+// --- Boot ----------------------------------------------------------------------------------
+// What save-hydrate.ts needs before the first render. Nothing else calls these.
+
+/** Boot only: the backend in use (the default localStorage one when none was set). */
+export function activeBackend(): SaveBackend {
+  return active()
+}
+
+/** Boot only: true once saveRecord has run in this page. */
+export function savedThisSession(): boolean {
+  return state.sessionSaved
+}
+
+/**
+ * Boot only: make `json` the newest and the stored save of the active backend without writing it.
+ * Returns false and does nothing once the page has saved: what boot read is older than that save.
+ */
+export function primeCache(json: string | null): boolean {
+  if (state.sessionSaved) return false
+  setCache(json)
+  return true
+}
+
+/** Boot only: list a notice where the one with the same id (or `replaces`) was, else last. */
+export function addSaveNotice(notice: SaveNotice, replaces?: string): void {
+  putNotice(notice, replaces)
 }
 
 /**
@@ -311,7 +414,9 @@ function stall(s: State): void {
   s.timer = null
   if (s !== state) return
   s.stalled = true
-  setPersistFailed(true)
+  // The database isn't answering: the newest save goes to the backup now, as every save made meanwhile will.
+  if (s.newest !== null) backUp(s, s.newest)
+  setPersistFailed(true, true)
   answerFlushes(s, false)
 }
 
@@ -340,6 +445,8 @@ async function drain(s: State): Promise<void> {
       await writeQueued(s, json)
     } else {
       s.busy = false
+      // The database has the newest save: a backup of it would only be an older copy to dispute at boot.
+      if (!s.status.persistFailed) dropBackup(s)
       answerFlushes(s, !s.status.persistFailed)
       return
     }
@@ -374,6 +481,7 @@ async function writeQueued(s: State, json: string): Promise<void> {
     putNotice(notice, SAVE_KEY)
   }
   let ok: boolean
+  let failure: unknown
   try {
     const record = backend.kind === 'async' ? await watched(s, encodeSnapshotRecord(json)) : json
     // A removal came after this save: it discards itself before it reaches storage...
@@ -384,13 +492,25 @@ async function writeQueued(s: State, json: string): Promise<void> {
       await watched(s, backend.write(record))
       ok = true
     }
-  } catch {
+  } catch (err) {
     ok = false
+    failure = err
   }
   // ...or, already on its way, changes nothing when it lands: the removal runs after it.
   if (!current()) return
-  if (ok) s.stored = json
-  setPersistFailed(!ok)
+  if (ok) {
+    s.stored = json
+    if (backend.kind === 'async' && !s.marked) {
+      // The database took a save: from now on a record in the legacy key is a backup, not the game.
+      s.marked = true
+      markIdbInUse()
+    }
+    setPersistFailed(false)
+  } else {
+    // The newest save, not necessarily this one: later ones may have been made while it was failing.
+    if (backend.kind === 'async') backUp(s, s.newest ?? json)
+    setPersistFailed(true, connectionLost(failure))
+  }
 }
 
 // --- The copies ----------------------------------------------------------------------------

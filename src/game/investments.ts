@@ -14,8 +14,11 @@
 // funds, REITs and crypto only appear when they were invented, exchanges close in wars and
 // vanish after revolutions, gold was illegal to hoard in some places, and savings and bonds pay
 // the nominal rates of the day while inflation eats them (engine money is constant dollars).
+import { chartInfo, growthSpec } from './charts'
+import type { ChartSpec } from './charts/spec'
 import { currencyOf } from './data/currencies'
 import { bound, economyMarketFactor, economyOf, economyState, economicRoll, initialCountry } from './economy'
+import { flagOn } from './flags'
 import { timelineFamily } from './timeMachine'
 import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
@@ -1805,6 +1808,8 @@ function lineSection(g: GameState, q: Quote): MenuNode[] {
 }
 
 function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup {
+  // Stocks and pennies carry their ten-year price trail (R1-C14); funds, REITs, gold, crypto and bonds do not.
+  const trailed = q.type === 'stock' || q.type === 'penny'
   return {
     type: 'menu',
     id: `inv-offer-${q.secId}`,
@@ -1812,6 +1817,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
     emoji: q.emoji,
     subtitle: offerSubtitle(q),
     hint: (gg) => gutHint(gg, q.secId),
+    ...(trailed ? { spark: (gg: GameState) => (flagOn('chartKit') ? stockTrail(gg, q) : null) } : {}),
     header: () => `${q.emoji} ${q.name}\n${q.blurb}`,
     children: (gg) => {
       const held = findHolding(gg, q.secId)
@@ -1825,6 +1831,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       else if (q.yield > 0) rows.push(`${q.type === 'crypto' ? 'Rewards' : q.type === 'reit' ? 'Payout' : 'Dividend'}: ${rateText(q.yield)} a year, taxed as income.`)
       rows.push(...extraInfo)
       rows.forEach((text, i) => nodes.push({ type: 'info', id: `inv-oinfo-${q.secId}-${i}`, text }))
+      if (trailed) nodes.push(...chartInfo(`inv-ochart-${q.secId}`, '📈', (_x, spec) => spec?.summary ?? '', (g3) => growthChart(g3, q)))
       if (held) nodes.push({ type: 'info', id: `inv-oheld-${q.secId}`, text: `You own ${formatMoney(held.value)} of this (${change(basis(held) > 0 ? (held.value - basis(held)) / basis(held) : 0)} overall).`, emoji: '💼' })
       nodes.push(buyAction(gg, q, !!held))
       if (held) nodes.push(...sellActions(gg, held))
@@ -1846,6 +1853,65 @@ function stockHistory(g: GameState, info: ExInfo, slot: number, gen: number, pen
     parts.push(`'${String(y).slice(-2)} ${pct(reportedMove(info, y, ret).pct, 0)}`)
   }
   return parts.length ? `Recent years: ${parts.join(' · ')}` : 'Recently listed: no track record yet.'
+}
+
+/** Years a trail covers: the spark on a stock row and the growth chart in its detail (R1-C14). */
+const TRAIL_YEARS = 10
+/** Settled years kept by stockTrail: at most this many entries, and the lot is dropped when it is full. */
+const TRAIL_CACHE_MAX = 400
+const trailCache = new Map<string, number | null>()
+
+/**
+ * The list price of one stock or penny stock in each of the last `years` years (ten at most, ten by default), oldest first, ending at
+ * this year's price. The years are worked out exactly as `listing` works out this year's: the exchange's year, the quote
+ * for the company's slot, then the market shocks. A year the company was not listed (another company held its slot, or it
+ * just listed) is null, and no year at or before the family's anchor is asked for, so a young life gets a short trail. It
+ * only ever looks at years up to this one. A settled year is remembered for the life (shocks start in their own year, so
+ * a later one cannot change it); this year is always worked out again, since a shock or a trade can still move it.
+ * Nothing but a stock or penny quote has a trail: any other gets an empty list. Pure: no dice and no writes.
+ */
+export function stockTrail(g: GameState, q: Quote, years: number = TRAIL_YEARS): (number | null)[] {
+  const penny = q.type === 'penny'
+  if (q.type !== 'stock' && !penny) return []
+  const slot = num(q.details.slot, -1)
+  const gen = num(q.details.gen, -1)
+  if (!Number.isInteger(slot) || slot < 0 || !Number.isInteger(gen) || gen < 0) return []
+  const span = Number.isFinite(years) ? Math.max(0, Math.min(TRAIL_YEARS, Math.floor(years))) : TRAIL_YEARS
+  const info = exchangeInfo(g.character.countryId)
+  const f = fam(g)
+  const an = anchor(g)
+  const out: (number | null)[] = []
+  for (let k = span - 1; k >= 0; k--) {
+    const y = g.year - k
+    if (y <= an) continue
+    const key = `${g.lifeId}|${f}|${y}|${q.secId}`
+    const kept = y < g.year ? trailCache.get(key) : undefined
+    if (kept !== undefined) {
+      out.push(kept)
+      continue
+    }
+    const ey = exchangeYear(f, an, info, y)
+    const s = (penny ? ey.pennies : ey.stocks)[slot]
+    let price: number | null = null
+    if (s && s.gen === gen && s.event !== 'ipo') {
+      const id = penny ? s.id : companyDef(info, s.slot, s.gen).id
+      const shocked = withShock(g, stockQuote(info, s, penny, y, null), shockFactor(g, id, y), shockFactor(g, id, y - 1))
+      price = Number.isFinite(shocked.price) ? shocked.price : null
+    }
+    if (y < g.year) {
+      if (trailCache.size >= TRAIL_CACHE_MAX) trailCache.clear()
+      trailCache.set(key, price)
+    }
+    out.push(price)
+  }
+  return out
+}
+
+/** What 100 put into this stock when its trail begins would be worth now, as a chart (null with under two priced years). */
+function growthChart(g: GameState, q: Quote): ChartSpec | null {
+  const prices = stockTrail(g, q)
+  const years = prices.map((_, i) => g.year - (prices.length - 1 - i))
+  return growthSpec(g, 'What 100 would have become', years, prices)
 }
 
 /** The size headings of a Stocks list, biggest first. Every made-up company is a Small-cap. */
@@ -2100,7 +2166,7 @@ function newsLines(g: GameState): string[] {
       else if (infl <= -0.02) lines.push(`📉 Prices fell ${rateText(-infl)} this year: deflation.`)
     } else if (fx.dep >= 0.1) lines.push(`💱 The ${currencyOf(g.character.countryId, g.year).name} lost ${rateText(fx.dep)} against the dollar.`)
   }
-  // An analyst call about next year: right about two times in three.
+  // An analyst call on the year just gone: no better than a coin flip about what comes next.
   const tip = seededTip(g, l.info)
   if (tip) lines.push(tip)
   const inst = investInstinct(g)
@@ -2132,33 +2198,43 @@ export function shockHeadline(sh: MarketShock): string {
   }
 }
 
+/** Middle value of a list (the mean of the two middle ones when the count is even). */
+function medianOf(xs: number[]): number {
+  const a = [...xs].sort((x, y) => x - y)
+  const m = a.length >> 1
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
+}
+
+/**
+ * The free analyst call. Analysts read the year just gone, never next year: only the Investing
+ * talent's gut (invest/instinct.ts) knows what comes next. A call is "strong" when the stock's
+ * return this year beat the median of that year's stocks, which says almost nothing about what
+ * follows. Real companies get a sector call, never an opinion on one name.
+ */
 function seededTip(g: GameState, info: ExInfo): string | null {
-  const f = fam(g)
-  const an = anchor(g)
-  const now = exchangeYear(f, an, info, g.year)
-  const next = exchangeYear(f, an, info, g.year + 1)
   if (stockMarketBlock(g, info)) return null
+  const f = fam(g)
+  const now = exchangeYear(f, anchor(g), info, g.year)
+  // Every change of company in a slot (bankrupt, bought out, nationalized) lists the new one with event 'ipo':
+  // what is left traded under the same name last year too.
+  const candidates = now.stocks.filter((s) => s.event !== 'ipo' && !s.ended)
+  // A market with no past year yet (its very first) has no year to rate.
+  if (!candidates.some((s) => s.ret !== 0)) return null
   const key = `${f}|tip|${info.key}|${g.year}`
   let h = 0
   for (let i = 0; i < key.length; i++) h = (h * 33 + key.charCodeAt(i)) >>> 0
-  const candidates = now.stocks.filter((s) => next.stocks[s.slot] && next.stocks[s.slot].gen === s.gen)
-  if (!candidates.length) return null
   const s = candidates[h % candidates.length]
   const def = companyDef(info, s.slot, s.gen)
-  const right = (h >>> 8) % 3 !== 0
   const firm = ANALYST_FIRMS[(h >>> 4) % ANALYST_FIRMS.length]
+  const mid = medianOf(candidates.map((c) => c.ret))
   if (def.real) {
     // No opinions about real companies: the call is about the company's whole sector on this market.
     const peers = candidates.filter((c) => companyDef(info, c.slot, c.gen).sector === def.sector)
-    const avg = peers.reduce((sum, c) => sum + next.stocks[c.slot].ret, 0) / Math.max(1, peers.length)
     const label = eraIdentity(def, g.year).label.toLowerCase()
-    const bullishSector = right ? avg > 0 : !(avg > 0)
-    return bullishSector ? `📣 ${firm} is bullish on ${label} stocks for next year.` : `📣 ${firm} is cautious on ${label} stocks going into next year.`
+    return medianOf(peers.map((c) => c.ret)) > mid ? `📣 ${firm} is bullish on ${label} stocks after a strong year.` : `📣 ${firm} is cautious on ${label} stocks after a weak year.`
   }
   const name = eraIdentity(def, g.year).name
-  const up = next.stocks[s.slot].ret > 0
-  const bullish = right ? up : !up
-  return bullish ? `📣 ${firm} rates ${name} (${def.symbol}) a strong buy for next year.` : `📣 ${firm} warns that ${name} (${def.symbol}) is overvalued going into next year.`
+  return s.ret > mid ? `📣 ${firm} rates ${name} (${def.symbol}) a buy after a ${pct(s.ret, 0)} year.` : `📣 ${firm} cuts ${name} (${def.symbol}) to a sell after a ${pct(s.ret, 0)} year.`
 }
 
 const newsMenu: MenuGroup = {

@@ -287,16 +287,16 @@ describe('settings', () => {
   }
 
   it('normalize to the known fields only', () => {
-    expect(normalizeSettings(legacy)).toEqual({ money: 'usd', prices: 'nominal', sandboxTimeMachine: false })
+    expect(normalizeSettings(legacy)).toEqual({ money: 'usd', prices: 'nominal', sandboxTimeMachine: false, quietMode: true })
     expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS)
     expect(normalizeSettings('junk')).toEqual(DEFAULT_SETTINGS)
-    expect(Object.keys(DEFAULT_SETTINGS).sort()).toEqual(['money', 'prices', 'sandboxTimeMachine'])
+    expect(Object.keys(DEFAULT_SETTINGS).sort()).toEqual(['money', 'prices', 'quietMode', 'sandboxTimeMachine'])
   })
 
   it('loading deletes stored API keys and provider settings', () => {
     const data = installStorage({ [SETTINGS_KEY]: JSON.stringify(legacy), other: 'kept' })
     const s = loadSettings()
-    expect(s).toEqual({ money: 'usd', prices: 'nominal', sandboxTimeMachine: false })
+    expect(s).toEqual({ money: 'usd', prices: 'nominal', sandboxTimeMachine: false, quietMode: true })
     const stored = data.get(SETTINGS_KEY)!
     expect(stored).not.toMatch(/secret|apiKey|provider|baseUrl|model|aiLevel|setupDone/)
     expect(JSON.parse(stored)).toEqual(s)
@@ -308,7 +308,7 @@ describe('settings', () => {
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS)
     expect(broken.get(SETTINGS_KEY)).not.toContain('sk-secret')
 
-    const clean = JSON.stringify({ money: 'local', prices: 'today', sandboxTimeMachine: true })
+    const clean = JSON.stringify({ money: 'local', prices: 'today', sandboxTimeMachine: true, quietMode: true })
     const data = installStorage({ [SETTINGS_KEY]: clean })
     let writes = 0
     const ls = globalThis.localStorage as unknown as { setItem: (k: string, v: string) => void }
@@ -317,7 +317,7 @@ describe('settings', () => {
       writes++
       set(k, v)
     }
-    expect(loadSettings()).toEqual({ money: 'local', prices: 'today', sandboxTimeMachine: true })
+    expect(loadSettings()).toEqual({ money: 'local', prices: 'today', sandboxTimeMachine: true, quietMode: true })
     expect(writes).toBe(0)
     expect(data.get(SETTINGS_KEY)).toBe(clean)
   })

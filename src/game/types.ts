@@ -1,6 +1,9 @@
 // Core data model for AnotherLife. Everything in GameState must be plain JSON
 // (it is saved to localStorage), so no functions, Maps, Sets or class instances.
 
+// Type-only, so it is erased at build time and this file stays an import-free leaf at runtime.
+import type { ChartSpec } from './charts/spec'
+
 export type Gender = 'male' | 'female'
 export type Sexuality = 'straight' | 'gay' | 'bisexual'
 
@@ -205,6 +208,8 @@ export interface SocialMedia {
   followers: number
   verified: boolean
   monetized: boolean
+  /** Bought followers still on the account (a whole number, at most `followers`). Written only when above 0. */
+  fake?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -512,6 +517,10 @@ export interface NoticeModal {
    * the self-harm Do Anything outcome sets it. Optional in saves; missing means false.
    */
   support?: boolean
+  /** 'minor': the store may route it to the Quiet Mode inbox (G.11). Written only by notice(); anything else is ignored. */
+  weight?: 'minor'
+  /** Where an inbox row leads: a place key such as 'assets/home/mortgage' (Navigation's placeKey). Validated by R1-T5's readers; R1 emitters set none. */
+  link?: string
 }
 
 export interface ChoiceModal {
@@ -571,6 +580,8 @@ export interface AnnualReportData {
    * with a one-tap "Use this plan" button.
    */
   talentHint?: { price: number; production: number; text: string }
+  /** Annual Report 2.0 data (src/game/charts/report.ts ReportCharts). Missing or damaged: the text layout. */
+  chart?: Json
 }
 
 export interface AnnualReportResult {
@@ -764,6 +775,16 @@ interface MenuBase {
   disabledReason?: (g: GameState) => string | null
   /** A purple talent hint line under the row (talents.ts); null/'' shows nothing. */
   hint?: (g: GameState) => string | null
+  /** Extra search words (G.9). */
+  keywords?: readonly string[]
+  /** The heading id this row sits under in its parent list (G.8). Free text; the nav track owns the vocabulary. */
+  section?: string
+  /** A "Needs you" count or word on a root or hub row (G.8); null or 0 shows nothing. Must be pure. */
+  badge?: (g: GameState) => string | number | null
+  /** Information confidence 0 to 3 (H.3, R3 renders it). */
+  conf?: 0 | 1 | 2 | 3
+  /** A tiny trend drawn at the end of a row (stock lists, G.6). Null, or fewer than 2 points, draws nothing. Must be pure and read settled years only. */
+  spark?: (g: GameState) => (number | null)[] | null
 }
 
 export interface MenuAction extends MenuBase {
@@ -791,6 +812,10 @@ export interface MenuInfo {
   text: string | ((g: GameState) => string)
   emoji?: string
   visible?: (g: GameState) => boolean
+  /** A chart for this info row (G.2); `text` stays the accessible summary and the test surface. Must be pure and read settled years only. */
+  chart?: (g: GameState) => ChartSpec | null
+  /** Information confidence 0 to 3 (H.3, R3 renders it). */
+  conf?: 0 | 1 | 2 | 3
 }
 
 /** A section heading inside a menu list. */

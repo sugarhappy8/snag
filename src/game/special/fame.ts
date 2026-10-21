@@ -8,6 +8,7 @@ import { localStreetName } from '../data/locales'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, claimYearly, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
+import { payScale } from './pay-scale'
 import { eraOpen, online, PODCAST_GATE } from '../computer/era'
 import { hasTech } from '../history/timeline'
 import { pickBrand } from '../shops/everyday-brands'
@@ -67,6 +68,9 @@ const initFame = (): FameProfile => ({ books: [], podcast: null, merchLines: 0, 
 
 const MAX_FAME_LEDGER = 1e12
 
+/** A podcast audience tops out where the biggest real shows do, at 20 to 40 million listeners. */
+const MAX_AUDIENCE = 30_000_000
+
 function fameWhole(value: unknown, fallback = 0, max = MAX_FAME_LEDGER): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(max, Math.round(value))) : fallback
 }
@@ -99,7 +103,7 @@ function normalizedFame(value: unknown): FameProfile {
     const pod = raw.podcast as Partial<NonNullable<FameProfile['podcast']>>
     podcast = {
       name: fameText(pod.name, 'Untitled Show', 80),
-      listeners: fameWhole(pod.listeners, 0),
+      listeners: fameWhole(pod.listeners, 0, MAX_AUDIENCE),
       episodes: fameWhole(pod.episodes, 0, 1e9),
       startedAge: fameWhole(pod.startedAge, 0, 10_000),
     }
@@ -668,13 +672,14 @@ const recordEpisodeAction: MenuAction = {
     let text: string
     if (roll < 0.15) {
       const lost = Math.round(p.listeners * randInt(g, 5, 20) / 100)
-      p.listeners = Math.max(50, p.listeners - lost)
+      p.listeners = Math.min(MAX_AUDIENCE, Math.max(50, p.listeners - lost))
       addFame(g, -1)
       addHidden(g, 'notoriety', 2)
       text = `Your ${radioEra(g) ? 'episode' : 'column'} about ${topic} sparked a controversy. ${lost.toLocaleString('en-US')} ${radioEra(g) ? 'listeners' : 'readers'} ${eraOpen(g, PODCAST_GATE) ? 'unsubscribed' : radioEra(g) ? 'switched stations' : 'cancelled their subscriptions'} in protest.`
     } else {
-      const gained = Math.round(p.listeners * (0.03 + rand(g) * 0.15) + fameOf(g) * 20)
-      p.listeners += gained
+      const before = p.listeners
+      p.listeners = Math.min(MAX_AUDIENCE, p.listeners + Math.round(p.listeners * (0.03 + rand(g) * 0.15) + fameOf(g) * 20))
+      const gained = p.listeners - before
       if (chance(g, 0.4)) addFame(g, 1)
       text = radioEra(g) ? `You recorded an episode about ${topic}. It picked up ${gained.toLocaleString('en-US')} new listeners.` : `You wrote a column about ${topic}. It picked up ${gained.toLocaleString('en-US')} new readers.`
     }
@@ -997,8 +1002,8 @@ export function yearlyFame(g: GameState): void {
     if (p.podcast) {
       const pod = p.podcast
       const drift = fameOf(g) >= FAMOUS ? 0.02 + rand(g) * 0.08 : -(0.05 + rand(g) * 0.1)
-      pod.listeners = Math.max(50, Math.round(pod.listeners * (1 + drift)))
-      const income = Math.round(pod.listeners * (0.4 + rand(g) * 0.5))
+      pod.listeners = Math.min(MAX_AUDIENCE, Math.max(50, Math.round(pod.listeners * (1 + drift))))
+      const income = Math.round(pod.listeners * (0.4 + rand(g) * 0.5) * payScale(g))
       if (income > 0 && !c.prison) {
         earnIncome(g, income)
         log(g, `My ${podcastWord(g)} "${pod.name}" earned ${money(income)} from ads.`)

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import TimingsSequencer from './test/timings-sequencer'
 
 // A static site: everything runs in the browser, with no backend and no network calls.
 export default defineConfig({
@@ -13,5 +14,12 @@ export default defineConfig({
   preview: { port: 4173 },
   // Whole-life and market sweeps are CPU-heavy. Bound default concurrency so
   // contention does not turn otherwise passing simulation checks into timeouts.
-  test: { environment: 'node', include: ['test/**/*.test.ts'], testTimeout: 15_000, maxWorkers: 2 },
+  test: {
+    environment: 'node',
+    include: ['test/**/*.test.ts'],
+    testTimeout: 15_000,
+    maxWorkers: 2,
+    // Heaviest files first, by scripts/test-timings.json (docs/CI.md).
+    sequence: { sequencer: TimingsSequencer },
+  },
 })

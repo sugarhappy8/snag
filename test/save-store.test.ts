@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as save from '../src/game/save'
-import { localSaveBackend, memorySaveBackend, SAVE_KEY } from '../src/game/save-backends'
+import { idbMarked, idbSaveBackend, localSaveBackend, memorySaveBackend, SAVE_KEY } from '../src/game/save-backends'
 import type { AsyncSaveBackend } from '../src/game/save-backends'
 import { QUARANTINE_SLOTS } from '../src/game/save-quarantine'
 import { SAVE_SCHEMA } from '../src/game/save-schema'
@@ -23,12 +23,13 @@ import {
   resetSaveStoreForTests,
   saveRecord,
   setSaveBackend,
+  spillSave,
   STORE_OP_TIMEOUT_MS,
   subscribeSaveStatus,
 } from '../src/game/save-store'
 import { decodeSnapshotRecord } from '../src/game/snapshot-codec'
 import type { GameState } from '../src/game/types'
-import { controlledBackend, memoryLocalStorage } from './save-kit'
+import { controlledBackend, fakeIndexedDb, memoryLocalStorage } from './save-kit'
 import type { ControlledBackend } from './save-kit'
 
 const [SLOT_1, SLOT_2, SLOT_3] = QUARANTINE_SLOTS
@@ -925,6 +926,286 @@ describe('the copies', () => {
     expect(await flushSave()).toBe(false)
     removeRecord()
     expect(await flushSave()).toBe(true)
+  })
+})
+
+describe('a database that stops working', () => {
+  const lost = () => new DOMException('Connection to Indexed Database server lost.', 'UnknownError')
+
+  it('keeps the newest save in a plain backup copy when a write fails, and says the database is at fault', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    saveRecord('{"save":2}')
+    backend.fail(0, lost())
+    await writesReach(backend, 2)
+    backend.fail(1, lost())
+    expect(await flushSave()).toBe(false)
+    // The backup is the newest save, as plain JSON, under the key v4.0.3 and the boot table read.
+    expect(storage.data.get(SAVE_KEY)).toBe('{"save":2}')
+    expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: true, database: true })
+  })
+
+  it('names the database as the cause only for a lost connection or a hang, not for a full disk', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    backend.fail(0, full())
+    expect(await flushSave()).toBe(false)
+    expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: true })
+    expect(storage.data.get(SAVE_KEY)).toBe('{"save":1}')
+  })
+
+  it('a backup that cannot be written is not an error: the warning shows all the same', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    vi.spyOn(storage, 'setItem').mockImplementation(() => {
+      throw full()
+    })
+    backend.fail(0, lost())
+    expect(await flushSave()).toBe(false)
+    expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: true, database: true })
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+  })
+
+  it('tells listeners once when the write fails and once when it works again, and removes the backup then', async () => {
+    const backend = useControlled()
+    const listener = vi.fn()
+    const unsubscribe = subscribeSaveStatus(listener)
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    backend.fail(0, lost())
+    await flushSave()
+    saveRecord('{"save":2}')
+    await writesReach(backend, 2)
+    backend.fail(1, lost())
+    await flushSave()
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(storage.data.get(SAVE_KEY)).toBe('{"save":2}')
+
+    saveRecord('{"save":3}')
+    await writesReach(backend, 3)
+    backend.settle(2)
+    expect(await flushSave()).toBe(true)
+    // The database has the newest save again: the backup would only be an older copy to dispute it at boot.
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: false })
+    expect(listener).toHaveBeenCalledTimes(2)
+    unsubscribe()
+  })
+
+  it('leaves a localStorage record it did not write alone', async () => {
+    storage.data.set(SAVE_KEY, '{"other":true}')
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    backend.settle(0)
+    expect(await flushSave()).toBe(true)
+    expect(storage.data.get(SAVE_KEY)).toBe('{"other":true}')
+  })
+
+  it('removeRecord takes the backup away too, so an abandoned life is not brought back at boot', async () => {
+    const backend = useControlled()
+    saveRecord('{"life":1}')
+    await writesReach(backend, 1)
+    backend.fail(0, lost())
+    await flushSave()
+    expect(storage.data.get(SAVE_KEY)).toBe('{"life":1}')
+    removeRecord()
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(getSaveStatus().persistFailed).toBe(false)
+  })
+
+  it('writes no backup for a synchronous backend, which is its own store', () => {
+    setSaveBackend(localSaveBackend())
+    vi.spyOn(storage, 'setItem').mockImplementation(() => {
+      throw full()
+    })
+    expect(saveRecord('{"save":1}')).toBe(false)
+    expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: true })
+  })
+
+  it('writes no backup when the write was refused because a newer version holds the main slot and has no copy yet', async () => {
+    const backend = useControlled(newer)
+    await fillQuarantine(backend)
+    protectNewerRecord(newer, 3)
+    saveRecord('{"life":2}')
+    expect(await flushSave()).toBe(false)
+    expect(backend.writes).toEqual([])
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+  })
+
+  describe('a write that hangs', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    })
+    const run = () => vi.advanceTimersByTimeAsync(0)
+
+    it('backs the newest save up when the warning shows, and every save made while it hangs', async () => {
+      const backend = useControlled()
+      saveRecord('{"save":1}')
+      await run()
+      await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+      expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: true, database: true })
+      expect(storage.data.get(SAVE_KEY)).toBe('{"save":1}')
+
+      expect(saveRecord('{"save":2}')).toBe(true)
+      expect(storage.data.get(SAVE_KEY)).toBe('{"save":2}')
+      expect(backend.writes).toEqual(['{"save":1}'])
+
+      // The hung write lands: the newest is written, and the backup goes once the database has it.
+      backend.settle(0)
+      await run()
+      expect(backend.writes).toEqual(['{"save":1}', '{"save":2}'])
+      backend.settle(1)
+      expect(await flushSave()).toBe(true)
+      expect(storage.data.has(SAVE_KEY)).toBe(false)
+      expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: false })
+    })
+  })
+
+  it('a database that lost its connection takes the next save after one reopen, with no warning and no backup', async () => {
+    const factory = fakeIndexedDb()
+    const backend = await idbSaveBackend(factory)
+    setSaveBackend(backend)
+    saveRecord('{"save":1}')
+    expect(await flushSave()).toBe(true)
+    factory.dropConnections()
+    saveRecord('{"save":2}')
+    expect(await flushSave()).toBe(true)
+    expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: false })
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(factory.opens).toBe(2)
+    expect(await decodeSnapshotRecord((await backend.read()) ?? '')).toBe('{"save":2}')
+  })
+
+  it('a database that cannot be reopened fails the write, backs the save up, and recovers when it can open again', async () => {
+    const factory = fakeIndexedDb()
+    const backend = await idbSaveBackend(factory)
+    setSaveBackend(backend)
+    saveRecord('{"save":1}')
+    await flushSave()
+    factory.dropConnections({ failOpen: true })
+    saveRecord('{"save":2}')
+    expect(await flushSave()).toBe(false)
+    expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: true, database: true })
+    expect(storage.data.get(SAVE_KEY)).toBe('{"save":2}')
+
+    factory.dropConnections({ failOpen: false })
+    saveRecord('{"save":3}')
+    expect(await flushSave()).toBe(true)
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(getSaveStatus().persistFailed).toBe(false)
+  })
+})
+
+describe('the page is closing', () => {
+  it('spillSave writes the newest save plain to the legacy key while the queue has not caught up', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    // The write has not even started (the encoder runs first), and the page is going.
+    expect(spillSave()).toBe(true)
+    expect(storage.data.get(SAVE_KEY)).toBe('{"save":1}')
+    // Nothing else changed: the warning is not up, and the write goes on.
+    expect(getSaveStatus()).toStrictEqual({ notices: [], persistFailed: false })
+    await writesReach(backend, 1)
+    expect(backend.writes).toEqual(['{"save":1}'])
+  })
+
+  it('also spills while a write is in flight, with a later save waiting behind it', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    saveRecord('{"save":2}')
+    expect(spillSave()).toBe(true)
+    expect(storage.data.get(SAVE_KEY)).toBe('{"save":2}')
+  })
+
+  it('does nothing when the database already has the newest save, or there is none', async () => {
+    const backend = useControlled()
+    expect(spillSave()).toBe(false)
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    backend.settle(0)
+    expect(await flushSave()).toBe(true)
+    expect(spillSave()).toBe(false)
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+  })
+
+  it('spills a save the database failed to take, once, and leaves a synchronous backend alone', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    const refuse = vi.spyOn(storage, 'setItem').mockImplementation(() => {
+      throw full()
+    })
+    backend.fail(0)
+    await flushSave()
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    refuse.mockRestore()
+    expect(spillSave()).toBe(true)
+    expect(storage.data.get(SAVE_KEY)).toBe('{"save":1}')
+    const setItem = vi.spyOn(storage, 'setItem')
+    expect(spillSave()).toBe(true)
+    expect(setItem).not.toHaveBeenCalled()
+
+    setSaveBackend(memorySaveBackend())
+    saveRecord('{"save":2}')
+    expect(spillSave()).toBe(false)
+  })
+
+  it('a spill the queue then catches up with is taken away again', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    expect(spillSave()).toBe(true)
+    await writesReach(backend, 1)
+    backend.settle(0)
+    expect(await flushSave()).toBe(true)
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+  })
+
+  it('is false, and writes nothing, while a newer record still waits for its copy', async () => {
+    const backend = useControlled(newer)
+    protectNewerRecord(newer, 3)
+    saveRecord('{"life":2}')
+    expect(spillSave()).toBe(false)
+    expect(storage.data.has(SAVE_KEY)).toBe(false)
+    expect(await settleAll(backend)).toBe(true)
+  })
+
+  it('a refused spill is false and breaks nothing', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    vi.spyOn(storage, 'setItem').mockImplementation(() => {
+      throw full()
+    })
+    expect(spillSave()).toBe(false)
+    await writesReach(backend, 1)
+  })
+})
+
+describe('the marker that a browser keeps its life in IndexedDB', () => {
+  it('is set once a write has reached the database, and not by a write that failed', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    expect(idbMarked()).toBe(false)
+    backend.fail(0)
+    await flushSave()
+    expect(idbMarked()).toBe(false)
+
+    saveRecord('{"save":2}')
+    await writesReach(backend, 2)
+    backend.settle(1)
+    expect(await flushSave()).toBe(true)
+    expect(idbMarked()).toBe(true)
+  })
+
+  it('is never set by a synchronous backend', () => {
+    setSaveBackend(localSaveBackend())
+    saveRecord('{"save":1}')
+    expect(idbMarked()).toBe(false)
   })
 })
 

@@ -59,6 +59,23 @@ interface FakeDb {
   objectStoreNames: { contains(name: string): boolean }
   createObjectStore(name: string): void
   transaction(store: string, mode: IDBTransactionMode): FakeTransaction
+  /** The browser dropped the connection (dropConnections), or the page let go of it. */
+  onclose: Handler
+  /** Another tab wants to upgrade or delete the database (never fired by the fake). */
+  onversionchange: Handler
+  close(): void
+}
+
+/** The fake factory: an IDBFactory, plus the means to cut its connections and to count its opens. */
+export type FakeIndexedDb = IDBFactory & {
+  /**
+   * The browser drops every open connection (WebKit: "Connection to Indexed Database server lost"): onclose
+   * fires (unless `silent`: the page is not told), and a transaction on a dropped connection throws
+   * InvalidStateError. Stored rows survive. `failOpen` and `hang` change how the opens after it behave.
+   */
+  dropConnections(then?: { failOpen?: boolean; hang?: 'open'; silent?: boolean }): void
+  /** How many times open() has been called. */
+  readonly opens: number
 }
 
 type Rows = Map<string, string>
@@ -89,9 +106,14 @@ export function fakeIndexedDb(
     failWrite?: boolean
     /** Every string a get() returns has been altered, so a record read back differs from the one written. */
     corruptReadback?: boolean
+    /** open() answers after this many milliseconds, on a real timer, so tests use fake timers. */
+    slowOpen?: number
   } = {},
-): IDBFactory {
+): FakeIndexedDb {
+  const options = { ...opts }
   const databases = new Map<string, Database>()
+  const connections: { conn: FakeDb; closed: boolean }[] = []
+  let opens = 0
 
   const begin = (db: Database, storeName: string, mode: IDBTransactionMode): FakeTransaction => {
     const rows = db.stores.get(storeName)
@@ -114,7 +136,7 @@ export function fakeIndexedDb(
       get: (key) =>
         ask(() => {
           const row = rows.get(key)
-          return row !== undefined && opts.corruptReadback ? `${row}\u0000` : row
+          return row !== undefined && options.corruptReadback ? `${row}\u0000` : row
         }),
       put: (value, key) =>
         change(() => {
@@ -130,8 +152,8 @@ export function fakeIndexedDb(
     }
     const tx: FakeTransaction = { error: null, oncomplete: null, onerror: null, onabort: null, objectStore: () => objectStore }
 
-    if (mode === 'readonly' && opts.hang === 'read') return tx
-    const undo = mode !== 'readonly' && opts.failWrite ? new Map(rows) : null
+    if (mode === 'readonly' && options.hang === 'read') return tx
+    const undo = mode !== 'readonly' && options.failWrite ? new Map(rows) : null
     // The queue is filled before this first step runs; each request answers in a step of its own.
     const step = (): void => {
       const next = queue.shift()
@@ -153,17 +175,32 @@ export function fakeIndexedDb(
     return tx
   }
 
-  const connect = (db: Database): FakeDb => ({
-    objectStoreNames: { contains: (name) => db.stores.has(name) },
-    createObjectStore: (name) => void db.stores.set(name, new Map()),
-    transaction: (storeName, mode) => begin(db, storeName, mode),
-  })
+  const connect = (db: Database): FakeDb => {
+    const link = { closed: false, conn: undefined as unknown as FakeDb }
+    link.conn = {
+      objectStoreNames: { contains: (name) => db.stores.has(name) },
+      createObjectStore: (name) => void db.stores.set(name, new Map()),
+      transaction: (storeName, mode) => {
+        if (link.closed) throw new DOMException('The database connection is closing.', 'InvalidStateError')
+        return begin(db, storeName, mode)
+      },
+      onclose: null,
+      onversionchange: null,
+      close: () => {
+        link.closed = true
+      },
+    }
+    connections.push(link)
+    return link.conn
+  }
 
   const open = (name: string, version = 1): FakeOpenRequest => {
+    opens++
     const request: FakeOpenRequest = { result: undefined, error: null, onsuccess: null, onerror: null, onupgradeneeded: null, onblocked: null }
-    if (opts.hang === 'open') return request
-    later(() => {
-      if (opts.failOpen) {
+    if (options.hang === 'open') return request
+    const wake = options.slowOpen === undefined ? later : (fn: () => void) => void setTimeout(fn, options.slowOpen)
+    wake(() => {
+      if (options.failOpen) {
         request.error = new DOMException('The database could not be opened.', 'UnknownError')
         request.onerror?.()
         return
@@ -180,7 +217,17 @@ export function fakeIndexedDb(
     return request
   }
 
-  return { open } as unknown as IDBFactory
+  const dropConnections = (then: { failOpen?: boolean; hang?: 'open'; silent?: boolean } = {}): void => {
+    const { silent, ...behaviour } = then
+    Object.assign(options, behaviour)
+    for (const link of connections.splice(0)) {
+      if (link.closed) continue
+      link.closed = true
+      if (!silent) link.conn.onclose?.()
+    }
+  }
+
+  return { open, dropConnections, get opens() { return opens } } as unknown as FakeIndexedDb
 }
 
 // --- A backend the test drives -----------------------------------------------------------------

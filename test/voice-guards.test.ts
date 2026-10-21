@@ -1,3 +1,4 @@
+// ci: fast
 // Hard guards for the voice work, over the real src/ (not a fixture): rules that are absolute, so they are
 // test failures instead of warnings in the CI report. The report itself (scripts/voice-report.mjs, its
 // metric definitions and their tests) is in voice-report.test.ts.

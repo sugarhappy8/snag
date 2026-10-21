@@ -1,5 +1,7 @@
 // Settings: how money is shown, the Time Machine, About and the danger zone. Also exports the small
 // screen header / confirm dialog / toast pieces the other out-of-game screens share.
+import { ModalSurface } from '../a11y/ModalSurface'
+import { NoticeSettingsSection } from '../components/NoticeSettings'
 import { TimeMachineSettingsSection } from '../components/TimeMachineSettings'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { formatMoney, moneyContextOf, withMoneyContext } from '../../game/core'
@@ -62,7 +64,7 @@ export function ConfirmDialog({ title, text, emoji, confirmLabel, cancelLabel = 
   }, [onCancel])
   return (
     <div className="al-dialog-backdrop" onClick={onCancel}>
-      <div className="al-dialog" role="alertdialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <ModalSurface role="alertdialog" label={title} className="al-dialog">
         {emoji ? <div className="al-dialog-emoji">{emoji}</div> : null}
         <h2>{title}</h2>
         <p>{text}</p>
@@ -74,7 +76,7 @@ export function ConfirmDialog({ title, text, emoji, confirmLabel, cancelLabel = 
             {cancelLabel}
           </button>
         </div>
-      </div>
+      </ModalSurface>
     </div>
   )
 }
@@ -215,6 +217,8 @@ export function SettingsScreen() {
           {moneyPreview(game)}
         </p>
       </section>
+
+      <NoticeSettingsSection />
 
       <TimeMachineSettingsSection />
 

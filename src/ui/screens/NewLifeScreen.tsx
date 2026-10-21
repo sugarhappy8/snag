@@ -1,17 +1,18 @@
 // New life: a big "Random Life" button and a "Custom Life" form (name, gender, country, city,
 // birth year, sexuality, and optionally the starting stats and up to three special talents).
 // Names, rolled stats and random eras use Math.random (UI only; the engine itself is seeded).
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState, useSyncExternalStore } from 'react'
 import { avatarEmoji } from '../../game/core'
 import { eraPreview } from '../../game/history/events'
 import { nameFitsYear } from '../../game/history/events-people'
 import { HISTORY_START, PRESENT_YEAR } from '../../game/history/timeline'
 import { START_STAT_KEYS, type NewLifeOptions, type StartStatKey } from '../../game/life'
-import { loadGame } from '../../game/save'
+import { loadGame, subscribeSaveStatus } from '../../game/save'
 import { royalRule, type RoyalBirthChoice } from '../../game/royalty'
 import { isTalentId, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, SPECIAL_TALENTS, specialTalent, type TalentId } from '../../game/talents'
 import type { Gender, Sexuality } from '../../game/types'
 import { COUNTRIES, NAME_POOLS, getCountry } from '../../game/world'
+import { isDbUnreachable, newLifeWarning } from '../components/SaveNotices'
 import { statColor } from '../components/StatBar'
 import { STAT_META } from '../components/StatPanel'
 import { goTo, hasSavedGame, startNewLife, useApp } from '../store'
@@ -582,6 +583,9 @@ export function NewLifeScreen() {
     const g = game ?? (hasSavedGame() ? loadGame() : null)
     return g && g.character.alive ? `${g.character.firstName} ${g.character.lastName}` : null
   }, [game])
+  // A saved life the database didn't hand over: a life started now is kept apart from it, so the player is asked first.
+  const unreachable = useSyncExternalStore(subscribeSaveStatus, isDbUnreachable, isDbUnreachable)
+  const warning = newLifeWarning(livingLife, unreachable)
 
   const preview = useMemo(() => {
     const name = `${cleanName(firstName) || '???'} ${cleanName(lastName, false) || '???'}`
@@ -611,7 +615,7 @@ export function NewLifeScreen() {
   }
 
   const begin = (opts: NewLifeOptions) => {
-    if (livingLife) setPending(opts)
+    if (warning) setPending(opts)
     else startNewLife(opts)
   }
 
@@ -790,11 +794,11 @@ export function NewLifeScreen() {
         </button>
       </form>
 
-      {pending && livingLife ? (
+      {pending && warning ? (
         <ConfirmDialog
           emoji="⚠️"
-          title="Abandon your current life?"
-          text={`${livingLife} is still alive. Starting a new life ends theirs on the spot: no grave, no ribbon, no heirs.`}
+          title={warning.title}
+          text={warning.text}
           confirmLabel="Start a new life"
           danger
           onConfirm={() => {

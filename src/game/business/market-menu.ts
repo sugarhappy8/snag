@@ -4,6 +4,8 @@
 // the scenario table that shows what each is expected to do. Builders are pure menus (no RNG, no
 // state writes, cached like the other hints); actions re-read the live business. The Business
 // talent's purple hints come from the same quotes the actions use.
+import { chartInfo, marketLadderSpec, marketSizeSpec, shareSpec } from '../charts'
+import type { ChartSpec } from '../charts/spec'
 import { eraOf } from '../history/timeline'
 import { talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
@@ -50,6 +52,18 @@ function slice(w: number): string {
 
 function info(id: string, text: string, emoji: string): MenuInfo {
   return { type: 'info', id, text, emoji }
+}
+
+/**
+ * A chart row on a market screen (R1-C14). The chart is built from the company and market as they are in the state the row
+ * is drawn with, never from the ones the menu was opened with. The row says nothing until the market is booked.
+ */
+function marketChart(id: string, emoji: string, a: Asset, build: (g: GameState, view: MarketView, name: string) => ChartSpec | null): MenuInfo[] {
+  return chartInfo(id, emoji, (_g, spec) => spec?.summary ?? '', (g) => {
+    const cur = live(g, a)
+    const view = marketViewOf(g, readBiz(g, cur))
+    return view.booked ? build(g, view, cur.name) : null
+  })
 }
 
 function approx(): string {
@@ -150,6 +164,7 @@ export function leaderboardMenu(a: Asset): MenuGroup {
         ),
       )
       nodes.push(info(`biz.mkt.lb.tail.${a.id}`, `Countless small players hold ${shareText(v.fringe)} between them${v.scope === 'national' ? ': the local independents' : ''}.`, '\u{1F465}'))
+      if (v.booked) nodes.unshift(...marketChart(`biz.mkt.lb.chart.${a.id}`, '\u{1F3C6}', a, marketLadderSpec))
       return nodes
     },
   }
@@ -323,8 +338,10 @@ export function historyMenu(a: Asset): MenuGroup {
       const rows: MenuNode[] = [
         info(`biz.mkt.hist.me.${a.id}`, `Your share ${first}–${last}: ${shareText(h.me[0])} → ${shareText(h.me[h.me.length - 1])}\n${spark(h.me)}`, '\u{1F4C8}'),
       ]
+      if (v.booked) rows.push(...marketChart(`biz.mkt.hist.chart.${a.id}`, '\u{1F4C8}', a, shareSpec))
       if (h.lead.some((x) => x !== null)) rows.push(info(`biz.mkt.hist.lead.${a.id}`, `Leader's share: ${shareText(lead[0])} → ${shareText(lead[lead.length - 1])}\n${spark(lead)}`, '\u{1F947}'))
       rows.push(info(`biz.mkt.hist.size.${a.id}`, `Market size: ${money(h.size[0])} → ${money(h.size[h.size.length - 1])} a year\n${spark(h.size)}`, '\u{1F4B0}'))
+      if (v.booked) rows.push(...marketChart(`biz.mkt.hist.size.chart.${a.id}`, '\u{1F4B0}', a, marketSizeSpec))
       if (h.hhi.some((x) => x !== null)) {
         const hhi = h.hhi.map((x) => x ?? 0)
         rows.push(info(`biz.mkt.hist.hhi.${a.id}`, `Concentration: ${Math.round(hhi[0])} → ${Math.round(hhi[hhi.length - 1])}\n${spark(hhi)}`, '\u{1F9EE}'))

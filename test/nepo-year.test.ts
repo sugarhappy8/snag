@@ -15,6 +15,7 @@ import { killCharacter } from '../src/game/death'
 import { incomeTax } from '../src/game/finance'
 import { updateWl } from '../src/game/events/will-core'
 import { continueAsChild } from '../src/game/life'
+import { npcCompany } from '../src/game/npc-lives'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, MenuAction } from '../src/game/types'
 import { all, drain, kid, world } from './nepo-kit'
@@ -381,7 +382,6 @@ describe('succession', () => {
     a.value = 12_000_000
     g.character.money = 0
     const successorMoney = successor.money
-    const companyEquity = Math.max(0, Math.round(a.value - (a.mortgage?.balance ?? 0)))
     killCharacter(g, 'Old Age')
     g.queue = []
     const asWillHeir = continueAsChild(g, willHeir.id)
@@ -391,7 +391,9 @@ describe('succession', () => {
     const npcSuccessor = asWillHeir.people.find((p) => p.id === successor.id)
     expect(npcSuccessor?.occupation).toBe('Business Owner')
     expect(npcSuccessor?.data.nepo).toBeUndefined()
-    expect(npcSuccessor?.money).toBe(successorMoney + companyEquity)
+    // The designated sibling keeps the company as a holding, not as cash (R0-13).
+    expect(npcCompany(npcSuccessor!, asWillHeir.year)?.a.id).toBe(a.id)
+    expect(npcSuccessor?.money).toBe(successorMoney)
     expect(npcSuccessor?.notes.some((note) => /inherited .*designated successor/i.test(note))).toBe(true)
   })
 

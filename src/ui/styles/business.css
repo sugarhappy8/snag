@@ -625,3 +625,442 @@ button.ar-chip.is-on {
     margin-right: 44px;
   }
 }
+
+/* ------------------------------------------------------------------------ */
+/* Annual Report 2.0 (R1-C11): the five-tab book (src/ui/charts/ReportBook.tsx). */
+/* Phone first. Under 520px the card is the whole screen and the book supplies its own 16px gutters; from 520px it is a */
+/* centred card at most 860px high. The header, the tab row and the button bar stay in view while the panel scrolls. */
+/* Tokens only, so light and dark follow, and nothing is wider than a 328px column. */
+
+/* The card is also .is-wide (440px in global.css, which loads after this sheet), so the width is stated for both. */
+.popup.is-report,
+.popup.is-wide.is-report {
+  max-width: 480px;
+  height: 100%;
+}
+
+/* The dialog is already labelled; the book has its own header. */
+.popup.is-report .popup-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.popup.is-report .popup-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  /* The header (48px) and the tab row (44px) stick to the top and the button bar to the bottom, all inside this scroller, */
+  /* so a control behind one counts as in view. The padding keeps a focused control clear of them (WCAG 2.4.11). */
+  scroll-padding-top: 96px;
+  scroll-padding-bottom: calc(72px + var(--safe-bottom));
+}
+
+/* The text layout stands in for the book while its chunk loads, so it keeps a gutter of its own. */
+.popup.is-report .annual-report {
+  padding: 16px;
+}
+
+@media (max-width: 519.98px) {
+  .popup-backdrop:has(.popup.is-report) {
+    padding: var(--safe-top) 0 0;
+  }
+
+  .popup.is-report {
+    border-radius: 0;
+  }
+}
+
+@media (min-width: 520px) {
+  .popup.is-report {
+    height: min(100%, 860px);
+  }
+}
+
+.report-book {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  text-align: left;
+}
+
+.rb-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.rb-title {
+  flex: none;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.rb-company {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.rb-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-tabs {
+  position: sticky;
+  top: 48px;
+  z-index: 2;
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.rb-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.rb-tab {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  min-height: var(--target, 44px);
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* The chosen tab is underlined as well as darker, so the choice never rests on colour alone. */
+.rb-tab[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--blue);
+}
+
+.rb-tab:focus-visible {
+  outline: 3px solid var(--focus-ring, currentColor);
+  outline-offset: -3px;
+}
+
+.rb-panel {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.rb-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding: 10px 16px calc(10px + var(--safe-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--border);
+}
+
+.rb-bar .ar-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 0;
+}
+
+.rb-bar .ar-actions .btn {
+  flex: 1 1 140px;
+  width: auto;
+  min-height: 48px;
+}
+
+.rb-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rb-verdict {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.rb-foot,
+.rb-missing {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.rb-sub {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.rb-market-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rb-all {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+}
+
+.rb-all > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--target, 44px);
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rb-all > summary:focus-visible {
+  outline: 3px solid var(--focus-ring, currentColor);
+  outline-offset: -3px;
+}
+
+.rb-all .ar-statement {
+  margin: 0 12px 10px;
+  background: var(--card);
+}
+
+.rb-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rb-strip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rb-strip-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 80px);
+  align-items: center;
+  gap: 10px;
+  min-height: var(--target, 44px);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+}
+
+.rb-strip-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-strip-num {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-strip-num strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.rb-strip-num small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Year-End Desk (R1-C12): the header block above the book when two or more reports queue (src/ui/charts/YearEndDesk.tsx). */
+/* It is not sticky: it scrolls away, so the book's own header, tab row and button bar are the only things that stay in view. */
+/* Tokens only, and every target is 44px. The chips scroll sideways and the row is a tab stop so the keyboard can reach them. */
+
+.year-end-desk {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  text-align: left;
+}
+
+/* The block sits on --card, the popup's own surface: the blue ghost button on it is 4.9:1 in the dark theme, where --card-2 */
+/* gave 4.4:1. The bottom rule and the frames of the step and the chips set it apart instead of a different fill. */
+.yd-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 16px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+/* The text layout (no book, so no is-report) keeps the popup's own gutter, and the block joins it instead of padding inside it. */
+.popup:not(.is-report) .yd-block {
+  padding-inline: 0;
+}
+
+.yd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yd-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.yd-step {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.yd-chips {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 2px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  list-style: none;
+}
+
+.yd-chips:focus-visible {
+  outline: 3px solid var(--focus-ring, currentColor);
+  outline-offset: 2px;
+}
+
+.yd-chip {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: var(--target, 44px);
+  max-width: 280px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  scroll-snap-align: start;
+}
+
+/* The open report is marked by a heavier frame and a bold name as well as the accent, so the mark never rests on colour alone. */
+.yd-chip[aria-current='step'] {
+  padding: 5px 9px;
+  border: 2px solid var(--blue);
+}
+
+.yd-chip[aria-current='step'] .yd-chip-name {
+  font-weight: 800;
+}
+
+.yd-chip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.yd-chip-name {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yd-chip-num {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.yd-chip-num strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.yd-chip-num small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.yd-chip .ch-spark {
+  flex: none;
+  width: 64px;
+}
+
+.yd-keep {
+  align-self: flex-start;
+  min-height: var(--target, 44px);
+  padding: 0 8px;
+}

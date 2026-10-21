@@ -1,5 +1,6 @@
 // Ecosystem companies: the Devices & Chips screen of a device company. Where its chips come from, a fab to build, the platform, and one
 // spec sheet per kind of hardware. It reads state and never writes it: no random number is drawn, and no row names a rival.
+import { chartInfo, scorecardSpec } from '../charts'
 import type { Asset, GameState, Json, MenuGroup, MenuNode } from '../types'
 import { chipBook, chipSource, chipTerms, HARDWARE_FAMILIES, OS_FAMILY, OS_PULL_CAP, readChips, readFabs } from './devices-data'
 import { specLines, specSheet, type DeviceSpec } from './devices-specs'
@@ -79,7 +80,13 @@ function familyMenu(a: Asset, family: string): MenuGroup {
       const s = find(g)
       if (!s) return []
       const ids = ['perf', 'quality', 'price']
-      return specLines(s).map((text, i): MenuNode => ({ type: 'info', id: `biz.devices.spec.${a.id}.${slug(family)}.${ids[i]}`, emoji: '\u{1F4CA}', text }))
+      const lines = specLines(s).map((text, i): MenuNode => ({ type: 'info', id: `biz.devices.spec.${a.id}.${slug(family)}.${ids[i]}`, emoji: '\u{1F4CA}', text }))
+      // Price has a negative scale, so the chart holds performance and quality; the price stays a text row (R1-C14).
+      lines.push(...chartInfo(`biz.devices.spec.chart.${a.id}.${slug(family)}`, '\u{1F4CA}', (_g, spec) => spec?.summary ?? '', (gg) => {
+        const sheet = find(gg)
+        return sheet ? scorecardSpec(`${family} against the market`, [sheet.perf, sheet.quality]) : null
+      }))
+      return lines
     },
   }
 }

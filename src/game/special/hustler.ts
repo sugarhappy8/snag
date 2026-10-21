@@ -11,6 +11,7 @@ import { hasMainCharacter, hasTalent } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { ageCeiling, liftSkill } from '../mastery'
 import { addFame, blocked, claimYearly, clamp100, hire, instrumentSkill, knownInstruments, leave, masterInstrument, money, myJob, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
+import { payScale } from './pay-scale'
 
 // ---------------------------------------------------------------------------
 // Acts
@@ -579,13 +580,14 @@ function workStreet(g: GameState): void {
   if (act.kind === 'beg' && chance(g, 0.05)) {
     const gift = randInt(g, 100, 500)
     take += gift
-    bonusText = ` A stranger in a fancy coat handed you ${money(gift)} and said "pay it forward".`
+    bonusText = ` A stranger in a fancy coat handed you ${money(Math.round(gift * payScale(g)))} and said "pay it forward".`
   }
   if ((act.kind === 'busk' || act.kind === 'perform') && skill >= 70 && chance(g, 0.04)) {
     addFame(g, 3)
     bonusText = ' A video of your act went viral online. People are calling you a street legend.'
   }
-  take = Math.max(0, take)
+  // The acts are priced in US 2020s dollars. Scale the take to the era and the country.
+  take = Math.max(0, Math.round(take * payScale(g)))
   addMoney(g, take)
   d.earnedYear += take
   p.totalEarned += take

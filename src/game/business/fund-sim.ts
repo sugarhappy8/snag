@@ -193,7 +193,7 @@ export function simulateFund(g: GameState, b: BizState, year: number, ownerDraw:
   const stmt: Statement = { year, demand: 0, sold: 0, produced: 0, spoiled: 0, price: 0,
     revenue: Math.round(revenue), salesTax: 0, netRevenue: Math.round(revenue), cogs: Math.round(cogs), wages: Math.round(wages), keyStaff: Math.round(keyStaff), rent: Math.round(rent),
     marketing: Math.round(marketing), interest: Math.round(interest), upkeep: Math.round(upkeep), other: b.yearCosts, otherIncome: b.yearIncome,
-    // Funds never get the perfect-foresight top-up (executive-foresight.ts skips a set value).
+    // Funds book no strategic income: no CEO rating tops up a firm's earnings any more.
     strategicIncome: 0,
     ownerPay, pbt: Math.round(pbt), corpTax: Math.round(tax), net, cashErosion: 0, cycle: cycleOf(g, b.countryId, year), openFraction: open, employees: staffCount }
   b.last = stmt

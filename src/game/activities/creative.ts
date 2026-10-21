@@ -7,6 +7,7 @@
 // the mood for. Hints point at better odds; nothing is ever a sure thing.
 import { addHidden, addRelationship, addStat, count, earnIncome, log, peopleBy, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { localeOf } from '../data/locales'
+import { realFollowers } from '../followers'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { stableChoice, withHint } from '../special/common'
@@ -390,7 +391,7 @@ function piecePrice(g: GameState, p: Piece, v: Venue): number {
 /** Chance a piece sells at a venue (pure: safe for hints). */
 function saleOdds(g: GameState, p: Piece, v: Venue): number {
   const art = hasTalent(g, 'Art') ? 0.1 : 0
-  const followers = g.character.social?.followers ?? 0
+  const followers = realFollowers(g.character.social)
   if (v.id === 'fair') return Math.min(0.92, 0.75 + p.q / 1000 + art)
   if (v.id === 'online') return Math.min(0.85, 0.3 + p.q / 250 + (followers > 50_000 ? 0.15 : followers > 2_000 ? 0.05 : 0) + art)
   return Math.max(0.03, Math.min(0.85, (p.q - 55) / 45 + art))

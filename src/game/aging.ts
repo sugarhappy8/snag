@@ -32,6 +32,7 @@ import { yearlyCorruption } from './special/corruption'
 import { yearlyHedge } from './business/hedge-year'
 import { yearlyInvestments } from './investments'
 import { yearlyMilestones } from './life'
+import { writeLifeRow } from './life-series'
 import { yearlyRelationships } from './relationships'
 import { yearlyBackground } from './birth-background'
 import { yearlyRoyalty } from './royalty'
@@ -117,12 +118,20 @@ export function ageUp(g: GameState): void {
   yearlyEconomy(g)
   c.money /= 1 + economyOf(g).inflation
 
+  // The life series keeps one row for each age lived, the year of death included (src/game/life-series.ts).
   for (const [, hook] of YEARLY_HOOKS) {
     hook(g)
-    if (!c.alive) return
+    if (!c.alive) {
+      writeLifeRow(g)
+      return
+    }
   }
   checkDeath(g)
-  if (!c.alive) return
+  if (!c.alive) {
+    writeLifeRow(g)
+    return
+  }
+  writeLifeRow(g)
 
   // Flavor lines + a random event from the event library (resolved by offline.ts).
   queueAi(g, { type: 'yearEvents' })

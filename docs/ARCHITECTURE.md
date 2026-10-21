@@ -1291,7 +1291,7 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   `valuationOf`/`closeBusiness` count it (`bankAdvanceOf`). `payableCash` stops at the capital the
   regulator requires (`bankPayoutRoom`), so dividends, group sweeps and buybacks can't strip it.
   `newBiz` opens a bank's books at once (`openBank`). Rescues (bailout, "too big to fail") take at
-  least the fair stake plus a quarter. Bank statements opt out of perfect-foresight income. The
+  least the fair stake plus a quarter. No statement gets strategic trading income any more (v4.0.3). The
   market line shows rank and share of deposits (funds: of money invested); finance firms get no
   rival-buyout quotes. Founding advice comes from `startOutlook` (the year's model without dice).
 

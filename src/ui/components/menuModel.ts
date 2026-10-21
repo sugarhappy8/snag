@@ -1,6 +1,10 @@
 // Pure helpers for evaluating menu nodes safely (no React, no store), shared by the menu
 // UI and unit-tested on their own. A bug in one feature menu must not take the UI down,
 // so every callback is wrapped.
+import { readChartSpec, type ChartSpec } from '../../game/charts/spec'
+import { FLAGS } from '../../game/flags'
+import { HUB_PREFIX } from '../../game/hubs/company'
+import { badgeText } from '../../game/hubs/needs'
 import { HINT_EMOJI } from '../../game/talents'
 import type { GameState, MenuAction, MenuGroup, MenuInfo, MenuInput, MenuNode } from '../../game/types'
 
@@ -78,6 +82,21 @@ export function infoText(node: MenuInfo, g: GameState): string {
   } catch (err) {
     report(`info(${node.id})`, err)
     return ''
+  }
+}
+
+/**
+ * The chart an info row carries, ready to draw: null for a row with no chart, a builder with nothing to draw, a builder
+ * that throws (reported, like infoText) and a spec the reader refuses (a NaN, a too-long text). The text of the row stays
+ * the way to read it, so a null here only means the row is drawn as words.
+ */
+export function infoChart(node: MenuInfo, g: GameState): ChartSpec | null {
+  if (typeof node.chart !== 'function') return null
+  try {
+    return readChartSpec(node.chart(g))
+  } catch (err) {
+    report(`chart(${node.id})`, err)
+    return null
   }
 }
 
@@ -323,6 +342,19 @@ export interface ReturnTarget {
 }
 
 /**
+ * What the chip and the cockpit strips call a place: its own name, except at or under a cockpit tile. "Run", "Money" and
+ * "Exit" say nothing about which company they belong to, so the group the tile sits in leads ("Test Co · Money"). A tile
+ * straight under the root has nothing above it to name. Without cockpits there are no tiles and the name is unchanged.
+ */
+function landingLabel(trail: readonly MenuGroup[]): string {
+  const last = trail[trail.length - 1]
+  if (!last) return ''
+  const tile = trail.findIndex((t) => typeof t.id === 'string' && t.id.startsWith(HUB_PREFIX))
+  const owner = tile > 0 ? trail[tile - 1] : undefined
+  return owner && owner.label ? `${owner.label} \u00B7 ${last.label}` : last.label
+}
+
+/**
  * Resolve a saved menu path against the latest state. Groups that vanished, became hidden
  * or locked are dropped together with everything below them, so the target is always a
  * menu the player can actually open.
@@ -337,8 +369,42 @@ export function returnTarget(
   return {
     path: trail.map((t) => t.id),
     crumbs: [root.label, ...trail.map((t) => t.label)],
-    label: last ? last.label : root.label,
+    label: last ? landingLabel(trail) : root.label,
     emoji: last ? last.emoji : root.emoji,
     exact: trail.length === path.length,
   }
+}
+
+/** The "Needs you" pill of a row (G.8): its badge text, or null. Dark unless FLAGS.navRegroup is on; a locked row shows none (the caller checks). */
+export function nodeBadge(node: MenuAction | MenuGroup, g: GameState): string | null {
+  return FLAGS.navRegroup ? badgeText(node, g) : null
+}
+
+// Paths in a sheet's menu tree (R1-N5). useMenuNav builds its path changes from these, so they are testable without a
+// renderer. `path` is the stored group ids, `depth` the number of them that still resolve (the stored path can be longer
+// when a group has vanished since).
+
+/** A group opened from the list at `depth`: the ids above that list, then the group. */
+export function pathAfterPush(path: string[], depth: number, id: string): string[] {
+  return [...path.slice(0, depth), id]
+}
+
+/** Back to the list at `n` (0 is the root list): the first `n` ids. An `n` outside 0 to depth - 1 returns `path` itself. */
+export function pathAfterPopTo(path: string[], depth: number, n: number): string[] {
+  if (!Number.isInteger(n) || n < 0 || n >= depth) return path
+  return path.slice(0, n)
+}
+
+/** The most group ids a sheet is opened on at once. */
+const MAX_OPEN_DEPTH = 12
+
+/** A path to open a sheet on: the non-empty strings of `ids`, at most 12. Anything else is dropped. */
+export function pathAfterOpen(ids: readonly string[]): string[] {
+  const out: string[] = []
+  if (!Array.isArray(ids)) return out
+  for (const id of ids) {
+    if (typeof id === 'string' && id !== '') out.push(id)
+    if (out.length >= MAX_OPEN_DEPTH) break
+  }
+  return out
 }

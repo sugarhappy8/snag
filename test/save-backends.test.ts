@@ -255,6 +255,82 @@ describe('idbSaveBackend', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  describe('a connection the browser drops', () => {
+    it('opens a fresh connection once and retries, so a write after the loss still lands', async () => {
+      const factory = fakeIndexedDb()
+      const backend = await idbSaveBackend(factory)
+      await backend.write('{"x":1}')
+      expect(factory.opens).toBe(1)
+
+      factory.dropConnections()
+      await backend.write('{"x":2}')
+      expect(factory.opens).toBe(2)
+      expect(await backend.read()).toBe('{"x":2}')
+      expect(await backend.overflow.keys()).toEqual([])
+      // The new connection is kept: nothing opens again while it works.
+      await backend.write('{"x":3}')
+      expect(factory.opens).toBe(2)
+    })
+
+    it('heals a read the same way', async () => {
+      const factory = fakeIndexedDb()
+      const backend = await idbSaveBackend(factory)
+      await backend.write('{"x":1}')
+      factory.dropConnections()
+      expect(await backend.read()).toBe('{"x":1}')
+      expect(factory.opens).toBe(2)
+    })
+
+    it('heals a connection that closed without a close event: the first call fails with InvalidStateError, reopens once and retries', async () => {
+      const factory = fakeIndexedDb()
+      const backend = await idbSaveBackend(factory)
+      await backend.write('{"y":1}')
+      factory.dropConnections({ silent: true })
+      await backend.write('{"y":2}')
+      expect(factory.opens).toBe(2)
+      expect(await backend.read()).toBe('{"y":2}')
+    })
+
+    it('rejects when the database cannot be reopened, and recovers once it can', async () => {
+      const factory = fakeIndexedDb()
+      const backend = await idbSaveBackend(factory)
+      await backend.write('{"x":1}')
+      factory.dropConnections({ failOpen: true })
+      await expect(backend.write('{"x":2}')).rejects.toBeInstanceOf(DOMException)
+
+      factory.dropConnections({ failOpen: false })
+      await backend.write('{"x":3}')
+      expect(await backend.read()).toBe('{"x":3}')
+    })
+
+    it('does not reopen for a quota refusal', async () => {
+      const factory = fakeIndexedDb({ failWrite: true })
+      const backend = await idbSaveBackend(factory)
+      await expect(backend.write('{"x":1}')).rejects.toMatchObject({ name: 'QuotaExceededError' })
+      expect(factory.opens).toBe(1)
+    })
+
+    it('shares one reopen between calls made together', async () => {
+      const factory = fakeIndexedDb()
+      const backend = await idbSaveBackend(factory)
+      factory.dropConnections()
+      await Promise.all([backend.read(), backend.overflow.keys(), backend.write('{"x":1}')])
+      expect(factory.opens).toBe(2)
+    })
+
+    it('does not wait forever for a reopen that hangs: it gives up after the open timeout', async () => {
+      vi.useFakeTimers()
+      const factory = fakeIndexedDb()
+      const backend = await idbSaveBackend(factory, 500)
+      factory.dropConnections({ hang: 'open' })
+      const writing = watch(backend.write('{"x":1}'))
+      await vi.advanceTimersByTimeAsync(499)
+      expect(writing.state).toBe('pending')
+      await vi.advanceTimersByTimeAsync(1)
+      expect(writing.state).toBe('rejected')
+    })
+  })
+
   it('rejects when the database is blocked, and leaves no timer running', async () => {
     vi.useFakeTimers()
     const request: { onblocked?: () => void } = {}

@@ -1,7 +1,7 @@
 // Plays many complete random lives through the real engine (AI off → offline fallbacks),
 // tapping random menu actions and person interactions every year and answering every popup.
 // Catches crashes, stuck queues and broken invariants across all modules at once.
-import { afterAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { netWorth } from '../src/game/core'
@@ -11,6 +11,10 @@ import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import { hasScript, runScript } from '../src/game/scripts'
 import { STAT_KEYS, type AnnualReportData, type GameState, type MenuAction, type MenuNode, type MinigameModal, type ModalItem } from '../src/game/types'
+import { mergedSlices, readSlice, recordSlice, seedSlice } from './shard-kit'
+
+// In CI each shard plays a slice of the seeds (SLICE=i/n) and the merge step checks the whole set (test/shard-kit.ts).
+const slice = readSlice()
 
 /** Tiny driver RNG, separate from the game's so the driver doesn't depend on engine rolls. */
 function driver(seed: number) {
@@ -200,28 +204,36 @@ function playLife(seed: number, actionsPerYear: number): { g: GameState; result:
 describe('whole-life simulation (offline)', () => {
   describe('40 random lives from birth to death', () => {
     const results: LifeResult[] = []
+    const SEEDS = seedSlice(Array.from({ length: 40 }, (_, i) => i + 1), 'simulate:lives', slice)
     // Keep every life, action and save round-trip, but give each seed its own timeout
     // and failure report. The persistent world makes the old single 40-life timer
     // sensitive to other simulation workers running at the same time.
-    it.each(Array.from({ length: 40 }, (_, i) => i + 1))('plays seed %i without errors', seed => {
+    it.each(SEEDS)('plays seed %i without errors', seed => {
       results.push(playLife(seed, 4).result)
       // A whole life with a save round trip after every action: 31-93 s per seed on a busy
       // 4-core machine, so 30 s left no room on a 2-core CI runner.
     }, 120_000)
 
-    afterAll(() => {
-      expect(results).toHaveLength(40)
-      const ages = results.map((r) => r.age).sort((a, b) => a - b)
+    it('summarises the lives', () => {
+      recordSlice('simulate:lives', results, slice)
+      // A slice checks only that its own seeds were played; the merge step checks the whole set.
+      if (slice.mode === 'part') {
+        expect(results).toHaveLength(SEEDS.length)
+        return
+      }
+      const all = slice.mode === 'merge' ? mergedSlices<LifeResult>('simulate:lives', slice) : results
+      expect(all).toHaveLength(40)
+      const ages = all.map((r) => r.age).sort((a, b) => a - b)
       const causes: Record<string, number> = {}
       const ribbons: Record<string, number> = {}
-      for (const r of results) {
+      for (const r of all) {
         causes[r.cause] = (causes[r.cause] ?? 0) + 1
         ribbons[r.ribbon ?? 'none'] = (ribbons[r.ribbon ?? 'none'] ?? 0) + 1
       }
       console.log(
         `lifespans: min ${ages[0]}, median ${ages[Math.floor(ages.length / 2)]}, max ${ages[ages.length - 1]}\n` +
           `causes: ${JSON.stringify(causes)}\nribbons: ${JSON.stringify(ribbons)}\n` +
-          `net worth median: ${results.map((r) => r.netWorth).sort((a, b) => a - b)[Math.floor(results.length / 2)]}`,
+          `net worth median: ${all.map((r) => r.netWorth).sort((a, b) => a - b)[Math.floor(all.length / 2)]}`,
       )
       // Most lives should be long ones; a typical median is in the 70s-80s.
       expect(ages[Math.floor(ages.length / 2)]).toBeGreaterThan(50)
@@ -229,7 +241,7 @@ describe('whole-life simulation (offline)', () => {
   })
 
   it('continues as a child after death', () => {
-    for (let seed = 100; seed < 106; seed++) {
+    for (const seed of seedSlice([100, 101, 102, 103, 104, 105], 'simulate:heirs', slice)) {
       const { g } = playLife(seed, 6)
       let kids = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild'))
       // Random play doesn't always produce children; give this life one so the hand-off is tested.

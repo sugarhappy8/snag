@@ -244,6 +244,46 @@ describe('marriage', () => {
   })
 })
 
+describe('divorce never takes more than the order', () => {
+  function house(g: GameState, value: number) {
+    g.assets.push({ id: 'big-house', kind: 'house', name: 'Big house', emoji: '', purchasePrice: value, value, condition: 100, purchasedAge: 28, upkeep: 0, details: {} })
+  }
+  function assetValue(g: GameState): number {
+    return g.assets.reduce((sum, a) => sum + a.value - (a.mortgage?.balance ?? 0), 0)
+  }
+
+  it('a big asset that covers the order is sold once and the change comes back', () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const g = adultGame(seed, 100_000)
+      house(g, 5_000_000)
+      const wife = createPerson(g, { relation: 'spouse', gender: 'female', age: 30, money: 0, data: { prenup: false, marriedAge: 25 } })
+      expect(wife.money + g.character.money + assetValue(g)).toBe(5_100_000)
+      divorce(g, wife, 'player')
+      // Conservation: nothing is created or lost, whoever ends up holding it.
+      expect(wife.money + g.character.money + assetValue(g)).toBe(5_100_000)
+      // The ex gets the judge's order, not the whole house.
+      expect(wife.money).toBeGreaterThanOrEqual(1_275_000)
+      expect(wife.money).toBeLessThanOrEqual(2_550_000)
+      expect(g.character.money).toBeGreaterThanOrEqual(2_550_000)
+      expect(g.assets.length).toBe(0)
+    }
+  })
+
+  it('an order below your cash sells nothing', () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const g = adultGame(seed, 4_000_000)
+      house(g, 1_000_000)
+      const wife = createPerson(g, { relation: 'spouse', gender: 'female', age: 30, money: 0, data: { prenup: false, marriedAge: 25 } })
+      divorce(g, wife, 'player')
+      // The order is at most half of $5,000,000, so cash alone pays it.
+      expect(wife.money).toBeGreaterThanOrEqual(1_250_000)
+      expect(wife.money).toBeLessThanOrEqual(2_500_000)
+      expect(g.character.money).toBe(4_000_000 - wife.money)
+      expect(g.assets.map((a) => a.id)).toEqual(['big-house'])
+    }
+  })
+})
+
 // --- pregnancy -------------------------------------------------------------------
 
 describe('pregnancy', () => {

@@ -12,14 +12,20 @@
 import { useSyncExternalStore } from 'react'
 import { ageUp } from '../game/aging'
 import { bindMoneyContext, moneyContextOf, netWorth, notice } from '../game/core'
+import { FLAGS } from '../game/flags'
+import { emptyInbox, inboxUnread, markSeen, routeMinorNotices } from '../game/inbox'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
+import { lifeSpark } from '../game/life-series'
+import { routesToInbox } from '../game/notice-policy'
 import { resolveTask } from '../game/offline'
 import {
   clearSave,
   clearTimeline,
   expectSnapshot,
+  flushSave,
   forgetFuture,
   forgetStop,
+  getSaveStatus,
   loadGame,
   loadSnapshot,
   recordDeath,
@@ -27,6 +33,7 @@ import {
   saveGame,
   snapshotIfDue,
   startTimeline,
+  subscribeSaveStatus,
   subscribeTimeStops,
   timeStops,
   unrecordDeath,
@@ -34,7 +41,7 @@ import {
 import { runScript } from '../game/scripts'
 import { arriveInPast, sandboxTimeMachine, travelBlock, type TimeStop } from '../game/timeMachine'
 import type { GameState, MenuAction, ModalItem } from '../game/types'
-import { loadSettings, normalizeSettings, saveSettings, type Settings } from '../settings'
+import { loadSettings, normalizeSettings, quietModeOn, saveSettings, type Settings } from '../settings'
 
 export type Screen = 'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'
 
@@ -112,6 +119,13 @@ export function getApp(): AppState {
 subscribeTimeStops(() => {
   const stops = state.game ? timeStops(state.game.lifeId) : NO_STOPS
   if (stops !== state.timeStops) setState({ timeStops: stops })
+})
+
+// A save that is only queued (IndexedDB) can still fail later, and saveGame has already said true. The
+// banner follows the save store's own word on whether the newest save is in storage.
+subscribeSaveStatus(() => {
+  const failed = getSaveStatus().persistFailed
+  if (failed !== state.saveError) setState({ saveError: failed })
 })
 
 function subscribe(listener: () => void): () => void {
@@ -241,6 +255,15 @@ export const TRAVEL_TIMEOUT_MS = 15_000
 const STALLED = 'stalled'
 
 /**
+ * Save the arrival of a Time Machine jump and wait until it is in storage. False when it is not.
+ * With localStorage the write is done inside saveGame, so this is saveGame: a refused write is false
+ * at once. With IndexedDB the write is only queued when saveGame answers, so it waits for the queue.
+ */
+export async function saveForTravel(g: GameState): Promise<boolean> {
+  return saveGame(g) && (await flushSave())
+}
+
+/**
  * Go back to the start of age `age` of the current life: the snapshot is restored exactly
  * (plus a log line, the jump counted and fresh dice), the "Back to" chip is cleared, and a death that happened since is taken off the graveyard and ribbons.
  * Resolves true once you've arrived; false (with timeTravel.error set) when you can't go.
@@ -307,12 +330,25 @@ export async function travelBack(age: number): Promise<boolean> {
   // Save the trip before anything else changes. If even that fails (storage full), the jump is
   // called off: otherwise a reload would bring back a dead life whose grave and ribbon were
   // already taken back, and a second jump would take another life's ribbon.
-  if (!saveGame(arrived)) {
+  if (!(await saveForTravel(arrived))) {
     setState({
       timeTravel: {
         ...state.timeTravel,
         busy: false,
-        error: `The Time Machine couldn't save your trip to ${stop.year}: this browser's storage is full. Free some space and try again.`,
+        error: getSaveStatus().database
+          ? `The Time Machine couldn't save your trip to ${stop.year}: this browser's database isn't answering. Reload and try again.`
+          : `The Time Machine couldn't save your trip to ${stop.year}: this browser's storage is full. Free some space and try again.`,
+      },
+    })
+    return false
+  }
+  // An asynchronous write takes a moment, and a tap in that gap must not be overwritten by commit(arrived).
+  if (state.game !== now) {
+    setState({
+      timeTravel: {
+        ...state.timeTravel,
+        busy: false,
+        error: 'The Time Machine trip was called off: the game moved on while it saved.',
       },
     })
     return false
@@ -347,7 +383,8 @@ function commit(g: GameState): void {
   // The start of a year (its birthday popups done): keep it for the Time Machine. Best-effort
   // and asynchronous, after the save, so it can never cost the player their game.
   if (saved) void snapshotIfDue(g)
-  setState({ game: g, saveError: !saved, timeStops: timeStops(g.lifeId) })
+  // An earlier asynchronous failure keeps the banner up until a write succeeds: a retry still pending hasn't.
+  setState({ game: g, saveError: !saved || getSaveStatus().persistFailed, timeStops: timeStops(g.lifeId) })
 }
 
 /** Retry the current in-memory life without replaying its last action. */
@@ -363,6 +400,7 @@ function finalizeIfDead(g: GameState): void {
   if (g.character.alive || g.flags.deathRecorded || g.queue.length > 0) return
   const c = g.character
   const deathMoney = moneyContextOf(g)
+  const spark = lifeSpark(g)
   recordDeath(g, {
     lifeId: g.lifeId,
     generation: g.generation,
@@ -379,6 +417,7 @@ function finalizeIfDead(g: GameState): void {
     occupation: typeof g.flags.finalOccupation === 'string' ? g.flags.finalOccupation : 'Unknown',
     ribbon: g.ribbon,
     obituary: g.obituary,
+    ...(spark.length >= 2 ? { spark } : {}),
   })
 }
 
@@ -471,6 +510,20 @@ export function dismissNotice(id: string): void {
   handleModal(id, () => {})
 }
 
+/**
+ * One OK for a run of notices (the digest card): removes the notices with these ids in one act(), so one clone and
+ * one save for the whole card. Ids that are not notices in the queue are ignored, and a second call is a no-op.
+ * A notice has no handler to run, so this does not go through handleModal.
+ */
+export function dismissNotices(ids: readonly string[]): void {
+  const want = new Set(ids)
+  const current = state.game
+  if (!current || want.size === 0 || !current.queue.some((m) => m.kind === 'notice' && want.has(m.id))) return
+  act((g) => {
+    g.queue = g.queue.filter((m) => !(m.kind === 'notice' && want.has(m.id)))
+  })
+}
+
 export function chooseOption(id: string, choiceId: string): void {
   const queued = state.game?.queue.find((modal) => modal.id === id)
   if (!queued || queued.kind !== 'choice' || !queued.choices.some((option) => option.id === choiceId)) return
@@ -507,18 +560,43 @@ const MAX_TASKS_PER_PASS = 50
 let resolving = false
 
 /**
+ * Quiet Mode (G.11 step 2): while FLAGS.quietInbox and the Quiet Mode setting are both on, move every notice that
+ * routesToInbox allows from the queue to the inbox, in one act(). A notice has no dependency on the items before it,
+ * so it routes from anywhere in the queue. The cheap read comes first, so a pass with nothing to route clones and
+ * saves nothing. True when it moved any. This is the store flow only: headless ageUp and every g.queue reader never
+ * see it. Which notices route is decided by routesToInbox and nothing else here.
+ */
+function routeQuietNotices(): boolean {
+  if (!FLAGS.quietInbox || !quietModeOn(state.settings)) return false
+  if (!state.game?.queue.some((m) => routesToInbox(m, true))) return false
+  let moved = 0
+  try {
+    act((draft) => {
+      moved = routeMinorNotices(draft)
+    })
+  } catch (err) {
+    // Routing is a courtesy: a notice that can't move stays a popup the player can close.
+    console.error('Routing notices to the inbox failed:', err)
+    return false
+  }
+  return moved > 0
+}
+
+/**
  * Resolve the built-in tasks ('aiTask' modals) at the head of the queue, synchronously and
  * offline (game/offline.ts), so the player never sees them: the popups they produce take their
  * place. Safe to call any time, from anywhere, as often as you like (React StrictMode's double
  * effects included): each task is looked up by id in the latest state and removed in the same
  * commit that applies it, so it can't be resolved twice; a task that throws is dropped (the
- * modal can never get stuck); calls made while a pass is running are folded into it.
+ * modal can never get stuck); calls made while a pass is running are folded into it. With Quiet
+ * Mode on, routine notices go to the inbox first (routeQuietNotices).
  */
 export function processQueue(): void {
   if (resolving) return
   resolving = true
   try {
     for (let i = 0; i < MAX_TASKS_PER_PASS; i++) {
+      if (routeQuietNotices()) continue
       const head = state.game?.queue[0]
       if (!head || head.kind !== 'aiTask') return
       const task = head.task
@@ -527,4 +605,17 @@ export function processQueue(): void {
   } finally {
     resolving = false
   }
+}
+
+// ---------------------------------------------------------------------------
+// Inbox
+
+/** The player opened the inbox: count every row as seen. One act(), and only when something is unread. */
+export function markInboxSeen(): void {
+  if (inboxUnread(state.game) > 0) act(markSeen)
+}
+
+/** Remove every row from the inbox (the total stays, so the count of what ever arrived is kept). */
+export function clearInbox(): void {
+  act(emptyInbox)
 }

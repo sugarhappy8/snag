@@ -3,6 +3,7 @@
 import { craftSkill } from '../activities/creative'
 import { localPrice } from '../activities/common'
 import { addStat, count, earnIncome, endJob, log, notice, remember, spend, useYearAction, yearActionsUsed } from '../core'
+import { typicalIncome } from '../events/wealth-core'
 import { hasTech } from '../history/timeline'
 import { liftSkill } from '../mastery'
 import { randFloat, randInt } from '../rng'
@@ -243,12 +244,16 @@ export function abandonAuthorWork(g: GameState, id: string): void {
   notice(g, 'Manuscript Shelved', `${w.title} was shelved. Practice remains, but this year's writing sessions and new-project slot are not refunded.`, { emoji: '📁' })
 }
 
+/** No studio pays more than this for one story, in local terms of the year: a signing fee, then a yearly royalty. */
+function adaptationFeeCap(g: GameState, w: AuthorWork): number { return 150 * typicalIncome(g, w.countryId) }
+function adaptationYearCap(g: GameState, w: AuthorWork): number { return 15 * typicalIncome(g, w.countryId) }
+
 export function authorAdaptationOffer(g: GameState, w: AuthorWork): { available: boolean; fee: number; annual: number; years: number; label: string } {
   const reach = Math.max(w.copies, w.readers)
   return {
     available: releasedWork(w) && w.released <= g.year && w.quality >= 80 && reach >= 10_000 && w.adaptedUntil === 0,
-    fee: Math.round((15_000 + Math.min(5_000_000, reach) * 1.5) * originScale(w)),
-    annual: Math.round((2_000 + Math.min(5_000_000, reach) * .15) * originScale(w)),
+    fee: Math.min(adaptationFeeCap(g, w), Math.round((15_000 + Math.min(5_000_000, reach) * 1.5) * originScale(w))),
+    annual: Math.min(adaptationYearCap(g, w), Math.round((2_000 + Math.min(5_000_000, reach) * .15) * originScale(w))),
     years: 5,
     label: formatDef(w.format).serial ? 'Animated adaptation license' : 'Screen adaptation license',
   }
@@ -397,7 +402,9 @@ export function yearlyAuthor(g: GameState): void {
     w.copies += copies
     earned += settleReceipts(g, w, gross)
     if (w.adaptedUntil > 0 && year >= w.adaptedUntil - 4 && year <= w.adaptedUntil) {
-      const royalties = Math.max(0, Math.round(w.adaptationBase * randFloat(g, .5, 1.5)))
+      // An old save may hold a base from before the ceiling; the cap applies at read, to the base and to the roll.
+      const cap = adaptationYearCap(g, w)
+      const royalties = Math.min(cap, Math.max(0, Math.round(Math.min(w.adaptationBase, cap) * randFloat(g, .5, 1.5))))
       if (royalties > 0) earnIncome(g, royalties)
       earned += royalties
       w.earned += royalties

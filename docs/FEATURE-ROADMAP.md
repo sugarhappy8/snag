@@ -1,5 +1,7 @@
 # SNAG v2.9 Feature Roadmap
 
+Current plan: [docs/superpowers/plans/2026-10-20-living-world-roadmap.md](superpowers/plans/2026-10-20-living-world-roadmap.md). This v2.9 audit is kept as written; only rows marked v4.0.3 were re-checked since.
+
 > Baseline: `v2.9.0` at commit `a28ed647ac1791b0d02ca02a79507cb9c3c98d07`
 > Audit date: 2026-10-17
 > Scope: every tracked file in the v2.9 repository, including Markdown, configuration, scripts, tests, text fixtures, and the compressed fixture.
@@ -8,11 +10,11 @@ This roadmap supersedes the planning assumptions in PR #22, which was based on v
 
 ## Status legend
 
-- **SHIPPED** — present and verified in the v2.9 baseline.
-- **IMPLEMENTED** — present and verified on this branch; awaiting merge and release.
-- **CURRENT** — actively being implemented or awaiting required validation.
-- **PLANNED** — designed and prioritized, but not implemented.
-- **DEFERRED** — intentionally outside the current slice.
+- **SHIPPED**: present and verified in the v2.9 baseline.
+- **IMPLEMENTED**: present and verified on this branch; awaiting merge and release.
+- **CURRENT**: actively being implemented or awaiting required validation.
+- **PLANNED**: designed and prioritized, but not implemented.
+- **DEFERRED**: intentionally outside the current slice.
 
 Status describes repository state, not aspiration.
 
@@ -73,7 +75,7 @@ Every roadmap item must preserve these rules:
     - Hiring screens and letters may promise only behavior that the relevant manager actually performs.
     - New or changed copy must meet the project's voice constraints and avoid false certainty.
 
-## v2.9 baseline capabilities — do not rebuild
+## v2.9 baseline capabilities: do not rebuild
 
 This table records the audited baseline before the implementation slice below. The corporate-finance boundaries addressed by this branch remain here so the v2.9 baseline snapshot stays reproducible.
 
@@ -95,17 +97,17 @@ These defects take precedence over broad feature expansion.
 | ID | Status | Problem | Required result |
 |---|---|---|---|
 | C-01 | **IMPLEMENTED** | The v2.9 baseline lets banks and investment firms enter generic CEO optimizer and board-outlook paths that assume price and production economics | Recognized finance books are now excluded from those generic paths; synthetic group wrappers remain generic |
-| C-02 | **PLANNED** | Tariff retaliation compares against policy state after the new policy has already been written | Compare the previous and enacted policies before committing the new state |
+| C-02 | **IMPLEMENTED** (v4.0.3) | Tariff retaliation compares against policy state after the new policy has already been written | Compare the previous and enacted policies before committing the new state. Fixed in v4.0.3 (R0-5), `test/nation.test.ts` |
 | C-03 | **PLANNED** | Personal investment gains omit nation capital-gains tax and personal transactions omit applicable transaction tax | Apply taxes at the correct taxable event with ledger-visible debits |
 | C-04 | **PLANNED** | Bond maturity can pay the marked market price instead of par | Pay contractual maturity value and record the final gain or loss correctly |
 | C-05 | **PLANNED** | Time Machine snapshots can bypass the complete save-schema migration path | Restore through the same normalization and migration pipeline as ordinary saves |
-| C-06 | **PLANNED** | Divorce settlement can overpay, erase deficiencies, or discard stepchild relationships; emigration refusal uses an incomplete separation path | Use one conserved settlement and relationship transition path |
-| C-07 | **PLANNED** | Generation carryover relies on a fragile manual whitelist | Centralize inherited-state policy and cover every retained field with migration tests |
+| C-06 | **IMPLEMENTED** (v4.0.3) | Divorce settlement can overpay, erase deficiencies, or discard stepchild relationships; emigration refusal uses an incomplete separation path | Use one conserved settlement and relationship transition path. v4.0.3 (R0-6) fixes the overpayment, `test/love.test.ts`; the forgiven deficiency and the rest move to R4 of the living-world roadmap |
+| C-07 | **IMPLEMENTED** (v4.0.3) | Generation carryover relies on a fragile manual whitelist | Centralize inherited-state policy and cover every retained field with migration tests. v4.0.3 (R0-4) carries `nation.policy` to heirs and tests every world flag, `test/heir-world-flags.test.ts`; the whitelist itself ends with R1 and R2 of the living-world roadmap |
 | C-08 | **PLANNED** | Some acquisitions and takeover accept paths bypass required board votes | Enforce approval inside the transaction action |
-| C-09 | **PLANNED** | Bank long-horizon capital state is not consistently rolled; repeated manager calls can duplicate work | Add explicit phase markers and idempotence tests |
-| C-10 | **PLANNED** | Rival, modifier, and live venture-company collections can grow without bounds | Define limits and deterministic pruning |
+| C-09 | **IMPLEMENTED** (v4.0.3) | Bank long-horizon capital state is not consistently rolled; repeated manager calls can duplicate work | Add explicit phase markers and idempotence tests. Fixed in v4.0.3 (R0-15): bank `capitalYear` marker, `test/finance-manager-idempotence.test.ts` (investment firms already had theirs) |
+| C-10 | **IMPLEMENTED** (v4.0.3) | Rival, modifier, and live venture-company collections can grow without bounds | Define limits and deterministic pruning. Played years were already bounded; v4.0.3 (R0-15) caps the three lists a damaged save could inflate on load, `test/collection-bounds.test.ts` |
 | C-11 | **IMPLEMENTED** | A v2.9 baseline board message claims skill 100 gives “perfect foresight” | The message now says forecasts can still miss |
-| C-12 | **PLANNED** | Some finance macro decisions rely on stale booked marks | Make the observation window and timing explicit and test it against phase ordering |
+| C-12 | **IMPLEMENTED** (v4.0.3) | Some finance macro decisions rely on stale booked marks | Make the observation window and timing explicit and test it against phase ordering. Fixed in v4.0.3 (R0-15): a bank CEO plans on last year or this year, `test/finance-observation-year.test.ts` |
 
 ## Implemented on this branch: corporate finance leadership
 
@@ -256,7 +258,7 @@ Validation on 2026-10-17: the focused finance-leadership regression set passed 6
 
 ## Implemented: moderate-depth ordinary careers
 
-**Status: IMPLEMENTED — v3 includes full-time Work Plans, light part-time shifts and career continuity.**
+**Status: IMPLEMENTED (v3 includes full-time Work Plans, light part-time shifts and career continuity).**
 
 ### Audited baseline and target depth
 
@@ -340,11 +342,11 @@ The current foundation also provides:
 
 ### Remaining phases
 
-1. **Role events** — add standalone family-specific workplace events without perturbing special
+1. **Role events**: add standalone family-specific workplace events without perturbing special
    career event routing, retaining bounded histories and era-safe text.
-2. **External opportunities** — consider referrals, field-specific prerequisites and outside
+2. **External opportunities**: consider referrals, field-specific prerequisites and outside
    offers only with a migration policy for old ambiguous career histories.
-3. **Balance and variety** — expand bespoke title packs and use playtesting to tune the existing
+3. **Balance and variety**: expand bespoke title packs and use playtesting to tune the existing
    bounded progression edge. This is not a plan to turn every career into a business simulator.
 
 ### Ordinary-career acceptance criteria
@@ -490,7 +492,7 @@ Personal and family hedge funds should be delegable to the existing personal fin
 
 **Status: PLANNED**
 
-### HF-1 — Liquidity and investor accounting
+### HF-1: Liquidity and investor accounting
 
 - Subscription and redemption notice queues.
 - Lockups, gates, and suspension rules.
@@ -499,7 +501,7 @@ Personal and family hedge funds should be delegable to the existing personal fin
 - High-water-mark equalization where different entry dates require it.
 - Deterministic forced sales when obligations cannot be met.
 
-### HF-2 — Market plumbing
+### HF-2: Market plumbing
 
 - Prime-broker relationships.
 - Margin, collateral, and financing cost.
@@ -508,7 +510,7 @@ Personal and family hedge funds should be delegable to the existing personal fin
 - Counterparty exposure.
 - Forced deleveraging and liquidation waterfalls.
 
-### HF-3 — Organization and governance
+### HF-3: Organization and governance
 
 - CIO and portfolio-manager roles.
 - Operations and compliance leadership.
@@ -517,7 +519,7 @@ Personal and family hedge funds should be delegable to the existing personal fin
 - Board and investor permissions.
 - Investor-relations requests, disclosures, and bounded side-letter mechanics.
 
-### HF-4 — Products and reporting
+### HF-4: Products and reporting
 
 - Multiple vehicles or share classes.
 - Separate books and mandates.
@@ -575,7 +577,7 @@ Personal and family hedge funds should be delegable to the existing personal fin
 
 ## Priority 2: UI and accessibility
 
-**Status: PLANNED**
+**Status: PARTLY DONE in v4.1.0 (modal focus, keyboard in menus, header contrast); announcements for changing values and finance dashboards remain**
 
 - Reliable focus traps and focus restoration for every modal.
 - Full keyboard navigation for menus, candidate comparisons, and financial controls.

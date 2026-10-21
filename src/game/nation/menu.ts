@@ -1,6 +1,7 @@
 // Politics 2.0 menus: the Politics dashboard, Govern (taxes, budget, trade, laws, a cabinet post)
 // and the Abuse of Power extensions (schemes, dirty money, keeping power). Pure: no RNG, no writes;
 // every number on a row or a slider caption comes from the same functions the actions resolve with.
+import { approvalSpec, chartInfo } from '../charts'
 import { formatMoney, notice, scriptChoice, useYearAction } from '../core'
 import { economyOf } from '../economy'
 import { chance } from '../rng'
@@ -378,6 +379,7 @@ export function dashboardMenu(): MenuGroup {
       const info = (id: string, emoji: string, text: string) => rows.push({ type: 'info', id: `nation.dash.${id}`, emoji, text })
       info('office', '🏛️', `${v.title} · ${v.place} · ${v.termLeft} year${v.termLeft === 1 ? '' : 's'} left in term ${v.terms}${v.portfolio ? ` · ${PORTFOLIO_TITLE[v.portfolio]}` : ''}`)
       info('meters', '📈', `Approval ${v.approval}% (heading for ${Math.round(t.target)}%) · legitimacy ${Math.round(me.legitimacy)} · fear ${Math.round(me.fear)} · security loyalty ${Math.round(me.loyalty)} · political capital ${Math.round(me.capital)} · heat ${Math.round(me.heat)}`)
+      if (p.reports.length >= 2) rows.push(...chartInfo('nation.dash.approval.chart', '📈', (_g, spec) => spec?.summary ?? '', (gg) => approvalSpec(policyOf(gg, gg.character.countryId).reports)))
       info('groups', '👥', GROUP_IDS.map(id => `${GROUPS[id].emoji} ${t.groups[id]}%`).join(' · '))
       rows.push({ type: 'heading', id: 'nation.dash.h.economy', label: getCountry(country).name })
       info('economy', '💹', `Growth ${pct(e.growth, 1)} · unemployment ${pct(e.unemployment, 1)} · inflation ${pct(e.inflation, 1)}`)

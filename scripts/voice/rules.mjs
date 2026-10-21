@@ -45,10 +45,10 @@ export const FEELING_WORDS = Object.freeze([
 ]);
 
 /** Hard caps, in characters of static text (a hole counts 0). Roles without a number are capped by the tool at the original's length. */
-export const LIMITS = Object.freeze({ log: 90, scene: 140, outcome: 120, tooltip: 120, digest: 110 });
+export const LIMITS = Object.freeze({ log: 90, scene: 140, outcome: 120, tooltip: 120, digest: 110, headline: 70, deck: 110 });
 
 /** Where rewrites aim: lower than the caps. */
-export const AIMS = Object.freeze({ log: 60, scene: 110, outcome: 100, tooltip: 100, digest: 100 });
+export const AIMS = Object.freeze({ log: 60, scene: 110, outcome: 100, tooltip: 100, digest: 100, headline: 55, deck: 90 });
 
 /** Every flag unitFlags can raise, in the order it reports them. */
 export const FLAG_NAMES = Object.freeze([
@@ -261,9 +261,9 @@ export function isStockVerdict(text) {
 
 /**
  * Which rules a text breaks, as flag names in FLAG_NAMES order. `role` is the kind of text (log, scene,
- * outcome, tooltip, digest, title, label or text): over-cap and over-aim apply to the roles that have a
- * number in LIMITS and AIMS, the other flags to every role. The text may start with an era gate: the flags
- * judge what is left of it.
+ * outcome, tooltip, digest, headline, deck, title, label or text): over-cap and over-aim apply to the roles
+ * that have a number in LIMITS and AIMS, the other flags to every role. The text may start with an era gate:
+ * the flags judge what is left of it.
  */
 export function unitFlags(text, role) {
   const t = gateOf(text).rest;

@@ -3,10 +3,13 @@
 // production run, watch the projection, and approve it (JSON AnnualReportResult) or keep
 // last year's plan ('skip'). The engine (business.ts) clamps whatever comes back again.
 import { useId, useState, type CSSProperties, type ReactNode } from 'react'
+import { readReportCharts, type ReportCharts } from '../../game/charts/report'
 import { formatMoney, moneyWith, shortMoney } from '../../game/core'
 import { HINT_EMOJI } from '../../game/talents'
 import type { AnnualReportResult, Json } from '../../game/types'
+import { LazyReportBook } from '../charts/lazy'
 import { cleanHint } from '../components/TalentHint'
+import type { BookHead } from './bookModel'
 import type { MinigameProps } from './types'
 import '../styles/business.css'
 
@@ -40,6 +43,8 @@ export interface ReportView {
   lines: ReportLine[]
   /** Business talent: the plan that should earn the most next year (null without the talent). */
   talentHint: TalentPlan | null
+  /** The Annual Report 2.0 charts (data.chart, R1-C11); null when missing or damaged, and the screen is the text layout. */
+  charts: ReportCharts | null
 }
 
 /** AnnualReportData.talentHint after parsing; `plan` is null when its numbers were unusable. */
@@ -159,6 +164,7 @@ export function readReportData(data: Json): ReportView {
     marketNote: text(d.marketNote, '', 520),
     lines: readLines(d.lines),
     talentHint,
+    charts: readReportCharts(d.chart),
   }
 }
 
@@ -473,7 +479,7 @@ function TalentInstinct({ id, hint, unitLabel, priceStep: step, using, onUse }: 
   )
 }
 
-export function AnnualReport({ modal, onDone }: MinigameProps) {
+export function AnnualReport({ modal, onDone, strip }: MinigameProps) {
   const [r] = useState(() => readReportData(modal.data))
   const [price, setPrice] = useState(r.price)
   const [production, setProduction] = useState(r.production)
@@ -503,46 +509,12 @@ export function AnnualReport({ modal, onDone }: MinigameProps) {
   const approve = () => onDone(planResult(r, price, production))
   const keep = () => onDone(SKIP_RESULT)
 
-  return (
-    <div className="annual-report">
-      <header className="ar-head">
-        <span className="ar-emoji" aria-hidden>
-          {r.emoji}
-        </span>
-        <div className="ar-id">
-          {r.year !== null ? <div className="ar-year">Fiscal year {r.year}</div> : null}
-          <div className="ar-name">{r.businessName}</div>
-          {subtitle ? <div className="ar-sub">{subtitle}</div> : null}
-        </div>
-      </header>
-
-      <section className="ar-section" aria-labelledby={ids.results}>
-        <h3 className="ar-heading" id={ids.results}>
-          {r.year !== null ? `${r.year} results` : "Last year's results"}
-        </h3>
-        {r.lines.length > 0 ? (
-          <dl className="ar-statement">
-            {r.lines.map((l, i) => (
-              <div key={`${i}-${l.label}`} className={`ar-line is-${l.tone}${isTotal(l.label, i) ? ' is-total' : ''}`}>
-                <dt>{l.label}</dt>
-                <dd>{l.value}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="ar-empty">No trading figures yet. Next year is the first real test.</p>
-        )}
-      </section>
-
-      {r.marketNote ? (
-        <p className="ar-note">
-          <span className="ar-note-icon" aria-hidden>
-            🌍
-          </span>
-          <span>{r.marketNote}</span>
-        </p>
-      ) : null}
-
+  // The three pieces of the screen, built once: the plan (the talent box, the sliders and the projection), the two buttons,
+  // and today's whole text layout. The layout is the screen when the report has no charts, and the loading, server and
+  // failed-load state of the book when it has them (R1-C11). The price and the production live here, so they survive a
+  // change of tab inside the book.
+  const planBody = (
+    <>
       {r.talentHint ? (
         <TalentInstinct
           id={ids.instinct}
@@ -670,15 +642,75 @@ export function AnnualReport({ modal, onDone }: MinigameProps) {
           Demand is quoted at the suggested price. Before rent, wages and taxes; markets don't read projections.
         </p>
       </section>
+    </>
+  )
 
-      <div className="ar-actions">
-        <button type="button" className="btn btn-primary btn-block" onClick={approve}>
-          ✅ Approve plan
-        </button>
-        <button type="button" className="btn btn-block" onClick={keep}>
-          Keep last year's plan
-        </button>
-      </div>
+  const actions = (
+    <div className="ar-actions">
+      <button type="button" className="btn btn-primary btn-block" onClick={approve}>
+        ✅ Approve plan
+      </button>
+      <button type="button" className="btn btn-block" onClick={keep}>
+        Keep last year's plan
+      </button>
     </div>
   )
+
+  const layout = (
+    <div className="annual-report">
+      <header className="ar-head">
+        <span className="ar-emoji" aria-hidden>
+          {r.emoji}
+        </span>
+        <div className="ar-id">
+          {r.year !== null ? <div className="ar-year">Fiscal year {r.year}</div> : null}
+          <div className="ar-name">{r.businessName}</div>
+          {subtitle ? <div className="ar-sub">{subtitle}</div> : null}
+        </div>
+      </header>
+
+      <section className="ar-section" aria-labelledby={ids.results}>
+        <h3 className="ar-heading" id={ids.results}>
+          {r.year !== null ? `${r.year} results` : "Last year's results"}
+        </h3>
+        {r.lines.length > 0 ? (
+          <dl className="ar-statement">
+            {r.lines.map((l, i) => (
+              <div key={`${i}-${l.label}`} className={`ar-line is-${l.tone}${isTotal(l.label, i) ? ' is-total' : ''}`}>
+                <dt>{l.label}</dt>
+                <dd>{l.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="ar-empty">No trading figures yet. Next year is the first real test.</p>
+        )}
+      </section>
+
+      {r.marketNote ? (
+        <p className="ar-note">
+          <span className="ar-note-icon" aria-hidden>
+            🌍
+          </span>
+          <span>{r.marketNote}</span>
+        </p>
+      ) : null}
+
+      {planBody}
+
+      {actions}
+    </div>
+  )
+
+  if (r.charts === null) return layout
+  const head: BookHead = {
+    businessName: r.businessName,
+    emoji: r.emoji,
+    year: r.year,
+    industryLabel: r.industryLabel,
+    location: r.location,
+    marketNote: r.marketNote,
+    lines: r.lines,
+  }
+  return <LazyReportBook head={head} charts={r.charts} plan={planBody} actions={actions} strip={strip} fallback={layout} />
 }

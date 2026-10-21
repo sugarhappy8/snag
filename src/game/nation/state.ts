@@ -291,6 +291,17 @@ export function policyState(g: GameState): PolicyState {
 }
 const EMPTY_STATE: PolicyState = { v: 1, countries: {} }
 
+/**
+ * The part of the nation record an heir inherits: the world's laws, through the same reader that
+ * validates them on load, so a damaged flag can't pass through a handoff. Nothing at all when no
+ * country has a record. The personal record (ME_KEY) is owner-stamped and is never carried.
+ */
+export function nationWorldFlags(g: Pick<GameState, 'flags'>): Record<string, Json> {
+  if (!g.flags) return {}
+  const state = policyState(g as GameState)
+  return Object.keys(state.countries).length ? { [POLICY_KEY]: state as unknown as Json } : {}
+}
+
 /** One country's laws (read-only); an untouched country gets its defaults. */
 export function policyOf(g: GameState, country: string): CountryPolicy {
   return policyState(g).countries[country] ?? emptyPolicy(country)

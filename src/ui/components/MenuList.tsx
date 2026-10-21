@@ -1,13 +1,32 @@
 // Shared menu machinery: renders MenuNode lists as BitLife-style rows and runs actions
 // (disabled reasons, input + confirm dialogs, stay-open vs close). Used by MenuSheet
 // (Occupation / Assets / Activities) and PersonSheet (person interactions).
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { formatPrice } from '../../game/core'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/types'
+import { rovingMove, rovingStop } from '../a11y/roving'
+import { LazyChartView, LazySparkline } from '../charts/lazy'
 import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
-import { confirmText, infoText, isMultiline, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report, sliderPreview } from './menuModel'
+import {
+  confirmText,
+  infoChart,
+  infoText,
+  isMultiline,
+  nodeBadge,
+  nodeDisabled,
+  nodeHint,
+  nodeSubtitle,
+  nodeVisible,
+  pathAfterOpen,
+  pathAfterPopTo,
+  pathAfterPush,
+  report,
+  sliderPreview,
+} from './menuModel'
 import { TalentHint } from './TalentHint'
 import { HINT_EMOJI } from '../../game/talents'
+import '../styles/nav.css'
 
 export { groupChildren, groupHeader, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, resolveTrail } from './menuModel'
 
@@ -21,6 +40,10 @@ export interface MenuNav {
   push: (group: MenuGroup) => void
   /** Go back one level. */
   pop: () => void
+  /** Go back to the list at level `n` (0 is the root list); an `n` that is not above the current list does nothing. */
+  popTo: (n: number) => void
+  /** Open a sheet's tree at this group path from anywhere (the ids are re-resolved against the latest state). */
+  openPath: (ids: string[]) => void
   /** Attach to an element inside the scrolling sheet body (scroll restoration). */
   anchorRef: React.RefObject<HTMLDivElement | null>
   /** Where the player is right now: open group ids and every level's scroll offset. */
@@ -74,12 +97,23 @@ export function useMenuNav(resolve: (path: string[]) => MenuGroup[], initial?: M
     push: (group) => {
       scrolls.current[depth] = scroller()?.scrollTop ?? 0
       pendingScroll.current = 0
-      setPath([...path.slice(0, depth), group.id])
+      setPath(pathAfterPush(path, depth, group.id))
     },
     pop: () => {
       if (depth === 0) return
       pendingScroll.current = scrolls.current[depth - 1] ?? 0
       setPath(path.slice(0, depth - 1))
+    },
+    popTo: (n) => {
+      const next = pathAfterPopTo(path, depth, n)
+      if (next === path) return
+      pendingScroll.current = scrolls.current[n] ?? 0
+      setPath(next)
+    },
+    openPath: (ids) => {
+      scrolls.current[depth] = scroller()?.scrollTop ?? 0
+      pendingScroll.current = 0
+      setPath(pathAfterOpen(ids))
     },
     snapshot: () => ({
       path: trail.map((t) => t.id),
@@ -125,6 +159,8 @@ export interface MenuRunnerOptions {
   onClose: () => void
   /** Called right before an action closes the sheet (remember where the player was). */
   onLeave?: () => void
+  /** Called when an action is about to run, before onLeave and before the action, also for a stayOpen action. */
+  onRan?: (action: MenuAction) => void
 }
 
 export interface MenuRunner {
@@ -133,6 +169,8 @@ export interface MenuRunner {
   overlay: ReactNode
   /** Show a short message (e.g. a locked feature). */
   toast: (message: string) => void
+  /** Run an action whose input is already in hand (a search row): skips the input dialog, keeps the confirm step. */
+  submit: (action: MenuAction, input: string) => void
 }
 
 export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
@@ -152,6 +190,11 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
     setPending(null)
     const g = getApp().game
     if (!g || !g.character.alive) return
+    try {
+      optsRef.current.onRan?.(action)
+    } catch (err) {
+      report(`onRan(${action.id})`, err)
+    }
     if (!action.stayOpen) {
       // Snapshot first: the action may change which menus exist.
       try {
@@ -254,6 +297,7 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
   return {
     tap,
     toast: setToast,
+    submit: afterInput,
     overlay: (
       <>
         {dialog}
@@ -276,17 +320,33 @@ export interface MenuRowsProps {
 
 type Section = { heading: string | null; key: string; rows: ReactNode[] }
 
-/** A list of rows grouped into cards, split by heading nodes. */
+/**
+ * A list of rows grouped into cards, split by heading nodes. The action and group rows are one
+ * Tab stop (roving tabindex): the arrows, Home, End and the page keys move focus between them.
+ */
 export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here right now.' }: MenuRowsProps) {
-  const sections: Section[] = []
-  let current: Section | null = null
-  const seen = new Set<string>()
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const instance = useId()
 
+  // First pass: what shows, under which React key. Duplicate ids would break React keys; keep the first.
+  const shown: { key: string; node: MenuNode }[] = []
+  const seen = new Set<string>()
   for (const node of nodes) {
     if (!nodeVisible(node, g)) continue
-    // Duplicate ids would break React keys; keep the first.
     const key = seen.has(node.id) ? `${node.id}#${seen.size}` : node.id
     seen.add(node.id)
+    shown.push({ key, node })
+  }
+  // The keys of the tappable rows, in render order, decide which one holds tabindex 0.
+  const stop = rovingStop(
+    shown.filter((s) => s.node.type === 'action' || s.node.type === 'menu').map((s) => s.key),
+    activeId,
+  )
+
+  // Second pass: the elements.
+  const sections: Section[] = []
+  let current: Section | null = null
+  for (const { key, node } of shown) {
     if (node.type === 'heading') {
       current = { heading: node.label, key, rows: [] }
       sections.push(current)
@@ -298,6 +358,16 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
     }
     if (node.type === 'info') {
       const text = infoText(node, g)
+      const chart = infoChart(node, g)
+      if (chart) {
+        // The words are what shows while the chart chunk loads, on the server, and if the load fails.
+        current.rows.push(
+          <div className="menu-info menu-info-chart" key={key}>
+            <LazyChartView spec={chart} fallback={text ? <span>{text}</span> : undefined} />
+          </div>,
+        )
+        continue
+      }
       if (!text) continue
       current.rows.push(
         <div className={node.emoji === HINT_EMOJI ? 'menu-info menu-info-hint' : 'menu-info'} key={key}>
@@ -307,7 +377,9 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
       )
       continue
     }
-    current.rows.push(<MenuRow key={key} node={node} g={g} onTap={onTap} />)
+    current.rows.push(
+      <MenuRow key={key} node={node} g={g} onTap={onTap} tabStop={key === stop} rovingGroup={instance} onRovingFocus={() => setActiveId(key)} />,
+    )
   }
 
   const visible = sections.filter((s) => s.rows.length > 0)
@@ -325,10 +397,58 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
   )
 }
 
-export function MenuRow({ node, g, onTap }: { node: MenuAction | MenuGroup; g: GameState; onTap: (node: MenuAction | MenuGroup) => void }) {
+/** Moves focus between the rows of one roving list; `group` is the `data-roving` value they share. */
+function onRovingKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>, group: string) {
+  if (e.altKey || e.ctrlKey || e.metaKey) return
+  const root = e.currentTarget.closest('.sheet-body') ?? document
+  const stops = Array.from(root.querySelectorAll<HTMLElement>('[data-roving]')).filter((el) => el.getAttribute('data-roving') === group)
+  const next = rovingMove(stops.length, stops.indexOf(e.currentTarget), e.key)
+  if (next === null) return
+  e.preventDefault()
+  stops[next]?.focus()
+}
+
+/**
+ * The trend a row draws at its end (MenuBase.spark): null for none, for fewer than two real points, and for a spark that
+ * throws (reported, like a subtitle). The row is drawn either way.
+ */
+function nodeSpark(node: MenuAction | MenuGroup, g: GameState): (number | null)[] | null {
+  if (typeof node.spark !== 'function') return null
+  try {
+    const values: unknown = node.spark(g)
+    if (!Array.isArray(values)) return null
+    let real = 0
+    for (const v of values as unknown[]) if (typeof v === 'number' && Number.isFinite(v)) real++
+    return real >= 2 ? (values as (number | null)[]) : null
+  } catch (err) {
+    report(`spark(${node.id})`, err)
+    return null
+  }
+}
+
+export function MenuRow({
+  node,
+  g,
+  onTap,
+  tabStop,
+  rovingGroup,
+  onRovingFocus,
+}: {
+  node: MenuAction | MenuGroup
+  g: GameState
+  onTap: (node: MenuAction | MenuGroup) => void
+  /** Roving list only: this row holds tabindex 0. */
+  tabStop?: boolean
+  /** Set to make the row part of a roving list; rows with the same value share one Tab stop. */
+  rovingGroup?: string
+  /** Roving list only: the row took focus, so it becomes the stop. */
+  onRovingFocus?: () => void
+}) {
   const reason = nodeDisabled(node, g)
   const subtitle = nodeSubtitle(node, g)
   const hint = nodeHint(node, g)
+  const badge = reason ? null : nodeBadge(node, g)
+  const trend = nodeSpark(node, g)
   const cls = ['menu-row', reason ? 'is-disabled' : '', hint ? 'has-hint' : ''].filter(Boolean).join(' ')
   return (
     <button
@@ -337,16 +457,28 @@ export function MenuRow({ node, g, onTap }: { node: MenuAction | MenuGroup; g: G
       onClick={() => onTap(node)}
       aria-disabled={reason ? true : undefined}
       title={reason ?? undefined}
+      tabIndex={rovingGroup ? (tabStop ? 0 : -1) : undefined}
+      data-roving={rovingGroup}
+      onFocus={rovingGroup ? onRovingFocus : undefined}
+      onKeyDown={rovingGroup ? (e) => onRovingKeyDown(e, rovingGroup) : undefined}
     >
       <span className="menu-row-icon" aria-hidden>
         {node.emoji}
       </span>
       <span className="menu-row-text">
         <span className="menu-row-label">{node.label}</span>
+        {badge ? <span className="menu-row-badge">{badge}</span> : null}
         {subtitle ? <span className="menu-row-sub">{subtitle}</span> : null}
         {hint ? <TalentHint text={hint} className="menu-row-hint" /> : null}
       </span>
       <span className="menu-row-end" aria-hidden>
+        {trend ? (
+          // The box holds the place until the chunk is in. The sparkline has no fallback of its own, so a failed load leaves
+          // the box empty instead of a retry button in every row (lazyView: a decorative view in a row passes null).
+          <span className="menu-spark-ph" aria-hidden>
+            <LazySparkline values={trend} tone="c6" label={`${node.label}, price over ten years`} fmt={formatPrice} fallback={null} />
+          </span>
+        ) : null}
         {reason ? <span className="menu-row-lock">🔒</span> : null}
         {node.type === 'menu' && !reason ? <span className="menu-row-chevron">›</span> : null}
       </span>

@@ -1,12 +1,19 @@
 // Shows the head of the modal queue above everything: notices, choices, inputs and minigames.
 // Built-in tasks ('aiTask' modals) are never shown: the store resolves them on the spot.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { reportDataNow } from '../../game/business/yearly'
+import { companyStrip } from '../../game/charts/books'
 import { getPerson, personAvatar, relationLabel } from '../../game/core'
+import { FLAGS, flagOn } from '../../game/flags'
 import type { ChoiceModal, GameState, InputModal, MinigameModal, NoticeModal, Tone } from '../../game/types'
+import { LazyYearEndDesk } from '../charts/lazy'
 import { MINIGAMES } from '../minigames'
+import { isBook } from '../minigames/bookModel'
+import { deskPosition, nextBatch, remainingIn, reportsIn, shouldShowDesk, type DeskBatch } from '../minigames/yearEnd'
 import {
   chooseOption,
   dismissNotice,
+  dismissNotices,
   finishMinigame,
   processQueue,
   submitInput,
@@ -17,6 +24,8 @@ import { personName } from './PersonSheet'
 import { cleanHint, TalentHint } from './TalentHint'
 import { canSlide } from './menuModel'
 import { SliderInputCard } from './SliderCard'
+import { digestRows, digestTitle, digestTone, planHead } from './noticeModel'
+import '../styles/notices.css'
 
 const TONE_EMOJI: Partial<Record<Tone, string>> = {
   good: '😄',
@@ -33,6 +42,15 @@ function isTyping(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT' || target.isContentEditable
 }
 
+/**
+ * A ref callback that focuses its element without scrolling to it. React's autoFocus calls focus() with no options, so
+ * a card taller than the screen would open scrolled down to the button. The function is one stable reference, so React
+ * calls it when the button mounts and not again on a re-render, which would pull focus back from wherever it went.
+ */
+export function focusWithoutScroll(el: HTMLElement | null): void {
+  el?.focus({ preventScroll: true })
+}
+
 export function ModalHost() {
   const head = useApp((s) => s.game?.queue[0] ?? null)
   const game = useApp((s) => s.game)
@@ -45,6 +63,17 @@ export function ModalHost() {
     if (taskAtHead) processQueue()
   }, [taskAtHead, head?.id])
 
+  // The Year-End Desk (R1-C12) keeps its place in the batch here and not in MinigameCard: that card is keyed by the head's id,
+  // so it is built again for every report and would forget how many there were. nextBatch is idempotent for one queue, so a
+  // render that runs twice is harmless, and nothing goes in the store. Behind annualReport2 it stays null.
+  const deskBatch = useRef<DeskBatch | null>(null)
+  deskBatch.current = flagOn('annualReport2') ? nextBatch(deskBatch.current, game ? reportsIn(game.queue) : []) : null
+
+  // A run of plain notices at the head shares one card (G.11 step 1, behind FLAGS.noticeDigest). Every other plan,
+  // the lone notice, a choice, an input, a minigame, falls through to the code below, which is today's.
+  const plan = game ? planHead(game.queue, FLAGS.noticeDigest) : null
+  if (plan?.kind === 'digest') return <DigestCard key={plan.items.map((m) => m.id).join('+')} items={plan.items} />
+
   // Nothing to draw for a task: it's replaced by whatever it produces in the same moment.
   if (!head || !game || taskAtHead) return null
 
@@ -56,7 +85,7 @@ export function ModalHost() {
     case 'input':
       return <InputCard key={head.id} modal={head} />
     case 'minigame':
-      return <MinigameCard key={head.id} modal={head} />
+      return <MinigameCard key={head.id} modal={head} batch={deskBatch.current} />
     default:
       return null
   }
@@ -90,6 +119,62 @@ export function NoticeCard({ modal }: { modal: NoticeModal }) {
       {modal.support ? <p className="popup-support">{SUPPORT_LINE}</p> : null}
       <div className="popup-actions">
         <button className="btn btn-primary btn-block" onClick={() => dismissNotice(modal.id)} autoFocus>
+          OK
+        </button>
+      </div>
+    </PopupFrame>
+  )
+}
+
+/**
+ * One card for a run of plain notices: every row in full, one OK for all. A row's tone is never colour alone: it is the
+ * row emoji, or a small tone glyph beside the notice's own emoji, and the words for a screen reader.
+ */
+export function DigestCard({ items }: { items: readonly NoticeModal[] }): ReactElement {
+  const rows = digestRows(items)
+  const tone = digestTone(items)
+  const toneClass = tone === 'bad' ? 'tone-bad' : tone === 'good' ? 'tone-good' : ''
+  const title = digestTitle(items.length)
+  const ids = items.map((m) => m.id)
+  const idKey = ids.join('+')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.repeat || isTyping(e.target)) return
+      e.preventDefault()
+      dismissNotices(ids)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // ids is derived from idKey, so the key is the only dependency
+  }, [idKey])
+
+  return (
+    <PopupFrame className={toneClass} label={title}>
+      <span className="popup-emoji" aria-hidden>
+        {tone === 'bad' ? '😟' : '📋'}
+      </span>
+      <h2 className="popup-title">{title}</h2>
+      <ul className="digest-list">
+        {rows.map((r) => (
+          <li key={r.id} className={`digest-item tone-${r.tone}`}>
+            {r.toneLabel ? <span className="sr-only">{r.toneLabel}: </span> : null}
+            <span className="digest-emoji" aria-hidden>
+              {r.emoji}
+            </span>
+            {r.mark ? (
+              <span className="digest-mark" aria-hidden>
+                {r.mark}
+              </span>
+            ) : null}{' '}
+            <strong className="digest-title">{r.title}</strong>
+            <span className="digest-text">{r.text}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="popup-actions">
+        {/* Focused without scrolling: a tall digest must open at its title, with the first rows in view. */}
+        <button ref={focusWithoutScroll} className="btn btn-primary btn-block" onClick={() => dismissNotices(ids)}>
           OK
         </button>
       </div>
@@ -214,26 +299,71 @@ function FieldInputCard({ modal }: { modal: InputModal }) {
   )
 }
 
-function MinigameCard({ modal }: { modal: MinigameModal }) {
-  const Game = MINIGAMES[modal.game]
+export function MinigameCard({ modal: queued, batch = null }: { modal: MinigameModal; batch?: DeskBatch | null }) {
+  const Game = MINIGAMES[queued.game]
   const done = useRef(false)
   const onDone = (result: string) => {
     if (done.current) return
     done.current = true
-    finishMinigame(modal.id, result)
+    finishMinigame(queued.id, result)
   }
+
+  // The company strip and the Year-End Desk (R1-C12): the annual report only, and only behind annualReport2. companyStrip and
+  // reportsIn read the game and write nothing; the memos keep them from running again until the game changes.
+  const game = useApp((s) => s.game)
+  const isReport = queued.game === 'annualReport'
+  // The report was written when the year closed and the queue is saved, but the card draws its numbers now, in the prices
+  // the player reads now. Its sentences (verdict, notes, market note, statement) are written again here from the books, so
+  // no figure on the card is in other prices than its chip names. Nothing queued or saved changes; reportDataNow hands the
+  // data back as it was when it cannot write it again.
+  const modal = useMemo(() => {
+    if (!isReport || !game) return queued
+    const data = reportDataNow(game, queued.data)
+    return data === queued.data ? queued : { ...queued, data }
+  }, [isReport, game, queued])
+  const on = isReport && flagOn('annualReport2')
+  const strip = useMemo(() => (on && game ? companyStrip(game) : undefined), [on, game])
+  const reports = useMemo(() => (isReport && game ? reportsIn(game.queue) : []), [isReport, game])
+  const position = on ? deskPosition(batch, remainingIn(batch, reports)) : null
+  // Keep every plan: 'skip' for each queued report through the same finishMinigame the card uses, and nothing else, so no
+  // plan logic is touched. The card has done its one job after this, so a second tap or a later Done does nothing.
+  const keepAll = () => {
+    if (done.current) return
+    done.current = true
+    for (const r of reports) finishMinigame(r.id, 'skip')
+  }
+
+  const body = Game ? (
+    <Game modal={modal} onDone={onDone} strip={strip} />
+  ) : (
+    <div className="stack center">
+      <p className="popup-text">This game isn't available right now.</p>
+      <button className="btn btn-primary btn-block" onClick={() => onDone('skip')}>
+        Continue
+      </button>
+    </div>
+  )
+  const data = modal.data
+  const name = data !== null && typeof data === 'object' && !Array.isArray(data) && typeof data.businessName === 'string' ? data.businessName : ''
   return (
-    <PopupFrame wide label={modal.title}>
+    <PopupFrame wide label={modal.title} className={modal.game === 'annualReport' && isBook(modal.data) ? 'is-report' : undefined}>
       <h2 className="popup-title">{modal.title}</h2>
-      {Game ? (
-        <Game modal={modal} onDone={onDone} />
+      {/* Known limit: if the desk chunk lands after the player has started on this report, lazyView swaps its fallback for the
+          desk and the report mounts again inside it, so unsaved edits on the card are lost. The idle prefetch normally loads the
+          chunk first; it is skipped on Save-Data and 2g, and the desk is dormant in v4.0.2 play (one report a year). */}
+      {position && shouldShowDesk(on, position) ? (
+        <LazyYearEndDesk
+          year={reports.find((r) => r.id === modal.id)?.year ?? null}
+          position={position}
+          strip={strip ?? []}
+          currentName={name}
+          onKeepAll={keepAll}
+          fallback={body}
+        >
+          {body}
+        </LazyYearEndDesk>
       ) : (
-        <div className="stack center">
-          <p className="popup-text">This game isn't available right now.</p>
-          <button className="btn btn-primary btn-block" onClick={() => onDone('skip')}>
-            Continue
-          </button>
-        </div>
+        body
       )}
     </PopupFrame>
   )

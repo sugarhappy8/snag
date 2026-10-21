@@ -1,13 +1,28 @@
 name: CI
 
+# Fast guards, four time-balanced test shards, the merge of the seed-sliced files, and one gate job to require.
+# The shards come from scripts/ci-shard.mjs and scripts/test-timings.json (see docs/CI.md).
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
+  workflow_dispatch:
+
+# One group per event and branch (or PR): the push run and the pull_request run of a release branch are not
+# the same run, and a newer one must not cancel the other (its gate would read red). A PR is told apart by its
+# number, so two fork PRs that both call their branch main stay apart.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  checks:
+    name: Typecheck, voice, build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -15,9 +30,105 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node scripts/ci-shard.mjs --verify 4
       - run: npm run typecheck
       - name: Voice report (warning only)
         continue-on-error: true
         run: node scripts/voice-report.mjs --ci
-      - run: npm test
       - run: npx vite build
+      - run: node scripts/bundle-budget.mjs
+
+  fast:
+    name: Guards (fast tier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run --maxWorkers=2 $(node scripts/ci-shard.mjs --fast)
+
+  test:
+    name: Tests, shard ${{ matrix.shard }} of 4
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      SLICE: ${{ matrix.shard }}/4
+      SLICE_DIR: test-slices
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: List this shard's files
+        shell: bash
+        run: node scripts/ci-shard.mjs ${{ matrix.shard }} 4 | tee shard-files.txt
+      - name: Run the shard
+        run: npx vitest run --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=test-results/shard-${{ matrix.shard }}.json $(cat shard-files.txt)
+      - name: Keep timings and slices
+        if: ${{ always() }}
+        run: |
+          mkdir -p test-results test-slices
+          echo "shard ${{ matrix.shard }}" > test-slices/shard-${{ matrix.shard }}.txt
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: shard-${{ matrix.shard }}
+          path: |
+            test-results
+            test-slices
+          if-no-files-found: ignore
+          retention-days: 14
+          # Re-run failed jobs repeats this shard in the same run; v4 refuses a second artifact of the same name.
+          overwrite: true
+
+  aggregate:
+    name: Merge sliced results
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          merge-multiple: true
+      - name: Merge the seed slices
+        env:
+          SLICE: merge
+          SLICE_DIR: test-slices
+        run: |
+          files="$(node scripts/ci-shard.mjs --split)"
+          if [ -z "$files" ]; then echo "No sliced files yet."; exit 0; fi
+          npx vitest run --maxWorkers=1 $files
+      - name: Timing summary
+        if: ${{ always() }}
+        run: node scripts/ci-shard.mjs --summary test-results/*.json >> "$GITHUB_STEP_SUMMARY"
+
+  gate:
+    name: CI gate
+    if: ${{ always() }}
+    needs: [checks, fast, test, aggregate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job
+        run: |
+          echo "checks=${{ needs.checks.result }} fast=${{ needs.fast.result }} test=${{ needs.test.result }} aggregate=${{ needs.aggregate.result }}"
+          test "${{ needs.checks.result }}" = success
+          test "${{ needs.fast.result }}" = success
+          test "${{ needs.test.result }}" = success
+          test "${{ needs.aggregate.result }}" = success

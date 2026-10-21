@@ -163,10 +163,12 @@ function collectLoans(g: GameState): void {
       log(g, left > 0 ? `${cap(myOf(p))} paid back ${money(pay)} of what ${p.gender === 'male' ? 'he' : 'she'} owes me (${money(left)} to go).` : `${cap(myOf(p))} paid back the last ${money(pay)} ${p.gender === 'male' ? 'he' : 'she'} owed me!`, 'good')
     } else if (chance(g, Math.min(0.5, 0.1 + years * 0.04))) {
       addRelationship(p, -randInt(g, 1, 4))
+      // The last mark is read before this year's is written: the line comes once in five years.
+      const said = t.marks.avoid
       updateTies(g, p, (x) => {
         x.marks.avoid = g.year
       })
-      log(g, `${cap(myOf(p))} has been avoiding me ever since I lent ${p.gender === 'male' ? 'him' : 'her'} money.`)
+      if (said === undefined || g.year - said >= 5) log(g, `${cap(myOf(p))} has been avoiding me ever since I lent ${p.gender === 'male' ? 'him' : 'her'} money.`)
     }
   }
 }

@@ -1,9 +1,12 @@
 // Graveyard: every past life with its ribbon, years, cause of death and net worth. Tap a grave
 // to read the obituary; sort like the original's cemetery; bulldoze graves you'd rather forget.
 import { useMemo, useState } from 'react'
-import { formatMoney, tinyMoney, withMoneyContext } from '../../game/core'
+import { formatMoney, shortMoney, tinyMoney, withMoneyContext } from '../../game/core'
+import { flagOn } from '../../game/flags'
+import { readSpark } from '../../game/life-series'
 import { getRibbon } from '../../game/ribbons'
 import { loadGraveyard, removeFromGraveyard, type GraveyardEntry } from '../../game/save'
+import { LazySparkline } from '../charts/lazy'
 import { goBack, goTo } from '../store'
 import '../styles/screens.css'
 import { ConfirmDialog, Flash, ScreenHeader, useFlash } from './SettingsScreen'
@@ -56,6 +59,8 @@ export function readGraves(): GraveyardEntry[] {
   raw.forEach((e: Partial<GraveyardEntry> | null, i) => {
     if (!e || typeof e !== 'object' || typeof e.name !== 'string') return
     const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
+    // The net worth trail (R1): two to 40 whole numbers, or none.
+    const spark = readSpark(e.spark)
     out.push({
       lifeId: typeof e.lifeId === 'string' && e.lifeId ? e.lifeId : `grave-${i}`,
       generation: num(e.generation, 1),
@@ -72,6 +77,7 @@ export function readGraves(): GraveyardEntry[] {
       occupation: typeof e.occupation === 'string' ? e.occupation : '',
       ribbon: typeof e.ribbon === 'string' ? e.ribbon : null,
       obituary: typeof e.obituary === 'string' ? e.obituary : null,
+      ...(spark ? { spark } : {}),
     })
   })
   return out
@@ -83,10 +89,35 @@ export function bulldozeGrave(lifeId: string): GraveyardEntry[] {
   return readGraves().filter((e) => e.lifeId !== lifeId)
 }
 
-export function GraveyardScreen() {
+/** The net worth trail kept with a grave (R1 charts, G.7), read in the money of the grave's own country and death year. */
+function GraveTrail({ e }: { e: GraveyardEntry }) {
+  const trail = e.spark
+  if (!flagOn('chartKit') || !trail || trail.length < 2) return null
+  const money = e.countryId ? { countryId: e.countryId, year: e.diedYear, nominalScale: e.nominalScale, usdNominalScale: e.usdNominalScale } : null
+  const fmt = (n: number) => withMoneyContext(money, () => shortMoney(n))
+  const label = 'Net worth over the life'
+  return (
+    <div className="grave-spark">
+      <LazySparkline
+        values={trail}
+        tone="c1"
+        label={label}
+        fmt={fmt}
+        fallback={<p className="grave-spark-text">{`${label}: ${fmt(trail[0]!)} to ${fmt(trail[trail.length - 1]!)}`}</p>}
+      />
+    </div>
+  )
+}
+
+export interface GraveyardScreenProps {
+  /** The grave shown open when the screen first draws (a test opens one this way); none by default. */
+  initialOpen?: string
+}
+
+export function GraveyardScreen({ initialOpen }: GraveyardScreenProps) {
   const [entries, setEntries] = useState<GraveyardEntry[]>(() => readGraves())
   const [sort, setSort] = useState<GraveSort>('recent')
-  const [open, setOpen] = useState<string | null>(null)
+  const [open, setOpen] = useState<string | null>(initialOpen ?? null)
   const [doomed, setDoomed] = useState<GraveyardEntry | null>(null)
   const [flash, showFlash] = useFlash()
 
@@ -177,6 +208,7 @@ export function GraveyardScreen() {
                         <span className="grave-tag">💰 {withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear, nominalScale: e.nominalScale, usdNominalScale: e.usdNominalScale } : null, () => formatMoney(e.netWorth))}</span>
                         {e.generation > 1 ? <span className="grave-tag">🌳 Generation {e.generation}</span> : null}
                       </div>
+                      <GraveTrail e={e} />
                       <p className="grave-obit">{e.obituary?.trim() || `${e.name} died of ${e.causeOfDeath.toLowerCase()} at ${e.age}. No obituary was written.`}</p>
                       <button type="button" className="al-btn ghost small" style={{ alignSelf: 'flex-start' }} onClick={() => setDoomed(e)}>
                         🚜 Bulldoze grave

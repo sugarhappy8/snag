@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { RIBBONS, type RibbonDef } from '../../game/ribbons'
 import { loadRibbons } from '../../game/save'
+import { ModalSurface } from '../a11y/ModalSurface'
 import { goBack } from '../store'
 import '../styles/screens.css'
 import { ScreenHeader } from './SettingsScreen'
@@ -111,7 +112,7 @@ export function RibbonsScreen() {
 
       {selected ? (
         <div className="al-dialog-backdrop" onClick={() => setSelected(null)}>
-          <div className="al-dialog" role="dialog" aria-label={selected.name} onClick={(e) => e.stopPropagation()}>
+          <ModalSurface role="dialog" label={selected.name} className="al-dialog">
             <div className={`rib-tile ${selected.earned ? '' : 'locked'}`} style={{ border: 0, background: 'transparent', cursor: 'default' }}>
               <span className="rib-medal rib-detail-medal" aria-hidden="true">
                 {selected.earned ? selected.def.emoji : '?'}
@@ -127,7 +128,7 @@ export function RibbonsScreen() {
                 OK
               </button>
             </div>
-          </div>
+          </ModalSurface>
         </div>
       ) : null}
     </div>

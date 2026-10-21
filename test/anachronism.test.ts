@@ -28,6 +28,10 @@ import {
 } from '../src/game/events/era'
 import type { AnnualReportData, GameState, MenuAction, MenuGroup, MenuNode, MinigameModal, ModalItem } from '../src/game/types'
 import { makeTestGame } from './helpers'
+import { mergedSlices, ownedHere, readSlice, recordSlice, seedSlice } from './shard-kit'
+
+// In CI each shard plays a slice of the lives (SLICE=i/n) and the merge step checks the whole set (test/shard-kit.ts).
+const slice = readSlice()
 
 function driver(seed: number) {
   let s = seed >>> 0 || 1
@@ -237,9 +241,16 @@ const COUNTRIES = [undefined, 'us', 'gb', 'in', 'ng', 'br', 'jp', 'de', 'mx', 'i
 const WORLD_NEWS = /^Financial News :: /
 const LIVES = Math.max(1, Number(process.env.ANACHRONISM_LIVES) || 48)
 
-function lint(lives: number, first: number, last: number, actions: number): { list: (Seen & { rules: string[] })[]; report: string } {
+/** Lives 0 to lives - 1 by default; a slice passes its own indexes, and life i is the same life whatever else is listed. */
+function lint(
+  lives: number,
+  first: number,
+  last: number,
+  actions: number,
+  indexes: readonly number[] = Array.from({ length: lives }, (_, i) => i),
+): { list: (Seen & { rules: string[] })[]; report: string } {
   const bad: Record<string, Seen & { rules: string[] }> = {}
-  for (let i = 0; i < lives; i++) {
+  for (const i of indexes) {
     const year = first + Math.round((i * (last - first)) / Math.max(1, lives - 1))
     const country = COUNTRIES[i % COUNTRIES.length]
     for (const s of playLife(i + 1, year, country, actions)) {
@@ -251,11 +262,12 @@ function lint(lives: number, first: number, last: number, actions: number): { li
   }
   const list = Object.values(bad).sort((a, b) => a.rules[0].localeCompare(b.rules[0]))
   const report = list.map((v) => `[${v.rules.join(',')}] ${v.year} ${v.countries.join('/')} (${v.where}): ${v.text.slice(0, 220)}`).join('\n')
-  if (list.length) console.log(`${list.length} anachronisms in ${lives} lives:\n${report}`)
+  if (list.length) console.log(`${list.length} anachronisms in ${indexes.length} of ${lives} lives:\n${report}`)
   return { list, report }
 }
 
-describe('the anachronism detector', () => {
+// The detector and vocabulary describes (about ten short tests) run in one owner slice only.
+if (ownedHere('anachronism:units', slice)) describe('the anachronism detector', () => {
   it('flags modern words before their technology and lets them through after', () => {
     expect(anachronismsIn('I texted my mom.', 1950, ['us'])).toContain('texting')
     // Wondering whether anyone will walk on the moon is period talk; watching it happen is not.
@@ -288,7 +300,7 @@ describe('the anachronism detector', () => {
   })
 })
 
-describe('era vocabulary', () => {
+if (ownedHere('anachronism:units', slice)) describe('era vocabulary', () => {
   it('speaks of letters and radios in 1925 and of messages and selfies today', () => {
     const old = makeTestGame(3, { countryId: 'us' })
     old.year = 1925
@@ -325,21 +337,39 @@ describe('era vocabulary', () => {
 
 describe('anachronism lint (offline lives born 1900-1995)', () => {
   it('never mentions things before they existed', () => {
-    const { list, report } = lint(LIVES, 1900, 1995, 4)
+    // Zero findings is a per-life result, so a slice checks its own lives and the union is clean when every slice is.
+    const { list, report } = lint(LIVES, 1900, 1995, 4, seedSlice(Array.from({ length: LIVES }, (_, i) => i), 'anachronism:lint', slice))
     expect(list.length, report.slice(0, 6000)).toBe(0)
   }, 900_000)
 })
 
 describe('lives born in PRESENT_YEAR', () => {
+  const LIFE_COUNT = 8
+  const mine = seedSlice(Array.from({ length: LIFE_COUNT }, (_, i) => i), 'anachronism:present', slice)
+  /** One row per life played: how many of its texts are modern. */
+  const hitsPerLife: number[] = []
+
   it('keep their modern texts (and stay clean)', () => {
     const modern = /\b(text(ed|ing)?|selfies?|online|social media|apps?|phone|group chat|streaming|posted)\b/i
-    let hits = 0
-    for (let i = 0; i < 8; i++) {
+    for (const i of mine) {
+      let hits = 0
       for (const s of playLife(900 + i, PRESENT_YEAR, i % 2 ? 'us' : 'gb', 4, 45)) {
         if (s.year <= PRESENT_YEAR + 30 && modern.test(s.text)) hits++
         expect(anachronismsIn(s.text, s.year, s.countries), s.text).toEqual([])
       }
+      hitsPerLife.push(hits)
     }
-    expect(hits).toBeGreaterThan(20)
   }, 300_000)
+
+  it('keep enough modern texts across the lives', () => {
+    recordSlice('anachronism:present', hitsPerLife, slice)
+    // A slice checks only that its own lives were played; the merge step checks the whole set.
+    if (slice.mode === 'part') {
+      expect(hitsPerLife).toHaveLength(mine.length)
+      return
+    }
+    const all = slice.mode === 'merge' ? mergedSlices<number>('anachronism:present', slice) : hitsPerLife
+    expect(all).toHaveLength(LIFE_COUNT)
+    expect(all.reduce((total, hits) => total + hits, 0)).toBeGreaterThan(20)
+  })
 })
