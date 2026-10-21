@@ -52,7 +52,7 @@ const SERVE_WAIT_MS = 60_000
 /** The tabs of the book, by what a screen reader (and so Playwright's role query) calls them. */
 const TABS = [
   { id: 'summary', name: 'Summary' },
-  { id: 'pl', name: 'Profit and loss' },
+  { id: 'pl', name: 'P&L, profit and loss' },
   { id: 'cash', name: 'Cash' },
   { id: 'market', name: 'Market' },
   { id: 'plan', name: 'Plan' },
