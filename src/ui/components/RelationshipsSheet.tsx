@@ -3,8 +3,13 @@
 // It can reopen on a person (and a submenu of theirs) for the "Back to …" chip.
 import { useRef, useState } from 'react'
 import { personAvatar } from '../../game/core'
+import { FLAGS } from '../../game/flags'
+import { needsYou } from '../../game/hubs/needs'
+import { peopleMenu, personIdOf } from '../../game/hubs/people'
 import { relationshipGroups } from '../../game/relationships'
 import type { GameState, Person } from '../../game/types'
+import { CockpitPanel } from '../nav/CockpitPanel'
+import { NeedsYouCard } from '../nav/NeedsYouCard'
 import { useApp } from '../store'
 import { useSheetEscape, type MenuSpot } from './MenuList'
 import { personName, personSubtitle, PersonSheet } from './PersonSheet'
@@ -40,11 +45,18 @@ export function RelationshipsSheet({ onClose, initial, onLeave }: RelationshipsS
   useSheetEscape(anchorRef, onClose)
   if (!g) return null
   const groups = safeGroups(g)
+  // The cockpit and its Needs you card (G.5) hand a person group id; the sheet opens that person if they are still around.
+  const openPerson = (groupId: string | undefined): void => {
+    const id = groupId === undefined ? null : personIdOf(groupId)
+    if (id !== null && g.people.some((p) => p.id === id)) setSelected(id)
+  }
 
   return (
     <>
       <Sheet title="Relationships" emoji="❤️" onClose={onClose}>
         <div ref={anchorRef} />
+        <CockpitPanel tab="relationships" g={g} onOpen={(path) => openPerson(path[0])} />
+        {FLAGS.cockpits ? <NeedsYouCard rows={needsYou(peopleMenu.children(g), g)} onTap={(node) => openPerson(node.id)} /> : null}
         {groups.length === 0 ? (
           <div className="menu-empty">
             <div style={{ fontSize: 40, marginBottom: 8 }}>🦗</div>

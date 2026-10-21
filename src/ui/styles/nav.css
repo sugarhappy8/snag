@@ -344,3 +344,260 @@ div.sheet-backdrop.palette-backdrop {
   text-align: center;
   pointer-events: none;
 }
+
+/* Cockpits (R1-N9): the panel at the root of a tab, above its list. Tiles, the net-worth chart, one card for each company and
+   the Pinned and recent strip. Theme tokens only; every control is at least var(--target) high. The chart kit loads on
+   demand, so the tile and the chart have text stand-ins (.cockpit-kpi-fallback) that look like the real ones. */
+
+.cockpit-panel {
+  margin-bottom: 18px;
+}
+
+.cockpit-body > * + * {
+  margin-top: 12px;
+}
+
+.cockpit-summary {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.cockpit-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cockpit-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cockpit-kpi-fallback {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+button.cockpit-kpi-fallback {
+  min-height: var(--target);
+  cursor: pointer;
+}
+
+.cockpit-kpi-fallback .ch-kpi-label,
+.cockpit-kpi-fallback .ch-kpi-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cockpit-kpi-fallback .ch-kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.cockpit-meter {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--stat-track);
+}
+
+.cockpit-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--age-heading);
+}
+
+.cockpit-chart {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.cockpit-chart-fallback {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.cockpit-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cockpit-cards > .menu-heading {
+  margin: 4px 6px 0;
+}
+
+.cockpit-card,
+.cockpit-more {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--target);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cockpit-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+}
+
+.cockpit-card:hover,
+.cockpit-more:hover,
+.cockpit-jump-link:hover {
+  background: var(--card-2);
+}
+
+.cockpit-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.cockpit-card-emoji {
+  flex: none;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.cockpit-card-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* The chip says the state in words and a glyph; the colour is only a second hint on its edge. */
+.cockpit-chip {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--chip-bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.cockpit-chip-thriving {
+  border-color: var(--chart-good);
+}
+
+.cockpit-chip-struggling,
+.cockpit-chip-danger {
+  border-color: var(--chart-bad);
+}
+
+.cockpit-card-sub,
+.cockpit-card-line {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cockpit-card .ch-spark {
+  width: 100%;
+  max-width: 200px;
+}
+
+.cockpit-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  color: var(--age-heading);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cockpit-jump-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cockpit-jump-link {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: var(--target);
+  padding: 0 14px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--target) / 2);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cockpit-jump-emoji {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.cockpit-jump-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-card:focus-visible,
+.cockpit-more:focus-visible,
+.cockpit-jump-link:focus-visible,
+button.cockpit-kpi-fallback:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

@@ -5,6 +5,7 @@ import { FLAGS } from '../../game/flags'
 import { needsYou } from '../../game/hubs/needs'
 import type { MenuGroup } from '../../game/types'
 import { Breadcrumbs, crumbsOf } from '../nav/Breadcrumbs'
+import { CockpitPanel } from '../nav/CockpitPanel'
 import { NeedsYouCard } from '../nav/NeedsYouCard'
 import { isPinned, PINS_FULL_TEXT, recordRecent, tabOf, togglePin, updatePrefs, usePrefs } from '../nav/prefs'
 import { regroupForDisplay } from '../nav/sections'
@@ -49,6 +50,8 @@ export function MenuSheet({ root, onClose, initial, onLeave }: MenuSheetProps) {
   const shown = atRoot ? regroupForDisplay(root.id, nodes, g) : nodes
   const needs = atRoot ? needsYou(nodes, g) : []
   const crumbs = FLAGS.navRegroup && nav.trail.length > 0 ? crumbsOf(root.label, nav.trail) : null
+  // The cockpit (G.5) is the first thing at the root of a tab; below the root nothing is added. Relationships has its own sheet.
+  const cockpitTab = nav.trail.length === 0 && tab !== null && tab !== 'relationships' ? tab : null
   // The star pins the open group (G.9), so it only shows where there is a group to pin.
   const place = tab && crumbs ? { tab, path: nav.trail.map((t) => t.id) } : null
   const pin =
@@ -86,6 +89,7 @@ export function MenuSheet({ root, onClose, initial, onLeave }: MenuSheetProps) {
             </div>
           ) : (
             <>
+              {cockpitTab ? <CockpitPanel tab={cockpitTab} g={g} onOpen={nav.openPath} /> : null}
               <NeedsYouCard rows={needs} onTap={runner.tap} />
               <MenuRows nodes={shown} g={g} onTap={runner.tap} />
             </>
