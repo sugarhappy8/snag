@@ -10,8 +10,9 @@ import '../src/game/data/currencies'
 import type { ChartSpec, ChartStep, ChartUnit } from '../src/game/charts/spec'
 import { readoutFor } from '../src/ui/charts/format'
 import { Frame } from '../src/ui/charts/Frame'
+import { MARKER_SHAPES, markerPath } from '../src/ui/charts/geometry'
 import { BarChart, barInset } from '../src/ui/charts/BarChart'
-import { LINE_INSET, LineChart } from '../src/ui/charts/LineChart'
+import { LINE_INSET, LineChart, PLOT_BOTTOM, PLOT_TOP } from '../src/ui/charts/LineChart'
 import { Waterfall } from '../src/ui/charts/Waterfall'
 import { useScrub, type ScrubApi } from '../src/ui/charts/useScrub'
 import { countSvgNodes, deepFreeze, renderHtml } from './charts-kit'
@@ -707,6 +708,95 @@ describe('BarChart', () => {
     expect(byKind('stack')).toEqual(byKind('stack', true))
     expect(byKind('bars')).toEqual(byKind('bars', false))
     expect(byKind('stack')).not.toEqual(byKind('bars'))
+  })
+
+  // The legend gives each series a marker shape; a band has no shape of its own, so the series that the legend names are
+  // marked in the picture too, once at the right edge beside the band they have in the last column (the way a line ends
+  // with its own marker). Without it the bands would be told apart by colour alone.
+  describe('series markers', () => {
+    const MARK_X = 316
+    const MARK_R = 3
+    const marks = (out: string): string[] => tagsWithClass(out, 'ch-bc-mk')
+    const lastRects = (out: string): { top: number; bottom: number }[] =>
+      tagsWithClass(out, 'ch-bc-series').map((t) => {
+        const all = [...attrOf(t, 'd')!.matchAll(/M([\d.]+) ([\d.]+)H([\d.]+)V([\d.]+)H/g)]
+        const last = all[all.length - 1]!
+        return { top: Number(last[2]), bottom: Number(last[4]) }
+      })
+
+    it('draws one marker for each series of a stack, in the shape the legend gives it, beside its band', () => {
+      const out = html('stack', stackSpec(30, 6))
+      const found = marks(out)
+      expect(found).toHaveLength(6)
+      expect(found.map((t) => attrOf(t, 'data-shape'))).toEqual(['circle', 'square', 'triangle', 'diamond', 'cross', 'star'])
+      expect(found.map((t) => /ch-tone-(c\d)/.exec(t)![1])).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6'])
+      const bands = lastRects(out)
+      found.forEach((t, i) => {
+        const mid = Math.round((bands[i]!.top + bands[i]!.bottom) / 2)
+        expect(attrOf(t, 'd'), `series ${i}`).toBe(markerPath(MARKER_SHAPES[i]!, MARK_X, mid, MARK_R))
+      })
+    })
+
+    it('keeps them at the right edge, outside the columns, and inside the picture', () => {
+      const out = html('stack', stackSpec(30, 6))
+      expect(marks(out)).toHaveLength(6)
+      const columnsEnd = Math.max(...tagsWithClass(out, 'ch-bc-series').flatMap((t) => [...attrOf(t, 'd')!.matchAll(/H([\d.]+)V/g)].map((m) => Number(m[1]))))
+      for (const t of marks(out)) {
+        const xs = [...attrOf(t, 'd')!.matchAll(/[ML]([\d.]+) /g)].map((m) => Number(m[1]))
+        expect(Math.min(...xs)).toBeGreaterThan(columnsEnd)
+        expect(Math.max(...xs)).toBeLessThanOrEqual(320)
+      }
+    })
+
+    it('does not follow the cursor: the bands change column, the markers stay with the last one', () => {
+      const spec = stackSpec(10, 3)
+      expect(marks(html('stack', spec))).toHaveLength(3)
+      expect(marks(activeHtml('stack', spec, 2))).toEqual(marks(html('stack', spec)))
+    })
+
+    /** The y a marker was drawn at: the one that makes markerPath give its `d`. */
+    function centreOf(tag: string): number {
+      const shape = attrOf(tag, 'data-shape') as (typeof MARKER_SHAPES)[number]
+      for (let y = 0; y <= 180; y += 0.5) if (markerPath(shape, MARK_X, y, MARK_R) === attrOf(tag, 'd')) return y
+      throw new Error(`no centre for ${tag}`)
+    }
+
+    it('keeps thin bands apart, at least 8 px between two markers and inside the plot', () => {
+      // The last column is a hair next to the first, so every band there is under a pixel tall.
+      const tones = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'] as const
+      const spec = stackSpec(4, 6, { series: tones.map((tone, s) => ({ id: `s${s}`, label: `Cost ${s + 1}`, tone, values: [1_000_000, 1_000_000, 1_000_000, 1 + s] })) })
+      const ys = marks(html('stack', spec)).map(centreOf)
+      expect(ys).toHaveLength(6)
+      const sorted = [...ys].sort((a, b) => a - b)
+      for (let i = 1; i < sorted.length; i++) expect(sorted[i]! - sorted[i - 1]!).toBeGreaterThanOrEqual(8)
+      expect(sorted[0]!).toBeGreaterThanOrEqual(PLOT_TOP)
+      expect(sorted[sorted.length - 1]!).toBeLessThanOrEqual(PLOT_BOTTOM)
+    })
+
+    it('marks only the series that have a bar in the last column', () => {
+      const spec = stackSpec(5, 3, {
+        series: [
+          { id: 'a', label: 'A', tone: 'c1', values: [100, 100, 100, 100, 100] },
+          { id: 'b', label: 'B', tone: 'c2', values: [100, 100, 100, 100, null] },
+          { id: 'c', label: 'C', tone: 'c3', values: [100, 100, 100, 100, 100] },
+        ],
+      })
+      const found = marks(html('stack', spec))
+      expect(found.map((t) => attrOf(t, 'data-shape'))).toEqual(['circle', 'triangle'])
+    })
+
+    it('marks grouped bars of two series or more, and a lone series of bars not at all', () => {
+      const two = stackSpec(6, 2, { kind: 'bars' })
+      expect(marks(html('bars', two))).toHaveLength(2)
+      expect(marks(html('bars', barSpec()))).toHaveLength(0)
+      expect(marks(html('stack', stackSpec(6, 1)))).toHaveLength(1)
+    })
+
+    it('stays within 150 elements for 64 columns of 6 series, and draws no marker for no columns', () => {
+      const big = stackSpec(64, 6)
+      for (const out of [html('stack', big), activeHtml('stack', big, 63), html('bars', big)]) expect(countSvgNodes(out)).toBeLessThanOrEqual(150)
+      expect(marks(html('stack', stackSpec(0, 3)))).toHaveLength(0)
+    })
   })
 
   it('outlines the cursor column, and only when there is a cursor', () => {

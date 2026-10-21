@@ -1,9 +1,10 @@
 // The bar plot of the chart kit: one column for each x (up to 64), kinds 'bars' and 'stack'. A stack puts the series on
 // each other with stackLayout (negatives go below the axis); plain bars set the series side by side. Each series is ONE
 // path whose `d` holds a rectangle for every column, so 30 columns of 6 series are 6 elements and not 180, and the
-// 150-element cap holds with room to spare (64 by 6 included). Same slider wrapper and axes as LineChart.
+// 150-element cap holds with room to spare (64 by 6 included). Same slider wrapper and axes as LineChart. When the
+// legend names the series, each series also ends with its legend marker in the right margin (up to 6 more elements).
 import type { ReactElement } from 'react'
-import { extentOf, linearScale, stackLayout } from './geometry'
+import { MARKER_SHAPES, dodgeLabels, extentOf, linearScale, markerPath, stackLayout } from './geometry'
 import { BOX, PLOT_BOTTOM, PLOT_TOP, SliderPlot, XAxis, YAxis, clampIndex, r2, yTicks, type PlotProps } from './LineChart'
 import './charts.css'
 
@@ -11,9 +12,14 @@ const RIGHT = 8
 const COLUMN_GAP = 2
 const BIG = 1e300
 
+/** The series markers sit in the right margin, in the middle of it, as small as a marker of the line plot is wide. */
+const MARK_R = 3
+const MARK_X = BOX.w - RIGHT / 2
+const MARK_GAP = 8
+
 /**
  * The left and right margin of a bar plot for useScrub's `inset` option. Columns are centred in their slots, so the
- * first and last points sit half a slot inside the plot area. In drawing-box units (exact at 320 px wide).
+ * first and last points sit half a slot inside the plot area. In drawing-box units: pass BOX.w as useScrub's `span`.
  */
 export function barInset(n: number): [number, number] {
   const count = Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
@@ -93,6 +99,25 @@ export function BarChart(p: PlotProps & { stacked?: boolean }): ReactElement {
     return d.length > 0 ? <path className={`ch-bc-series ch-tone-${s.tone}`} key={si} d={d} /> : null
   })
 
+  // The legend gives every series a marker shape, so the picture shows them too, or the bands would be told apart by
+  // colour alone: each series that has a bar in the last column gets its shape in the right margin, at the height of that
+  // bar, the way a line ends with its own marker. They are whole pixels, pushed apart when two bars are close.
+  const keyed = k >= 2 || spec.kind === 'stack'
+  const ends: { si: number; y: number }[] = []
+  if (keyed && n >= 1) {
+    for (let si = 0; si < spec.series.length; si++) {
+      const a = lo[si]?.[n - 1] ?? 0
+      const b = hi[si]?.[n - 1] ?? 0
+      if (b > a) ends.push({ si, y: Math.round((sy(a) + sy(b)) / 2) })
+    }
+  }
+  const placed = dodgeLabels(
+    ends.map((e) => e.y),
+    MARK_GAP,
+    PLOT_TOP + MARK_R,
+    PLOT_BOTTOM,
+  )
+
   const cur = scrub.active && n >= 1 ? clampIndex(scrub.index, n - 1) : -1
   const zeroY = r2(sy(0))
   const refY = r2(sy(1))
@@ -103,6 +128,10 @@ export function BarChart(p: PlotProps & { stacked?: boolean }): ReactElement {
       <line className="ch-zero" x1={BOX.left} x2={BOX.w - RIGHT} y1={zeroY} y2={zeroY} />
       <XAxis x={spec.x} at={(i) => BOX.left + (i + 0.5) * slot} />
       {paths}
+      {ends.map((e, j) => {
+        const shape = MARKER_SHAPES[e.si % MARKER_SHAPES.length]!
+        return <path className={`ch-mk ch-bc-mk ch-tone-${spec.series[e.si]!.tone}`} key={e.si} data-shape={shape} d={markerPath(shape, MARK_X, r2(placed[j] ?? e.y), MARK_R)} />
+      })}
       {reference ? (
         <>
           <line className="ch-ref" x1={BOX.left} x2={BOX.w - RIGHT} y1={refY} y2={refY} />

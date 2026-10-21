@@ -667,11 +667,25 @@ describe('ChartView', () => {
     expect(ChartViewDefault).toBe(ChartView)
   })
 
+  // A slider speaks its aria-valuetext on every key, so its readout is not a live region as well: one channel each, or
+  // every arrow key is announced twice. The waterfall is a list with no valuetext, so its readout is the live region.
   it('reads the line under the plot from readoutFor, resting on the last point', () => {
     const spec = lineSpec()
-    expect(view(spec)).toContain(`<p class="ch-readout" aria-live="polite">${readoutFor(spec, 4)}</p>`)
+    expect(view(spec)).toContain(`<p class="ch-readout">${readoutFor(spec, 4)}</p>`)
     const wf = KIND_SPECS.waterfall()
     expect(view(wf)).toContain(`<p class="ch-readout" aria-live="polite">${readoutFor(wf, PL_STEPS.length - 1)}</p>`)
+  })
+
+  it('speaks a cursor move through one channel: the slider for a plot, the live readout for the waterfall', () => {
+    for (const kind of ['line', 'bars', 'stack', 'timeline'] as const) {
+      const out = view(KIND_SPECS[kind]())
+      expect(out, kind).toContain('role="slider"')
+      expect(attrOfSlider(out, 'aria-valuetext'), kind).toBeTruthy()
+      expect(out, kind).not.toContain('aria-live')
+    }
+    const wf = view(KIND_SPECS.waterfall())
+    expect(wf).not.toContain('role="slider"')
+    expect(count(wf, /aria-live="polite"/g)).toBe(1)
   })
 
   it('reads a ladder, a meter and a tile from the summary: they have no cursor', () => {

@@ -25,7 +25,7 @@ const LINE_RIGHT = 56
 
 /**
  * The left and right margin of a line plot, for useScrub's `inset` option, so a pointer maps onto the points the plot
- * draws. In drawing-box units: the numbers are exact when the plot is 320 px wide and scale with it otherwise.
+ * draws. In drawing-box units (BOX.w wide): pass BOX.w as useScrub's `span` and it scales them to the width the svg has.
  */
 export const LINE_INSET: [number, number] = [BOX.left, LINE_RIGHT]
 

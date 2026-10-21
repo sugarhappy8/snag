@@ -72,16 +72,18 @@ export interface ScrubApi {
 const KEYS = new Set(['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End', 'PageDown', 'PageUp', 'Escape'])
 
 /**
- * Scrub a chart of n points. `inset` is the left and right margin inside the element where no point sits, in pixels, so
- * a plot with axes maps the pointer onto the points it draws. `onMove` hears every change of the cursor, null when it is
- * cleared.
+ * Scrub a chart of n points. `inset` is the left and right margin inside the element where no point sits, so a plot with
+ * axes maps the pointer onto the points it draws. It is in pixels unless `span` is given: `span` is the width of the
+ * drawing box the inset was measured in (an svg viewBox), and the inset is then scaled by the width of the element over
+ * `span`, so it stays right when the svg is drawn wider or narrower than its box. `onMove` hears every change of the
+ * cursor, null when it is cleared.
  *
  * Keys are handled when no modifier is held. Escape is left alone until there is a cursor to clear, so a dialog around
  * the chart still closes on the first press. A cursor the pointer placed goes when the pointer leaves or focus moves
  * away; a cursor the keyboard placed stays. A touch pointer leaves the moment the finger lifts, so for touch only the
  * blur clears it.
  */
-export function useScrub(n: number, opts?: { onMove?: (index: number | null) => void; inset?: [number, number] }): ScrubApi {
+export function useScrub(n: number, opts?: { onMove?: (index: number | null) => void; inset?: [number, number]; span?: number }): ScrubApi {
   const [state, setState] = useState<ScrubState>({ index: null })
   // The handlers read the ref, not the state of the render they were made in, so two events before a re-render still chain.
   const live = useRef<ScrubState>(state)
@@ -89,6 +91,7 @@ export function useScrub(n: number, opts?: { onMove?: (index: number | null) => 
   const onMove = opts?.onMove
   const insetLeft = opts?.inset?.[0] ?? 0
   const insetRight = opts?.inset?.[1] ?? 0
+  const span = opts?.span
 
   function put(next: ScrubState, source: 'pointer' | 'key'): void {
     const changed = next.index !== live.current.index
@@ -115,7 +118,8 @@ export function useScrub(n: number, opts?: { onMove?: (index: number | null) => 
 
   const fromPointer: PointerEventHandler = (e) => {
     const box = e.currentTarget.getBoundingClientRect()
-    const i = indexAt(e.clientX, box.left + insetLeft, box.width - insetLeft - insetRight, n)
+    const k = typeof span === 'number' && span > 0 && Number.isFinite(span) ? box.width / span : 1
+    const i = indexAt(e.clientX, box.left + insetLeft * k, box.width - (insetLeft + insetRight) * k, n)
     if (i < 0 || (i === live.current.index && by.current === 'pointer')) return
     put({ index: i }, 'pointer')
   }

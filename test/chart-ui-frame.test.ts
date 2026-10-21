@@ -92,6 +92,12 @@ describe('Frame', () => {
     expect(frame(spec(), { readout: '' })).toContain('<p class="ch-readout" aria-live="polite">Net profit rose')
   })
 
+  it('leaves the readout out of the live regions when told the plot speaks for itself', () => {
+    expect(frame(spec(), { readout: '2028: Net profit $250K', live: false })).toContain('<p class="ch-readout">2028: Net profit $250K</p>')
+    expect(frame(spec(), { readout: '2028: Net profit $250K', live: false })).not.toContain('aria-live')
+    expect(frame(spec(), { readout: '2028: Net profit $250K', live: true })).toContain('<p class="ch-readout" aria-live="polite">2028: Net profit $250K</p>')
+  })
+
   it('has a "Show as table" toggle that names the table it controls', () => {
     const html = frame(spec())
     const toggle = /<button type="button" class="ch-toggle" aria-expanded="false" aria-controls="([^"]+)">Show as table<\/button>/.exec(html)

@@ -14,6 +14,11 @@ export interface FrameProps {
   children: ReactNode
   /** The line under the plot. Default: the spec's summary. */
   readout?: string
+  /**
+   * Whether a change of the readout is announced (a polite live region). Default true. A plot that is a slider already
+   * speaks its aria-valuetext on every key, so it asks for false: one channel, or each key would be announced twice.
+   */
+  live?: boolean
   /** Start with the table open. */
   tableOpen?: boolean
   className?: string
@@ -104,7 +109,7 @@ export function Frame(p: FrameProps): ReactElement {
       {spec.unit === 'money' && spec.basis !== undefined ? <span className="ch-chip">{priceChip(spec.basis)}</span> : null}
       <FrameContext.Provider value={ids}>{p.children}</FrameContext.Provider>
       {legend.length >= 2 || (spec.kind === 'stack' && legend.length >= 1) ? <Legend entries={legend} /> : null}
-      <p className="ch-readout" aria-live="polite">
+      <p className="ch-readout" aria-live={p.live === false ? undefined : 'polite'}>
         {readout}
       </p>
       <p id={ids.summary} className="ch-sr">

@@ -523,6 +523,50 @@ describe('useScrub', () => {
     expect(onMove).toHaveBeenLastCalledWith(null)
   })
 
+  // The insets of the plots are in the units of the 320 wide drawing box, and the svg scales to its container, so
+  // `span` says how wide the box is and the insets are scaled to the element before the pointer is mapped.
+  describe('with a drawing box (span)', () => {
+    /** A fake pointer over an element `width` px wide that starts at 0. */
+    const over = (width: number, x: number) => ({ clientX: x, pointerType: 'mouse', currentTarget: { getBoundingClientRect: () => ({ left: 0, width }) } }) as never
+    const LINE: [number, number] = [44, 56]
+
+    it('reaches the first and the last of 30 points at any width', () => {
+      for (const width of [280, 320, 390, 448, 600]) {
+        const k = width / 320
+        const seen: (number | null)[] = []
+        const api = probe(30, { onMove: (i) => seen.push(i), inset: LINE, span: 320 })
+        api.handlers.onPointerMove(over(width, LINE[0] * k))
+        api.handlers.onPointerMove(over(width, (320 - LINE[1]) * k))
+        expect(seen, `${width}px`).toEqual([0, 29])
+      }
+    })
+
+    it('puts every point under its own x, as the plot draws it', () => {
+      const width = 448
+      const k = width / 320
+      const seen: (number | null)[] = []
+      const api = probe(30, { onMove: (i) => seen.push(i), inset: LINE, span: 320 })
+      for (let i = 0; i < 30; i++) api.handlers.onPointerMove(over(width, (LINE[0] + ((320 - LINE[1] - LINE[0]) * i) / 29) * k))
+      expect(seen).toEqual(Array.from({ length: 30 }, (_, i) => i))
+    })
+
+    it('reads the inset as pixels when there is no span, as before', () => {
+      const seen: (number | null)[] = []
+      const api = probe(5, { onMove: (i) => seen.push(i), inset: [10, 10] })
+      api.handlers.onPointerMove(over(100, 50))
+      expect(seen).toEqual([2])
+    })
+
+    it('ignores a span that is not a positive number', () => {
+      for (const span of [0, -320, NaN, Infinity]) {
+        const seen: (number | null)[] = []
+        const api = probe(5, { onMove: (i) => seen.push(i), inset: [10, 10], span })
+        api.handlers.onPointerMove(over(100, 50))
+        expect(seen, String(span)).toEqual([2])
+      }
+    })
+  })
+
   it('keeps a touch cursor until blur, and a keyboard cursor through blur and leave', () => {
     const touch = vi.fn()
     const a = probe(5, { onMove: touch })

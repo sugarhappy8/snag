@@ -9,7 +9,7 @@ import { BulletRow } from './BulletRow'
 import { Frame } from './Frame'
 import { clipText, formatUnit, readoutFor, xText } from './format'
 import { KpiTile, kpiPropsOf } from './KpiTile'
-import { LINE_INSET, LineChart } from './LineChart'
+import { BOX, LINE_INSET, LineChart } from './LineChart'
 import { RankLadder } from './RankLadder'
 import { Timeline, ageLabelled } from './Timeline'
 import { Waterfall } from './Waterfall'
@@ -40,7 +40,7 @@ function pointsOf(spec: ChartSpec): number {
   }
 }
 
-/** The margins around the points inside the plot, so a pointer maps onto the points the plot draws. */
+/** The margins around the points inside the plot, in drawing-box units, so a pointer maps onto the points the plot draws. */
 function insetOf(spec: ChartSpec, n: number): [number, number] | undefined {
   switch (spec.kind) {
     case 'line':
@@ -97,7 +97,8 @@ export function ChartView(p: ChartViewProps): ReactElement {
   const spec = p.spec.kind === 'timeline' ? ageLabelled(p.spec) : p.spec
   const n = pointsOf(spec)
   const inset = insetOf(spec, n)
-  const scrub = useScrub(n, inset ? { inset } : undefined)
+  // The insets are in the units of the drawing box and the svg scales to its container, so the hook is told the box width.
+  const scrub = useScrub(n, inset ? { inset, span: BOX.w } : undefined)
 
   let plot: ReactElement
   let scrubbed = true
@@ -136,9 +137,10 @@ export function ChartView(p: ChartViewProps): ReactElement {
       return <p className={p.className ? `ch-summary ${p.className}` : 'ch-summary'}>{spec.summary}</p>
   }
 
-  // Ladder and meter have no cursor: their readout is the summary, which Frame writes when it is given none.
+  // Ladder and meter have no cursor: their readout is the summary, which Frame writes when it is given none. The plots
+  // are sliders that speak their own value text, so only the waterfall (a list) needs the readout as a live region.
   return (
-    <Frame spec={spec} className={p.className} readout={scrubbed ? readoutFor(spec, scrub.index) : undefined}>
+    <Frame spec={spec} className={p.className} readout={scrubbed ? readoutFor(spec, scrub.index) : undefined} live={spec.kind === 'waterfall' || !scrubbed}>
       {plot}
     </Frame>
   )
