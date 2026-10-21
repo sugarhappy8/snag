@@ -335,7 +335,9 @@ export async function travelBack(age: number): Promise<boolean> {
       timeTravel: {
         ...state.timeTravel,
         busy: false,
-        error: `The Time Machine couldn't save your trip to ${stop.year}: this browser's storage is full. Free some space and try again.`,
+        error: getSaveStatus().database
+          ? `The Time Machine couldn't save your trip to ${stop.year}: this browser's database isn't answering. Reload and try again.`
+          : `The Time Machine couldn't save your trip to ${stop.year}: this browser's storage is full. Free some space and try again.`,
       },
     })
     return false

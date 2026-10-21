@@ -9,12 +9,14 @@ export interface BootEnv {
   render: () => void
   /** Resolve once the save queue has run dry (flushSave). */
   flush: () => Promise<unknown>
+  /** Write the newest save synchronously to a backup when the queue has not caught up (spillSave). */
+  spill: () => unknown
   listen: (type: 'pagehide' | 'visibilitychange', fn: () => void) => void
   /** document.visibilityState === 'hidden' */
   hidden: () => boolean
 }
 
-/** Hydrate, then render, even when hydrate rejects; then flush the save when the page hides. */
+/** Hydrate, then render, even when hydrate rejects; then back the save up and flush it when the page hides. */
 export async function bootApp(env: BootEnv): Promise<void> {
   try {
     await env.hydrate()
@@ -23,14 +25,20 @@ export async function bootApp(env: BootEnv): Promise<void> {
     console.error('Loading the saved game failed:', err)
   }
   env.render()
-  // flushSave starts no write of its own (a write starts when saveRecord runs), so these calls change nothing
-  // that is written, and a promise can't hold a closing page open. The listeners only make sure the page does
-  // not close with a queue that could still be drained: the queue is asked to run dry as the page hides.
-  const flushNow = (): void => {
+  // A promise can't hold a closing or frozen page open, and a queued save is written after an encode step, so
+  // the save queue may not get to run. The part that can help is synchronous: spill writes the newest save, plain,
+  // to a backup in localStorage when the database hasn't got it yet (the next boot reconciles the two). flush
+  // starts no write of its own; it only lets the queue run dry if the page stays alive.
+  const leaving = (): void => {
+    try {
+      env.spill()
+    } catch (err) {
+      console.error('Backing up the save as the page hid failed:', err)
+    }
     void env.flush()
   }
-  env.listen('pagehide', flushNow)
+  env.listen('pagehide', leaving)
   env.listen('visibilitychange', () => {
-    if (env.hidden()) flushNow()
+    if (env.hidden()) leaving()
   })
 }

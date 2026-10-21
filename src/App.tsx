@@ -1,6 +1,8 @@
 // App shell: routes between screens. Everything runs on the device: there is no setup step and
 // nothing to connect to, so the main menu is the first thing a player sees.
-import { Component, useEffect, type ErrorInfo, type ReactNode } from 'react'
+import { Component, useEffect, useSyncExternalStore, type ErrorInfo, type ReactNode } from 'react'
+import { getSaveStatus, subscribeSaveStatus } from './game/save'
+import { saveWarningCopy } from './ui/components/SaveNotices'
 import { prefetchLazyViews } from './ui/lazy/lazyView'
 import { GameScreen } from './ui/screens/GameScreen'
 import { GraveyardScreen } from './ui/screens/GraveyardScreen'
@@ -26,6 +28,7 @@ export function App() {
   const screen: Screen = useApp((s) => s.screen)
   const hasGame = useApp((s) => s.game !== null)
   const saveError = useApp((s) => s.saveError)
+  const saveStatus = useSyncExternalStore(subscribeSaveStatus, getSaveStatus, getSaveStatus)
 
   useEffect(() => {
     if (!saveError) return
@@ -49,7 +52,7 @@ export function App() {
   return (
     <div className="app">
       {saveError && <aside className="save-warning" role="alert" data-modal-exempt>
-        <p>Progress isn’t saved. Keep this tab open. Free some browser storage or allow site storage, then retry.</p>
+        <p>{saveWarningCopy(saveStatus)}</p>
         <button className="btn" onClick={retrySave}>Retry save</button>
       </aside>}
       <ErrorBoundary screen={screen}>{renderScreen(screen, hasGame)}</ErrorBoundary>

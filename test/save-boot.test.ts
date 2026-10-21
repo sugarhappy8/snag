@@ -102,6 +102,10 @@ function fakeEnv(over: Partial<BootEnv> = {}) {
       calls.push('flush')
       return Promise.resolve(true)
     },
+    spill: () => {
+      calls.push('spill')
+      return true
+    },
     listen: (type, fn) => {
       calls.push(`listen:${type}`)
       listeners.set(type, fn)
@@ -180,6 +184,36 @@ describe('bootApp', () => {
     t.hide(true)
     t.fire('visibilitychange')
     expect(t.calls.filter((c) => c === 'flush')).toHaveLength(1)
+  })
+
+  it('backs the newest save up before it asks the queue to run dry, on pagehide', async () => {
+    const t = fakeEnv()
+    await bootApp(t.env)
+    t.fire('pagehide')
+    expect(t.calls.slice(-2)).toEqual(['spill', 'flush'])
+  })
+
+  it('backs the save up on visibilitychange only when the page is hidden', async () => {
+    const t = fakeEnv()
+    await bootApp(t.env)
+    t.hide(false)
+    t.fire('visibilitychange')
+    expect(t.calls).not.toContain('spill')
+    t.hide(true)
+    t.fire('visibilitychange')
+    expect(t.calls.slice(-2)).toEqual(['spill', 'flush'])
+  })
+
+  it('still flushes when the backup throws, and says so', async () => {
+    const t = fakeEnv({
+      spill: () => {
+        throw new Error('storage is gone')
+      },
+    })
+    await bootApp(t.env)
+    expect(() => t.fire('pagehide')).not.toThrow()
+    expect(t.calls).toContain('flush')
+    expect(console.error).toHaveBeenCalled()
   })
 
   it('does not wait for the flush, and a flush that returns nothing is fine', async () => {
@@ -352,6 +386,23 @@ describe('a Time Machine jump with an asynchronous save', () => {
     expect(game()).toBe(before)
   }, 30_000)
 
+  it('is called off with the database named when the write fails because the connection was lost', async () => {
+    store.startNewLife({ seed: 41, year: 1980, countryId: 'us' })
+    drain()
+    await live(2)
+    const b = controlledBackend()
+    setSaveBackend(b)
+
+    const trip = store.travelBack(1)
+    await writesReach(b, 1)
+    b.fail(0, new DOMException('Connection to Indexed Database server lost.', 'UnknownError'))
+    expect(await trip).toBe(false)
+    const { error } = store.getApp().timeTravel
+    expect(error).toMatch(/couldn't save your trip to 1981/)
+    expect(error).toContain("database isn't answering")
+    expect(error).not.toContain('storage is full')
+  }, 30_000)
+
   it('is called off when the game moves on while the trip saves', async () => {
     store.startNewLife({ seed: 41, year: 1980, countryId: 'us' })
     drain()
@@ -393,6 +444,9 @@ describe('the page', () => {
     expect(main).not.toMatch(/from '\.\/game\/save'/)
     expect(main).toMatch(/hydrateSaves\(\s*\{\s*idb:\s*FLAGS\.idbSaves\s*\}\s*\)/)
     expect(main).toContain('#root element is missing')
+    // The page hiding backs the newest save up synchronously (spillSave), then lets the queue run dry (flushSave).
+    expect(main).toMatch(/flush:\s*flushSave/)
+    expect(main).toMatch(/spill:\s*spillSave/)
   })
 
   it('index.html has a status splash inside #root', () => {

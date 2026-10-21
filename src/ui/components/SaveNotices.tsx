@@ -2,11 +2,18 @@
 // buttons to download it, delete it or (for a save from a newer version) reload. The container reads
 // the save status itself instead of going through ui/store.ts.
 import { useSyncExternalStore, type ReactElement } from 'react'
-import { deleteSaveCopy, getSaveStatus, readSaveCopy, subscribeSaveStatus, type SaveNotice } from '../../game/save'
+import { deleteSaveCopy, getSaveStatus, readSaveCopy, subscribeSaveStatus, type SaveNotice, type SaveStatus } from '../../game/save'
 import { SAVE_KEY } from '../../game/save-backends'
 import { downloadText, saveCopyFilename } from '../download'
 
 export type NoticeAction = 'download' | 'delete' | 'reload'
+
+/** What the "Progress isn't saved" bar says: the storage advice for a refused write, or the database named when it is the one at fault. */
+export function saveWarningCopy(status: SaveStatus): string {
+  return status.database === true
+    ? 'Progress isn’t reaching this browser’s database. A backup copy is kept on this device if there is room. Keep this tab open, then retry or reload.'
+    : 'Progress isn’t saved. Keep this tab open. Free some browser storage or allow site storage, then retry.'
+}
 
 /** What a notice says. The version sentence of a too old save is left out when its version isn't known. */
 export function noticeCopy(n: SaveNotice): { title: string; text: string } {

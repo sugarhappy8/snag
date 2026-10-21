@@ -47,7 +47,7 @@ vi.mock('../src/ui/download', async (importOriginal) => {
 })
 
 const { downloadText, saveCopyFilename } = await import('../src/ui/download')
-const { downloadSaveCopy, noticeActions, noticeCopy, removeSaveCopy, SaveNoticeList, SaveNotices } = await import('../src/ui/components/SaveNotices')
+const { downloadSaveCopy, noticeActions, noticeCopy, removeSaveCopy, saveWarningCopy, SaveNoticeList, SaveNotices } = await import('../src/ui/components/SaveNotices')
 const { HomeScreen } = await import('../src/ui/screens/HomeScreen')
 
 const SLOT = `${SAVE_KEY}.bad`
@@ -105,6 +105,23 @@ describe('noticeCopy', () => {
     for (const n of [damaged, tooOld, newer, stale]) {
       const { title, text } = noticeCopy(n)
       expect(`${title} ${text}`).not.toMatch(/[\u2014\u2013\u2019]/)
+    }
+  })
+})
+
+describe('saveWarningCopy', () => {
+  it('keeps the storage advice for a refused write, and names the database when it is the one at fault', () => {
+    const ordinary = saveWarningCopy({ notices: [], persistFailed: true })
+    expect(ordinary).toBe('Progress isn’t saved. Keep this tab open. Free some browser storage or allow site storage, then retry.')
+    const database = saveWarningCopy({ notices: [], persistFailed: true, database: true })
+    expect(database).toContain('database')
+    expect(database).not.toContain('Free some browser storage')
+    expect(database).toContain('Keep this tab open')
+  })
+
+  it('keeps to the voice: no dashes', () => {
+    for (const status of [{ notices: [], persistFailed: true }, { notices: [], persistFailed: true, database: true }] as const) {
+      expect(saveWarningCopy(status)).not.toMatch(/[\u2014\u2013]/)
     }
   })
 })
