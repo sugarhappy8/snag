@@ -11,6 +11,10 @@
 // test/probe-life.ts.
 import { ageUp } from '../src/game/aging'
 import { createNewLife } from '../src/game/life'
+// Script handlers register as an import side effect. test/simulate.test.ts loads menus, so a life played here must too,
+// or drain() could meet a script that no module on the aging path registered.
+import '../src/game/menus'
+import type { RouteBlock } from '../src/game/notice-policy'
 import { applyFallback } from '../src/game/offline'
 import { hasScript, runScript } from '../src/game/scripts'
 import type { AnnualReportData, GameState, MinigameModal, ModalItem, Tone } from '../src/game/types'
@@ -37,6 +41,31 @@ export interface PlayedPopup {
   passive: boolean
   /** structuredClone of the modal as it was queued. */
   item: ModalItem
+}
+
+/** One title in the counting probe's fixture (test/fixtures/notice-probe.json). Kept here, with the helper that feeds it,
+ *  so a test can type-import it without loading the opt-in probe file. */
+export type ProbeRow = {
+  title: string
+  count: number
+  /** The tone of the first notice with this title; missing when it had none. */
+  tone?: Tone
+  /** The text of that first notice. */
+  sample: string
+  /** Set when that notice carried the support line. */
+  support?: true
+  /** neverRoute() of the sample: why it must stay a popup, or null. */
+  never: RouteBlock | null
+}
+
+export type ProbeFile = {
+  v: 1
+  lives: number
+  seeds: number[]
+  untilAge: number
+  passive: ProbeRow[]
+  outcome: ProbeRow[]
+  chosen: string[]
 }
 
 export interface PlayedYear {

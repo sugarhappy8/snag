@@ -11,7 +11,7 @@ import { createNewLife } from '../src/game/life'
 import { neverRoute } from '../src/game/notice-policy'
 import { MINOR_NOTICE_TITLES } from '../src/game/notice-weights'
 import type { NoticeModal } from '../src/game/types'
-import type { ProbeFile } from './notice-probe.test'
+import type { ProbeFile } from './play-kit'
 
 const ROOT = join(__dirname, '..')
 const fixture = JSON.parse(readFileSync(join(ROOT, 'test', 'fixtures', 'notice-probe.json'), 'utf8')) as ProbeFile
@@ -87,7 +87,7 @@ describe('MINOR_NOTICE_TITLES', () => {
   })
 
   it('has no em-dash or en-dash in a title', () => {
-    for (const title of fixture.chosen) expect(title).not.toMatch(/[–—]/)
+    for (const title of fixture.chosen) expect(title).not.toMatch(/[\u2013\u2014]/)
   })
 })
 

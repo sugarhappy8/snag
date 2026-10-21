@@ -10,32 +10,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { neverRoute, type RouteBlock } from '../src/game/notice-policy'
-import type { Tone } from '../src/game/types'
-import { playLife, type PlayedPopup } from './play-kit'
-
-export type ProbeRow = {
-  title: string
-  count: number
-  /** The tone of the first notice with this title; missing when it had none. */
-  tone?: Tone
-  /** The text of that first notice. */
-  sample: string
-  /** Set when that notice carried the support line. */
-  support?: true
-  /** neverRoute() of the sample: why it must stay a popup, or null. */
-  never: RouteBlock | null
-}
-
-export type ProbeFile = {
-  v: 1
-  lives: number
-  seeds: number[]
-  untilAge: number
-  passive: ProbeRow[]
-  outcome: ProbeRow[]
-  chosen: string[]
-}
+import { neverRoute } from '../src/game/notice-policy'
+import { playLife, type PlayedPopup, type ProbeFile, type ProbeRow } from './play-kit'
 
 const FIXTURE = join(__dirname, 'fixtures', 'notice-probe.json')
 const SEEDS = Array.from({ length: 13 }, (_, i) => 101 + i)
