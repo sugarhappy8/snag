@@ -99,7 +99,9 @@ describe('the quietMode setting', () => {
 
 describe('the Notices section', () => {
   it('renders nothing while the quietInbox flag is off', () => {
-    expect(renderToStaticMarkup(createElement(NoticeSettingsSection))).toBe('')
+    // Pinned off, so the case means the same thing before and after the release commit flips the default.
+    const html = withFlags({ quietInbox: false }, () => renderToStaticMarkup(createElement(NoticeSettingsSection)))
+    expect(html).toBe('')
   })
 
   it('renders one switch, on, while the flag is on', () => {
@@ -136,7 +138,7 @@ describe('the Notices section', () => {
 
 describe('the Settings screen', () => {
   it('has no Notices section while the flag is off', () => {
-    const html = renderToStaticMarkup(createElement(SettingsScreen))
+    const html = withFlags({ quietInbox: false }, () => renderToStaticMarkup(createElement(SettingsScreen)))
     expect(html).not.toContain('Quiet Mode')
     expect(html).toContain('Time Machine')
   })

@@ -1,5 +1,8 @@
-// R1-T10 (G.11, D.11 criteria 4 and 8 for the notices track): the acceptance sweep for the two flags, noticeDigest and
-// quietInbox. It restates the release gate in one file, so the lead can flip both defaults on the strength of it:
+// R1-T10 (G.11, D.11 criteria 4, 8 and 9 for the notices track): the acceptance sweep for the two flags, noticeDigest and
+// quietInbox. It restates the release gate in one file, so the lead can flip both defaults on the strength of it.
+// Criteria 4 and 8 live here in full. Criterion 9 (pickLine draws like pick, a bag never repeats before it is spent,
+// the memory caps hold, hpick draws nothing) is proved line by line in test/text-pick.test.ts and test/text-hash.test.ts;
+// this file adds the one-draw check against nextRandom and the cap checks on hostile saves, in (a) below. The groups:
 //   (a) a hostile inbox, text memory and queued weight or link survive a save round trip and stay inside their caps;
 //   (b) the digest merge never writes g.queue;
 //   (c) the never-route table: bad-tone, health, legal and large-money notices stay popups, in the pure policy and
@@ -247,6 +250,11 @@ const PROTO_MEM = JSON.parse(
   '{"v":1,"p":{"__proto__":"b1","constructor":"b3.1","toString":"w1,2","ok":"b3.1"},"f":{"__proto__":"2030","constructor":"2031"},"r":{"__proto__":["x"],"flavor":["a","b"]}}',
 )
 
+/** An own __proto__ object that carries a key named polluted, at the top and in every container, the way JSON.parse makes it. */
+const POLLUTION_MEM = JSON.parse(
+  '{"__proto__":{"polluted":true},"v":1,"p":{"__proto__":{"polluted":true},"ok":"b3.1"},"f":{"__proto__":{"polluted":true}},"r":{"__proto__":{"polluted":true},"flavor":["a"]}}',
+)
+
 const HOSTILE_MEM: [string, unknown][] = [
   ['a string', 'junk'],
   ['a number', 7],
@@ -264,6 +272,7 @@ const HOSTILE_MEM: [string, unknown][] = [
     },
   ],
   ['prototype keys', PROTO_MEM],
+  ['an own __proto__ object carrying a polluted key', POLLUTION_MEM],
 ]
 
 /** Notices as a damaged or hostile save might queue them. The first group is weight and link; the last has a big figure. */
@@ -346,9 +355,11 @@ describe('(a) a hostile text memory', () => {
       const stats = familyStats(g, 'accept.bag')
       expect(stats.count10).toBeGreaterThanOrEqual(0)
       expect(stats.count10).toBeLessThanOrEqual(CAPS.famYears)
-      // The readers never write, and a polluted prototype key never reaches Object.prototype.
+      // The readers never write, and a polluted prototype key reaches neither Object.prototype nor any container.
       expect(JSON.stringify(g.flags)).toBe(before)
-      expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+      expect('polluted' in {}).toBe(false)
+      const read = readTextMem(g)
+      for (const part of [read, read.p, read.f, read.r]) expect('polluted' in part).toBe(false)
 
       const bag = ['one', 'two', 'three', 'four']
       const rng = g.rng
@@ -363,8 +374,18 @@ describe('(a) a hostile text memory', () => {
       const mem = g.flags.textMem as unknown as TextMem
       expect(textMemProblems(mem)).toEqual([])
       expect(Object.hasOwn(mem.p, 'accept.bag')).toBe(true)
+      for (const part of [mem, mem.p, mem.f, mem.r]) expect('polluted' in part).toBe(false)
+      expect('polluted' in {}).toBe(false)
     })
   }
+
+  it('the pollution payload really carries a polluted key in every place it claims to', () => {
+    // Guards the case above against going vacuous: the key is an own property named __proto__, not a prototype link.
+    for (const part of [POLLUTION_MEM, POLLUTION_MEM.p, POLLUTION_MEM.f, POLLUTION_MEM.r]) {
+      expect(Object.hasOwn(part, '__proto__')).toBe(true)
+      expect(Object.getOwnPropertyDescriptor(part, '__proto__')?.value).toEqual({ polluted: true })
+    }
+  })
 
   sweep('400 families and pools never grow it past its caps', () => {
     const g = loaded(lifeWith((x) => (x.flags.textMem = asJson(BIG_MEM))))
@@ -622,8 +643,8 @@ describe('(c) the never-route table', () => {
     expect(stay.length).toBeGreaterThanOrEqual(30)
   })
 
-  sweep('the digest does not route either: a blocked row is drawn on a card, in the queue', () => {
-    store.updateSettings({ quietMode: false })
+  sweep('the digest does not route either: with Quiet Mode on, a blocked row is drawn on one card and the inbox stays empty', () => {
+    store.updateSettings({ quietMode: true })
     store.startNewLife({ seed: 3, year: 2026 })
     const bad = NEVER_ROUTE_TABLE.find((r) => r.block === 'tone')!
     const health = NEVER_ROUTE_TABLE.find((r) => r.block === 'health')!
@@ -631,10 +652,18 @@ describe('(c) the never-route table', () => {
       g.queue = [noticeOfRow(bad, 'b1', 'minor'), noticeOfRow(health, 'h1', 'minor')]
     })
     const g = store.getApp().game as GameState
+    // Quiet Mode is on and both rows carry the minor weight, yet neither moved: the policy holds them back.
     expect(ids(g.queue)).toEqual(['b1', 'h1'])
+    expect(readInbox(g).items).toEqual([])
     const plan = planHead(g.queue, true)
     expect(plan.kind === 'digest' ? digestTone(plan.items) : null).toBe('bad')
-    expect(readInbox(g).items).toEqual([])
+    const html = renderToStaticMarkup(createElement(ModalHost))
+    expect(html).toContain('2 updates')
+    expect(html).toContain(bad.title)
+    expect(html).toContain(health.title)
+    // Drawing the card is not routing: the queue and the inbox are what they were.
+    expect(ids((store.getApp().game as GameState).queue)).toEqual(['b1', 'h1'])
+    expect(readInbox(store.getApp().game as GameState).items).toEqual([])
   })
 })
 

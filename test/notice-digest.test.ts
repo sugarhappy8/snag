@@ -305,11 +305,14 @@ describe('ModalHost with the digest', () => {
   })
 
   it('draws today\'s single notice card with the flag off, for the same queue', () => {
-    setQueue([N('a', { title: 'Alpha' }), N('b', { title: 'Beta' })])
-    const html = host()
-    expect(html).not.toContain('digest-list')
-    expect(html).toContain(renderToStaticMarkup(createElement(NoticeCard, { modal: N('a', { title: 'Alpha' }) })))
-    expect(html).not.toContain('Beta')
+    // Pinned off, so the case means the same thing before and after the release commit flips the default.
+    withFlags({ noticeDigest: false }, () => {
+      setQueue([N('a', { title: 'Alpha' }), N('b', { title: 'Beta' })])
+      const html = host()
+      expect(html).not.toContain('digest-list')
+      expect(html).toContain(renderToStaticMarkup(createElement(NoticeCard, { modal: N('a', { title: 'Alpha' }) })))
+      expect(html).not.toContain('Beta')
+    })
   })
 
   it('a lone notice, a choice head and an empty queue are drawn as today with the flag on', () => {

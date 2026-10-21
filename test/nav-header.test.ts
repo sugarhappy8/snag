@@ -182,6 +182,8 @@ describe('10. GameScreen: the search button', () => {
   })
 
   it('shows no Search button with navPalette off, and the rest of the screen is the same', () => {
+    // quietInbox is pinned off too, so the screen is the one v4.0.2 drew whatever the release commit sets as default.
+    setFlags({ quietInbox: false })
     const off = render(createElement(GameScreen))
     expect(off).not.toContain('aria-label="Search"')
     expect(off).not.toContain('aria-keyshortcuts')
@@ -252,8 +254,10 @@ describe('13. GameScreen: the inbox count', () => {
 
 describe('14. GameScreen: the bell and the inbox sheet', () => {
   it('draws the bell only with quietInbox on, whatever navPalette says', () => {
+    // The off half pins quietInbox off, so the case means the same thing before and after the release commit flips it.
+    setFlags({ quietInbox: false })
     expect(render(createElement(GameScreen))).not.toContain('hdr-bell')
-    setFlags({ navPalette: true })
+    setFlags({ navPalette: true, quietInbox: false })
     expect(render(createElement(GameScreen))).not.toContain('hdr-bell')
     setFlags({ quietInbox: true })
     const html = render(createElement(GameScreen))
