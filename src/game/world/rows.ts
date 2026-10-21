@@ -1,5 +1,5 @@
 // What the three index shards (world/people, firms, homes) share (R2-L14): the rules for a row, the cut to a cap, the merge of a
-// fresh sync into the rows already there, and the one way an index is written.
+// fresh sync into the rows already there, and the one way an index is written (the holdings table of R2-L15 is written the same way).
 //
 // An index row says "the world knows about this entity": { id, seen } plus a field or two. The record itself (the Person, the
 // Asset, the old NPC firm inside its owner) stays where it is and is never copied here. `seen` is the last year the record was
@@ -116,7 +116,7 @@ export function mergeRows<R extends IndexRow>(old: readonly R[], present: Readon
  * a second sync in a year changes nothing, and a state whose shard roots are frozen can be synced). When the shard is absent and the
  * new one is the empty one, nothing is written at all: an old save keeps reading as empty, with no world made for it.
  */
-export function commitShard(g: GameState, name: 'people' | 'firms' | 'homes', next: object, empty: object): void {
+export function commitShard(g: GameState, name: 'people' | 'firms' | 'homes' | 'holdings', next: object, empty: object): void {
   const have: unknown = readWorld(g)[name]
   if (have === undefined ? sameJson(next, empty) : sameJson(next, have)) return
   ;(ensureWorld(g) as Record<string, unknown>)[name] = next

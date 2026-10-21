@@ -59,6 +59,7 @@ import { bizOf, readBiz, type Manager } from './business/state'
 import { yearlyMainCharacter } from './mastery'
 import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, pickedTalents, refreshFamilyTalents, talentLabel, type TalentId } from './talents'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
+import { syncWorld } from './world/sync'
 import type {
   AncestorSummary,
   Asset,
@@ -1672,6 +1673,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   )
   // The reading of the will: reactions, contests, the cut-out heir's choices (events/will-estate.ts).
   settleReading(n, plan, old, childId)
+  // g.world came with the clone; the people were rebuilt above, so index them (and the firms, homes and holdings) again.
+  syncWorld(n)
   return n
 }
 

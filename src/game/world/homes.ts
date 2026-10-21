@@ -42,19 +42,26 @@ export function readHomes(g: GameState): Readonly<HomesShard> {
   return worldShard<HomesShard>(g, 'homes') ?? EMPTY
 }
 
-interface Candidate {
+/** A house the ranking chose or considered. */
+export interface HomePick {
   id: EntityRef
   owner: EntityRef
   value: number
 }
 
-/**
- * Brings the index up to date: a row for each house the player owns, the 150 most valuable (then by id) stamped with this year, the
- * rest counted in `over`. A row whose house is gone is kept as it was. No asset is copied or changed.
- */
-export function syncHomes(g: GameState): void {
+export interface HomeRanking {
+  /** The houses that get a row: the first LOD_CAPS.homes by [value, id]. */
+  chosen: HomePick[]
+  /** Every house there is, chosen or not. */
+  present: Set<EntityRef>
+  /** How many houses there are (chosen or not). */
+  total: number
+}
+
+/** Which houses the world names right now: every Asset of kind house the player owns, the most valuable first, then by id. Pure. */
+export function rankHomes(g: GameState): HomeRanking {
   const me = refOfKind(playerRef(g), 'person')
-  const found: Candidate[] = []
+  const found: HomePick[] = []
   if (me !== null) {
     for (const a of g.assets) {
       if (a.kind !== 'house') continue
@@ -65,14 +72,22 @@ export function syncHomes(g: GameState): void {
   found.sort((a, b) => b.value - a.value || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   // One house is one row. `present` is every house there is, chosen or not.
   const present = new Set<EntityRef>()
-  const ranked: Candidate[] = []
+  const ranked: HomePick[] = []
   for (const c of found) {
     if (present.has(c.id)) continue
     present.add(c.id)
     ranked.push(c)
   }
-  const chosen = ranked.slice(0, LOD_CAPS.homes)
+  return { chosen: ranked.slice(0, LOD_CAPS.homes), present, total: ranked.length }
+}
+
+/**
+ * Brings the index up to date: a row for each house the player owns, the 150 most valuable (then by id) stamped with this year, the
+ * rest counted in `over`. A row whose house is gone is kept as it was. No asset is copied or changed.
+ */
+export function syncHomes(g: GameState): void {
+  const { chosen, present, total } = rankHomes(g)
   const fresh = chosen.map((c): HomeRow => ({ id: c.id, owner: c.owner, seen: g.year }))
   const rows = mergeRows(readHomes(g).rows, present, fresh)
-  commitShard(g, 'homes', normalizeHomes({ v: 1, rows, over: ranked.length - chosen.length }), EMPTY)
+  commitShard(g, 'homes', normalizeHomes({ v: 1, rows, over: total - chosen.length }), EMPTY)
 }

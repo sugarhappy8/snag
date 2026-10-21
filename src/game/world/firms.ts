@@ -12,7 +12,7 @@
 // being the lite ones of the level-of-detail sweep. readFirms reads through the registered reader: import world/shards for effect.
 import { num, rec } from '../business/util'
 import { parseRef, type EntityRef } from '../kernel/ids'
-import type { GameState } from '../types'
+import type { Asset, GameState, Person } from '../types'
 import { LOD_CAPS } from './caps'
 import { npcFirmId, personRef, playerRef } from './people'
 import { commitShard, isPlain, mergeRows, normalizeIndex, refOfKind, seenOf } from './rows'
@@ -46,18 +46,64 @@ export function readFirms(g: GameState): Readonly<FirmsShard> {
   return worldShard<FirmsShard>(g, 'firms') ?? EMPTY
 }
 
-interface Candidate {
+/** A company the ranking chose or considered: the ref, the form, the owner and the value, and the record it was read from (never copied). */
+export interface FirmPick {
   id: EntityRef
   form: 'biz' | 'npc'
   owner: EntityRef
   value: number
+  /** The Asset, for a 'biz' company. */
+  asset?: Asset
+  /** The owner, for an 'npc' firm (the record is p.data.npcCompany). */
+  person?: Person
+}
+
+export interface FirmRanking {
+  /** The companies that get a row: the first LOD_CAPS.fullFirms by [own before NPC, value, id]. */
+  chosen: FirmPick[]
+  /** Every company there is, chosen or not. */
+  present: Set<EntityRef>
+  /** How many companies there are (chosen or not). */
+  total: number
 }
 
 const finite = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) ? n : 0)
 
 /** Own companies first, then the old NPC firms; inside each, the most valuable, then by id. */
-function before(a: Candidate, b: Candidate): number {
+function before(a: FirmPick, b: FirmPick): number {
   return (a.form === 'biz' ? 0 : 1) - (b.form === 'biz' ? 0 : 1) || b.value - a.value || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+}
+
+/**
+ * Which companies the world names right now: a 'biz' candidate for each Asset of kind business (owner the player), an 'npc' one for
+ * each person with an old NPC firm (owner that person), ranked by [own before NPC, value, id]. One company is one entry: the best
+ * ranked of the records that name it wins. Pure; the same ranking syncFirms writes and the holdings table is built from.
+ */
+export function rankFirms(g: GameState): FirmRanking {
+  const found: FirmPick[] = []
+  const me = refOfKind(playerRef(g), 'person')
+  if (me !== null) {
+    for (const a of g.assets) {
+      if (a.kind !== 'business') continue
+      const id = refOfKind(firmRef(a.id), 'firm')
+      if (id !== null) found.push({ id, form: 'biz', owner: me, value: finite(a.value), asset: a })
+    }
+  }
+  for (const p of g.people) {
+    const key = npcFirmId(p)
+    const owner = refOfKind(personRef(p), 'person')
+    const id = key === null ? null : refOfKind(firmRef(key), 'firm')
+    if (id !== null && owner !== null) found.push({ id, form: 'npc', owner, value: num(rec(p.data.npcCompany)?.value), person: p })
+  }
+  found.sort(before)
+  const present = new Set<EntityRef>()
+  const ranked: FirmPick[] = []
+  for (const c of found) {
+    if (present.has(c.id)) continue
+    present.add(c.id)
+    ranked.push(c)
+  }
+  return { chosen: ranked.slice(0, LOD_CAPS.fullFirms), present, total: ranked.length }
 }
 
 /**
@@ -66,32 +112,8 @@ function before(a: Candidate, b: Candidate): number {
  * A row whose company is gone is kept as it was. Nothing is copied from a record and no record is changed.
  */
 export function syncFirms(g: GameState): void {
-  const found: Candidate[] = []
-  const me = refOfKind(playerRef(g), 'person')
-  if (me !== null) {
-    for (const a of g.assets) {
-      if (a.kind !== 'business') continue
-      const id = refOfKind(firmRef(a.id), 'firm')
-      if (id !== null) found.push({ id, form: 'biz', owner: me, value: finite(a.value) })
-    }
-  }
-  for (const p of g.people) {
-    const key = npcFirmId(p)
-    const owner = refOfKind(personRef(p), 'person')
-    const id = key === null ? null : refOfKind(firmRef(key), 'firm')
-    if (id !== null && owner !== null) found.push({ id, form: 'npc', owner, value: num(rec(p.data.npcCompany)?.value) })
-  }
-  found.sort(before)
-  // One company is one row: the best ranked of the records that name it wins. `present` is every company there is, chosen or not.
-  const present = new Set<EntityRef>()
-  const ranked: Candidate[] = []
-  for (const c of found) {
-    if (present.has(c.id)) continue
-    present.add(c.id)
-    ranked.push(c)
-  }
-  const chosen = ranked.slice(0, LOD_CAPS.fullFirms)
+  const { chosen, present, total } = rankFirms(g)
   const fresh = chosen.map((c): FirmRow => ({ id: c.id, form: c.form, owner: c.owner, seen: g.year }))
   const rows = mergeRows(readFirms(g).rows, present, fresh)
-  commitShard(g, 'firms', normalizeFirms({ v: 1, rows, over: ranked.length - chosen.length }), EMPTY)
+  commitShard(g, 'firms', normalizeFirms({ v: 1, rows, over: total - chosen.length }), EMPTY)
 }
