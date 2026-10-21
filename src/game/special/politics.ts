@@ -24,7 +24,7 @@ import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
 import { localPick, localSoftDrink } from '../data/locales'
 import { marketOf } from '../data/markets'
-import { common } from '../events/era'
+import { byEra, common } from '../events/era'
 import { companyKey, exchangeInfo } from '../invest/engine'
 import { addMarketShock, indexShockFactor, type ShockCause } from '../invest/shocks'
 import { freshShare, investmentHoldings, revalueHoldings } from '../investments'
@@ -701,6 +701,11 @@ defineScript(BUDGET_SCRIPT, (g, choice, data) => {
   trailChoice(g, camp, intro)
 })
 
+/** What reaches the public from a stage, a studio or a courtroom this year: television, then radio, else the press and the crowd. */
+function viaAir(g: GameState, tv: string, radio: string, press: string): string {
+  return byEra(g, [['+tv', tv], ['+radio', radio]], press)
+}
+
 const TRAIL: { id: string; label: string; emoji: string }[] = [
   { id: 'debate', label: 'Debate your opponent', emoji: '\u{1F399}\u{FE0F}' },
   { id: 'rally', label: 'Hold a rally', emoji: '\u{1F4E3}' },
@@ -783,7 +788,7 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
         delta: d,
         text:
           d >= 3
-            ? pickSite(g, [`You dismantled ${opp} on live TV. Fact-checkers had nothing to say.`, `You delivered a zinger so good it became a campaign T-shirt by morning.`, `${opp} froze when you asked a simple follow-up question.`], 0x7b1705a0)
+            ? pickSite(g, [`You dismantled ${opp} ${viaAir(g, 'on live TV', 'on the radio', 'in the debate hall')}. Fact-checkers had nothing to say.`, `You delivered a zinger so good it became a campaign T-shirt by morning.`, `${opp} froze when you asked a simple follow-up question.`], 0x7b1705a0)
             : d <= -3
               ? pickSite(g, [`You confused two countries during the debate. ${opp} pounced.`, 'Your microphone was on while you muttered something rude about the moderator.', `${opp} made you look completely unprepared.`], 0x5346073c)
               : pickLine(g, ['The debate was a snoozer. Both of you said "my plan" forty times.', 'Pundits called the debate a draw. Nobody watched the whole thing.']),
@@ -1008,7 +1013,7 @@ export const politicsCareerMenu: MenuGroup = {
   emoji: '\u{1F5F3}\u{FE0F}',
   subtitle: 'Run for office',
   header: (g) =>
-    `Work your way up from ${localTitle(g)} to ${leaderTitle(g)}. Smarts help in debates, looks help on TV, and fame and money win elections. Elections can only be contested once a year.`,
+    `Work your way up from ${localTitle(g)} to ${leaderTitle(g)}. Smarts help in debates, looks help ${byEra(g, [['+tv', 'on TV']], 'on the stump')}, and fame and money win elections. Elections can only be contested once a year.`,
   children: (g): MenuNode[] => {
     const job = politicianJob(g)
     if (job) return [{ type: 'info', id: 'pol.already', text: `You are the ${job.title} (${job.company}). Govern from your job.`, emoji: '\u{1F3DB}\u{FE0F}' }, careerInfo()]
@@ -1073,7 +1078,7 @@ const SPEECH_SCRIPT = 'special.pol.speech'
 defineScript(SPEECH_SCRIPT, (g, choice) => {
   const job = politicianJob(g)
   if (!job || choice === 'cancel') return
-  if (!useYearAction(g, 'pol.speech', 3)) return tell(g, 'Speech', "You've given enough speeches this year. Your throat is hoarse and people are changing the channel.", '\u{1F399}\u{FE0F}')
+  if (!useYearAction(g, 'pol.speech', 3)) return tell(g, 'Speech', `You've given enough speeches this year. Your throat is hoarse and people are ${viaAir(g, 'changing the channel', 'turning the dial', 'heading for the doors')}.`, '\u{1F399}\u{FE0F}')
   const d = pdata(job)
   if (!d.hot.length) d.hot = hotIssues(g)
   const issue = issueOf(choice)
@@ -1081,13 +1086,13 @@ defineScript(SPEECH_SCRIPT, (g, choice) => {
   const delta = (hot ? randInt(g, 3, 8) + (g.character.stats.smarts >= 70 ? 1 : 0) : randInt(g, -3, 2)) + (hasTalent(g, 'Leadership') ? 1 : 0)
   addApproval(job, delta)
   addFame(g, 1)
-  log(g, `I gave a televised speech about ${issue.label.toLowerCase()}.`)
+  log(g, `I gave a ${viaAir(g, 'televised', 'radio', 'public')} speech about ${issue.label.toLowerCase()}.`)
   say(
     g,
     'Broadcast Speech',
     hot
-      ? `${pickSite(g, [`Your speech on ${issue.label.toLowerCase()} struck a nerve. People are talking about it everywhere.`, `You spoke passionately about ${issue.label.toLowerCase()} and the public ate it up.`, `Your address on ${issue.label.toLowerCase()} was quoted on every news channel.`], 0x7cd36c40)} Approval: ${d.approval}% (+${delta}).`
-      : `${pickSite(g, [`Nobody seems to care about ${issue.label.toLowerCase()} right now. Viewers switched to a cooking show.`, `Your speech on ${issue.label.toLowerCase()} fell flat. Maybe read the newspaper first?`, `Pundits called your speech on ${issue.label.toLowerCase()} "tone-deaf".`], 0x1998a046)} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
+      ? `${pickSite(g, [`Your speech on ${issue.label.toLowerCase()} struck a nerve. People are talking about it everywhere.`, `You spoke passionately about ${issue.label.toLowerCase()} and the public ate it up.`, `Your address on ${issue.label.toLowerCase()} was quoted ${viaAir(g, 'on every news channel', 'on every radio bulletin', 'in every newspaper')}.`], 0x7cd36c40)} Approval: ${d.approval}% (+${delta}).`
+      : `${pickSite(g, [`Nobody seems to care about ${issue.label.toLowerCase()} right now. ${viaAir(g, 'Viewers switched to a cooking show.', 'Listeners switched to a cooking show.', 'The crowd drifted off in search of supper.')}`, `Your speech on ${issue.label.toLowerCase()} fell flat. Maybe read the newspaper first?`, `Pundits called your speech on ${issue.label.toLowerCase()} "tone-deaf".`], 0x1998a046)} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
     '\u{1F399}\u{FE0F}',
     hot ? 'good' : 'neutral',
   )
@@ -1358,7 +1363,7 @@ defineScript(HOLIDAY_SCRIPT, (g, choice) => {
     text = `You adopted a scruffy rescue dog named ${pickLine(g, ['Senator Biscuit', 'Filibuster', 'Veto', 'Sir Barksalot'])}. It has a higher approval rating than you.`
   } else if (choice === 'pardon') {
     delta = randInt(g, 1, 3)
-    text = 'You pardoned a turkey in a televised ceremony. It bit you. Ratings were huge.'
+    text = `You pardoned a turkey in ${byEra(g, [['+tv', 'a televised']], 'a public')} ceremony. It bit you. ${byEra(g, [['+radio', 'Ratings were huge.']], 'The papers loved it.')}`
   } else {
     addHidden(g, 'karma', -6)
     if (chance(g, 0.35)) {
@@ -2328,7 +2333,7 @@ function exposeCase(g: GameState, cs: InsiderCase): void {
     : law
       ? `${paper} reports that you bought ${cs.target} (${cs.symbol})${unit} shortly before you ${causeText(cs)}.`
       : `${paper} reports that you held ${cs.target} (${cs.symbol})${unit} when you ${causeText(cs)}.`
-  const text = `${story} The timing is "remarkable," says every expert on television.${monarchy}\n\nHow do you respond?`
+  const text = `${story} The timing is "remarkable," says every ${viaAir(g, 'expert on television', 'commentator on the radio', 'columnist in town')}.${monarchy}\n\nHow do you respond?`
   const choices = [
     { id: 'deny', label: 'Deny everything', emoji: '\u{1F645}' },
     { id: 'blame', label: cs.via === 'crony' ? `Throw ${cs.crony ? cs.crony.split(' ')[0] : 'your crony'} under the bus` : 'Blame your financial advisor', emoji: '\u{1F449}' },
@@ -2374,7 +2379,7 @@ defineScript(INSIDER_SCRIPT, (g, choice, data) => {
     drop = randInt(g, 6, 12)
     if (cs.via === 'crony') {
       cs.evidence = Math.max(0.2, cs.evidence - 0.2)
-      lines.push(`You said you barely know ${cs.crony || 'the man'}. ${cs.crony ? cs.crony.split(' ')[0] : 'Your crony'} was arrested on live TV, glaring into the camera.`)
+      lines.push(`You said you barely know ${cs.crony || 'the man'}. ${cs.crony ? cs.crony.split(' ')[0] : 'Your crony'} was arrested ${byEra(g, [['+tv', 'on live TV, glaring into the camera']], 'in front of the press, glaring at the flashbulbs')}.`)
     } else {
       cs.evidence = Math.max(0.3, cs.evidence - 0.1)
       lines.push('You blamed your financial advisor, who blamed an algorithm, which declined to comment.')
@@ -2580,7 +2585,7 @@ defineScript(SCANDAL_SCRIPT, (g, choice, data) => {
   let text: string
   if (choice === 'apologize') {
     delta = -randInt(g, 1, 6)
-    text = pickLine(g, ['Your heartfelt apology was surprisingly well received.', 'You apologized on live TV. A few people even believed you.'])
+    text = pickSite(g, ['Your heartfelt apology was surprisingly well received.', `You apologized ${viaAir(g, 'on live TV', 'on the radio', 'in the newspapers')}. A few people even believed you.`], 0x2b5c9d31)
   } else if (choice === 'deny') {
     if (chance(g, 0.5)) {
       delta = randInt(g, -1, 2)
