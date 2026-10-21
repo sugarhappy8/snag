@@ -8,6 +8,7 @@ import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log,
 import { hasMarketData, marketOf } from './data/markets'
 import { historicalInflation, historicalMortgageRate, inHistory, investingBlocked } from './history/markets'
 import { hasTech } from './history/timeline'
+import { bookMint, type AcctRef } from './kernel/ledger'
 import { chance, pick, randInt, uid } from './rng'
 import { pickLine, pickSite } from './text/pick'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
@@ -339,9 +340,16 @@ export interface NewLoan {
   principal: number
   rate: number
   years: number
+  /** Who receives the money the lender creates: the seller of what the loan buys. Default pool:sellers. */
+  to?: AcctRef
+  /** True for a debt that only changes shape (a foreclosure shortfall turned into a loan): no money is created. */
+  noMint?: boolean
 }
 
-/** Add a loan to the character (balance + level yearly payment). */
+/**
+ * Add a loan to the character (balance + level yearly payment). The lender creates what it lends: the lending mint
+ * (capped each year) credits `to`, unless `noMint`. The loan is added in full whatever the mint had room for.
+ */
 export function addLoan(g: GameState, l: NewLoan): Loan {
   const loan: Loan = {
     id: uid(g, 'loan'),
@@ -354,6 +362,7 @@ export function addLoan(g: GameState, l: NewLoan): Loan {
     countryId: g.character.countryId,
   }
   g.character.loans.push(loan)
+  if (!l.noMint) bookMint(g, 'lending', l.to ?? 'pool:sellers', loan.balance, 'loan.principal')
   return loan
 }
 
