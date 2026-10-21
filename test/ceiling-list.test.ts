@@ -5,7 +5,8 @@
 // Removing a cap constant means removing the entry here on purpose, and the entry says what the cap protected.
 //
 // To add one: put the entry in the JSON in the same commit as the new cap. Use an identifier that is a constant or a
-// named helper, so a rename is caught too.
+// named helper, so a rename is caught too. The same commit adds the probe row in test/ceiling-kit.ts that scales the
+// term's inputs by 100 (test/ceiling-probe.test.ts fails on an entry with no row).
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
