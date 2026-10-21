@@ -24,6 +24,7 @@
 //
 // No vitest imports here: like test/play-kit.ts and test/probe-life.ts it may run as a bundled script later.
 import { fnv1a } from '../src/game/text/hash'
+import { setPickHook, type PickMode } from '../src/game/text/pick'
 import type { GameState, ModalItem } from '../src/game/types'
 import { classifyFlag } from '../src/game/world-flags'
 import { playLife } from './play-kit'
@@ -239,4 +240,80 @@ export interface ParityFixture {
   /** [...PARITY_SLICES, 'text'] */
   slices: string[]
   lives: ParityTrace[]
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// R2-A3: attribution. The isolation test plays a life with the text kit forced to plain pick and again forced to a rotation. When
+// the two disagree on a non-text slice, some converted pool flowed into state (or into a branch). bisectOffenders finds which.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** A pool that moves state when its choice changes: its memory key and the first frames of src/ that called it. */
+export interface PoolOffender {
+  key: string
+  where: string[]
+}
+
+const FRAME = /(src\/[^():\s]+):(\d+):\d+/
+/** `src/game/love.ts:296` for the first `depth` frames of the current stack that sit in src/ and not in the text kit itself. */
+function callerFrames(depth: number): string[] {
+  const out: string[] = []
+  const limit = Error.stackTraceLimit
+  Error.stackTraceLimit = 30
+  const stack = new Error().stack ?? ''
+  Error.stackTraceLimit = limit
+  for (const line of stack.split('\n').slice(1)) {
+    const m = FRAME.exec(line)
+    if (!m || m[1] === 'src/game/text/pick.ts') continue
+    out.push(`${m[1]}:${m[2]}`)
+    if (out.length === depth) break
+  }
+  return out
+}
+
+/** Play the life with the hook choosing a mode per pool key, then take the hook away. */
+function traceWith(life: ParityLife, modeOf: (key: string) => PickMode): ParityTrace {
+  setPickHook((call) => modeOf(call.key))
+  try {
+    return traceLife(life)
+  } finally {
+    setPickHook(null)
+  }
+}
+
+/**
+ * The pools whose rotation moves a non-text slice in this life, with the stack that called each. Play once in plain mode, noting
+ * every pool key (and, once per key, the top four frames in src/). Then delta-debug: while rotating only the keys in S still moves
+ * a slice, keep the half of S that still does, down to one key; report it, put it back to plain, and go on with the rest until
+ * rotating all that remain matches plain. If neither half moves a slice alone (two pools that only matter together), the group is
+ * reported as it stands. About log2(keys) plays of one life per offender. Never call it from inside withPickMode.
+ */
+export function bisectOffenders(life: ParityLife): PoolOffender[] {
+  const where = new Map<string, string[]>()
+  const plain = traceWith(life, (key) => {
+    if (!where.has(key)) where.set(key, callerFrames(4))
+    return 'plain'
+  })
+  const moves = (keys: readonly string[]): boolean => {
+    const rotated = new Set(keys)
+    return compareTraces([plain], [traceWith(life, (key) => (rotated.has(key) ? 'rotate' : 'plain'))]).length > 0
+  }
+  let rest = [...where.keys()]
+  const out: PoolOffender[] = []
+  while (rest.length > 0 && moves(rest)) {
+    let known = rest // a set that is known to move a slice
+    let cand = rest
+    while (cand.length > 1) {
+      const a = cand.slice(0, cand.length >> 1)
+      const b = cand.slice(a.length)
+      if (moves(a)) {
+        cand = a
+        known = a
+      } else cand = b // b moves it, unless a and b only matter together: the check below
+    }
+    if (cand !== known && !moves(cand)) cand = known
+    for (const key of cand) out.push({ key, where: where.get(key) ?? [] })
+    const gone = new Set(cand)
+    rest = rest.filter((k) => !gone.has(k))
+  }
+  return out
 }

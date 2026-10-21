@@ -9,7 +9,7 @@ import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import { getCountry } from '../world'
-import { cars, eraPick, flights } from './era'
+import { cars, eraPickPlain, flights } from './era'
 import { addVenture, carLabel, carPrice, setAllowance, ventureOdds, VENTURE_PARTIAL, type CarType } from './wealth-kids'
 import type { Ask } from './wealth-ask'
 import { isEstranged } from './will-core'
@@ -600,7 +600,7 @@ function ventureAction(g: GameState, p: Person): MenuAction {
         return
       }
       touch(g, q)
-      const idea = eraPick(g, IDEAS)
+      const idea = eraPickPlain(g, IDEAS)
       const a: Ask = { k: 'menu.venture', pid: q.id, title: 'Seed Money', emoji: '\u{1F4A1}', text: '', amt, what: idea, odds: ventureOdds(q), partial: VENTURE_PARTIAL }
       addVenture(g, a, myOf(q).replace(/^my /, 'your '), amt, 'venture', q)
       updateTies(g, q, (t) => {

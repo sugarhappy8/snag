@@ -16,7 +16,7 @@
 // (business cycle + industry demand + local conditions), and the "Your CV" menu.
 //
 // This module must not import education.ts or careers.ts (they import it).
-import { eraPick } from './events/era'
+import { eraPick, eraPickPlain } from './events/era'
 import { hasTech } from './history/timeline'
 import { cycleLabel, cycleOf } from './business/economy'
 import { ceoJob } from './business/state'
@@ -1998,7 +1998,7 @@ function doInternship(g: GameState, def: InternshipDef): void {
   if (pay > 0) earnIncome(g, pay)
   const prestige = chance(g, 0.15 + fit / 400)
   const strength = between(4 + (prestige ? 1 : 0) + (fit >= 60 ? 1 : 0), 3, 7)
-  addCvEntry(g, { kind: 'experience', title: `Intern, ${internshipLabel(g, def)}`, org, startAge: c.age, endAge: c.age, detail: `${eraPick(g, def.tasks)}${paid ? '' : ' • unpaid'}`, strength, tags: def.tags, source: 'built' })
+  addCvEntry(g, { kind: 'experience', title: `Intern, ${internshipLabel(g, def)}`, org, startAge: c.age, endAge: c.age, detail: `${eraPickPlain(g, def.tasks)}${paid ? '' : ' • unpaid'}`, strength, tags: def.tags, source: 'built' })
   count(g, 'internships')
   addStat(g, 'happiness', paid ? randInt(g, 1, 4) : -randInt(g, 0, 2))
   log(g, `I did ${paid ? 'a paid' : 'an unpaid'} internship at ${org}.`, 'good')

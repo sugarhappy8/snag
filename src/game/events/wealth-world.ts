@@ -5,7 +5,7 @@
 import { addHidden, addStat, attractedTo, count, currentPartner, log, notice, preferredGender, remember, removePerson, spend, useYearAction } from '../core'
 import { pick, randInt } from '../rng'
 import { randomFirstName } from '../world'
-import { eraPick, landline } from './era'
+import { eraPick, eraPickPlain, landline } from './era'
 import { channel, folks, mayAsk, scaled, type Ask, type AskDef } from './wealth-ask'
 import { addVenture, ventureOdds, VENTURE_PARTIAL } from './wealth-kids'
 import { boundary, markMarried, spouseFor } from './wealth-family'
@@ -92,7 +92,7 @@ export const WORLD_ASKS: AskDef[] = [
     weight: () => 2,
     build: (g, tier, p) => {
       if (!p) return null
-      const why = eraPick(g, ['a divorce lawyer', 'back rent', '@cars a car repair that turned into a new engine', 'a move across the country for a new job', '@creditCards a credit card bill that got out of hand', '@-1960 the grocer, the tailor and the bookie'])
+      const why = eraPickPlain(g, ['a divorce lawyer', 'back rent', '@cars a car repair that turned into a new engine', 'a move across the country for a new job', '@creditCards a credit card bill that got out of hand', '@-1960 the grocer, the tailor and the bookie'])
       const amt = scaled(g, 6_000, tier, p, 0.02)
       return { k: 'friend.loan', pid: p.id, title: 'A Favor', emoji: '\u{1F91D}', text: `${channel(g, p)}${cap(yourOf(p))} asked to borrow ${money(amt)} for ${why}. ${cap(he(p))} swears it's the first and last time, and to be fair, it is the first time.`, amt, what: why, less: true, lend: true }
     },
@@ -147,7 +147,7 @@ export const WORLD_ASKS: AskDef[] = [
     weight: () => 1.1,
     build: (g, tier, p) => {
       if (!p) return null
-      const idea = eraPick(g, ['@1935 a chain of laundromats with a bar inside', '@smartphone an app that tells you which app to use', '@+internet,1997 a website for selling used furniture', '@1990 a luxury dog bakery', '@2005 a board game cafe', '@1985 a gourmet popcorn franchise', 'a traveling circus (modern, ethical, mostly jugglers)', 'a hat shop for very large hats'])
+      const idea = eraPickPlain(g, ['@1935 a chain of laundromats with a bar inside', '@smartphone an app that tells you which app to use', '@+internet,1997 a website for selling used furniture', '@1990 a luxury dog bakery', '@2005 a board game cafe', '@1985 a gourmet popcorn franchise', 'a traveling circus (modern, ethical, mostly jugglers)', 'a hat shop for very large hats'])
       const amt = scaled(g, 60_000, tier, p, 0.04)
       return { k: 'friend.startup', pid: p.id, title: 'The Pitch', emoji: '\u{1F4C8}', text: `${channel(g, p)}${cap(yourOf(p))} pitched you ${idea} for ${money(amt)}. The slides had sound effects. ${cap(he(p))} used the word "disrupt" eleven times.`, amt, what: idea, less: true, odds: ventureOdds(p), partial: VENTURE_PARTIAL }
     },

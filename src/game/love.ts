@@ -38,7 +38,7 @@ import { hasTalent, talentHint } from './talents'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
 import { DATING_SITE_GATE, eraOpen } from './computer/era'
 import { hasTech } from './history/timeline'
-import { common, eraPick, landline, texting } from './events/era'
+import { common, eraPick, eraPickPlain, landline, texting } from './events/era'
 import { stableRng } from './activities/common'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 import { businessGone } from './assetHooks'
@@ -293,7 +293,7 @@ export function makeCandidate(
   let occupation = randomOccupation(g, age)
   let worth = randomWealth(g, age, occupation)
   if (age >= 22 && wealth !== 'any') {
-    occupation = eraPick(g, RICH_JOBS)
+    occupation = eraPickPlain(g, RICH_JOBS)
     if (wealth === 'comfortable') worth = randInt(g, 100_000, 950_000)
     else if (wealth === 'rich') worth = randInt(g, 1_000_000, 9_500_000)
     else worth = randInt(g, 10_000_000, 250_000_000)
@@ -1563,7 +1563,7 @@ export function elope(g: GameState, p: Person): void {
   if (chance(g, clamp(odds, 0.05, 0.85))) {
     const where = localGetaway(g)
     performWedding(g, p, { venue: 'eloped', prenup: false, honeymoon: null, place: `a secret ceremony in ${where}` })
-    log(g, eraPick(g, ['We eloped!', '@socialMedia We eloped! Our families found out from social media.', `We ran off to ${where} and told nobody until it was done.`, 'We eloped. My mother is still not over it.']))
+    log(g, eraPickPlain(g, ['We eloped!', '@socialMedia We eloped! Our families found out from social media.', `We ran off to ${where} and told nobody until it was done.`, 'We eloped. My mother is still not over it.']))
   } else {
     addRelationship(p, -randInt(g, 5, 12))
     notice(g, 'Elope', `${p.firstName} refused to elope. "${pick(g, ['My mother would never forgive me.', 'I want a real wedding with a cake taller than me.', 'Are you trying to avoid paying for a wedding?'])}"`, { emoji: '\u{1F645}' })

@@ -23,6 +23,7 @@ import { applyEffects } from '../effects'
 import { notePerson } from '../people'
 import { fillLocal, locale, localTerm, type LocaleProfile } from '../data/locales'
 import { pick, randInt, rand } from '../rng'
+import { pickLine } from '../text/pick'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import type { ChoiceOption, GameEffects, GameState, Gender, Job, Json, Person, Tone } from '../types'
 import { anachronistic, eraOk, eraStrip, venueExists } from './era'
@@ -221,6 +222,23 @@ export interface Res {
  * see era.ts): lines that don't fit this year are skipped and tags never reach the screen.
  */
 export function v<T>(g: GameState, items: T | readonly T[]): T {
+  if (Array.isArray(items)) {
+    const list = items as readonly T[]
+    if (list.length && typeof list[0] === 'string') {
+      const ok = (list as readonly string[]).filter((l) => eraOk(g, l))
+      const from = ok.length ? ok : (list as readonly string[])
+      return eraStrip(pickLine(g, from)) as T
+    }
+    return pick(g, list)
+  }
+  return (typeof items === 'string' ? eraStrip(items) : items) as T
+}
+
+/**
+ * v without the text kit's memory: today's body, for a result that is an identity (stored on a Person or an Asset, a name, or something
+ * the code branches on), and for a pool whose lines carry ${} holes (a new text per value would write one throwaway pool per call into the memory).
+ */
+export function vPlain<T>(g: GameState, items: T | readonly T[]): T {
   if (Array.isArray(items)) {
     const list = items as readonly T[]
     if (list.length && typeof list[0] === 'string') {

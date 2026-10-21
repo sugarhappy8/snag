@@ -13,6 +13,7 @@
 // Lists must keep at least one untagged (or always-true) line so every era has something to say.
 import { getCountry } from '../world'
 import { pick } from '../rng'
+import { pickLine } from '../text/pick'
 import { TECH, techAdoption, techOdds, type TechId } from '../history/timeline'
 import type { GameState } from '../types'
 
@@ -106,8 +107,20 @@ export function eraLines(g: GameState, lines: readonly string[]): string[] {
   return lines.filter((l) => eraOk(g, l)).map(eraStrip)
 }
 
-/** A random line that fits this year (falls back to the untagged ones, then to any line). */
+/**
+ * A random line that fits this year (falls back to the untagged ones, then to any line). The line goes through the text kit, so a
+ * pool that was just used does not repeat (the memory key is the era-filtered list, so another filter result is another pool).
+ * Use eraPickPlain when the result is an identity: stored on a Person or an Asset, a name, or something the code branches on.
+ */
 export function eraPick(g: GameState, lines: readonly string[]): string {
+  const ok = eraLines(g, lines)
+  if (ok.length) return pickLine(g, ok)
+  const plain = lines.filter((l) => !TAG.test(l))
+  return eraStrip(pickLine(g, plain.length ? plain : lines))
+}
+
+/** eraPick without the text kit's memory: today's body, for a result that is an identity (see eraPick). One draw, like eraPick. */
+export function eraPickPlain(g: GameState, lines: readonly string[]): string {
   const ok = eraLines(g, lines)
   if (ok.length) return pick(g, ok)
   const plain = lines.filter((l) => !TAG.test(l))

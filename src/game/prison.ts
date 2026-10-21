@@ -33,7 +33,7 @@ import { createPerson, notePerson } from './people'
 import { chance, pick, rand, randInt, shuffle } from './rng'
 import { defineScript } from './scripts'
 import { fillLocal } from './data/locales'
-import { eraPick } from './events/era'
+import { eraPick, eraPickPlain } from './events/era'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import type {
   ChoiceOption,
@@ -377,7 +377,7 @@ function cellmates(g: GameState): Person[] {
 function createCellmate(g: GameState, prisonNameStr: string, juvenile: boolean): Person {
   const c = g.character
   const age = juvenile ? randInt(g, 13, 17) : Math.max(18, c.age + randInt(g, -12, 15))
-  const crime = eraPick(g, juvenile ? JUVIE_CRIMES : INMATE_CRIMES)
+  const crime = eraPickPlain(g, juvenile ? JUVIE_CRIMES : INMATE_CRIMES)
   const person = createPerson(g, {
     relation: 'cellmate',
     age,

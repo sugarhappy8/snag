@@ -49,7 +49,7 @@ import {
 import { computerUsd } from './computer/era'
 import { employerRef, gadgetName, pickBrand, type GadgetSpec } from './shops/everyday-brands'
 import { hasTech, type TechId } from './history/timeline'
-import { eraPick } from './events/era'
+import { eraPick, eraPickPlain } from './events/era'
 import { createPerson } from './people'
 import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
@@ -2898,7 +2898,7 @@ export function giftAsset(g: GameState, assetId: string, personId: string): bool
     const delta = a.value >= 100_000 ? randInt(g, 25, 45) : a.value >= 5_000 ? randInt(g, 15, 30) : randInt(g, 5, 15)
     addRelationship(p, delta)
     addHidden(g, 'karma', 3)
-    text = `You gave your ${a.name.toLowerCase()} to your ${relationLabel(p).toLowerCase()} ${p.firstName}. ${eraPick(g, [`${p.firstName} was speechless.`, `${p.firstName} hugged you so hard your back cracked.`, `${p.firstName} cried happy tears.`, `@socialMedia ${p.firstName} immediately posted about it online.`, `@!socialMedia ${p.firstName} immediately told the whole street.`])}`
+    text = `You gave your ${a.name.toLowerCase()} to your ${relationLabel(p).toLowerCase()} ${p.firstName}. ${eraPickPlain(g, [`${p.firstName} was speechless.`, `${p.firstName} hugged you so hard your back cracked.`, `${p.firstName} cried happy tears.`, `@socialMedia ${p.firstName} immediately posted about it online.`, `@!socialMedia ${p.firstName} immediately told the whole street.`])}`
     log(g, `I gave my ${a.name.toLowerCase()} to my ${relationLabel(p).toLowerCase()} ${p.firstName}.`, 'good')
   }
   if (wasHome) text += ` ${relocateAfterLosingHome(g, a.id)}`

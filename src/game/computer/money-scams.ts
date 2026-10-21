@@ -5,7 +5,7 @@
 // corruption is low) can knock at any time. Parents who catch a kid at it take the computer.
 import { arrestPlayer } from '../crime'
 import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember, useYearAction } from '../core'
-import { eraPick } from '../events/era'
+import { eraPick, eraPickPlain } from '../events/era'
 import { chance, pick, rand, randInt } from '../rng'
 import { totalFollowers } from '../special/social'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -268,7 +268,7 @@ function runScam(g: GameState, def: ScamDef): void {
   st.scams += 1
   st.scamKinds[def.id] = (st.scamKinds[def.id] ?? 0) + 1
   count(g, 'scams')
-  const did = eraPick(g, def.did)
+  const did = eraPickPlain(g, def.did)
 
   if (!chance(g, scamSuccessChance(g, def, st.heat))) {
     addHidden(g, 'karma', -2)

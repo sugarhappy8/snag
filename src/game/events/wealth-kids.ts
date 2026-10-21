@@ -10,7 +10,7 @@ import { localPick, localTerm } from '../data/locales'
 import { hasTech } from '../history/timeline'
 import { brandsFor } from '../data/brands'
 import { computerEra, computerModel } from '../computer/era'
-import { bandName, byEra, cars, eraPick, flights, landline } from './era'
+import { bandName, byEra, cars, eraPick, eraPickPlain, flights, landline } from './era'
 import { channel, folks, mayAsk, priced, scaled, spoiledLine, type Ask, type AskDef } from './wealth-ask'
 import { changeWill, removeHeir } from './will-act'
 import { queueTells } from './will-scenes'
@@ -321,7 +321,7 @@ export const KID_ASKS: AskDef[] = [
     build: (g, tier, p) => {
       if (!p) return null
       const lavish = tier >= 3 && chance(g, 0.5)
-      const item = eraPick(g, lavish ? LAVISH_TOYS : TOYS)
+      const item = eraPickPlain(g, lavish ? LAVISH_TOYS : TOYS)
       const amt = lavish ? priced(g, randInt(g, 6, 30) * 1_000 * goodsScale(g, personCountry(g, p)), 0.02) : round(randInt(g, 80, 400) * goodsScale(g, personCountry(g, p)) * (1 + entitlement(p) / 100))
       return { k: 'kid.toy', pid: p.id, title: 'Gimme', emoji: '\u{1F9F8}', text: `${channel(g, p)}${who(p)} wants ${item} (${money(amt)}). ${pick(g, [`${cap(pr(p).he)} asked forty times today.`, `${cap(pr(p).he)} drew you a picture of it. And of you, sad, without it.`, `${cap(pr(p).he)} says it's "for school."`])}${spoiledLine(p)}`, amt, what: item, buy: true, small: !lavish }
     },
@@ -423,7 +423,7 @@ export const KID_ASKS: AskDef[] = [
     build: (g, tier, p) => {
       if (!p) return null
       const sweet = g.character.countryId === 'us' && p.age >= 15 && p.age <= 16 && g.year >= 1950
-      const what = sweet ? 'a sweet sixteen party' : p.age >= 13 ? 'a birthday party "everyone" will talk about' : eraPick(g, ['a birthday party with a petting zoo', 'a birthday party with a magician and a pony', '@1960 a birthday party with a bouncy castle and a magician'])
+      const what = sweet ? 'a sweet sixteen party' : p.age >= 13 ? 'a birthday party "everyone" will talk about' : eraPickPlain(g, ['a birthday party with a petting zoo', 'a birthday party with a magician and a pony', '@1960 a birthday party with a bouncy castle and a magician'])
       const amt = scaled(g, sweet ? 12_000 : 4_000, tier, p, 0.01)
       return { k: 'kid.party', pid: p.id, title: 'Party Planning', emoji: '\u{1F389}', text: `${channel(g, p)}${who(p)} wants ${what} (${money(amt)}). There is a theme. There is a guest list. You are on it, conditionally.${spoiledLine(p)}`, amt, what, less: true }
     },
@@ -720,7 +720,7 @@ export const KID_ASKS: AskDef[] = [
     weight: () => 1.3,
     build: (g, tier, p) => {
       if (!p) return null
-      const idea = eraPick(g, BUSINESS_IDEAS)
+      const idea = eraPickPlain(g, BUSINESS_IDEAS)
       const amt = scaled(g, 45_000, tier, p, 0.05)
       return { k: 'kid.business', pid: p.id, title: 'Seed Money', emoji: '\u{1F4A1}', text: `${channel(g, p)}${who(p)} wants seed money to start ${idea} (${money(amt)}). There's a business plan. Page one is the logo.`, amt, what: idea, less: true, odds: ventureOdds(p), partial: VENTURE_PARTIAL }
     },
