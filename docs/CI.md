@@ -115,3 +115,81 @@ The `deep` plan (eight birth lives to age 90 and four founders for 60 years, wit
 on a pull request. `GOLDEN_DEEP=1 npx vitest run test/golden-digest.test.ts` or `node scripts/golden.mjs check --plan deep`
 plays it (about 30 seconds); the nightly deep tier is meant to set it. A pull request that moves a digest regenerates both
 plans with the default `update`, so the nightly does not fail on what the pull request already explained.
+
+## The nightly deep tier
+
+`.github/workflows/nightly.yml` (named `Nightly`) runs what is too slow or too wide for a pull request: 40 fuzzed lives of
+160 years, 200 balance lives with net-worth percentiles, the 100x ceiling probes, the anachronism lint over 400 lives,
+every old save fixture migrated and played for 20 years, the repeat probe, the deep golden plan, and a diff of tonight's
+metrics against the last good night. It starts at 03:23 UTC, by hand from the Actions tab (with the scale `full` or
+`smoke`), and on a pull request that changes `nightly.yml`, `scripts/nightly*` or `test/nightly-*`.
+
+A scheduled workflow, and the manual run button, exist only for a workflow that is on the default branch (`main`). A
+release branch does not get the schedule. That is why a pull request that touches the workflow or its scripts runs the same
+jobs at smoke size: the whole matrix in a few minutes, which is the proof that a change to it works before it reaches the
+default branch. To run the full size earlier, land that one file on `main` first.
+
+| Job | Shards x size | Full | Smoke | What it runs |
+|---|---|---|---|---|
+| fuzz | shards x seeds x years | 8 x 5 x 160 | 8 x 1 x 3 | `scripts/fuzz-engine.ts --fork`; a life is capped at 600 s (60 s at smoke) and the years it reached are recorded |
+| balance | shards x lives x years | 4 x 50 x 40 | 4 x 2 x 2 | `lifeSpecs`: odd seeds birth lives to age 80, even seeds founders; net worth at 25, 40, 60 and 80, the year step in ms |
+| ceiling | shards x lives x years | 4 x 6 x 20 at 100x | 4 x 2 x 2 at 100x | founders with a hundred times the money, 3 to 12 companies: the richest net worth and the growth over the start |
+| anachronism | lives in slices | 400 in 8 | 16 in 8 | `test/anachronism.test.ts`, one job per slice, then `anachronism-merge` checks the union |
+| text | probe lives | 20 | 2 | `test/text-repeat.test.ts` and `test/text-kit.test.ts`; the repeat probe plays its fixed 13 lives today, so this size is passed as `TEXT_PROBE_LIVES` and read when it learns to |
+| old saves | years, reseeds | 20, 8 | 3, 2 | `test/old-saves.test.ts`: every `save-*.json.gz` fixture migrates and runs, once per reseed |
+
+Two jobs have no size of their own. `deep` runs the table's `text` and `old saves` rows and two more files:
+`test/ceiling-probe.test.ts` with `CEILING_PROBE=deep` (scales 1, 10, 100 and 1000) and `test/golden-digest.test.ts` with
+`GOLDEN_DEEP=1` (the `deep` plan of the golden digests above). `metrics` pools everything. Every size comes from
+`nightlySizes` in `scripts/nightly-lib.mjs`, and each job prints its own with
+`node scripts/nightly.mjs sizes <full|smoke> [--shard i/n]` into `$GITHUB_ENV`. To resize a night, change that one function;
+`test/nightly-workflow.test.ts` (fast tier) keeps the YAML in step with it: the shard counts, the variables the run lines
+read, and the files they name.
+
+### The hard rules
+
+The `metrics` job pools the files of every job (`test/nightly-metrics.ts` `writeMetrics`, the probes, `fuzz-metrics`) and
+holds tonight to `RULES` in `scripts/nightly-lib.mjs`. A hard rule fails the run; a soft one only prints a warning row.
+
+| Metric | Limit | Why |
+|---|---|---|
+| `fuzz.failures.sum`, `fuzz.nototal.sum` | 0 | a fuzz failure is a bug; a shard with no `TOTAL:` line did not finish |
+| `balance.*.max` | 1e13 | 20 times the richest person ever; a runaway loop is far above it |
+| `ceiling.life.maxNetWorth.max` | 1e12 | a founder with 100x the money (measured 4.1e9) |
+| `ceiling.life.growth.max` | 40 | growth must fall as inputs rise (measured 8.2 at 100x, 24.1 at 1x) |
+| `balance.birth.msYear.p95` | 160 | F.1: a light-life year step on desktop |
+| `text.repeatedShare` | 0.0415 | R2: at most half of R1's 0.0831 |
+| `oldsaves.failures.sum` | 0 | an old save that cannot run is a lost game |
+| `anachronism.findings.sum` | 0 | no job writes it yet: a failed `anachronism` job stands for it |
+
+Soft rules: a median (`balance.*.p50`) that moved more than a quarter, any other metric that moved more than half. A metric
+new tonight prints `new`, one that was not written prints `gone`, and a job that failed is listed first and fails the run.
+A new metric is written with `writeMetrics` and gets a rule here if it has a hard cap.
+
+### Reading a night
+
+Open the run, then the summary: the failed jobs, the counts, a table of every failure and warning with its reason, and the
+other metrics folded below. The previous night is the last successful scheduled run's `nightly-metrics` artifact; a full run
+looks for it, a smoke run does not (smoke numbers are not comparable), and with none the diff judges tonight alone.
+
+### Running one job by hand
+
+    node scripts/nightly.mjs sizes full --shard 2/8                      # the variables a shard reads
+    node_modules/.bin/esbuild scripts/fuzz-engine.ts --bundle --platform=node --format=esm --sourcemap --outfile=/tmp/fuzz-engine.mjs
+    node --enable-source-maps /tmp/fuzz-engine.mjs --start 1 --seeds 2 --years 20 --fork --quiet --json /tmp/fuzz.json
+    node_modules/.bin/esbuild scripts/nightly-probes.ts --bundle --platform=node --format=esm --outfile=/tmp/nightly-probes.mjs
+    node /tmp/nightly-probes.mjs balance --start 1 --count 4 --out /tmp/b.json
+    node /tmp/nightly-probes.mjs ceiling --start 1 --count 2 --years 20 --scale 100 --out /tmp/c.json
+    CEILING_PROBE=deep npx vitest run test/ceiling-probe.test.ts
+    OLD_SAVES_YEARS=20 OLD_SAVES_RESEEDS=8 npx vitest run test/old-saves.test.ts
+    node scripts/golden.mjs check --plan deep
+    ANACHRONISM_LIVES=400 SLICE=1/8 SLICE_DIR=/tmp/s npx vitest run test/anachronism.test.ts
+
+Set `NIGHTLY_METRICS_DIR=/tmp/m` to have a test file write its metrics, and `node scripts/nightly.mjs merge --out /tmp/all.json
+/tmp/m/*.json` then `diff --prev none --cur /tmp/all.json` to see the verdict the `metrics` job would give.
+
+### Artifacts
+
+`metrics-fuzz-<shard>`, `metrics-balance-<shard>` (the balance and the ceiling file) and `metrics-deep-<name>` hold one job's
+metrics file; `fuzz-<shard>` holds the fuzzer's log and its list of findings; `slices-<i>` holds an anachronism slice's rows. All
+are kept 14 days. `nightly-metrics` is the merged `all.json`, kept 30 days (R12 wants seven nights of history).
