@@ -12,7 +12,7 @@
 //   @landline / @texting / @flights / @cars        common-sense extras (see GATES)
 // Lists must keep at least one untagged (or always-true) line so every era has something to say.
 import { getCountry } from '../world'
-import { pick } from '../rng'
+import { pick, type Picker } from '../rng'
 import { pickLine } from '../text/pick'
 import { TECH, techAdoption, techOdds, type TechId } from '../history/timeline'
 import type { GameState } from '../types'
@@ -317,15 +317,15 @@ const RADIO_SHOWS: readonly string[] = [
   'a big band broadcast',
 ]
 
-/** Something on TV this year (or on the radio before TV). */
-export function showName(g: GameState): string {
+/** Something on TV this year (or on the radio before TV). `draw` is the pick to use (flavor passes its text draw; default pick). */
+export function showName(g: GameState, draw: Picker = pick): string {
   const shows = common(g, 'tv') ? eraLines(g, SHOWS) : []
-  return shows.length ? pick(g, shows) : pick(g, RADIO_SHOWS)
+  return shows.length ? draw(g, shows) : draw(g, RADIO_SHOWS)
 }
 
-/** Something on the radio. */
-export function radioShow(g: GameState): string {
-  return pick(g, RADIO_SHOWS)
+/** Something on the radio. `draw` as in showName. */
+export function radioShow(g: GameState, draw: Picker = pick): string {
+  return draw(g, RADIO_SHOWS)
 }
 
 const VENUE_SINCE: readonly [RegExp, number][] = [

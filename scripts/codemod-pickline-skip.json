@@ -18,8 +18,6 @@
   {"file":"src/game/education.ts","site":"const:PRESCHOOLS","reason":"school name stored on the education record"},
   {"file":"src/game/education.ts","site":"s96269cd7","reason":"school name stored on the education record"},
   {"file":"src/game/events/elder.ts","site":"const:LOCAL_SCAM_PLACES","reason":"fillLocal draws for the tokens it finds, so the draw count depends on the line"},
-  {"file":"src/game/events/era.ts","site":"const:RADIO_SHOWS","reason":"flavor token, R2-B2 draws it from the text stream with the rest of flavor"},
-  {"file":"src/game/events/flavor.ts","site":"const:HOBBIES","reason":"flavor token, R2-B2 draws it from the text stream with the rest of flavor"},
   {"file":"src/game/events/wealth-family.ts","site":"const:RESTAURANT","reason":"becomes Ask.what, stored in flags"},
   {"file":"src/game/events/wealth-family.ts","site":"s01967862","reason":"becomes Ask.what, stored in flags"},
   {"file":"src/game/events/wealth-family.ts","site":"s1645847e","reason":"becomes Ask.what, stored in flags"},

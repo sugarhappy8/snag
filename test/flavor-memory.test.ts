@@ -2,6 +2,9 @@
 // g.flags.flavorRecent into the ring g.flags.textMem.r.flavor. Nothing about the life log may change: the golden below
 // was recorded from the file as it stood before the move, and it holds g.rng after every year, so one stray draw or one
 // different exclusion shows up as a changed hash.
+// R2-B2 (the rebaseline) moved every flavor draw onto the text stream (text/draw.ts). The golden keeps its shape and is
+// re-recorded once, under the new rule: g.rng is now constant over each life (the hash still holds it, so a stray g.rng draw
+// shows up), and the lines are the text stream's. FLAVOR_GOLDEN=1 rewrites it, as before.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -33,19 +36,22 @@ function allLines(g: GameState): string[] {
 function record(seed: number, birth: number): string[] {
   const g = createNewLife({ seed, year: birth })
   g.queue = []
+  const rng = g.rng
   const steps: string[] = []
   for (let age = 1; age <= 85; age++) {
     g.character.age = age
     g.year = birth + age
     const before = allLines(g).length
     addFlavorLines(g)
+    // R2-B2: flavor draws only from the text stream, so g.rng is the same after every one of the 85 years.
+    expect(g.rng, `seed ${seed} age ${age}`).toBe(rng)
     const added = allLines(g).slice(before)
     steps.push(fnv1a(`${g.rng}|${added.join('\n')}`).toString(16).padStart(8, '0'))
   }
   return steps
 }
 
-describe('flavor golden (draw sequence and output unchanged)', () => {
+describe('flavor golden (text stream, g.rng unchanged)', () => {
   it('matches test/fixtures/flavor-golden.json for four lives of 85 years', () => {
     const fresh: Golden = { v: 1, cases: CASES.map((c) => ({ seed: c.seed, birth: c.birth, steps: record(c.seed, c.birth) })) }
     // FLAVOR_GOLDEN=1 rewrites the fixture. Only ever run it on a flavor.ts that is known to be right.

@@ -3,6 +3,8 @@
 // (a65349a), before the pickline codemod: the codemod (R2-A3) moves no draw, so it must hold unchanged. Only the
 // rebaseline (R2-B2) moves g.rng on purpose, and it re-records the fixture once, with the reason in the commit message.
 // From then on a moved fixture is a canary: a track that moves it by accident has reordered or added a draw.
+// R2-B2 (the rebaseline) re-recorded it once with R2_PARITY_RECORD=rebase: the text draws left g.rng, so every life moved. The
+// `source` field of the fixture says which recording it is. After the rebaseline it is the canary for every later track.
 //
 // The recorder is a mode of this test, so it runs under the same transform as the tests (precedent: FLAVOR_GOLDEN=1 in
 // test/flavor-memory.test.ts, TEXT_KIT_RECORD=1 in test/text-kit.test.ts):

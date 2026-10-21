@@ -1,10 +1,12 @@
-// Text kit pick (R1-T1, E.T1): pick() that remembers. It draws exactly once from g.rng, like pick(), and with
-// an empty memory returns what pick() returns, so a life that adopts it later does not change on day one.
-// R2-A2 adds pickSite (a pool named by a numeric site key, for pools whose lines carry ${} holes), makes both generic over
-// the element type, and adds a hook that a test can use to turn the kit into plain pick or into a rotation, so that a
+// Text kit pick (R1-T1, E.T1): pick() that remembers. Until R2-B2 it drew once from g.rng, like pick(), and with an empty
+// memory returned what pick() returned, so a life that adopted it later did not change on day one.
+// R2-A2 added pickSite (a pool named by a numeric site key, for pools whose lines carry ${} holes), made both generic over
+// the element type, and added a hook that a test can use to turn the kit into plain pick or into a rotation, so that a
 // converted string that flows into state shows itself. The game never sets the hook.
-import { rand } from '../rng'
+// R2-B2 (the rebaseline) moves the draw off g.rng onto the text stream (text/draw.ts): a pool of one line draws nothing, a
+// longer pool takes one step of the text cursor, and g.rng is never touched.
 import type { GameState } from '../types'
+import { textRand } from './draw'
 import { poolHash } from './hash'
 import { TEXT_MEM_LIMITS, isMemKey, noteFamily, recallPool, rememberPool, writableTextMem, type PoolRecall } from './memory'
 import { linesId } from './registry'
@@ -43,8 +45,8 @@ function poolKey(lines: readonly string[], fam: string | undefined): { key: stri
 
 /**
  * How a call of the kit behaves. `memory` is the game: the exclusion rule and the memory. The other two exist for tests (a hook,
- * see setPickHook): `plain` returns what pick() returns and reads and writes no memory; `rotate` returns the line after that one,
- * also without memory.
+ * see setPickHook): `plain` returns the line the text draw points at, reads and writes no memory; `rotate` returns the line after
+ * that one, also without memory. All three take the same one text draw, so they leave the cursor, and g.rng, where the game would.
  */
 export type PickMode = 'memory' | 'plain' | 'rotate'
 
@@ -83,15 +85,16 @@ export function withPickMode<T>(mode: PickMode, fn: () => T): T {
 }
 
 /**
- * The one core of pickLine and pickSite. The draw comes first, so an exception after it cannot change the draw count; a pool of one
- * line still draws (to keep g.rng where it was) and returns before anything is asked or stored. `where` is lazy: a pool of one line
- * never pays for its key. Pools of 12 or fewer are shuffle-bags, larger ones exclude their recent picks (candidateIndexes).
+ * The one core of pickLine and pickSite. A pool of one line has no choice to make: it returns before anything is drawn, asked or
+ * stored (D3), so a list that an era filter cut down to one line does not move the text cursor. Otherwise the draw (one step of the
+ * text stream) comes first, so an exception after it cannot change the draw count. `where` is lazy: a pool of one line never pays
+ * for its key. Pools of 12 or fewer are shuffle-bags, larger ones exclude their recent picks (candidateIndexes).
  */
 function choose<T>(g: GameState, lines: readonly T[], name: string, where: () => { key: string; named: boolean }): T {
   const n = lines.length
   if (n === 0) throw new Error(`${name}() from empty list`)
-  const r = rand(g)
   if (n === 1) return lines[0]
+  const r = textRand(g)
   const { key, named } = where()
   const mode = hook ? (hook({ index: calls++, key, n }) ?? 'memory') : 'memory'
   if (mode === 'plain') return lines[Math.floor(r * n)]
@@ -105,11 +108,12 @@ function choose<T>(g: GameState, lines: readonly T[], name: string, where: () =>
 }
 
 /**
- * Like pick(g, lines): exactly one rand(g) draw, and with an empty memory the same result.
+ * Like pick(g, lines), but on the text stream and with a memory: one text draw for a pool of two or more lines (none for one line),
+ * no g.rng draw.
  * Pools of 12 or fewer are shuffle-bags (no line twice before every line was used; a new cycle never starts on the last line of the old one).
  * Larger pools exclude the last min(8, floor(n / 2)) picks.
  * `fam` (letters, digits, _ . : -, at most 48 characters, starting with a letter) names the pool and the family; without it the pool's registered id, else poolHash(lines).
- * A named pool also notes the family (noteFamily). A pool of one line returns it after the draw and stores nothing.
+ * A named pool also notes the family (noteFamily). A pool of one line returns it, draws nothing and stores nothing.
  * Generic over the element type, like pick, so a converted site keeps its type: string for an inline pool, the literal union for
  * an `as const` pool. The `& readonly string[]` half only restricts the argument; T comes from the first half.
  */
@@ -122,7 +126,7 @@ export function pickLine<T>(g: GameState, lines: readonly T[] & readonly string[
  * Such a pool has new text for every value of its holes, so hashing the lines would write one throwaway pool per call into the
  * 300-pool memory. The site is the memory key: 's' + 8 hex digits. It never notes a family (a number is not a family name, and
  * the 120-family memory is the composer's). A site that is not an integer in 0..0xffffffff falls back to the hash of the lines.
- * One draw, like pick.
+ * One text draw, like pickLine.
  */
 export function pickSite<T>(g: GameState, lines: readonly T[] & readonly string[], site: number): T {
   return choose<T>(g, lines, 'pickSite', () =>

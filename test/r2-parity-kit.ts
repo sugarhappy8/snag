@@ -192,11 +192,15 @@ function rowOf(d: ParityDigests): string[] {
   return [...PARITY_SLICES.map((s) => d[s]), d.text]
 }
 
-/** Play the life through the real yearly loop and digest the state after birth and after every year. */
-export function traceLife(life: ParityLife): ParityTrace {
+/**
+ * Play the life through the real yearly loop and digest the state after birth and after every year. `after`, when given, runs once
+ * per year right after the digest is taken (R2-B2 uses it to make an extra text draw and show that only text moves).
+ */
+export function traceLife(life: ParityLife, after?: (g: GameState, yearsPlayed: number) => void): ParityTrace {
   const years: string[][] = []
-  const onYear = (g: GameState): void => {
+  const onYear = (g: GameState, yearsPlayed: number): void => {
     years.push(rowOf(parityDigests(g)))
+    after?.(g, yearsPlayed)
   }
   if (life.kind === 'birth') {
     playLife({ seed: life.seed, birthYear: life.birthYear, untilAge: life.untilAge ?? 40, rich: life.rich ?? false, onYear })

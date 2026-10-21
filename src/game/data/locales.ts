@@ -9,7 +9,7 @@
 //
 // Data lives in data/locales/*.ts (one file per region); countries without data fall back to
 // a neutral profile (no American-specific places). All text is English.
-import { pick, randInt } from '../rng'
+import { pick, randInt, type Picker } from '../rng'
 import type { GameState } from '../types'
 import { getCountry } from '../world'
 import { AFRICA_MIDDLE_EAST_LOCALES } from './locales/africaMiddleEast'
@@ -174,9 +174,9 @@ const TOKEN_FIELD: Record<LocaleToken, keyof LocaleProfile> = {
 }
 
 /** A random local word of one kind for the player's country, e.g. localPick(g, 'food') → 'nasi goreng'. */
-export function localPick(g: GameState, token: LocaleToken, countryId = g.character.countryId): string {
+export function localPick(g: GameState, token: LocaleToken, countryId = g.character.countryId, draw: Picker = pick): string {
   const list = localeOf(countryId)[TOKEN_FIELD[token]] as string[]
-  return list.length ? pick(g, list) : ''
+  return list.length ? draw(g, list) : ''
 }
 
 /** A local term ('the SATs', 'secondary school', '911'...). */
@@ -238,9 +238,9 @@ export function isAlcoholic(drink: string): boolean {
 }
 
 /** A non-alcoholic local drink (tea, coffee, mate, juice...) for scenes that shouldn't involve booze. */
-export function localSoftDrink(g: GameState, countryId = g.character.countryId): string {
+export function localSoftDrink(g: GameState, countryId = g.character.countryId, draw: Picker = pick): string {
   const soft = localeOf(countryId).drinks.filter((d) => !isAlcoholic(d))
-  return soft.length ? pick(g, soft) : pick(g, ['tea', 'coffee'])
+  return soft.length ? draw(g, soft) : draw(g, ['tea', 'coffee'])
 }
 
 /** A local drink for adults: alcohol only where people of drinking age commonly drink it. */

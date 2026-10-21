@@ -12,8 +12,12 @@
 // lives never reach addFlavorLines or the popups (probeLife answers nothing), so a sink only the popups reach is tested by the
 // birth lives alone.
 //
-// R2-B2 appends the extra-draw block to this file.
+// R2-B2 appends the layer-3 blocks below: after the rebaseline the text stream is off g.rng, so an extra text draw every year
+// moves no g.rng value and no non-text slice, and addFlavorLines draws no g.rng at all.
 import { describe, expect, it } from 'vitest'
+import { addFlavorLines } from '../src/game/events/flavor'
+import { createNewLife } from '../src/game/life'
+import { skipTextDraws } from '../src/game/text/draw'
 import { withPickMode } from '../src/game/text/pick'
 import { PARITY_LIVES, PARITY_SLICES, bisectOffenders, traceLife, traceMoves, type Divergence, type ParityLife, type ParityTrace, type PoolOffender } from './r2-parity-kit'
 
@@ -72,4 +76,87 @@ describe(`r2 text isolation: plain, rotate and memory agree on g.rng and every n
     if (textDiffers.size < LIVES.length) ctx.skip()
     expect([...textDiffers.values()].some(Boolean)).toBe(true)
   })
+})
+
+// ---------------------------------------------------------------------------------------------------------------------
+// R2-B2 (D7 layer 3): the text stream is off g.rng. One extra text draw at the start of every year, for 20 years, must change no
+// g.rng value and no non-text slice digest (all years); only the text may differ. The extra draw is made by skipTextDraws in
+// onYear (which runs at the end of a year): the coming year starts its cursor at 1, as if one more line had been drawn first. A
+// draw made at the end of a year itself would be wasted, the cursor restarts with the year.
+// ---------------------------------------------------------------------------------------------------------------------
+
+const EXTRA_YEARS = 20
+const EXTRA_IDS = ['b1925', 'b1975', 'b2010', 'f1975-2x25']
+
+/** The life cut to 20 years: a birth life stops at 20, a founder lives 20 years from 30. */
+function twenty(id: string): ParityLife {
+  const life = PARITY_LIVES.find((l) => l.id === id)
+  if (!life) throw new Error(`no parity life ${id}`)
+  return life.kind === 'birth' ? { ...life, untilAge: EXTRA_YEARS } : { ...life, years: EXTRA_YEARS }
+}
+
+const extraMoved = new Map<string, boolean>()
+
+describe('r2 text isolation: one extra text draw every year moves nothing but text (4 lives, 20 years)', () => {
+  for (const id of EXTRA_IDS) {
+    it(
+      `${id}: g.rng and every non-text slice are identical in every year`,
+      () => {
+        const life = twenty(id)
+        const base: ParityTrace = traceLife(life)
+        const extra: ParityTrace = traceLife(life, (g) => skipTextDraws(g, g.year + 1, 1))
+        extraMoved.set(
+          id,
+          base.years.some((row, t) => row[TEXT] !== extra.years[t]?.[TEXT]),
+        )
+        const moves = traceMoves(base, extra)
+        if (moves.length > 0) {
+          throw new Error(`an extra text draw moved a non-text slice: ${first(moves)}. Some text draw reaches state: a g.rng draw, a uid, a flag or a branch hangs off a text pick.`)
+        }
+        expect(moves).toEqual([])
+      },
+      TIMEOUT,
+    )
+  }
+
+  it('the stream is live: the text digest differs in at least one life', (ctx) => {
+    if (extraMoved.size < EXTRA_IDS.length) ctx.skip()
+    expect([...extraMoved.values()].some(Boolean)).toBe(true)
+  })
+})
+
+describe('r2 text isolation: addFlavorLines draws nothing from g.rng', () => {
+  // Fixed lives as tuples (the seed-pin ratchet counts only `seed: <digits>`): [seed, birth year].
+  const FLAVOR_LIVES = [
+    [11, 1925],
+    [12, 1960],
+    [13, 1990],
+    [14, 2012],
+  ] as const
+
+  for (const [seed, birth] of FLAVOR_LIVES) {
+    it(`born ${birth}: g.rng is the same after every one of 85 years, and flavor lines take their ids from the text stream`, () => {
+      const g = createNewLife({ seed, year: birth })
+      g.queue = []
+      const rng = g.rng
+      const startId = g.nextId
+      const entries = (): { id: string; text: string }[] => g.log.flatMap((y) => y.entries)
+      const already = entries().length
+      for (let age = 1; age <= 85; age++) {
+        g.character.age = age
+        g.year = birth + age
+        addFlavorLines(g)
+        expect(g.rng, `age ${age}`).toBe(rng)
+      }
+      const added = entries().slice(already)
+      expect(added.length).toBeGreaterThan(60)
+      // Milestone lines (the first word, the first steps) still take a uid; a flavor line never does, so the flavor count cannot move nextId.
+      const milestones = added.filter((e) => /^l\d+$/.test(e.id))
+      expect(g.nextId - startId).toBe(milestones.length)
+      expect(milestones.length).toBeGreaterThan(0)
+      for (const e of added) expect(e.id, e.text).toMatch(/^(l\d+|t\d+\.\d+)$/)
+      expect(added.filter((e) => e.id.startsWith('t')).length).toBeGreaterThan(50)
+      expect(new Set(added.map((e) => e.id)).size).toBe(added.length)
+    })
+  }
 })

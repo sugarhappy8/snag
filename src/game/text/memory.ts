@@ -4,6 +4,8 @@
 // lines or fewer) or 'w<i>,<j>,...' for a window (the last 8 indexes, oldest first). The readers are strict:
 // a value that is not exactly the codec reads as empty, and the writer trims a hostile save back inside the
 // caps, so a damaged or oversized memory can never make the state grow.
+// R2-B2 adds one more string, the text cursor c ('<year>,<count>', see text/draw.ts): it lives here because it is stored in the
+// memory, and this file owns the codec and the repair of everything stored in it.
 // Imports types only, so it is a leaf.
 import type { GameState } from '../types'
 
@@ -34,6 +36,8 @@ export type TextMem = {
   f: Record<string, string>
   /** named rings of opaque keys, oldest first (the flavor ring, R1-T2) */
   r: Record<string, string[]>
+  /** The text cursor (R2-B2): '<year>,<count>', how many text draws that year has made. Absent until the first draw. */
+  c?: string
 }
 
 export type PoolRecall =
@@ -45,6 +49,9 @@ const KEY_RE = /^[A-Za-z][A-Za-z0-9_.:-]{0,47}$/
 const BAG_RE = /^b(\d{1,4})(?:\.(\d{1,2}))?$/
 const WINDOW_RE = /^w\d{1,5}(?:,\d{1,5}){0,7}$/
 const FAMILY_RE = /^\d{1,6}(?:,\d{1,6}){0,11}$/
+const CURSOR_RE = /^(\d{1,7}),(\d{1,9})$/
+/** The longest valid cursor: a seven digit year, a comma, a nine digit count. Longer strings are rejected unread. */
+const MAX_CURSOR_RECORD = 17
 /** The longest valid records: a window of 8 five-digit indexes, a family of 12 six-digit years. Longer strings are rejected unread. */
 const MAX_POOL_RECORD = 48
 const MAX_FAMILY_RECORD = 83
@@ -80,6 +87,13 @@ function parseFamily(s: string): number[] | null {
   return years
 }
 
+/** The cursor a string holds, or null when it is not exactly the codec ('<year>,<count>': one to seven digits, a comma, one to nine digits). */
+export function parseTextCursor(s: unknown): { year: number; n: number } | null {
+  if (typeof s !== 'string' || s.length > MAX_CURSOR_RECORD) return null
+  const m = CURSOR_RE.exec(s)
+  return m ? { year: Number(m[1]), n: Number(m[2]) } : null
+}
+
 /** The newest `cap` strings of at most 80 characters, oldest first. Anything else in the list is dropped. */
 function cleanRing(list: readonly unknown[], cap: number): string[] {
   const out: string[] = []
@@ -113,6 +127,7 @@ function clean(raw: unknown): TextMem {
       rings++
     }
   }
+  if (parseTextCursor(raw.c) !== null) mem.c = raw.c as string
   return mem
 }
 
@@ -121,10 +136,26 @@ export function readTextMem(g: GameState): TextMem {
   return clean(g.flags.textMem)
 }
 
-/** The live, sanitized object stored at g.flags.textMem (created when missing). For code that already mutates a draft. */
+/**
+ * Memories this module stored itself, each with the game state that holds it. clean() walks the whole memory (up to about 700
+ * nodes), and every text draw asks for the writable memory, so a memory that already passed is not cleaned again. A structuredClone
+ * (what the store does on every action) or a JSON round trip gives a new object: it is cleaned once, so a hostile save is still
+ * repaired on its first write. A shallow copy of the state (supply-resilience.ts scenario() makes one, with its own flags) shares the
+ * memory object but is not its owner, so it gets a cleaned copy of its own, as it did before the cache: its text draws never reach
+ * the original. (The owner is the state, not its flags: world-flags.test.ts keeps whole-object uses of flags at a baseline.)
+ */
+const VALID = new WeakMap<object, GameState>()
+
+/**
+ * The live, sanitized object stored at g.flags.textMem (created when missing). For code that already mutates a draft.
+ * A memory this function stored for this same state is returned as it is: nothing in the game writes to it except through this kit.
+ */
 export function writableTextMem(g: GameState): TextMem {
-  const mem = clean(g.flags.textMem)
+  const stored = g.flags.textMem
+  if (typeof stored === 'object' && stored !== null && VALID.get(stored) === g) return stored as unknown as TextMem
+  const mem = clean(stored)
   g.flags.textMem = mem
+  VALID.set(mem, g)
   return mem
 }
 

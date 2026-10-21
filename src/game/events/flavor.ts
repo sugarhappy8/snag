@@ -1,13 +1,21 @@
 // Offline flavor lines for the life log: the little first-person one-liners that make a
 // year feel lived in ("I said my first word: 'potato'."), chosen to fit the character's
 // age and situation, with real family names filled in and no repeats for a long while.
+//
+// Flavor is fully text-side (R2-B2, D5): every draw here comes from the text stream (text/draw.ts), never from g.rng, so how many
+// lines a year prints, or which, can move nothing but text. Three details keep it that way. The toddler milestone roll decides which
+// age goes into flags.milestonesLogged (state, not text), so it reads a keyed stream, not the text cursor. A flavor line takes its
+// log id from the text stream (textLineId), because log() would otherwise spend a uid per line and the count would move g.nextId.
+// And the helpers that draw (showName, radioShow, localPick, localSoftDrink) are handed the text draw as their `draw` argument.
 import { children as childrenOf, currentPartner, formatMoney, inPrison, log, peopleBy } from '../core'
-import { chance, pick, randInt, shuffle } from '../rng'
+import { outcomeStream } from '../kernel/streams'
+import type { Picker } from '../rng'
 import { locale, localPick, localSoftDrink } from '../data/locales'
 import type { GameState, Json, Person, Tone } from '../types'
 import { country, friends, grandkids, inUniversity, mother, father, pets, playSport, siblings } from './helpers'
 import { anachronistic, eraOk, eraStrip, kidPrize, movieKind, radioShow, showName, venueExists } from './era'
 import { eraFlavorPools } from './era-life'
+import { textLineId, textRng, type TextRng } from '../text/draw'
 import { ringRead, ringWrite } from '../text/memory'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
@@ -424,8 +432,8 @@ const HOMELESS = [
 ]
 
 /** One-time childhood milestones, logged at the right age. */
-const MILESTONES: { id: string; minAge: number; maxAge: number; chance: number; line: (g: GameState) => string }[] = [
-  { id: 'firstWord', minAge: 1, maxAge: 2, chance: 0.8, line: (g) => `I said my first word: '${pick(g, FIRST_WORDS)}'.` },
+const MILESTONES: { id: string; minAge: number; maxAge: number; chance: number; line: (g: GameState, t: TextRng) => string }[] = [
+  { id: 'firstWord', minAge: 1, maxAge: 2, chance: 0.8, line: (_g, t) => `I said my first word: '${t.pick(FIRST_WORDS)}'.` },
   { id: 'firstSteps', minAge: 1, maxAge: 2, chance: 0.75, line: () => 'I took my first steps.' },
   { id: 'pottyTrained', minAge: 2, maxAge: 4, chance: 0.5, line: () => 'I was potty trained.' },
   { id: 'firstTooth', minAge: 6, maxAge: 7, chance: 0.6, line: () => 'I lost my first baby tooth.' },
@@ -438,71 +446,76 @@ function personOrNull(p: Person | undefined): Person | null {
   return p && p.alive ? p : null
 }
 
-/** Token values for this year (one random person per kind). */
-function tokens(g: GameState): Record<string, string | undefined> {
-  const t: Record<string, string | undefined> = {}
+/** Token values for this year (one random person per kind), drawn from the text stream `t`. */
+function tokens(g: GameState, t: TextRng): Record<string, string | undefined> {
+  const tok: Record<string, string | undefined> = {}
+  const draw: Picker = (_g, items) => t.pick(items)
   const mom = personOrNull(mother(g))
   const dad = personOrNull(father(g))
-  if (mom) t.mom = mom.firstName
-  if (dad) t.dad = dad.firstName
+  if (mom) tok.mom = mom.firstName
+  if (dad) tok.dad = dad.firstName
   const sibs = siblings(g)
   if (sibs.length) {
-    const s = pick(g, sibs)
-    t.sib = s.firstName
-    t.sibRel = s.gender === 'male' ? 'brother' : 'sister'
+    const s = t.pick(sibs)
+    tok.sib = s.firstName
+    tok.sibRel = s.gender === 'male' ? 'brother' : 'sister'
   }
   const fr = friends(g)
-  if (fr.length) t.friend = pick(g, fr).firstName
+  if (fr.length) tok.friend = t.pick(fr).firstName
   const partner = currentPartner(g)
-  if (partner) t.partner = partner.firstName
+  if (partner) tok.partner = partner.firstName
   const allPets = pets(g)
   if (allPets.length) {
-    const p = pick(g, allPets)
-    t.pet = p.firstName
-    t.petSpecies = (p.species ?? 'pet').toLowerCase()
+    const p = t.pick(allPets)
+    tok.pet = p.firstName
+    tok.petSpecies = (p.species ?? 'pet').toLowerCase()
   }
   const youngKids = childrenOf(g).filter((k) => k.age >= 3 && k.age <= 14)
   const grownKids = childrenOf(g).filter((k) => k.age >= 18)
   if (youngKids.length) {
-    const k = pick(g, youngKids)
-    t.kid = k.firstName
-    t.kidRel = k.gender === 'male' ? 'son' : 'daughter'
+    const k = t.pick(youngKids)
+    tok.kid = k.firstName
+    tok.kidRel = k.gender === 'male' ? 'son' : 'daughter'
   }
   if (grownKids.length) {
-    const k = pick(g, grownKids)
-    t.adultKid = k.firstName
-    t.adultKidRel = k.gender === 'male' ? 'son' : 'daughter'
+    const k = t.pick(grownKids)
+    tok.adultKid = k.firstName
+    tok.adultKidRel = k.gender === 'male' ? 'son' : 'daughter'
   }
   const gks = grandkids(g, 4)
-  if (gks.length) t.grandkid = pick(g, gks).firstName
+  if (gks.length) tok.grandkid = t.pick(gks).firstName
   const mates = peopleBy(g, ['cellmate'])
-  if (mates.length) t.cellmate = pick(g, mates).firstName
+  if (mates.length) tok.cellmate = t.pick(mates).firstName
   const c = g.character
   const cur = c.education.current
-  if (cur) t.school = cur.school
+  if (cur) tok.school = cur.school
   const job = c.job ?? c.partTimeJob
-  if (job) t.company = job.company
-  t.city = c.city
-  t.country = country(g).name
+  if (job) tok.company = job.company
+  tok.city = c.city
+  tok.country = country(g).name
   // Half the time something universal, half the time a local dish ('nasi goreng', 'injera', 'mac and cheese' in the US).
   const foods = FOODS.filter((f) => g.year >= (FOOD_SINCE[f] ?? 0))
-  t.food = chance(g, 0.5) ? pick(g, foods) : localPick(g, 'food') || pick(g, foods)
-  t.show = showName(g)
-  t.radioShow = radioShow(g)
-  t.kidPrize = kidPrize(g)
-  t.movieKind = movieKind(g)
-  t.hobby = pick(g, HOBBIES)
+  tok.food = t.chance(0.5) ? t.pick(foods) : localPick(g, 'food', c.countryId, draw) || t.pick(foods)
+  tok.show = showName(g, draw)
+  tok.radioShow = radioShow(g, draw)
+  tok.kidPrize = kidPrize(g)
+  tok.movieKind = movieKind(g)
+  tok.hobby = t.pick(HOBBIES)
+  // The local soft drink is drawn here, once, for the lemonade line of localizeLine: drawing it inside the attempt loop would
+  // spend a different number of draws depending on which lines the loop tried.
+  tok.softDrink = localSoftDrink(g, c.countryId, draw)
   // Amounts in the player's money and year (Settings › Money).
-  t.textbookPrice = formatMoney(300)
-  t.valetTip = formatMoney(100)
-  return t
+  tok.textbookPrice = formatMoney(300)
+  tok.valetTip = formatMoney(100)
+  return tok
 }
 
 /**
  * The pools were written with an American childhood in mind; a few lines get the player's own
  * country instead: the neighborhood ball game, the summer drink stand, the shopping trip.
+ * `tok` holds the year's tokens (the soft drink was drawn there), `t` is the text stream for the shop.
  */
-function localizeLine(g: GameState, line: string): string {
+function localizeLine(g: GameState, line: string, t: TextRng, tok: Record<string, string | undefined>): string {
   const c = g.character
   if (c.countryId === 'us') return line
   if (line.includes('neighborhood baseball game')) {
@@ -510,10 +523,10 @@ function localizeLine(g: GameState, line: string): string {
     const win = /baseball|softball/.test(ball) ? 'hit a home run' : /cricket/.test(ball) ? 'hit a six' : /basketball/.test(ball) ? 'scored the winning basket' : /volleyball|takraw/.test(ball) ? 'served the winning point' : 'scored the winning goal'
     return `I ${win} at a neighborhood ${ball} game.`
   }
-  if (line.includes('lemonade stand') && c.countryId !== 'ca') return `I set up a stand selling iced ${localSoftDrink(g).replace(/^iced /i, '')} and made a little pocket money.`
+  if (line.includes('lemonade stand') && c.countryId !== 'ca') return `I set up a stand selling iced ${(tok.softDrink ?? 'tea').replace(/^iced /i, '')} and made a little pocket money.`
   if (line.includes('the mall with')) {
     const shops = locale(g).hangouts.filter((h) => /mall|market|bazaar|souk|shopping|plaza|arcade/i.test(h) && venueExists(g, h))
-    return line.replace('the mall', shops.length ? pick(g, shops) : 'the market')
+    return line.replace('the mall', shops.length ? t.pick(shops) : 'the market')
   }
   if (line.includes('mall-walking group')) return line.replace('mall-walking group', 'morning walking group')
   return line
@@ -588,18 +601,19 @@ function milestonesDone(g: GameState): Record<string, Json> {
   return fresh
 }
 
-/** Log one-time toddler milestones (first word, first steps...). Returns how many were logged. */
-function logMilestones(g: GameState): number {
+/** Log one-time toddler milestones (first word, first steps...). Returns how many were logged. `t` is the text stream, for the words. */
+function logMilestones(g: GameState, t: TextRng): number {
   const age = g.character.age
   if (age > 8 || inPrison(g)) return 0
   const done = milestonesDone(g)
   let n = 0
   for (const m of MILESTONES) {
     if (done[m.id] || age < m.minAge || age > m.maxAge) continue
-    // Guaranteed on the last eligible year so every life gets them.
-    if (age < m.maxAge && !chance(g, m.chance)) continue
+    // Guaranteed on the last eligible year so every life gets them. Whether it happens this year is state (the age lands in
+    // flags.milestonesLogged), so the roll reads a stream keyed by year and milestone, never the text cursor (D5a).
+    if (age < m.maxAge && !(outcomeStream(g, 'flavor.milestone', g.year, m.id)() < m.chance)) continue
     done[m.id] = age
-    log(g, m.line(g), 'good')
+    log(g, m.line(g, t), 'good')
     n++
   }
   return n
@@ -609,27 +623,27 @@ function logMilestones(g: GameState): number {
 export function addFlavorLines(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  const milestoneLines = logMilestones(g)
-  const want = Math.max(0, (chance(g, 0.4) ? 2 : 1) - milestoneLines)
+  const t = textRng(g)
+  const milestoneLines = logMilestones(g, t)
+  const want = Math.max(0, (t.chance(0.4) ? 2 : 1) - milestoneLines)
   if (want === 0) return
   const pools = poolsFor(g)
   if (pools.length === 0) return
-  const t = tokens(g)
+  const tok = tokens(g, t)
   const recent = recentKeys(g)
   const used = new Set<string>()
   let added = 0
   for (let attempt = 0; attempt < 12 && added < want; attempt++) {
-    const pool = weightedPool(g, pools.filter((p) => !used.has(p.key) || pools.length === 1))
+    const pool = weightedPool(t, pools.filter((p) => !used.has(p.key) || pools.length === 1))
     if (!pool) break
-    const options = shuffle(
-      g,
-      pool.lines.map((line, i) => ({ line, key: `${pool.key}:${i}` })),
-    ).filter((o) => !recent.includes(o.key))
+    const options = t
+      .shuffle(pool.lines.map((line, i) => ({ line, key: `${pool.key}:${i}` })))
+      .filter((o) => !recent.includes(o.key))
     let chosen: { text: string; key: string } | null = null
     for (const o of options) {
       if (!eraOk(g, o.line)) continue
-      const filled = fill(eraStrip(o.line), t)
-      const text = filled ? localizeLine(g, filled) : null
+      const filled = fill(eraStrip(o.line), tok)
+      const text = filled ? localizeLine(g, filled, t, tok) : null
       if (text && anachronistic(g, text)) continue
       if (text) {
         chosen = { text, key: o.key }
@@ -638,7 +652,7 @@ export function addFlavorLines(g: GameState): void {
     }
     used.add(pool.key)
     if (!chosen) continue
-    log(g, chosen.text, pool.tone ?? 'neutral')
+    log(g, chosen.text, pool.tone ?? 'neutral', textLineId(g))
     recent.push(chosen.key)
     added++
   }
@@ -646,10 +660,10 @@ export function addFlavorLines(g: GameState): void {
   delete g.flags.flavorRecent
 }
 
-function weightedPool(g: GameState, pools: Pool[]): Pool | null {
+function weightedPool(t: TextRng, pools: Pool[]): Pool | null {
   const total = pools.reduce((s, p) => s + p.weight, 0)
   if (total <= 0) return null
-  let r = randInt(g, 1, total)
+  let r = t.int(1, total)
   for (const p of pools) {
     r -= p.weight
     if (r <= 0) return p

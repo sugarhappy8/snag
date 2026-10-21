@@ -38,6 +38,9 @@ export function pick<T>(g: GameState, items: readonly T[]): T {
   return items[Math.floor(rand(g) * items.length)]
 }
 
+/** A function that picks one item of a list. pick is one; so is a text draw that closes over its own stream (R2-B2: flavor passes one to the helpers it calls). */
+export type Picker = <T>(g: GameState, items: readonly T[]) => T
+
 /** Pick by weight; items with weight <= 0 are never picked. */
 export function weightedPick<T>(g: GameState, items: readonly T[], weight: (item: T) => number): T {
   const total = items.reduce((sum, item) => sum + Math.max(0, weight(item)), 0)

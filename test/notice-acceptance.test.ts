@@ -2,7 +2,7 @@
 // quietInbox. It restates the release gate in one file, so the lead can flip both defaults on the strength of it.
 // Criteria 4 and 8 live here in full. Criterion 9 (pickLine draws like pick, a bag never repeats before it is spent,
 // the memory caps hold, hpick draws nothing) is proved line by line in test/text-pick.test.ts and test/text-hash.test.ts;
-// this file adds the one-draw check against nextRandom and the cap checks on hostile saves, in (a) below. The groups:
+// this file adds the no-g.rng-draw check (R2-B2; before it was a one-draw check against nextRandom) and the cap checks on hostile saves, in (a) below. The groups:
 //   (a) a hostile inbox, text memory and queued weight or link survive a save round trip and stay inside their caps;
 //   (b) the digest merge never writes g.queue;
 //   (c) the never-route table: bad-tone, health, legal and large-money notices stay popups, in the pure policy and
@@ -32,7 +32,6 @@ import {
 } from '../src/game/inbox'
 import { createNewLife } from '../src/game/life'
 import { neverRoute, routesToInbox } from '../src/game/notice-policy'
-import { nextRandom } from '../src/game/rng'
 import { migrateSave, SAVE_SCHEMA } from '../src/game/save-schema'
 import { TEXT_MEM_LIMITS, familyStats, pickLine, readTextMem, type TextMem } from '../src/game/text'
 import type { ChoiceModal, GameState, InputModal, Json, MinigameModal, ModalItem, NoticeModal } from '../src/game/types'
@@ -348,7 +347,7 @@ describe('(a) a hostile inbox', () => {
 
 describe('(a) a hostile text memory', () => {
   for (const [name, raw] of HOSTILE_MEM) {
-    sweep(`${name}: survives a save round trip, reads inside the caps and pickLine repairs it with one draw`, () => {
+    sweep(`${name}: survives a save round trip, reads inside the caps and pickLine repairs it with one text draw`, () => {
       const g = loaded(lifeWith((x) => (x.flags.textMem = asJson(raw))))
       const before = JSON.stringify(g.flags)
 
@@ -365,7 +364,8 @@ describe('(a) a hostile text memory', () => {
       const bag = ['one', 'two', 'three', 'four']
       const rng = g.rng
       expect(bag).toContain(pickLine(g, bag, 'accept.bag'))
-      expect(g.rng).toBe(nextRandom(rng)[1])
+      // R2-B2: the pick draws from the text stream, so g.rng does not move (it used to advance by exactly one draw).
+      expect(g.rng).toBe(rng)
       const wide = Array.from({ length: 20 }, (_, i) => `line ${i}`)
       expect(wide).toContain(pickLine(g, wide))
       // Hostile family names fall back to the pool's own key.

@@ -1,8 +1,11 @@
-// Text kit, part 1 (R1-T1, E.T1): pickLine, the pick that remembers. It draws exactly once from g.rng, like
-// pick(), and with an empty memory returns what pick() returns. Small pools are shuffle-bags, big pools
-// exclude their last picks. In R1 nothing in src/ called it, which kept the one new draw harmless. R2-A3 (E.T3) ran the
+// Text kit, part 1 (R1-T1, E.T1): pickLine, the pick that remembers. Small pools are shuffle-bags, big pools
+// exclude their last picks. In R1 nothing in src/ called it, which kept its one g.rng draw harmless; R2-A3 (E.T3) ran the
 // codemod, so test 11 below now says the other half: hpick and defineLines are still unused, and whoever calls pickLine
 // or pickSite gets it from the kit.
+// R2-B2 (the rebaseline) moved its draw off g.rng onto the text stream (text/draw.ts): tests 1, 2, 5, the single-line test and
+// 8 below used to say "exactly one g.rng draw, and with an empty memory the same line as pick()". They now say what the design
+// says: zero g.rng draws, one step of the text cursor per call of two or more lines, the first pick is
+// lines[floor(streamUnit(key, 0) * n)], and a one-line pool draws and writes nothing.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +13,8 @@ import { describe, expect, it } from 'vitest'
 import { killCharacter } from '../src/game/death'
 import { continueAsChild } from '../src/game/life'
 import { createPerson } from '../src/game/people'
-import { nextRandom, pick } from '../src/game/rng'
+import { streamKey, streamUnit } from '../src/game/kernel/streams'
+import { textCursor } from '../src/game/text/draw'
 import { candidateIndexes, defineLines, familyStats, pickLine, poolHash, readTextMem, ringRead, type PoolRecall } from '../src/game/text'
 import type { GameState, Json } from '../src/game/types'
 import { makeTestGame } from './helpers'
@@ -25,41 +29,49 @@ function deepFreeze<T>(v: T): T {
   return v
 }
 
-describe('pickLine parity with pick', () => {
-  it('1: the first pick equals pick() on a clone and leaves g.rng equal, for seeds 1 to 20', () => {
-    for (const n of [1, 2, 3, 5, 12, 13, 16, 40]) {
+describe('pickLine draws from the text stream', () => {
+  /** The name of the text stream of g's year, written out by hand (no fork in these games). */
+  const textKey = (g: GameState): string => streamKey(g.lifeId, 'text', g.year)
+
+  it('1: the first pick is lines[floor(streamUnit(key, 0) * n)] and g.rng does not move, for 20 lives', () => {
+    for (const n of [2, 3, 5, 12, 13, 16, 40]) {
       const lines = pool(n)
-      for (let seed = 1; seed <= 20; seed++) {
-        const g = makeTestGame(seed)
-        const clone = structuredClone(g)
-        expect(pickLine(g, lines), `n=${n} seed=${seed}`).toBe(pick(clone, lines))
-        expect(g.rng).toBe(clone.rng)
+      for (let life = 1; life <= 20; life++) {
+        // makeTestGame has one life id, so a seed no longer varies the text: the life id does.
+        const g = makeTestGame(life)
+        g.lifeId = `parity-life-${life}`
+        const want = lines[Math.floor(streamUnit(textKey(g), 0) * n)]
+        expect(pickLine(g, lines), `n=${n} life=${life}`).toBe(want)
+        expect(g.rng).toBe(life)
+        expect(textCursor(g)).toEqual({ year: g.year, n: 1 })
         // A named pool takes the same first pick.
-        const h = makeTestGame(seed)
-        expect(pickLine(h, lines, 'parity.named')).toBe(lines[Math.floor(nextRandom(seed)[0] * n)])
+        const h = makeTestGame(life)
+        h.lifeId = g.lifeId
+        expect(pickLine(h, lines, 'parity.named')).toBe(want)
       }
     }
   })
 
-  it('2: exactly one draw per call, over 500 mixed calls', () => {
+  it('2: one step of the text cursor per call of two or more lines, and no g.rng draw, over 500 mixed calls', () => {
     const sizes = [1, 2, 3, 5, 12, 13, 16, 40]
     const g = makeTestGame(7)
-    let ref = 7
+    let draws = 0
     for (let i = 0; i < 500; i++) {
       const n = sizes[i % sizes.length]
       const lines = pool(n, 'mix' + n)
       const out = i % 3 === 0 ? pickLine(g, lines) : i % 3 === 1 ? pickLine(g, lines, 'mix.' + n) : pickLine(g, lines, '9 not a name')
       expect(lines).toContain(out)
-      ref = nextRandom(ref)[1]
-      expect(g.rng, `call ${i}`).toBe(ref)
+      if (n >= 2) draws++
+      expect(g.rng, `call ${i}`).toBe(7)
+      expect(textCursor(g), `call ${i}`).toEqual({ year: g.year, n: draws })
     }
   })
 
-  it('draws once even when the list is a single line, and writes nothing then', () => {
+  it('a single-line list draws nothing and writes nothing', () => {
     const g = makeTestGame(3)
     expect(pickLine(g, ['only'])).toBe('only')
     expect(pickLine(g, ['only'], 'single.name')).toBe('only')
-    expect(g.rng).toBe(nextRandom(nextRandom(3)[1])[1])
+    expect(g.rng).toBe(3)
     expect(g.flags).toEqual({})
   })
 })
@@ -178,12 +190,12 @@ describe('candidateIndexes', () => {
 })
 
 describe('pickLine edge cases', () => {
-  it('5: a one-line list returns the line and writes nothing to flags; an empty list throws before drawing', () => {
+  it('5: a one-line list returns the line, draws nothing and writes nothing to flags; an empty list throws before drawing', () => {
     const g = makeTestGame(4)
     const rng = g.rng
     expect(pickLine(g, ['solo'])).toBe('solo')
     expect(g.flags).toEqual({})
-    expect(g.rng).not.toBe(rng)
+    expect(g.rng).toBe(rng)
     const h = makeTestGame(4)
     expect(() => pickLine(h, [])).toThrow('pickLine() from empty list')
     expect(h.rng).toBe(4)
@@ -289,17 +301,16 @@ describe('hostile memory', () => {
     ['a nested bomb', { v: 1, p: { a: { b: { c: { d: {} } } } }, f: [[[[]]]], r: { x: [[['q']]] } }],
   ]
 
-  it('8: pickLine still works, and the memory ends bounded and valid', () => {
+  it('8: pickLine still works, g.rng is unchanged, and the memory ends bounded and valid', () => {
     for (const [name, value] of HOSTILE) {
       const g = makeTestGame(6)
       g.flags.textMem = value
-      let ref = 6
       for (let i = 0; i < 40; i++) {
         const lines = pool(2 + (i % 30), 'h' + (i % 30))
         expect(lines, name).toContain(pickLine(g, lines, i % 2 ? 'h.' + (i % 30) : undefined))
-        ref = nextRandom(ref)[1]
       }
-      expect(g.rng, name).toBe(ref)
+      expect(g.rng, name).toBe(6)
+      expect(textCursor(g), name).toEqual({ year: g.year, n: 40 })
       const mem = readTextMem(g)
       expect(Object.keys(mem.p).length, name).toBeLessThanOrEqual(300)
       expect(Object.keys(mem.f).length, name).toBeLessThanOrEqual(120)

@@ -1,37 +1,44 @@
 // ci: fast
 // R2-A2: the three additions to the text kit's pick.ts. pickLine is generic over its element type (D8), pickSite names a
 // pool by a numeric site key (D4) so a pool whose lines carry ${} holes does not flood the memory with one key per value,
-// and a PickMode hook (memory, plain, rotate) lets a test turn the kit into plain pick or into a rotation, which is how
+// and a PickMode hook (memory, plain, rotate) lets a test turn the kit into a plain draw or into a rotation, which is how
 // R2-A3 proves that a converted string never flows into state. The two compile-time cases at the end are checked by tc.
+// R2-B2 (the rebaseline) moved the draw off g.rng onto the text stream: where these cases once compared with pick on a clone,
+// they now compare with the n-th value of the game's text stream (textUnit), and they assert that g.rng never moves.
 import { afterEach, describe, expect, it } from 'vitest'
-import { nextRandom, pick } from '../src/game/rng'
+import { textUnit } from '../src/game/kernel/streams'
 import { poolHash } from '../src/game/text/hash'
 import { readTextMem } from '../src/game/text/memory'
+import { textCursor } from '../src/game/text/draw'
 import { pickLine, pickSite, setPickHook, withPickMode, type PickCall, type PickMode } from '../src/game/text/pick'
+import type { GameState } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
 const pool = (n: number, prefix = 'line'): string[] => Array.from({ length: n }, (_, i) => `${prefix} ${i}`)
 
+/** The index of the line the n-th text draw of g's year points at, in a pool of `size` lines. */
+const at = (g: GameState, n: number, size: number): number => Math.floor(textUnit(g, g.year, n) * size)
+
 afterEach(() => setPickHook(null))
 
 describe('pickSite', () => {
-  it('is pick on an empty memory: same line, same g.rng, one draw, for 20 seeds', () => {
+  it('takes the first text draw on an empty memory: lines[floor(unit * n)], one cursor step, g.rng untouched, for 20 lives', () => {
     for (const n of [2, 3, 5, 12, 13, 40]) {
       const lines = pool(n)
       for (let s = 1; s <= 20; s++) {
         const g = makeTestGame(s)
-        const clone = structuredClone(g)
-        expect(pickSite(g, lines, 0x1234abcd), `n=${n} s=${s}`).toBe(pick(clone, lines))
-        expect(g.rng).toBe(clone.rng)
-        expect(g.rng).toBe(nextRandom(s)[1])
+        g.lifeId = `site-life-${s}`
+        expect(pickSite(g, lines, 0x1234abcd), `n=${n} s=${s}`).toBe(lines[at(g, 0, n)])
+        expect(g.rng).toBe(s)
+        expect(textCursor(g)).toEqual({ year: g.year, n: 1 })
       }
     }
   })
 
-  it('draws once for a pool of one line, writes nothing, and throws on an empty list before drawing', () => {
+  it('a pool of one line draws nothing and writes nothing, and an empty list throws before anything is drawn', () => {
     const g = makeTestGame(4)
     expect(pickSite(g, ['solo'], 7)).toBe('solo')
-    expect(g.rng).toBe(nextRandom(4)[1])
+    expect(g.rng).toBe(4)
     expect(g.flags).toEqual({})
     const h = makeTestGame(4)
     expect(() => pickSite(h, [], 7)).toThrow('pickSite() from empty list')
@@ -84,35 +91,40 @@ describe('pickSite', () => {
 })
 
 describe('the pick hook', () => {
-  it('plain mode is pick: the same line, the same g.rng, and nothing written, for 40 calls', () => {
+  /** The pool memory, the families and the rings of g: what the kit's memory holds, apart from the cursor. */
+  const memory = (g: GameState): unknown => {
+    const { p, f, r } = readTextMem(g)
+    return { p, f, r }
+  }
+
+  it('plain mode is the plain text draw: lines[floor(unit * n)] call after call, no memory, g.rng untouched, for 40 calls', () => {
     for (const n of [2, 5, 13]) {
       const lines = pool(n)
       const g = makeTestGame(11)
-      const ref = makeTestGame(11)
       withPickMode('plain', () => {
         for (let i = 0; i < 40; i++) {
-          expect(pickLine(g, lines), `n=${n} i=${i}`).toBe(pick(ref, lines))
-          expect(pickSite(g, lines, 9)).toBe(pick(ref, lines))
+          expect(pickLine(g, lines), `n=${n} i=${i}`).toBe(lines[at(g, 2 * i, n)])
+          expect(pickSite(g, lines, 9)).toBe(lines[at(g, 2 * i + 1, n)])
         }
       })
-      expect(g.rng).toBe(ref.rng)
-      expect(g.flags).toEqual({})
+      expect(g.rng).toBe(11)
+      expect(textCursor(g)).toEqual({ year: g.year, n: 80 })
+      expect(memory(g)).toEqual({ p: {}, f: {}, r: {} })
     }
   })
 
-  it('rotate mode returns the line after the one pick would give, wrapping, and writes nothing', () => {
+  it('rotate mode returns the line after the one the text draw points at, wrapping, and writes no memory', () => {
     for (const n of [2, 3, 7, 13]) {
       const lines = pool(n)
       const g = makeTestGame(21)
-      const ref = makeTestGame(21)
       withPickMode('rotate', () => {
         for (let i = 0; i < 30; i++) {
-          const plain = lines.indexOf(pick(ref, lines))
-          expect(lines.indexOf(pickLine(g, lines)), `n=${n} i=${i}`).toBe((plain + 1) % n)
+          expect(lines.indexOf(pickLine(g, lines)), `n=${n} i=${i}`).toBe((at(g, i, n) + 1) % n)
         }
       })
-      expect(g.rng).toBe(ref.rng)
-      expect(g.flags).toEqual({})
+      expect(g.rng).toBe(21)
+      expect(textCursor(g)).toEqual({ year: g.year, n: 30 })
+      expect(memory(g)).toEqual({ p: {}, f: {}, r: {} })
     }
   })
 
@@ -163,7 +175,7 @@ describe('the pick hook', () => {
     expect(seen).toEqual([0, 1, 0])
   })
 
-  it('a pool of one line does not reach the hook, and still draws once', () => {
+  it('a pool of one line does not reach the hook, and draws nothing', () => {
     let reached = 0
     setPickHook(() => {
       reached++
@@ -173,7 +185,8 @@ describe('the pick hook', () => {
     expect(pickLine(g, ['only one'])).toBe('only one')
     expect(pickSite(g, ['only one'], 3)).toBe('only one')
     expect(reached).toBe(0)
-    expect(g.rng).toBe(nextRandom(nextRandom(8)[1])[1])
+    expect(g.rng).toBe(8)
+    expect(g.flags).toEqual({})
   })
 
   it('the hook can choose per call', () => {
@@ -181,16 +194,12 @@ describe('the pick hook', () => {
     setPickHook((c) => modes[c.index % 3])
     const lines = pool(5)
     const g = makeTestGame(2)
-    const ref = makeTestGame(2)
     const first = lines.indexOf(pickLine(g, lines))
     const second = lines.indexOf(pickLine(g, lines))
     const third = lines.indexOf(pickLine(g, lines))
-    const p1 = lines.indexOf(pick(ref, lines))
-    const p2 = lines.indexOf(pick(ref, lines))
-    const p3 = lines.indexOf(pick(ref, lines))
-    expect(first).toBe(p1)
-    expect(second).toBe((p2 + 1) % 5)
-    expect(third).toBe(p3) // memory is still empty, because the first two calls wrote nothing
+    expect(first).toBe(at(g, 0, 5))
+    expect(second).toBe((at(g, 1, 5) + 1) % 5)
+    expect(third).toBe(at(g, 2, 5)) // memory is still empty, because the first two calls wrote nothing
   })
 
   it('withPickMode returns the value and restores the previous hook and its counter, also when the callback throws', () => {
@@ -218,21 +227,19 @@ describe('the pick hook', () => {
       }),
     ).toThrow('again')
     const h = makeTestGame(6)
-    const ref = makeTestGame(6)
-    expect(pickLine(h, lines)).toBe(pick(ref, lines)) // no hook is left behind: the empty-memory pick equals pick
+    expect(pickLine(h, lines)).toBe(lines[at(h, 0, 4)]) // no hook is left behind: the empty-memory pick is the plain draw
   })
 
   it('withPickMode nests: the innermost mode wins and the outer mode returns after it', () => {
     const lines = pool(6)
     const g = makeTestGame(14)
-    const ref = makeTestGame(14)
     const got: number[] = []
     withPickMode('rotate', () => {
       got.push(lines.indexOf(pickLine(g, lines)))
       withPickMode('plain', () => got.push(lines.indexOf(pickLine(g, lines))))
       got.push(lines.indexOf(pickLine(g, lines)))
     })
-    const p = [0, 1, 2].map(() => lines.indexOf(pick(ref, lines)))
+    const p = [0, 1, 2].map((i) => at(g, i, 6))
     expect(got).toEqual([(p[0] + 1) % 6, p[1], (p[2] + 1) % 6])
   })
 })

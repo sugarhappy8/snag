@@ -439,11 +439,15 @@ export function currentLogYear(g: GameState) {
   return year
 }
 
-/** Add a first-person line to this year's life log, e.g. "I adopted a dog named Max." */
-export function log(g: GameState, text: string, tone: Tone = 'neutral'): void {
+/**
+ * Add a first-person line to this year's life log, e.g. "I adopted a dog named Max."
+ * `id` is for a line whose count depends on text (the flavor lines, R2-B2): it takes a text-side id (text/draw.ts textLineId), so
+ * how many such lines print never moves g.nextId, which every later id and every hashed pick that reads an id depends on.
+ */
+export function log(g: GameState, text: string, tone: Tone = 'neutral', id?: string): void {
   const t = text.trim()
   if (!t) return
-  currentLogYear(g).entries.push({ id: uid(g, 'l'), text: t, tone })
+  currentLogYear(g).entries.push({ id: id ?? uid(g, 'l'), text: t, tone })
 }
 
 /** Remember a notable event (the profile's Memories list; kept short). */
