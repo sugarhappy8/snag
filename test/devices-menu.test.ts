@@ -1,6 +1,7 @@
 // Ecosystem companies: the Devices & Chips screen. It follows Products for device companies only, holds at most 12 rows in every
 // year (RF4), says what is true about the chips, the platform and each kind's specs, and never writes state or draws a number.
 import { describe, expect, it } from 'vitest'
+import { withFlags } from '../src/game/flags'
 import { businessAssetView } from '../src/game/business'
 import { marketOfBiz, saveMarket } from '../src/game/business/competition'
 import { chipBook, chipTerms, HARDWARE_FAMILIES, OS_FAMILY, OS_PULL_CAP, type ChipSupply } from '../src/game/business/devices-data'
@@ -12,6 +13,7 @@ import { demandLevel } from '../src/game/business/product-data'
 import { bizOf, type Product, type Statement } from '../src/game/business/state'
 import { aPct, money } from '../src/game/business/util'
 import type { Asset, GameState, MenuNode } from '../src/game/types'
+import { openTiles } from './helpers'
 import { adult, allNodes, company } from './market-kit'
 
 const devices = (seed = 5, year = 2026, country = 'us') => {
@@ -46,13 +48,13 @@ const SISTER: ChipSupply = { year: 2025, from: 'sis1', name: 'Acme Silicon', sta
 describe('the Devices & Chips menu', () => {
   it('follows Products, for devices only', () => {
     const { g, a } = devices()
-    const ids = businessAssetView(g, a).flatMap((n) => (n.type === 'heading' ? [] : [n.id]))
+    const ids = openTiles(g, businessAssetView(g, a)).flatMap((n) => (n.type === 'heading' ? [] : [n.id]))
     expect(ids.indexOf(`biz.devices.${a.id}`)).toBe(ids.indexOf(`biz.products.${a.id}`) + 1)
     expect(ids.indexOf(`biz.products.${a.id}`)).toBeGreaterThan(-1)
     const r = adult(5, 2026, 'us')
     const shop = company(r, 'restaurant', { cash: 1e7 })
-    expect(businessAssetView(r, shop).some((n) => n.id.startsWith('biz.devices.'))).toBe(false)
-    const node = businessAssetView(g, a).find((n) => n.id === `biz.devices.${a.id}`)
+    expect(openTiles(r, businessAssetView(r, shop)).some((n) => n.id.startsWith('biz.devices.'))).toBe(false)
+    const node = openTiles(g, businessAssetView(g, a)).find((n) => n.id === `biz.devices.${a.id}`)
     expect(node?.type).toBe('menu')
     if (node?.type === 'menu') expect(node.label).toBe('Devices & Chips')
   })
@@ -160,9 +162,10 @@ describe('the Devices & Chips menu', () => {
   })
 
   it('has one sub-menu per kind with the three spec lines', () => {
+    // The chartKit flag adds a chart row after the three lines (next case), so this one pins it off.
     const { g, a, b } = devices()
     b.products = [core('Smartphone', 2025, 62), core('Laptop', 2025, 58)]
-    const subs = rows(g, a).filter((n) => n.type === 'menu')
+    const subs = withFlags({ chartKit: false }, () => rows(g, a)).filter((n) => n.type === 'menu')
     expect(subs.map((n) => n.id)).toEqual([`biz.devices.spec.${a.id}.laptop`, `biz.devices.spec.${a.id}.smartphone`])
     const sheet = specSheet(g, b, g.year, marketCtxFor(g, b, g.year))
     for (const sub of subs) {
@@ -172,14 +175,34 @@ describe('the Devices & Chips menu', () => {
       const subtitle = typeof sub.subtitle === 'function' ? sub.subtitle(g) : sub.subtitle ?? ''
       expect(subtitle).toMatch(/^Performance \d+ · (rank \d+ of \d+|the market has no figures)$/)
       expect(sub.label).toBe(spec!.family)
-      expect(sub.children(g).map((n) => infoText(g, n))).toEqual(specLines(spec!))
-      expect(sub.children(g)).toHaveLength(3)
+      const kids = withFlags({ chartKit: false }, () => sub.children(g))
+      expect(kids.map((n) => infoText(g, n))).toEqual(specLines(spec!))
+      expect(kids).toHaveLength(3)
     }
     const sub = subs[1]
     const sheetSmart = sheet[1]
     if (sub.type === 'menu') {
       const subtitle = typeof sub.subtitle === 'function' ? sub.subtitle(g) : sub.subtitle ?? ''
       expect(subtitle).toBe(`Performance ${Math.round(sheetSmart.perf.mine)} · rank ${sheetSmart.perf.rank} of ${sheetSmart.perf.of}`)
+    }
+  })
+
+  it('adds one chart row after the three spec lines with chartKit on, and none with it off', () => {
+    const { g, a, b } = devices()
+    b.products = [core('Smartphone', 2025, 62), core('Laptop', 2025, 58)]
+    const sheet = specSheet(g, b, g.year, marketCtxFor(g, b, g.year))
+    const subs = withFlags({ chartKit: true }, () => rows(g, a)).filter((n) => n.type === 'menu')
+    expect(subs).toHaveLength(2)
+    for (const sub of subs) {
+      if (sub.type !== 'menu') throw new Error('not a menu')
+      const spec = sheet.find((s) => sub.id.endsWith(s.family.toLowerCase()))
+      expect(spec).toBeDefined()
+      const kids = withFlags({ chartKit: true }, () => sub.children(g))
+      expect(kids.slice(0, 3).map((n) => infoText(g, n))).toEqual(specLines(spec!))
+      expect(kids).toHaveLength(4)
+      expect(kids[3].type).toBe('info')
+      expect(kids[3].id).toBe(`biz.devices.spec.chart.${a.id}.${sub.id.split('.').pop()}`)
+      expect(withFlags({ chartKit: false }, () => sub.children(g))).toHaveLength(3)
     }
   })
 

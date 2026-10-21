@@ -10,6 +10,7 @@ import { bizOf, readBiz } from '../src/game/business/state'
 import { yearActionsUsed } from '../src/game/core'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { deepFreeze } from './fuzz-kit'
+import { openTiles } from './helpers'
 import { findNode, founder, listed, listedGroup, privateCompany } from './own-listing-kit'
 
 function subtitleOf(g: GameState, n: MenuNode): string {
@@ -39,7 +40,7 @@ describe('the Share Classes rows', () => {
   it('is under Capital and beside Go Public', () => {
     const g = founder()
     const { a } = privateCompany(g)
-    const view = businessAssetView(g, a)
+    const view = openTiles(g, businessAssetView(g, a))
     const id = `biz.classes.${a.id}`
     // Beside Go Public, in the Exit section: the IPO row, then the classes.
     const at = view.findIndex((n) => n.id === `biz.ipo.${a.id}`)
@@ -56,7 +57,7 @@ describe('the Share Classes rows', () => {
     // A listed company has no Go Public, so only the Capital & Ownership one.
     const h = founder()
     const x = listed(h)
-    const listedView = businessAssetView(h, x.a)
+    const listedView = openTiles(h, businessAssetView(h, x.a))
     expect(listedView.some((n) => n.id === id.replace(a.id, x.a.id))).toBe(false)
     expect(listedView.some((n) => n.id.startsWith('biz.ipo.'))).toBe(false)
     const listedCapital = findNode(h, listedView, `biz.rescue.${x.a.id}`) as MenuGroup

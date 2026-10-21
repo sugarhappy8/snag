@@ -3,7 +3,9 @@
 //   - infoChart (menuModel): reads a node's chart safely, like infoText reads its text
 //   - MenuRows: an info node with a valid chart draws the chart, with its text as the loading and failure state
 //   - booksMenu (src/game/business/books-menu.ts): "Books and Charts", seven chart rows on every company screen
-// Flags are always set with withFlags, so the lead's release flip cannot change what these tests mean.
+// Flags are always set with withFlags, so the lead's release flip cannot change what these tests mean. The company screen
+// is read both ways: the flat list (cockpits pinned off, v4.0.2's shape) and the screen a player gets with the cockpits on,
+// where the Money tile holds the rows after the "Money" heading and each tile is opened in place (see companyList).
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
@@ -14,12 +16,13 @@ import { businessAssets, readBiz } from '../src/game/business/state'
 import { chartInfo, moneyLabel } from '../src/game/charts'
 import { readChartSpec, type ChartSpec } from '../src/game/charts/spec'
 import { withFlags } from '../src/game/flags'
+import { hubIds } from '../src/game/hubs/company'
 import { migrateSave } from '../src/game/save-schema'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { infoChart, infoText, nodeSubtitle } from '../src/ui/components/menuModel'
 import { deepFreeze, ownerGame, statementSamples } from './charts-kit'
-import { makeTestGame } from './helpers'
+import { makeTestGame, openTiles } from './helpers'
 
 // The store is mocked the way test/annualReport.test.ts does it: MenuRows only needs getApp and runMenuAction.
 const mock = vi.hoisted(() => ({ state: { game: null as unknown } }))
@@ -45,6 +48,15 @@ function lineSpec(over: Partial<ChartSpec> = {}): ChartSpec {
     summary: 'Net profit rose to $15 in 2032.',
     ...over,
   }
+}
+
+/**
+ * The company screen as one flat list. With the cockpits on the tiles (ids `hub.`) hold the rows of the old list in the old
+ * order, so each tile is opened in place; with them off the list is already flat. Built inside withFlags, because a tile
+ * asks the latest state for its rows when it is opened.
+ */
+function companyList(g: GameState, a: Asset, flags: { chartKit: boolean; cockpits: boolean }): MenuNode[] {
+  return withFlags(flags, () => openTiles(g, businessAssetView(g, a)))
 }
 
 function expectValid(spec: ChartSpec | null): asserts spec is ChartSpec {
@@ -111,35 +123,56 @@ describe('the chartKit flag', () => {
     expect(withFlags({ chartKit: true }, () => chartInfo('x', 'E', 't', () => null))).toHaveLength(1)
   })
 
-  it('leaves the company screen alone with the flag off, and adds one group after Why Profit Changed with it on', () => {
+  for (const cockpits of [false, true]) {
+    it(`leaves the company screen alone with the flag off, and adds one group after Why Profit Changed with it on (cockpits ${cockpits ? 'on' : 'off'})`, () => {
+      const { g, a } = owned
+      const off = companyList(g, a, { chartKit: false, cockpits })
+      const on = companyList(g, a, { chartKit: true, cockpits })
+      const offIds = off.map((n) => n.id)
+      const onIds = on.map((n) => n.id)
+      expect(offIds.filter((id) => id.startsWith('biz.books.'))).toEqual([])
+      const books = on.filter((n) => n.id.startsWith('biz.books.'))
+      expect(books).toHaveLength(1)
+      expect(books[0]!.id).toBe(`biz.books.${a.id}`)
+      expect(books[0]!.type).toBe('menu')
+      expect(onIds.indexOf(`biz.books.${a.id}`)).toBe(onIds.indexOf(`biz.economicReport.${a.id}`) + 1)
+      expect(onIds.indexOf(`biz.economicReport.${a.id}`)).toBeGreaterThan(-1)
+      expect(onIds.filter((id) => id !== `biz.books.${a.id}`)).toEqual(offIds)
+    })
+  }
+
+  it('puts the group inside the Money tile when the cockpits are on, and at the top level when they are off', () => {
     const { g, a } = owned
-    const off = withFlags({ chartKit: false }, () => businessAssetView(g, a))
-    const on = withFlags({ chartKit: true }, () => businessAssetView(g, a))
-    const offIds = off.map((n) => n.id)
-    const onIds = on.map((n) => n.id)
-    expect(offIds.filter((id) => id.startsWith('biz.books.'))).toEqual([])
-    const books = on.filter((n) => n.id.startsWith('biz.books.'))
-    expect(books).toHaveLength(1)
-    expect(books[0]!.id).toBe(`biz.books.${a.id}`)
-    expect(books[0]!.type).toBe('menu')
-    expect(onIds.indexOf(`biz.books.${a.id}`)).toBe(onIds.indexOf(`biz.economicReport.${a.id}`) + 1)
-    expect(onIds.indexOf(`biz.economicReport.${a.id}`)).toBeGreaterThan(-1)
-    expect(onIds.filter((id) => id !== `biz.books.${a.id}`)).toEqual(offIds)
+    const h = hubIds(a.id)
+    const tileHas = (flags: { chartKit: boolean; cockpits: boolean }, tile: string): string[] =>
+      withFlags(flags, () => {
+        const group = businessAssetView(g, a).find((n) => n.id === tile)
+        return group && group.type === 'menu' ? group.children(g).map((n) => n.id) : []
+      })
+    expect(tileHas({ chartKit: true, cockpits: true }, h.money)).toContain(`biz.books.${a.id}`)
+    expect(tileHas({ chartKit: false, cockpits: true }, h.money)).not.toContain(`biz.books.${a.id}`)
+    const top = (flags: { chartKit: boolean; cockpits: boolean }): string[] => withFlags(flags, () => businessAssetView(g, a).map((n) => n.id))
+    expect(top({ chartKit: true, cockpits: true })).not.toContain(`biz.books.${a.id}`)
+    expect(top({ chartKit: true, cockpits: false })).toContain(`biz.books.${a.id}`)
   })
 
   it('shows the group for a hired-CEO company too', () => {
     const { g, others } = owned
     const hired = others[0]!
-    const ids = withFlags({ chartKit: true }, () => businessAssetView(g, hired)).map((n) => n.id)
-    expect(ids.indexOf(`biz.books.${hired.id}`)).toBe(ids.indexOf(`biz.economicReport.${hired.id}`) + 1)
+    for (const cockpits of [false, true]) {
+      const ids = companyList(g, hired, { chartKit: true, cockpits }).map((n) => n.id)
+      expect(ids.indexOf(`biz.books.${hired.id}`), `cockpits ${cockpits}`).toBe(ids.indexOf(`biz.economicReport.${hired.id}`) + 1)
+      expect(ids.indexOf(`biz.books.${hired.id}`), `cockpits ${cockpits}`).toBeGreaterThan(0)
+    }
   })
 
   it('serves every industry: one group on each company screen, and rows that build without a throw', () => {
     const samples = statementSamples([1])
     expect(samples.length).toBeGreaterThanOrEqual(50)
     for (const { industry, g, a } of samples) {
-      const ids = withFlags({ chartKit: true }, () => businessAssetView(g, a)).map((n) => n.id)
+      const ids = companyList(g, a, { chartKit: true, cockpits: true }).map((n) => n.id)
       expect(ids.indexOf(`biz.books.${a.id}`), industry).toBe(ids.indexOf(`biz.economicReport.${a.id}`) + 1)
+      expect(ids.indexOf(`biz.books.${a.id}`), industry).toBeGreaterThan(0)
       const rows = booksRows(g, a)
       expect(rows.length, industry).toBeGreaterThan(0)
       for (const row of rows) {

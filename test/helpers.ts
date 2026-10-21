@@ -1,6 +1,16 @@
 // Minimal game state for unit tests (does not depend on life.ts).
 import { GAME_VERSION } from '../src/game/core'
-import type { Character, GameState } from '../src/game/types'
+import type { Character, GameState, MenuNode } from '../src/game/types'
+
+/**
+ * A company screen as one flat list. With the cockpits on (the default from v4.1.0) the screen is a short top plus tiles whose
+ * ids start with `hub.`; each tile holds rows of the old flat list in the old order. This opens every tile in place, so a test
+ * that looks for a row by its place in the list (or for its absence) reads the same list with the cockpits on or off.
+ * Call it with the state the nodes were built from: a tile asks the latest state for its rows when it opens.
+ */
+export function openTiles(g: GameState, nodes: MenuNode[]): MenuNode[] {
+  return nodes.flatMap((n) => (n.type === 'menu' && n.id.startsWith('hub.') ? n.children(g) : [n]))
+}
 
 export function makeCharacter(overrides: Partial<Character> = {}): Character {
   return {

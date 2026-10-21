@@ -16,8 +16,9 @@ There are two ways. Pick one. Neither can be proven from the repo: the first rea
 
 ## Opening one
 
-Open the address from the run summary (or from Cloudflare) on your phone. Until the release commit every new
-feature is off, so a preview looks like the live game until you switch features on.
+Open the address from the run summary (or from Cloudflare) on your phone. A feature that ships dark looks like the
+live game until you switch it on. The eight R1 features are on by default from v4.1.0, and `?flags=none` shows the
+screens without them.
 
 ## Switching features on
 

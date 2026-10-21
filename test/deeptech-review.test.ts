@@ -21,6 +21,7 @@ import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
 import type { AnnualReportData, Asset, ChoiceModal, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
+import { openTiles } from './helpers'
 
 function adultIn(countryId: string, money: number, seed = 3, smarts = 90): GameState {
   const g = createNewLife({ seed, year: 2000, countryId })
@@ -480,7 +481,7 @@ describe('deep tech review: who can run the lab', () => {
     const a = company(g, 'robotics', { level: 50, venture: 10_000_000, raised: 10_000_000, series: 1 }, { share: 0.8 })
     g.character.age = 12
     g.character.job = null
-    const lab = businessAssetView(g, a).find((n) => n.id === `dt.lab.${a.id}`) as MenuGroup
+    const lab = openTiles(g, businessAssetView(g, a)).find((n) => n.id === `dt.lab.${a.id}`) as MenuGroup
     expect(lab.disabledReason?.(g)).toMatch(/18/)
     const row = all(g, lab.children(g)).find((n) => n.id === `dt.rd.proto.${a.id}`) as MenuAction
     expect(row.disabledReason?.(g)).toMatch(/18/)

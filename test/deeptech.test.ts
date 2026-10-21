@@ -27,6 +27,7 @@ import { runScript } from '../src/game/scripts'
 import { HINT_EMOJI } from '../src/game/talents'
 import type { AnnualReportData, Asset, ChoiceModal, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
+import { openTiles } from './helpers'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 import { marketDef } from '../src/game/business/competition-data'
 
@@ -249,7 +250,7 @@ describe('deep tech', () => {
   it('runs R&D programs that cost money every year and end in breakthroughs or setbacks', () => {
     const g = adultIn('us', 1_000_000, 8)
     const a = company(g, 'robotics', { venture: 50_000_000, series: 2 })
-    const lab = find(businessAssetView(g, a), `dt.lab.${a.id}`) as MenuGroup
+    const lab = find(openTiles(g, businessAssetView(g, a)), `dt.lab.${a.id}`) as MenuGroup
     expect(lab && lab.type === 'menu').toBe(true)
     const row = find(lab.children(g), `dt.rd.proto.${a.id}`) as MenuAction
     expect(row.disabledReason?.(g)).toBeNull()
@@ -266,7 +267,7 @@ describe('deep tech', () => {
     expect(t.done.includes('proto') || t.fails > 0).toBe(true)
     // The yearly Lab Report offers to start the recommended program in a free slot.
     g.queue = []
-    const lab2 = find(businessAssetView(g, a), `biz.plan.${a.id}`) as MenuAction
+    const lab2 = find(openTiles(g, businessAssetView(g, a)), `biz.plan.${a.id}`) as MenuAction
     lab2.run(g)
     const report = g.queue.find((m) => m.kind === 'choice' && m.scriptId === 'deeptech.labReport') as ChoiceModal | undefined
     if (report) {
@@ -583,7 +584,7 @@ describe('deep tech', () => {
 
     for (const [g, want] of [[plain, false], [hinted, true]] as const) {
       const a = company(g, 'semiconductor', { venture: 30_000_000, series: 1, rounds: [{ series: 1, year: g.year - 1, raised: 6_000_000, pre: 24_000_000, equity: 0.2, investor: 'Seed', down: false }], lastRoundYear: g.year - 1 })
-      const lab = find(businessAssetView(g, a), `dt.lab.${a.id}`) as MenuGroup
+      const lab = find(openTiles(g, businessAssetView(g, a)), `dt.lab.${a.id}`) as MenuGroup
       const programHints = lab.children(g).filter((n) => n.type === 'action' && n.hint?.(g))
       expect(programHints.length > 0, `program hint ${want}`).toBe(want)
       // A term sheet: one choice hinted with the talent, none without.
@@ -598,7 +599,7 @@ describe('deep tech', () => {
       // The annual report's best-plan hint.
       t.stage = 2
       t.done.push('volume')
-      const view = businessAssetView(g, a)
+      const view = openTiles(g, businessAssetView(g, a))
       const plan = find(view, `biz.plan.${a.id}`) as MenuAction
       plan.run(g)
       const report = g.queue.find((m) => m.kind === 'minigame')

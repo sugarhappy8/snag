@@ -5,8 +5,8 @@ sparkline, a KPI tile or a new row to a company's books. The tests named in each
 fails, the section says what it protects.
 
 A chart is data first. A pure builder in `src/game/charts/` reads settled state and returns a `ChartSpec`, which is plain
-JSON. A component in `src/ui/charts/` draws a spec. Nothing in between holds state. Two build flags (`src/game/flags.ts`, dark
-until the release commit) gate the screens: `chartKit` (chart rows in menus, ladders, stock sparklines, the Books group, the
+JSON. A component in `src/ui/charts/` draws a spec. Nothing in between holds state. Two build flags (`src/game/flags.ts`, on by
+default from v4.1.0) gate the screens: `chartKit` (chart rows in menus, ladders, stock sparklines, the Books group, the
 net-worth line) and `annualReport2` (the book's `data.chart`, the Year-End Desk, the company strip). Read a flag where you use
 it. The series writers and the kit are never flagged: history has to build up in every life, and the kit does nothing until a
 builder hands it a spec.

@@ -4,7 +4,7 @@ What v4.1.0 ("See it") added for finding things and seeing them at a glance, and
 you add a row to a root menu, a badge, a search word, a cockpit tile or anything that reads the pins. The test named in each
 section is the permanent guard; when one fails, the section says what it protects.
 
-Three build flags gate every screen below (`src/game/flags.ts`, dark until the lead's release commit). Read a flag where you
+Three build flags gate every screen below (`src/game/flags.ts`, on by default from v4.1.0). Read a flag where you
 use it, never in a module-level const, and set it in tests with `withFlags` or `setFlags` plus `resetFlags`. Never mock the module.
 
 | Flag | What it turns on | With it off |
@@ -13,8 +13,8 @@ use it, never in a module-level const, and set it in tests with `withFlags` or `
 | `navPalette` | The header search button, the palette (Ctrl or Cmd+K, "/"), the keys 1 to 4 and A, pins (the star in the breadcrumbs), recents | No button, no listener, no write to storage |
 | `cockpits` | The company screen as a short top plus four tiles, the cockpit above the list of each tab (wealth on Assets), the Needs you card on Relationships | The flat company list, no panel |
 
-`test/nav-release.test.ts` runs the aggregate checks with all three on, so it passes now and after the flip. It also checks
-that the legacy path (all three off) still equals v4.0.2.
+`test/nav-release.test.ts` runs the aggregate checks with all three on. It also checks that the legacy path (all three off)
+still equals v4.0.2.
 
 ## 1. The data-order rule
 
@@ -104,29 +104,17 @@ prints, a number that isn't finite is 0 and never `NaN`, and nothing reads a yea
 
 ## 9. The flip
 
-The lead turns on all eight flags and bumps the version in one commit (`test/flags.test.ts` fails on half of it). R1-N10
-simulated the flip for the three nav defaults in a scratch copy, and only for the files its spec lists: the nav files,
-`ui-return`, `ui-shell`, `time-machine`, `screens`, `talents-ui`, `main-character-ui`, `fidelity`, `company-dashboard`,
-`business`, `conglomerate-play`, `gamedev-review`, `fuzz-regressions` and `workshop`, plus the five seeded simulation tests.
-Those need no pinned number changed. That is a narrower claim than "CI stays green": it says nothing about a file outside
-the list.
+The eight flags went on in one commit with the version bump (`test/flags.test.ts` fails on half of it). Most tests already pinned
+the flag they test with `withFlags`. The ones that read a company screen at the top level did not, and the flip showed it: with
+`cockpits` on, `businessScreen` returns a short top plus four tiles (`hub.run`, `hub.money`, `hub.lead`, `hub.exit`), so a row
+that used to sit in the top-level list now sits inside a tile, and a test that finds it, or checks where it sits, gets nothing back.
 
-A second scratch pass ran 37 more files that call `businessAssetView` or `businessScreen` (the three defaults true, one file
-at a time, every other flag at its default). Five failed (eight cases), all for the same cause. With `cockpits` on, `businessScreen`
-returns a short top plus four tiles (`hub.run`, `hub.money`, `hub.lead`, `hub.exit`), so a node that used to sit in the
-top-level list now sits inside a tile, and a test that finds or indexes it at the top level gets nothing back:
+`openTiles(g, nodes)` in `test/helpers.ts` opens every `hub.` tile in place, which gives the old flat list in the old order. The
+assertions stayed; only the search goes through the tiles (`books-menu`, `devices-menu`, `deeptech`, `deeptech-review` and
+`share-classes-menu`). A test that looks for the absence of a row must open the tiles too, or it passes for the wrong reason.
 
-| File | Cases | What it reads at the top level |
-|---|---|---|
-| `test/devices-menu.test.ts` | "follows Products, for devices only" | `indexOf` of `biz.devices` next to `biz.products` (both are in the Run tile) |
-| `test/deeptech-review.test.ts` | "keeps an underage owner (an heir) out of the boardroom" | `.find` for `dt.lab` (the Run tile) |
-| `test/deeptech.test.ts` | "runs R&D programs that cost money every year..." and "shows Business-talent hints only with the talent" | a flat `nodes.find` for `dt.lab` (the Run tile), in both cases |
-| `test/books-menu.test.ts` | three cases of "the chartKit flag" | `biz.books` next to `biz.economicReport` (both are in the Money tile) |
-| `test/share-classes-menu.test.ts` | "is under Capital and beside Go Public" | `biz.ipo` and the row after it (the Exit tile) |
+The chart rows are the other change a test can see. With `chartKit` on, a list that used to hold three info rows can hold a
+fourth, the chart row. `devices-menu` pins `chartKit` off for the case that counts three spec lines and has a case for the chart row.
 
-`test/competition-era.test.ts` passes, and so do `own-trade`, `silicon-menu`, `board`, `ceo`, `conglomerate` and the
-`heavy-*` files, which read through deep walkers. Add these five files to the lead's pre-flip list, fix them in the release commit,
-and say why in the message: the assertion stays, only the search goes through the tile (a deep walk of the groups, or the
-tile's own `children`). Don't re-baseline anything. Before the flip, run every file that reads a company screen (grep the
-tests for `businessAssetView(`, `businessScreen(` and `biz.`), flipped, one file at a time; other tracks add company rows
-too, and the full suite in CI is the last word.
+When you add company rows, run the files that read a company screen (grep the tests for `businessAssetView(`, `businessScreen(`
+and `biz.`) with the defaults, not only with a flag pinned.

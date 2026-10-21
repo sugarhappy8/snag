@@ -25,21 +25,21 @@ export interface FlagDef {
 
 export const FLAG_DEFS = {
   // Chart rows in menus, ladders, stock sparklines, the Books group, the net-worth line (G.2, G.6, G.7).
-  chartKit: { default: false, ships: '4.1.0' },
+  chartKit: { default: true, ships: '4.1.0' },
   // Tabbed Annual Report data, the Year-End Desk and the company strip (G.4).
-  annualReport2: { default: false, ships: '4.1.0' },
+  annualReport2: { default: true, ships: '4.1.0' },
   // Regrouped Activities, "Needs you" badges, breadcrumbs (G.8).
-  navRegroup: { default: false, ships: '4.1.0' },
+  navRegroup: { default: true, ships: '4.1.0' },
   // Header search, palette, shortcuts, pins, recents (G.9).
-  navPalette: { default: false, ships: '4.1.0' },
+  navPalette: { default: true, ships: '4.1.0' },
   // Company, wealth and tab cockpits (G.5).
-  cockpits: { default: false, ships: '4.1.0' },
+  cockpits: { default: true, ships: '4.1.0' },
   // The ModalHost digest merge (G.11 step 1).
-  noticeDigest: { default: false, ships: '4.1.0' },
+  noticeDigest: { default: true, ships: '4.1.0' },
   // Minor notices to the inbox, the Settings section and the header bell (G.11 step 2).
-  quietInbox: { default: false, ships: '4.1.0' },
+  quietInbox: { default: true, ships: '4.1.0' },
   // The IndexedDB boot (K.5a).
-  idbSaves: { default: false, ships: '4.1.0' },
+  idbSaves: { default: true, ships: '4.1.0' },
 } as const satisfies Record<string, FlagDef>
 
 export type FlagKey = keyof typeof FLAG_DEFS

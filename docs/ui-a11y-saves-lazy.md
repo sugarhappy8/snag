@@ -133,14 +133,13 @@ open or read, fail a write, corrupt a read-back, or answer late.
 
 ### The flag
 
-`FLAGS.idbSaves` is `false` until the lead's release commit. With it off, `hydrateSaves({ idb: false })` still diagnoses and
-keeps copies, but all saving stays on localStorage and writes stay synchronous, as in v4.0.2. To try it before release, open
-the game with `?flags=idbSaves`. Tests turn it on with `withFlags({ idbSaves: true }, ...)`.
+`FLAGS.idbSaves` is `true` from v4.1.0. With it off, `hydrateSaves({ idb: false })` still diagnoses and keeps copies, but all
+saving stays on localStorage and writes stay synchronous, as in v4.0.2. To see that path, open the game with
+`?flags=-idbSaves` (see Rollback for the hazard). Tests set it with `withFlags({ idbSaves: true }, ...)` or `false`.
 
-The parameter is read from the URL only; nothing remembers it. On a device with a real save, a trial has the same hazard
-as a release (see Rollback): open the game with `?flags=idbSaves` on every visit, or set `localStorage['anotherlife.flags']`
-to `idbSaves` once. After one visit with the parameter and a later one without it, Home is empty and offers a new game
-while the life sits in IndexedDB.
+The parameter is read from the URL only; nothing remembers it. On a device whose save has moved, a visit with
+`?flags=-idbSaves` or `?flags=none` finds Home empty and offers a new game while the life sits in IndexedDB. A visit
+without the parameter brings the life back.
 
 ### After boot
 
