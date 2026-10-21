@@ -106,13 +106,23 @@ export function standingMenu<S extends CareerBase>(o: {
   }
   /** A chart row's words (R1-C14): the spec's summary, held to the line cap like every other row of the card. */
   const chartText = (_g: GameState, spec: ChartSpec | null): string => fit(spec?.summary ?? '', LINE)
+  /**
+   * The peer ladder's words (R1-C14). `st.top` holds rivals only, so the best rival is "first" only while the player is
+   * not: a player who ranks 1 (a tie with the leader ranks 1 too) is first, and the best rival is the one who is next.
+   */
+  const peerSummary = (st: Standing): string => {
+    const lead = st.top[0]
+    const rank = `You rank ${st.rank} of ${st.of}.`
+    if (!lead) return rank
+    return fit(`${rank} ${lead.name} is ${st.rank === 1 ? 'next' : 'first'} with ${lead.score}.`, 120)
+  }
   /** The peer ladder (R1-C14): the top peers and you, by score. */
   const peerLadder = (st: Standing): ChartSpec | null => {
     const spec = ladderSpec({
       title: 'Where you stand among peers',
       unit: 'count',
       rows: [...st.top.map((p) => ({ id: p.id, name: p.name, value: p.score })), { id: 'you', name: 'You', value: st.me, you: true }],
-      summary: fit(`You rank ${st.rank} of ${st.of}. ${st.top[0]?.name ?? 'Nobody'} is first with ${st.top[0]?.score ?? 0}.`, 120),
+      summary: peerSummary(st),
     })
     // Only the top five are listed, so below them you are further down than the ladder's own count says.
     const me = spec?.rows?.find((r) => r.you === true)

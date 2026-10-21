@@ -18,7 +18,11 @@ import { companyDef, exchangeInfo, exchangeYear } from '../src/game/invest/engin
 import { addMarketShock } from '../src/game/invest/shocks'
 import { dashboardMenu } from '../src/game/nation/menu'
 import { editPolicy, writePolicy } from '../src/game/nation/state'
+import { standingMenu } from '../src/game/special/kit/menu'
+import { standingOf } from '../src/game/special/kit/rivals'
+import { MUSIC_SPEC } from '../src/game/special/music-market'
 import { musicStanding } from '../src/game/special/music-menu'
+import { musicStore, type MusicState } from '../src/game/special/music-state'
 import { timelineFamily } from '../src/game/timeMachine'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../src/game/types'
 import { infoChart, infoText } from '../src/ui/components/menuModel'
@@ -308,6 +312,114 @@ describe('the wired charts', () => {
         expect(DASHES.test(text), row.id).toBe(false)
         expect(text, row.id).not.toMatch(/NaN|undefined|Infinity|\[object/)
       }
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2b. The peer ladder says where the player really stands
+
+describe('the peer ladder on a career report card', () => {
+  // The real music field, with the player's score chosen by the test: above everyone, level with the leader, in the
+  // middle of the five listed, and below all of them. The memory is the career's own, so the expected standing is the
+  // one the menu works out.
+  const field = (): { st: ReturnType<typeof standingOf>; at: (score: number) => MenuNode[] } => {
+    const memory = musicStore.view(music).memory
+    const st = standingOf(music, MUSIC_SPEC, 0, memory)
+    const at = (score: number): MenuNode[] =>
+      withFlags(ON, () =>
+        standingMenu<MusicState>({
+          id: 'peerprobe',
+          label: 'Probe',
+          emoji: '\u{1F3C6}',
+          store: musicStore,
+          standingLabel: 'Standing',
+          incomeLabel: 'Income',
+          peers: { spec: MUSIC_SPEC, score: () => score },
+        }).children(music),
+      )
+    return { st, at }
+  }
+  const ladderOf = (kids: MenuNode[]): { row: MenuInfo; spec: ChartSpec } => {
+    const row = kids.find((n): n is MenuInfo => n.id === 'peerprobe.peers.chart' && isInfo(n))!
+    expect(row).toBeDefined()
+    const spec = chartOf(row, music)
+    expectValid(spec)
+    return { row, spec }
+  }
+  const mineOf = (spec: ChartSpec) => {
+    const mine = spec.rows!.filter((r) => r.you === true)
+    expect(mine).toHaveLength(1)
+    return mine[0]!
+  }
+
+  it('is a real field for the probe: the five listed peers, more rivals behind them', () => {
+    const { st } = field()
+    expect(st.top).toHaveLength(5)
+    expect(st.of).toBeGreaterThan(8)
+  })
+
+  it('says the player is first, and who is next, when the player tops the field', () => {
+    const { st, at } = field()
+    const { row, spec } = ladderOf(at(1000))
+    const lead = st.top[0]!
+    expect(spec.summary).toBe(`You rank 1 of ${st.of}. ${lead.name} is next with ${lead.score}.`)
+    // No sentence that puts a rival first while the player is first.
+    expect(spec.summary).not.toMatch(/is first/)
+    expect(mineOf(spec).rank).toBe(1)
+    // The visible fallback row on the report card reads the same way.
+    const text = infoText(row, music)
+    expect(text.length).toBeLessThanOrEqual(90)
+    expect(text.startsWith(`You rank 1 of ${st.of}.`)).toBe(true)
+    expect(text).not.toMatch(/is first/)
+  })
+
+  it('says the player is first when level with the leader (a tie ranks the player first)', () => {
+    const { st, at } = field()
+    const lead = st.top[0]!
+    const { spec } = ladderOf(at(lead.score))
+    expect(standingOf(music, MUSIC_SPEC, lead.score, musicStore.view(music).memory).rank).toBe(1)
+    expect(spec.summary).toBe(`You rank 1 of ${st.of}. ${lead.name} is next with ${lead.score}.`)
+    expect(spec.summary).not.toMatch(/is first/)
+    expect(mineOf(spec).rank).toBe(1)
+  })
+
+  it('names the leader as first when the player is among the five but not on top', () => {
+    const { st, at } = field()
+    // Level with the first listed peer who scores below the leader: somebody is above, and at most four are.
+    const level = st.top.find((p) => p.score < st.top[0]!.score)
+    expect(level).toBeDefined()
+    const score = level!.score
+    const rank = standingOf(music, MUSIC_SPEC, score, musicStore.view(music).memory).rank
+    expect(rank).toBeGreaterThan(1)
+    expect(rank).toBeLessThanOrEqual(5)
+    const { row, spec } = ladderOf(at(score))
+    const lead = st.top[0]!
+    expect(spec.summary).toBe(`You rank ${rank} of ${st.of}. ${lead.name} is first with ${lead.score}.`)
+    expect(mineOf(spec).rank).toBe(rank)
+    expect(infoText(row, music).startsWith(`You rank ${rank} of ${st.of}.`)).toBe(true)
+  })
+
+  it('gives the player row the true rank when the player is below the five listed', () => {
+    const { st, at } = field()
+    const truth = standingOf(music, MUSIC_SPEC, 0, musicStore.view(music).memory)
+    // Behind the five listed peers and the ladder's own count (six rows) cannot tell the whole story.
+    expect(truth.rank).toBeGreaterThan(6)
+    const { spec } = ladderOf(at(0))
+    expect(mineOf(spec).rank).toBe(truth.rank)
+    expect(spec.summary).toBe(`You rank ${truth.rank} of ${st.of}. ${st.top[0]!.name} is first with ${st.top[0]!.score}.`)
+    // The rivals above keep their own places, and none of them claims the player's.
+    const others = spec.rows!.filter((r) => r.you !== true).map((r) => r.rank)
+    expect(others).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('keeps every peer ladder summary short, dash-free and in the plain voice', () => {
+    const { st, at } = field()
+    for (const score of [1000, st.top[0]!.score, st.top[4]!.score, 0]) {
+      const { row, spec } = ladderOf(at(score))
+      expect(spec.summary.length).toBeLessThanOrEqual(120)
+      expect(DASHES.test(spec.summary)).toBe(false)
+      expect(infoText(row, music).length).toBeLessThanOrEqual(90)
     }
   })
 })
