@@ -218,10 +218,11 @@ describe('snapshots', () => {
     // Nothing is left behind for pruned years.
     const records = [...storage.data.keys()].filter((k) => k.startsWith(`${TM_PREFIX}s|`))
     expect(records).toHaveLength(tm.TIME_MACHINE_STOPS)
-    // Each closing world becomes the next opening world without normalization
-    // changing valid historical values and forcing another full frame into storage.
+    // A snapshot is the codec's head plus chunks (R2-S9): the world economy is one `world.<sum>` chunk, and the world changes every
+    // year, so each snapshot has one of its own. (v4.1.1 stored frames, and last year's closing world was next year's `previous`,
+    // which made it TIME_MACHINE_STOPS + 1 frames; `previous` is no longer shared, and R2-S10 prunes it.)
     const worldFrames = [...storage.data.keys()].filter(k => k.startsWith(TM_PREFIX) && k.includes('world.'))
-    expect(worldFrames).toHaveLength(tm.TIME_MACHINE_STOPS + 1)
+    expect(worldFrames).toHaveLength(tm.TIME_MACHINE_STOPS)
     if (typeof CompressionStream !== 'undefined') expect(records.every(key => storage.data.get(key)?.startsWith('gz2:'))).toBe(true)
     // The index lists the summary the sheet shows.
     expect(store.getApp().timeStops.at(-1)).toMatchObject({ age: game().character.age, year: game().year })

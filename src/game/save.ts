@@ -2,7 +2,8 @@
 // localStorage the ribbon collection, the graveyard and the Time Machine's start-of-year snapshots.
 import { readSpark } from './life-series'
 import { refreshRoyalCareers } from './npc-lives'
-import { isFiniteNumber, isGameShell, isLoadableGame, isRecord, migrateLegacyAi, migrateSave } from './save-schema'
+import { assembleSave, encodeSave, isChunkedHead, neededChunkIds, textSum } from './save-codec'
+import { isFiniteNumber, isRecord, migrateLegacyAi, migrateSave, SAVE_SCHEMA } from './save-schema'
 import { readRecord, removeRecord, saveRecord, setLocalQuotaEvictor } from './save-store'
 import { refreshFamilyTalents } from './talents'
 import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
@@ -210,9 +211,12 @@ export function clearRibbonsAndGraveyard(): void {
 // - Payloads live in IndexedDB (plenty of room). Without it they fall back to localStorage
 //   under LOCAL_SNAPSHOT_BUDGET characters, giving their room back whenever the main save
 //   needs it, and failing that to memory (lost on reload).
-// - They are compact: the life log is most of a late-game save (about 70% of the ~100-300 KB
-//   of a 70-year life), so each year of it is stored once as a chunk shared by every snapshot
-//   that contains it unchanged. Ten snapshots cost little more than one.
+// - They are compact: a snapshot is what the save codec makes of the state (save-codec.ts): a head
+//   record plus content-addressed chunks (the world economy, a decade of the life log, any
+//   world shard). A chunk is stored once however many snapshots hold it unchanged, so ten
+//   snapshots cost little more than one, and every record of 1,000 characters or more is
+//   compressed. Snapshots of the schema-2 build (v4.1.1) used another layout (the log as a list
+//   of year chunk ids, the economy as three kinds of frame) and are still read (unpackLegacySnapshot).
 // - A small index in localStorage lists the snapshots (age, year, a summary, the chunks each
 //   one uses), so menus can read it synchronously and it survives reloads.
 // - Every storage operation runs one at a time on a promise chain; snapshotWritesSettled()
@@ -552,64 +556,29 @@ function chunkKey(lifeId: string, id: string): string {
   return `l|${lifeId}|${id}`
 }
 
-/** Two independent 32-bit FNV-style hashes plus the length: plenty for a few hundred chunks. */
-function hashText(s: string): string {
-  let a = 0x811c9dc5
-  let b = 0x01000193 ^ s.length
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i)
-    a = Math.imul(a ^ c, 16777619)
-    b = Math.imul(b ^ c, 0x5bd1e995)
-    b ^= b >>> 13
-  }
-  return `${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}${s.length.toString(36)}`
-}
+/** A record or chunk of at least this many characters is stored compressed: snapshots compete for one fixed storage budget. */
+const SNAPSHOT_GZ_MIN = 1000
 
 interface Packed {
   lifeId: string
   age: number
   stop: TimeStop
-  /** The state with its log replaced by chunk ids (same key order as the original). */
+  /** The head of the codec's encoding: valid JSON, schema 3, the core with placeholders, then the chunk manifest and the slice versions. */
   record: string
+  /** Id of the head record: the age and the sum of its text, so a write never overwrites a live snapshot. */
   rec: string
+  /** Chunk id and plain text, in manifest order. The id names the content, so two snapshots that share a part share its id. */
   chunks: [string, string][]
 }
 
+/**
+ * The state as the codec writes it: a head and its chunks. Any slice of the table (the world economy, a decade of the log, a
+ * `world` shard, an entity record) is a chunk, so a part that did not change since the last snapshot is the same id and is not
+ * stored again. The encoder keeps its texts by object identity, so a part that a save and a snapshot both hold is stringified once.
+ */
 function pack(g: GameState): Packed {
-  const chunks: [string, string][] = []
-  const ids: string[] = []
-  for (const year of g.log) {
-    const json = JSON.stringify(year)
-    const id = `${year.age}.${hashText(json)}`
-    ids.push(id)
-    chunks.push([id, json])
-  }
-  // The next year's opening world is this year's closing world. Share those large
-  // immutable frames across time stops just like log years, preserving exact JSON.
-  const flags = { ...g.flags }, world = flags.worldEconomy
-  if (isRecord(world) && (world.v === 1 || world.v === 2)) {
-    const packed = { ...world }
-    for (const key of ['countries', 'previous']) if (isRecord(packed[key])) {
-      const json = JSON.stringify(packed[key]), id = `world.${hashText(json)}`
-      chunks.push([id, json]); packed[key] = id
-    }
-    if (isRecord(packed.history)) {
-      const frames = new Map<number, Record<string, unknown>>()
-      for (const [country, points] of Object.entries(packed.history)) if (Array.isArray(points)) for (const point of points) if (isRecord(point) && isFiniteNumber(point.year)) {
-        const frame = frames.get(point.year) ?? {}
-        frame[country] = point; frames.set(point.year, frame)
-      }
-      const historyIds = [...frames].sort(([a], [b]) => a - b).map(([, frame]) => {
-        const json = JSON.stringify(frame), id = `history.${hashText(json)}`
-        chunks.push([id, json]); return id
-      })
-      packed.history = { snapshotYears: historyIds, countryOrder: Object.keys(packed.history) }
-    }
-    flags.worldEconomy = packed as typeof world
-  }
-  const record = JSON.stringify({ ...g, log: ids, flags })
-  const rec = `${g.character.age}.${hashText(record)}`
-  return { lifeId: g.lifeId, age: g.character.age, stop: stopOf(g), record, rec, chunks }
+  const enc = encodeSave(g)
+  return { lifeId: g.lifeId, age: g.character.age, stop: stopOf(g), record: enc.head, rec: `${g.character.age}.${textSum(enc.head)}`, chunks: [...enc.chunks] }
 }
 
 function referencedChunks(): Set<string> {
@@ -644,11 +613,10 @@ function addStop(stop: StoredStop): void {
 }
 
 async function writeSnapshot(p: Packed, at: number): Promise<boolean> {
-  // World frames are shared separately, so each remaining record is often only
-  // 10–30 KB. Compress these too: ten small repeated family/asset records still
-  // compete with the expanding world for the same fixed browser-storage budget.
-  const encodedRecord = await encodeSnapshotRecord(p.record, 1000)
-  const encodedChunks = await Promise.all(p.chunks.map(async ([id, json]) => [id, id.startsWith('world.') || id.startsWith('history.') ? await encodeSnapshotRecord(json, 1000) : json] as [string, string]))
+  // Every part of 1,000 characters or more is compressed, the head and the chunks alike: ten small repeated family and asset
+  // records still compete with the expanding world for the same fixed browser-storage budget.
+  const encodedRecord = await encodeSnapshotRecord(p.record, SNAPSHOT_GZ_MIN)
+  const encodedChunks = await Promise.all(p.chunks.map(async ([id, text]) => [id, await encodeSnapshotRecord(text, SNAPSHOT_GZ_MIN)] as [string, string]))
   const b = await backend()
   const current = () => epoch === at && index.lifeId === p.lifeId
   if (!current()) return false
@@ -751,6 +719,64 @@ export function takeSnapshot(g: GameState): Promise<boolean> {
   return enqueue(() => writeSnapshot(p, at), false)
 }
 
+/**
+ * The snapshots of the schema-2 build (v4.1.1) have no `chunks` key: their record holds the life log as a list of year chunk ids,
+ * and the world economy's `countries` and `previous` as `world.<hash>` frame ids, its `history` as one frame per year. Put the
+ * parts back, exactly as that build did (the Time Machine fixture of R2-S2 is the guard). The record that comes back is still of
+ * the old schema; loadSnapshot hands it to migrateSave. Null when a part is missing or is not what that build wrote.
+ */
+async function unpackLegacySnapshot(g: GameState, lifeId: string, b: SnapshotBackend): Promise<GameState | null> {
+  const ids: unknown = g.log
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) return null
+  const parts = await b.get(ids.map((id: string) => chunkKey(lifeId, id)))
+  if (parts.some((p) => p === null)) return null
+  g.log = parts.map((p) => JSON.parse(p as string))
+  const world = g.flags?.worldEconomy
+  if (isRecord(world) && (world.v === 1 || world.v === 2)) {
+    for (const key of ['countries', 'previous']) if (typeof world[key] === 'string' && world[key].startsWith('world.')) {
+      const [frame] = await b.get([chunkKey(lifeId, world[key])])
+      if (!frame) return null
+      world[key] = JSON.parse(await decodeSnapshotRecord(frame))
+    }
+    const history = world.history
+    if (isRecord(history) && Array.isArray(history.snapshotYears) && Array.isArray(history.countryOrder)) {
+      if (!history.snapshotYears.every(id => typeof id === 'string' && id.startsWith('history.')) || !history.countryOrder.every(id => typeof id === 'string')) return null
+      const records = await b.get(history.snapshotYears.map(id => chunkKey(lifeId, id as string)))
+      const restored: Record<string, Json[]> = Object.fromEntries(history.countryOrder.map(id => [id, []]))
+      for (const row of records) {
+        if (!row) return null
+        const frame = JSON.parse(await decodeSnapshotRecord(row)) as Record<string, Json>
+        for (const country of history.countryOrder as string[]) if (frame[country] !== undefined) restored[country].push(frame[country])
+      }
+      world.history = restored
+    }
+  }
+  return g
+}
+
+/**
+ * The chunks a head names, as plain text by id: null for one the backend does not hold. A stored text that will not inflate is
+ * handed over as stored, which is not what its manifest entry says, so the codec calls it hostile and the snapshot is lost.
+ */
+async function chunkTexts(head: Record<string, unknown>, lifeId: string, b: SnapshotBackend): Promise<Map<string, string | null>> {
+  const ids = neededChunkIds(head)
+  const stored = await b.get(ids.map((id) => chunkKey(lifeId, id)))
+  const texts = new Map<string, string | null>()
+  for (let i = 0; i < ids.length; i++) {
+    const text = stored[i]
+    if (typeof text !== 'string') {
+      texts.set(ids[i], null)
+      continue
+    }
+    try {
+      texts.set(ids[i], await decodeSnapshotRecord(text))
+    } catch {
+      texts.set(ids[i], text)
+    }
+  }
+  return texts
+}
+
 /** The life exactly as it was at the start of age `age`, or null if it can't be loaded. */
 export function loadSnapshot(lifeId: string, age: number): Promise<GameState | null> {
   return enqueue(async () => {
@@ -758,37 +784,30 @@ export function loadSnapshot(lifeId: string, age: number): Promise<GameState | n
     if (!stop) return null
     const b = await backend()
     if (index.where !== b.name) return null
-    const [record] = await b.get([recordKey(lifeId, stop.rec)])
-    if (!record) return null
-    const g = JSON.parse(await decodeSnapshotRecord(record)) as GameState
-    const ids: unknown = g.log
-    if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) return null
-    const parts = await b.get(ids.map((id: string) => chunkKey(lifeId, id)))
-    if (parts.some((p) => p === null)) return null
-    g.log = parts.map((p) => JSON.parse(p as string))
-    const world = g.flags?.worldEconomy
-    if (isRecord(world) && (world.v === 1 || world.v === 2)) {
-      for (const key of ['countries', 'previous']) if (typeof world[key] === 'string' && world[key].startsWith('world.')) {
-        const [frame] = await b.get([chunkKey(lifeId, world[key])])
-        if (!frame) return null
-        world[key] = JSON.parse(await decodeSnapshotRecord(frame))
-      }
-      const history = world.history
-      if (isRecord(history) && Array.isArray(history.snapshotYears) && Array.isArray(history.countryOrder)) {
-        if (!history.snapshotYears.every(id => typeof id === 'string' && id.startsWith('history.')) || !history.countryOrder.every(id => typeof id === 'string')) return null
-        const records = await b.get(history.snapshotYears.map(id => chunkKey(lifeId, id as string)))
-        const restored: Record<string, Json[]> = Object.fromEntries(history.countryOrder.map(id => [id, []]))
-        for (const row of records) {
-          if (!row) return null
-          const frame = JSON.parse(await decodeSnapshotRecord(row)) as Record<string, Json>
-          for (const country of history.countryOrder as string[]) if (frame[country] !== undefined) restored[country].push(frame[country])
-        }
-        world.history = restored
-      }
+    const [stored] = await b.get([recordKey(lifeId, stop.rec)])
+    if (!stored) return null
+    const head: unknown = JSON.parse(await decodeSnapshotRecord(stored))
+    if (!isRecord(head)) return null
+    // A snapshot of a later schema is not ours to read: say so before any chunk is fetched.
+    if (isFiniteNumber(head.schemaVersion) && head.schemaVersion > SAVE_SCHEMA) return null
+    let record: unknown
+    let versions: unknown
+    if (isChunkedHead(head)) {
+      // A snapshot is the life exactly as it was, so a part that is missing, hostile or damaged makes it unreadable (the caller
+      // forgets that stop); the codec never half applies a chunk.
+      const assembled = assembleSave(head, await chunkTexts(head, lifeId, b))
+      if (assembled.kind !== 'ready' || assembled.lost.length > 0) return null
+      record = assembled.game
+      versions = assembled.versions
+    } else {
+      record = await unpackLegacySnapshot(head as unknown as GameState, lifeId, b)
     }
-    if (!isGameShell(g)) return null
-    const migrated = migrateLegacyAi(g)
-    if (!isLoadableGame(migrated) || migrated.lifeId !== lifeId || migrated.character.age !== age || !migrated.character.alive) return null
+    // Every restore goes through the migration chain, the old layout included (F39): a schema-2 snapshot comes back at the
+    // current schema, a current one is left as it is, and one from a later schema is refused.
+    const saved = migrateSave(record, { versions })
+    if (saved.kind !== 'ready') return null
+    const migrated = saved.game
+    if (migrated.lifeId !== lifeId || migrated.character.age !== age || !migrated.character.alive) return null
     refreshRoyalCareers(migrated)
     refreshFamilyTalents(migrated)
     return migrated

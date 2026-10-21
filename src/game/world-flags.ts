@@ -169,7 +169,6 @@ export const WHOLE_FLAGS_SITES: Readonly<Record<string, number>> = {
   'src/game/life.ts':                       2,
   'src/game/nation/state.ts':               1,
   'src/game/save-schema.ts':                4,
-  'src/game/save.ts':                       3,
   'src/game/types.ts':                      1,
   'src/ui/components/ProfileSheet.tsx':     1,
 }
