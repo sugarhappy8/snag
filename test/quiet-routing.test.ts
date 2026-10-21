@@ -179,7 +179,8 @@ describe('when it does nothing', () => {
   })
 
   it('keeps every notice while the quietInbox flag is off', () => {
-    resetFlags()
+    // Pinned off, so the case means the same thing before and after the release commit flips the default.
+    setFlags({ quietInbox: false })
     setQueue([minor('m1'), minor('m2')])
     expect(ids(game().queue)).toEqual(['m1', 'm2'])
     expect(game().flags.inbox).toBeUndefined()
