@@ -135,7 +135,7 @@ describe('normalizeBiz', () => {
     expect(normalizeBiz({ ...base, sector: { v: 1, family: 'food' } }, 2024).sector).toEqual({ v: 1, family: 'food' })
     for (const bad of [[], 7, 'x', null]) expect('sector' in normalizeBiz({ ...base, sector: bad as Json }, 2024)).toBe(false)
     expect('sector' in normalizeBiz({ ...base }, 2024)).toBe(false)
-    expect(SAVE_SCHEMA).toBe(2)
+    expect(SAVE_SCHEMA).toBe(3)
     expect(BIZ_VERSION).toBe(2)
   })
 })

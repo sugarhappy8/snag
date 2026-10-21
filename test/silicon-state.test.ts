@@ -42,5 +42,5 @@ describe('the saved silicon state', () => {
     const before = JSON.stringify(b.tech); expect(siliconView(t).goodwill).toBe(50); expect(JSON.stringify(b.tech)).toBe(before)
     siliconOf(t).lanes.accel = 0.2; expect(techView(bizOf(g, a)).silicon?.lanes).toEqual({ accel: 0.2 })
   })
-  it('leaves TECH_VERSION at 4 and SAVE_SCHEMA at 2', () => { expect([TECH_VERSION, SAVE_SCHEMA]).toEqual([4, 2]) })   // SAVE_SCHEMA from src/game/core
+  it('leaves TECH_VERSION at 4 and has SAVE_SCHEMA at 3', () => { expect([TECH_VERSION, SAVE_SCHEMA]).toEqual([4, 3]) })   // SAVE_SCHEMA from src/game/core
 })

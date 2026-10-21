@@ -122,8 +122,8 @@ describe('time machine and saves', () => {
     const now = structuredClone(g); now.year = 2034; now.flags.techWaves = J([W({ hype: 0.1 })]); const back = arriveInPast(now, snap)
     expect(waveDraw(back, 'w', 2030)).toEqual(waveDraw(g, 'w', 2030)); expect(waveDraw(back, 'w', 2031).u).not.toBe(waveDraw(g, 'w', 2031).u); expect(readTechWaves(back)[0].hype).toBe(0.8)
   })
-  it('SAVE_SCHEMA stays 2 and an old save plays years with no wave state', () => {
-    expect(SAVE_SCHEMA).toBe(2)
+  it('SAVE_SCHEMA is 3 and an old save plays years with no wave state', () => {
+    expect(SAVE_SCHEMA).toBe(3)
     const game = loadFixtureV1(); for (let i = 0; i < 3; i++) { game.queue = []; ageUp(game) }
     expect(['techWaves', 'techBase'].filter((k) => k in game.flags)).toEqual([])
   })

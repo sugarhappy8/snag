@@ -113,7 +113,7 @@ describe('normalizeBiz and the devices fields (RF1)', () => {
   })
 
   it('keeps the save schema and the business version', () => {
-    expect(SAVE_SCHEMA).toBe(2)
+    expect(SAVE_SCHEMA).toBe(3)
     expect(BIZ_VERSION).toBe(2)
   })
 

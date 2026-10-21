@@ -1217,8 +1217,8 @@ describe('the save.ts facade', () => {
     expect(save.loadGame()?.schemaVersion).toBe(SAVE_SCHEMA)
   })
 
-  it('loads nothing from a save with schemaVersion 3, and leaves it as it is', () => {
-    const fromLater = JSON.stringify({ ...(JSON.parse(fixture) as Record<string, unknown>), schemaVersion: 3 })
+  it('loads nothing from a save with a later schemaVersion, and leaves it as it is', () => {
+    const fromLater = JSON.stringify({ ...(JSON.parse(fixture) as Record<string, unknown>), schemaVersion: SAVE_SCHEMA + 1 })
     storage.data.set(SAVE_KEY, fromLater)
     expect(save.loadGame()).toBeNull()
     expect(storage.data.get(SAVE_KEY)).toBe(fromLater)
