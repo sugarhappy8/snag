@@ -49,3 +49,9 @@ you opened a menu) and for words (one more line in a pool must not change the ne
 - `test/r2-text-isolation.test.ts` plays lives with one extra text draw every year. It must change text and nothing else.
 - `test/fixtures/r2-parity.json` is a canary: `g.rng` and ten slices after every year of 12 lives. A moved canary means a draw
   was added, removed or reordered. Do not re-record it without a reason: `R2_PARITY_RECORD=update` with `R2_PARITY_REASON`.
+- `test/stream-isolation.test.ts` adds one draw to one stream in one year and checks that only the slices of that stream's row in
+  `STREAM_SLICES` (`test/stream-tap.ts`) change. A new `stream(g, 'tag', ...)` or `outcomeStream(g, 'tag', ...)` needs a row in the
+  same commit, and the tag must be a string literal so the table can see it. A leak outside the row is a bug, never a reason to
+  widen the row.
+- `test/replay-purity.test.ts` ages one life five more years three ways (a `structuredClone`, a JSON reload through `migrateSave`,
+  a Time Machine snapshot loaded at the same age) and compares the nine slice digests each year. A failure is a purity bug.
