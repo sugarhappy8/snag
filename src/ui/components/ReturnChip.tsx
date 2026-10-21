@@ -44,10 +44,10 @@ export function resolveReturnPoint(g: GameState, point: ReturnPoint): ResolvedRe
 
 /**
  * Opening a menu sheet yourself means you've moved on, so the chip goes. A peek at your own
- * profile (no actions in it) keeps it: close the profile and the chip is still there.
+ * profile or the inbox (no menu to leave from in either) keeps it: close the sheet and the chip is still there.
  */
 export function openingClearsReturn(sheet: string): boolean {
-  return sheet !== 'profile'
+  return sheet !== 'profile' && sheet !== 'inbox'
 }
 
 /** "Activities › Computer › Ventures › InvoiceSloth" (for screen readers and the tooltip). */
