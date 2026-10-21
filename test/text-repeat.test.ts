@@ -15,7 +15,10 @@ import { readTies, updateTies } from '../src/game/events/wealth-core'
 import { setAllowance } from '../src/game/events/wealth-kids'
 import { GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../src/game/history/events-future'
 import { createPerson } from '../src/game/people'
+import { PRO_SEASON_LINES, yearlyAthlete } from '../src/game/special/athlete'
+import { hire } from '../src/game/special/common'
 import { sportsProfile, yearlySponsors } from '../src/game/special/sports-core'
+import { withPickMode } from '../src/game/text/pick'
 import { fillSlots } from '../src/game/text/state'
 import { STATE_TABLE } from '../src/game/text/state-table'
 import type { GameState } from '../src/game/types'
@@ -193,6 +196,16 @@ const FAMILIES: readonly Family[] = [
     was: '\u{1F4F0} 2040: The Summer Olympics open.',
     slots: {},
   },
+  {
+    // The 13 probe lives after wave 0 never play a pro season, so this row is green before the change (R1 measured 20); the
+    // site is converted all the same and played directly below.
+    name: 'pro season',
+    re: /^(i played my #\w* pro season with the |that was my #\w* pro season, this one with the |my #\w* year as a pro was with the |my #\w* pro season is in the books, with the )/,
+    maxExtra: 3,
+    pools: [PRO_SEASON_LINES],
+    was: 'I played my 3rd pro season with the Seoul Falcons. I hit .310 with 22 home runs.',
+    slots: { nth: '3rd', team: 'Seoul Falcons', stats: 'I hit .310 with 22 home runs.' },
+  },
 ]
 
 const family = (name: string): Family => FAMILIES.find((f) => f.name === name)!
@@ -332,5 +345,78 @@ describe('R2-P9 sites, played directly', () => {
     expect(said.length, said.join(' | ')).toBeGreaterThanOrEqual(2)
     expect(said.length, said.join(' | ')).toBeLessThanOrEqual(3)
     for (let i = 1; i < said.length; i++) expect(said[i]).not.toBe(said[i - 1])
+  })
+})
+
+// ---- R2-P10: the event lines that got variants, played directly -------------------------------------------------------------
+
+/**
+ * A site's line is text and nothing else: the same scenario with the text kit forced to plain pick and then to the line after
+ * it moves neither g.rng nor any state but the log and the text memory. `make` must build the same game every time.
+ */
+function leaksNothing(make: () => GameState, run: (g: GameState) => void): void {
+  const plain = make()
+  withPickMode('plain', () => run(plain))
+  const rotate = make()
+  withPickMode('rotate', () => run(rotate))
+  expect(rotate.rng, 'g.rng').toBe(plain.rng)
+  const state = (g: GameState): string => {
+    const { log: _log, flags, ...rest } = g
+    const { textMem: _mem, ...others } = flags
+    return JSON.stringify({ ...rest, flags: others })
+  }
+  expect(state(rotate), 'state other than the log and the text memory').toBe(state(plain))
+}
+
+/** The text of a line with every {slot} as any run of characters: how a pool's line is recognised in the log. */
+function lineRe(line: string): RegExp {
+  return new RegExp(`^${line.split(/\{\w+\}/).map(escapeRe).join('.+')}$`)
+}
+
+describe('R2-P10 sites, played directly', () => {
+  function athleteLife(): GameState {
+    const g = makeTestGame(SPOKEN_LIFE, { age: 24, money: 100_000, countryId: 'us' })
+    g.year = 2026
+    g.log = [{ age: 24, year: g.year, entries: [] }]
+    hire(g, {
+      defId: 'athlete',
+      title: 'Baseball Player',
+      company: 'Arizona Rattlers',
+      salary: 900_000,
+      data: { league: 'diamond', team: 'Arizona Rattlers', teamStrength: 60, position: 'Pitcher', contractYears: 40, doping: false, injured: 0, practiced: [], standings: [], champion: null },
+    })
+    return g
+  }
+
+  function playSeasons(g: GameState, years: number): void {
+    for (let y = 0; y < years; y++) {
+      g.year += 1
+      g.character.age += 1
+      g.yearActions = {}
+      yearlyAthlete(g)
+      g.queue = []
+    }
+  }
+
+  it('a pro career reads its seasons in different words: every frame within the first cycle, never the same one twice running', () => {
+    const g = athleteLife()
+    playSeasons(g, 9)
+    const said = lines(g).filter((t) => /pro season|as a pro/.test(t))
+    expect(said.length, said.join(' | ')).toBeGreaterThanOrEqual(8)
+    // The first cycle of the bag deals each frame once; none is dealt twice in a row, and none leaves a hole.
+    const frames = said.map((t) => PRO_SEASON_LINES.findIndex((line) => lineRe(line).test(t)))
+    expect(frames.every((f) => f >= 0), said.join(' | ')).toBe(true)
+    expect(new Set(frames.slice(0, PRO_SEASON_LINES.length)).size, said.join(' | ')).toBe(PRO_SEASON_LINES.length)
+    for (let i = 1; i < frames.length; i++) expect(frames[i], `seasons ${i} and ${i + 1} used one frame: ${said[i]}`).not.toBe(frames[i - 1])
+    for (const t of said) {
+      expect(t, t).toContain('Arizona Rattlers')
+      expect(t, t).toMatch(/\d(st|nd|rd|th)\b/)
+      expect(t, t).toMatch(/ERA\./)
+      expect(t, t).not.toMatch(/[{}]/)
+    }
+  })
+
+  it('the season line is text only: plain pick and the next line leave g.rng and every other state alone', () => {
+    leaksNothing(athleteLife, (g) => playSeasons(g, 4))
   })
 })

@@ -7,6 +7,8 @@ import { arrestPlayer } from '../crime'
 import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
+import { defineLines } from '../text/registry'
+import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { bodyCeiling, crowdedField, masterFirstTime, masteryCap } from '../mastery'
@@ -1023,7 +1025,7 @@ export function yearlyAthlete(g: GameState): void {
   if (knocks[sport.id]) addHeadTrauma(g, knocks[sport.id] * (0.6 + rand(g) * 0.8))
 
   const statLine = seasonStats(g, sport, greatness, d.position)
-  log(g, `I played my ${ordinal(p.seasons)} pro season with the ${d.team}. ${statLine}`, greatness >= 60 ? 'good' : 'neutral')
+  log(g, fillSlots(pickLine(g, PRO_SEASON_LINES), { nth: ordinal(p.seasons), team: d.team, stats: statLine }), greatness >= 60 ? 'good' : 'neutral')
   fameToward(g, greatness * 0.85 + p.championships * 2, 4)
 
   if (rank === 1) {
@@ -1119,6 +1121,17 @@ export function yearlyAthlete(g: GameState): void {
     )
   }
 }
+
+/**
+ * The yearly pro season line. Four frames, every one true in a first season and after a trade (nothing says "still" or "again"),
+ * so a career reads in different words; {stats} is the sport's own sentence (seasonStats). R2-P10, E.T3 d.
+ */
+export const PRO_SEASON_LINES = defineLines('athlete.proSeason', [
+  'I played my {nth} pro season with the {team}. {stats}',
+  'That was my {nth} pro season, this one with the {team}. {stats}',
+  'My {nth} year as a pro was with the {team}. {stats}',
+  'My {nth} pro season is in the books, with the {team}. {stats}',
+])
 
 function seasonStats(g: GameState, sport: Sport, greatness: number, position: string): string {
   const k = greatness / 100

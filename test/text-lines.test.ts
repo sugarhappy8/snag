@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { LIMITS, staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { futureHeadlines, GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../src/game/history/events-future'
 import { eraSafe } from '../src/game/history/events-guard'
+import { PRO_SEASON_LINES } from '../src/game/special/athlete'
 import { isMemKey } from '../src/game/text/memory'
 import { defineLines, registeredLines } from '../src/game/text/registry'
 import { STATE_TABLE, type StateSpec } from '../src/game/text/state-table'
@@ -232,6 +233,7 @@ function lintPool(spec: PoolSpec): string[] {
 const POOLS: readonly PoolSpec[] = [
   { id: 'news.games', lines: GAMES_HEADLINES, role: 'headline', slots: [] },
   { id: 'news.worldCup', lines: WORLD_CUP_HEADLINES, role: 'headline', slots: [] },
+  { id: 'athlete.proSeason', lines: PRO_SEASON_LINES, role: 'log', slots: ['nth', 'team', 'stats'] },
 ]
 
 describe('the pools of R2-P10', () => {
