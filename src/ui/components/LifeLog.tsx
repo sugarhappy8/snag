@@ -1,7 +1,9 @@
 // The life feed: "Age: N years" headers followed by first-person lines, newest at the
-// bottom, auto-scrolling as the story grows.
-import { memo, useLayoutEffect, useRef } from 'react'
+// bottom, auto-scrolling as the story grows. The last few years are open; older ones fold to one
+// row each (tap to open), which keeps a long life's DOM small.
+import { memo, useCallback, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import type { LogYear, Tone } from '../../game/types'
+import '../styles/notices.css'
 
 export interface LifeLogProps {
   log: LogYear[]
@@ -23,36 +25,119 @@ export function toneClass(tone: unknown): string {
   return `tone-${typeof tone === 'string' && (TONES as readonly string[]).includes(tone) ? tone : 'neutral'}`
 }
 
+/** How many of the newest years stay open (and can't be folded). */
+export const OPEN_YEARS = 3
+
+export interface YearView {
+  key: string
+  year: LogYear
+  open: boolean
+  collapsible: boolean
+}
+
+/** The key a year is listed under: age and calendar year. */
+export function yearKey(y: LogYear): string {
+  return `${y.age}-${y.year}`
+}
+
+/** The last `openYears` entries are open and not collapsible; older ones are collapsed unless their key is in `expanded`. */
+export function yearViews(log: readonly LogYear[], expanded: ReadonlySet<string>, openYears: number = OPEN_YEARS): YearView[] {
+  const firstOpen = log.length - (Number.isFinite(openYears) ? Math.max(0, Math.floor(openYears)) : OPEN_YEARS)
+  return log.map((year, i) => {
+    const key = yearKey(year)
+    return i >= firstOpen ? { key, year, open: true, collapsible: false } : { key, year, open: expanded.has(key), collapsible: true }
+  })
+}
+
+/** What a folded year shows in place of its lines. */
+export function collapsedSummary(y: LogYear): string {
+  const n = y.entries.length
+  return n === 0 ? 'No lines' : n === 1 ? '1 line' : `${n} lines`
+}
+
 interface YearProps {
   year: LogYear
   /** Index of the first entry added since the last render (entries.length = none new). */
   freshFrom: number
+  /** Whether the lines are drawn. */
+  open: boolean
+  /** Whether the heading is a button that folds and opens the year (every year but the newest few). */
+  collapsible: boolean
+  onToggle: (key: string) => void
 }
 
 const YearBlock = memo(
-  function YearBlock({ year, freshFrom }: YearProps) {
+  function YearBlock({ year, freshFrom, open, collapsible, onToggle }: YearProps) {
+    if (!collapsible) {
+      return (
+        <section className="lifelog-year" aria-label={ageHeading(year.age)}>
+          <h3 className="lifelog-age">
+            <span>{ageHeading(year.age)}</span>
+            <span className="lifelog-calyear">{year.year}</span>
+          </h3>
+          {entryLines(year, freshFrom)}
+        </section>
+      )
+    }
+    // No aria-controls: the lines it would point at are not in the page while the year is folded.
     return (
-      <section className="lifelog-year" aria-label={ageHeading(year.age)}>
+      <section className={open ? 'lifelog-year' : 'lifelog-year is-collapsed'} aria-label={ageHeading(year.age)}>
         <h3 className="lifelog-age">
-          <span>{ageHeading(year.age)}</span>
-          <span className="lifelog-calyear">{year.year}</span>
+          <button type="button" className="lifelog-toggle" aria-expanded={open} onClick={() => onToggle(yearKey(year))}>
+            <span>{ageHeading(year.age)}</span> <span className="lifelog-calyear">{year.year}</span>{' '}
+            <span className="lifelog-summary">{collapsedSummary(year)}</span>{' '}
+            <span className="lifelog-glyph" aria-hidden="true">
+              {open ? '-' : '+'}
+            </span>
+          </button>
         </h3>
-        {year.entries.map((e, i) => (
-          <p key={e.id} className={`lifelog-entry ${toneClass(e.tone)}${i >= freshFrom ? ' is-new' : ''}`}>
-            {e.text}
-          </p>
-        ))}
+        {open ? entryLines(year, freshFrom) : null}
       </section>
     )
   },
   (a, b) =>
     a.freshFrom === b.freshFrom &&
+    a.open === b.open &&
+    a.collapsible === b.collapsible &&
+    a.onToggle === b.onToggle &&
     a.year.age === b.year.age &&
     a.year.year === b.year.year &&
     a.year.entries.length === b.year.entries.length &&
     a.year.entries[a.year.entries.length - 1]?.id === b.year.entries[b.year.entries.length - 1]?.id &&
     a.year.entries[a.year.entries.length - 1]?.text === b.year.entries[b.year.entries.length - 1]?.text,
 )
+
+function entryLines(year: LogYear, freshFrom: number): ReactElement[] {
+  return year.entries.map((e, i) => (
+    <p key={e.id} className={`lifelog-entry ${toneClass(e.tone)}${i >= freshFrom ? ' is-new' : ''}`}>
+      {e.text}
+    </p>
+  ))
+}
+
+export interface YearListProps {
+  log: readonly LogYear[]
+  /** Keys of older years the player has opened. */
+  expanded: ReadonlySet<string>
+  onToggle: (key: string) => void
+  /** Entries counted at the previous commit, over every year (folded ones too); anything after that animates in. */
+  seen: number
+}
+
+/** The years of the feed, hook-free so tests can render it. */
+export function YearList({ log, expanded, onToggle, seen }: YearListProps): ReactElement {
+  let index = 0
+  return (
+    <>
+      {yearViews(log, expanded).map(({ key, year, open, collapsible }) => {
+        const start = index
+        index += year.entries.length
+        const freshFrom = Math.min(year.entries.length, Math.max(0, seen - start))
+        return <YearBlock key={key} year={year} freshFrom={freshFrom} open={open} collapsible={collapsible} onToggle={onToggle} />
+      })}
+    </>
+  )
+}
 
 /** Extra bottom padding (px) while the "Back to …" chip floats over the feed (matches the CSS). */
 const CHIP_ROOM = 56
@@ -66,6 +151,15 @@ export function LifeLog({ log, reserveBottom = false }: LifeLogProps) {
   if (seenRef.current === null || seenRef.current > total) seenRef.current = total
   const seen = seenRef.current
   const mountedRef = useRef(false)
+  // Older years the player has opened. UI only, never saved; it starts over with the component (GameScreen keys it by life).
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const onToggle = useCallback((key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
+  }, [])
 
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -86,16 +180,10 @@ export function LifeLog({ log, reserveBottom = false }: LifeLogProps) {
     if (gap > 0 && gap < CHIP_ROOM + 80) el.scrollTop = el.scrollHeight
   }, [reserveBottom])
 
-  let index = 0
   return (
     <div className={reserveBottom ? 'lifelog has-chip' : 'lifelog'} ref={scrollRef} role="log" aria-live="polite" aria-label="Life story">
       {log.length === 0 ? <div className="lifelog-empty">Your story hasn't started yet.</div> : null}
-      {log.map((year) => {
-        const start = index
-        index += year.entries.length
-        const freshFrom = Math.min(year.entries.length, Math.max(0, seen - start))
-        return <YearBlock key={`${year.age}-${year.year}`} year={year} freshFrom={freshFrom} />
-      })}
+      <YearList log={log} expanded={expanded} onToggle={onToggle} seen={seen} />
     </div>
   )
 }
