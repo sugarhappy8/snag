@@ -1,10 +1,18 @@
 // The table lint (R2-P8, E.T3 b): every row of STATE_TABLE obeys the voice guide and the memory's key rules.
-// R2-P9 adds rows, and this loop checks each of them with no further test. R2-P10 adds the lint of the event pools here.
+// R2-P9 adds rows, and this loop checks each of them with no further test. R2-P10 adds the lint of the event pools at the end
+// (lintPool and POOLS: one row per pool that a status or event line of the repeat worklist speaks through).
 // The lint itself is lintStateRow(): the loop runs it on the real table, and the synthetic cases at the end run it on rows
 // built to break each rule, so a rule that stopped checking would show here even while the real table is short.
 import { describe, expect, it } from 'vitest'
 import { LIMITS, staticLength, unitFlags } from '../scripts/voice/rules.mjs'
+import { futureHeadlines, GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../src/game/history/events-future'
+import { eraSafe } from '../src/game/history/events-guard'
+import { BOUNDARY_LINES } from '../src/game/events/wealth-resolve'
+import { ADMIRER_LINES, SCAM_LINES } from '../src/game/events/wealth-world'
+import { PROMO_LINES } from '../src/game/npc-lives'
+import { PRO_SEASON_LINES } from '../src/game/special/athlete'
 import { isMemKey } from '../src/game/text/memory'
+import { defineLines, registeredLines } from '../src/game/text/registry'
 import { STATE_TABLE, type StateSpec } from '../src/game/text/state-table'
 
 const EM_DASH = String.fromCharCode(0x2014)
@@ -178,5 +186,166 @@ describe('the lint itself', () => {
     expect(lintStateRow('e', { ...GOOD, every: 2.5 }).join('|')).toMatch(/every must be/)
     expect(lintStateRow('g', { ...GOOD, gap: 0 }).join('|')).toMatch(/gap must be/)
     expect(lintStateRow('g', { ...GOOD, gap: 1.5 }).join('|')).toMatch(/gap must be/)
+  })
+})
+
+// ---- R2-P10: the pools of the lines that need variants ---------------------------------------------------------------------
+
+/** One pool an event or report line is drawn from, and what its call site fills. */
+interface PoolSpec {
+  /** The id it is registered under (defineLines). */
+  id: string
+  lines: readonly string[]
+  /** The voice role: a headline is held to the headline caps, everything else to the log's. */
+  role: 'log' | 'headline'
+  /** The {slots} the call site fills: every line names exactly these and no others. */
+  slots: readonly string[]
+  /** How the line reaches the log when the call site puts something around it (npc-lives puts the person's name before it). */
+  frame?: (line: string) => string
+}
+
+/** What is wrong with one pool, as short messages; an empty list is a clean pool. */
+function lintPool(spec: PoolSpec): string[] {
+  const bad: string[] = []
+  const { id, lines, role } = spec
+  const cap = role === 'headline' ? LIMITS.headline : LIMITS.log
+  if (!Array.isArray(lines)) return [`${id}: not a list of lines`]
+  if (lines.length < 3) bad.push(`${lines.length} lines, want at least 3`)
+  if (registeredLines().get(id) !== lines) bad.push(`not registered under ${id}`)
+  if (!isMemKey(id)) bad.push(`${id} is not a valid memory key`)
+  if (new Set(lines).size !== lines.length) bad.push('a line appears twice')
+  lines.forEach((raw, i) => {
+    const at = `line ${i}`
+    if (typeof raw !== 'string' || raw.length === 0) {
+      bad.push(`${at} is empty`)
+      return
+    }
+    const names = [...new Set([...raw.matchAll(SLOT_RE)].map((m) => m[1]))].sort()
+    if (names.join(',') !== [...spec.slots].sort().join(',')) bad.push(`${at}: names slots [${names.join(',')}], the call site fills [${[...spec.slots].join(',')}]`)
+    for (const name of names) if (!PLAIN_WORD.test(name)) bad.push(`${at}: slot {${name}} is not a plain word`)
+    if (/[{}]/.test(raw.replace(SLOT_RE, ''))) bad.push(`${at}: a stray brace`)
+    const holed = (spec.frame ? spec.frame(raw) : raw).replace(SLOT_RE, '${...}')
+    if (staticLength(holed) > cap) bad.push(`${at}: ${staticLength(holed)} static characters, cap ${cap}`)
+    const flags = unitFlags(holed, role)
+    if (flags.length) bad.push(`${at}: voice flags ${flags.join(', ')}`)
+    if (raw.includes(EM_DASH) || raw.includes(EN_DASH)) bad.push(`${at}: a long dash`)
+  })
+  return bad
+}
+
+const POOLS: readonly PoolSpec[] = [
+  { id: 'news.games', lines: GAMES_HEADLINES, role: 'headline', slots: [] },
+  { id: 'news.worldCup', lines: WORLD_CUP_HEADLINES, role: 'headline', slots: [] },
+  { id: 'athlete.proSeason', lines: PRO_SEASON_LINES, role: 'log', slots: ['nth', 'team', 'stats'] },
+  { id: 'wealth.scam', lines: SCAM_LINES, role: 'log', slots: ['money'] },
+  { id: 'wealth.admirer', lines: ADMIRER_LINES, role: 'log', slots: ['money'] },
+  { id: 'wealth.boundary', lines: BOUNDARY_LINES, role: 'log', slots: ['who'] },
+  // The log puts the person's name and a colon before this one: judged with that frame on.
+  { id: 'npc.promotion', lines: PROMO_LINES, role: 'log', slots: [], frame: (line) => `{name}: ${line}` },
+]
+
+describe('the pools of R2-P10', () => {
+  for (const spec of POOLS) {
+    it(`${spec.id}: at least 3 lines, registered, in voice, and no slot but the ones its site fills`, () => {
+      expect(lintPool(spec), spec.id).toEqual([])
+    })
+  }
+
+  it('the lint itself: flags a short pool, an unregistered one, a slot the site does not fill, and a line over the cap', () => {
+    const good = defineLines('test.lint', ['I lost {money} to a scam.', 'The {money} I sent was gone for good.', 'I got scammed out of {money}.'])
+    const spec = (lines: readonly string[], over: Partial<PoolSpec> = {}): PoolSpec => ({ id: 'test.lint', lines, role: 'log', slots: ['money'], ...over })
+    const bad = (lines: readonly string[], over: Partial<PoolSpec> = {}): string => lintPool(spec(lines, over)).join('|')
+    expect(lintPool(spec(good))).toEqual([])
+    // Registration is by identity: a copy of the lines is not the registered pool.
+    expect(bad([...good])).toMatch(/not registered under test.lint/)
+    expect(bad(good.slice(0, 2))).toMatch(/2 lines, want at least 3/)
+    expect(bad([...good.slice(0, 2), 'I lost it to a scam.'])).toMatch(/names slots \[\]/)
+    expect(bad([...good.slice(0, 2), 'I lost {sum} to a scam.'])).toMatch(/names slots \[sum\]/)
+    expect(bad([...good.slice(0, 2), 'I lost {money} to a scam. {money}'])).not.toMatch(/names slots/)
+    expect(bad([...good.slice(0, 2), good[0]])).toMatch(/appears twice/)
+    expect(bad([...good.slice(0, 2), 'I kept {money} in a jar by the window where the light came in every single morning, and then one day I lost every bit of it.'])).toMatch(/static characters, cap 90/)
+    const headline = 'The Games open and the whole world tunes in to watch the opening night live'
+    expect(bad([headline, 'A', 'B'], { role: 'headline', slots: [] })).toMatch(/static characters, cap 70/)
+    expect(bad([...good.slice(0, 2), `I lost {money} ${EM_DASH} gone.`])).toMatch(/long dash/)
+    expect(bad([...good.slice(0, 2), 'I did not lose {money} to a scam.'])).toMatch(/no-contraction/)
+    expect(bad([...good.slice(0, 2), 'I lost {the money} to a scam.'])).toMatch(/not a plain word/)
+    expect(bad([...good.slice(0, 2), 'I lost {money to a scam.'])).toMatch(/stray brace/)
+  })
+})
+
+// ---- R2-P10: the Games and the World Cup, after the dates on the calendar run out --------------------------------------------
+
+const fnv = (text: string): string => {
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619)
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
+/** The headline of one kind in a future year: the Summer Games ('games'), the World Cup ('cup') or the Winter Games ('winter'). */
+function rhythmLine(year: number, kind: 'games' | 'cup' | 'winter'): string[] {
+  const re = kind === 'games' ? /Olympics|Games/ : kind === 'cup' ? /World Cup/ : /Winter/
+  return futureHeadlines(year)
+    .filter((r) => r[1] === 'sport' && r[3] === 'world' && re.test(r[4]) && (kind === 'winter' || !/Winter/.test(r[4])))
+    .map((r) => r[4])
+}
+
+describe('the rhythm headlines after 2034', () => {
+  const GAMES = Array.from({ length: 17 }, (_, i) => 2036 + 4 * i)
+  const CUP = Array.from({ length: 16 }, (_, i) => 2038 + 4 * i)
+
+  it('one Summer Games line in every fourth year from 2036, one World Cup line from 2038, and nothing in the years between', () => {
+    for (let y = 2035; y <= 2100; y++) {
+      expect(rhythmLine(y, 'games'), `${y} games`).toHaveLength(y % 4 === 0 ? 1 : 0)
+      expect(rhythmLine(y, 'cup'), `${y} cup`).toHaveLength(y % 4 === 2 ? 1 : 0)
+    }
+  })
+
+  it('two editions in a row never read the same, and a line does not come back within three editions', () => {
+    for (const [name, years] of [['Games', GAMES], ['World Cup', CUP]] as const) {
+      const lines = years.map((y) => rhythmLine(y, name === 'Games' ? 'games' : 'cup')[0])
+      for (let i = 0; i + 2 < lines.length; i++) {
+        expect(new Set([lines[i], lines[i + 1], lines[i + 2]]).size, `${name}: editions ${years[i]}, ${years[i + 1]}, ${years[i + 2]} read ${lines.slice(i, i + 3).join(' | ')}`).toBe(3)
+      }
+    }
+  })
+
+  it('draws every line of its pool, and only those', () => {
+    expect(new Set(GAMES.map((y) => rhythmLine(y, 'games')[0]))).toEqual(new Set(GAMES_HEADLINES))
+    expect(new Set(CUP.map((y) => rhythmLine(y, 'cup')[0]))).toEqual(new Set(WORLD_CUP_HEADLINES))
+  })
+
+  it('names no invention that a country does not have in that year', () => {
+    for (const line of [...GAMES_HEADLINES, ...WORLD_CUP_HEADLINES]) {
+      for (const country of ['us', 'ng', 'jp', 'br', 'in']) for (const year of [2036, 2038, 2070, 2110]) expect(eraSafe(line, country, year), `${line} (${country}, ${year})`).toBe(true)
+    }
+  })
+
+  it('is a pure function of the year: the same on every call, in any order', () => {
+    const forward = [...GAMES, ...CUP].map((y) => futureHeadlines(y))
+    const backward = [...GAMES, ...CUP].reverse().map((y) => futureHeadlines(y)).reverse()
+    expect(backward).toEqual(forward)
+    expect(futureHeadlines(2060)).toEqual(futureHeadlines(2060))
+  })
+
+  it('keeps the Winter Games line and the rest of the calendar as they were: only the Summer Games and World Cup rhythm lines changed', () => {
+    for (const y of CUP) expect(rhythmLine(y, 'winter'), String(y)).toEqual(['The Winter Olympics open'])
+    // Every other row of every year from 2027 to 2100 (the calendar, the pool, the Winter Games), fingerprinted before R2-P10.
+    const rows = []
+    for (let y = 2027; y <= 2100; y++) for (const r of futureHeadlines(y)) if (!(y > 2034 && (rhythmLine(y, 'games').includes(r[4]) || rhythmLine(y, 'cup').includes(r[4])))) rows.push(r)
+    expect(rows).toHaveLength(111)
+    expect(fnv(JSON.stringify(rows))).toBe('ad1fa38f')
+    // The rhythm rows keep their kind, severity and reach; only the words changed.
+    const rhythm = []
+    for (let y = 2027; y <= 2100; y++) for (const r of futureHeadlines(y)) if (y > 2034 && (rhythmLine(y, 'games').includes(r[4]) || rhythmLine(y, 'cup').includes(r[4]))) rhythm.push([y, r[1], r[2], r[3]])
+    expect(rhythm).toHaveLength(33)
+    expect(fnv(JSON.stringify(rhythm))).toBe('51b76efe')
+  })
+
+  it('gives years before 2035 the old pool: no rhythm line at all', () => {
+    for (let y = 2027; y <= 2034; y++) {
+      expect(rhythmLine(y, 'games').filter((t) => (GAMES_HEADLINES as readonly string[]).includes(t)), String(y)).toEqual([])
+      expect(rhythmLine(y, 'cup').filter((t) => (WORLD_CUP_HEADLINES as readonly string[]).includes(t)), String(y)).toEqual([])
+    }
+    expect(futureHeadlines(2026)).toEqual([])
   })
 })
