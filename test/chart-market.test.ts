@@ -194,6 +194,22 @@ describe('shareSpec', () => {
     expect(spec.summary).toBe('Your share 12%, from 2025 to 2030.')
   })
 
+  it('calls the biggest rival the leader only while it is ahead of you', () => {
+    // You at 40%, the biggest rival at 20%: you lead, so the rival is not "the leader" (the ladder summary says the same).
+    const ahead = shareSpec(g0(), view({ history: [hist(2029, 0.35, { lead: 0.2 }), hist(2030, 0.4, { lead: 0.2 })] }))
+    expectValid(ahead)
+    expect(ahead.summary).toBe("Your share 40%, the biggest rival's 20%, from 2029 to 2030.")
+    expect(ahead.summary).not.toContain('leader')
+    // A tie goes to you, as it does on the ladder.
+    const tied = shareSpec(g0(), view({ history: [hist(2029, 0.18, { lead: 0.2 }), hist(2030, 0.2, { lead: 0.2 })] }))
+    expectValid(tied)
+    expect(tied.summary).toBe("Your share 20%, the biggest rival's 20%, from 2029 to 2030.")
+    // The rival ahead of you is the leader.
+    const behind = shareSpec(g0(), view({ history: [hist(2029, 0.1, { lead: 0.2 }), hist(2030, 0.12, { lead: 0.21 })] }))
+    expectValid(behind)
+    expect(behind.summary).toBe("Your share 12%, the leader's 21%, from 2029 to 2030.")
+  })
+
   it('keeps the last twenty of twenty-five years', () => {
     const rows = Array.from({ length: 25 }, (_, i) => hist(2006 + i, 0.01 + i * 0.004, { lead: 0.3 }))
     const spec = shareSpec(g0(), view({ history: rows }))

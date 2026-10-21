@@ -77,8 +77,9 @@ function nounOf(v: MarketView): string {
 // Share against the leader
 
 /**
- * Your share and the leader's, year by year, up to twenty years (the market keeps twenty). The `leader` series is the
- * biggest rival's share, null in a year the history did not record one. Needs a booked market and two years with a
+ * Your share and the biggest rival's, year by year, up to twenty years (the market keeps twenty). The `leader` series is the
+ * biggest rival's share, null in a year the history did not record one; the summary calls that rival the leader only
+ * while its share is above yours. Needs a booked market and two years with a
  * share of yours; otherwise null.
  */
 export function shareSpec(_g: GameState, view: MarketView): ChartSpec | null {
@@ -90,7 +91,9 @@ export function shareSpec(_g: GameState, view: MarketView): ChartSpec | null {
   let leader: number | null = null
   for (let i = rows.length - 1; i >= 0 && leader === null; i--) leader = rows[i]!.lead
   const noun = nounOf(view)
-  const said = `Your share ${shareLabel(last.share!)}, ${leader === null ? '' : `the leader's ${shareLabel(leader)}, `}from ${first.year} to ${last.year}.`
+  // The series is the biggest rival, who is the leader only while ahead of you (a tie goes to you, as on the ladder).
+  const rivalWord = leader !== null && leader > last.share! ? 'the leader' : 'the biggest rival'
+  const said = `Your share ${shareLabel(last.share!)}, ${leader === null ? '' : `${rivalWord}'s ${shareLabel(leader)}, `}from ${first.year} to ${last.year}.`
   return reveal({
     v: 1,
     kind: 'line',
