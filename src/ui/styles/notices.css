@@ -40,6 +40,52 @@
   overflow-wrap: anywhere;
 }
 
+/* Life log fold (R1-T8): years older than the last three are one row each (LifeLog.tsx). The row is a button inside the
+   year heading, so it reads as the same heading and a screen reader finds it by its level. Tokens only, so it follows
+   light and dark mode; the focus ring comes from the global :focus-visible rule. */
+
+.lifelog-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lifelog-toggle .lifelog-calyear {
+  margin-left: auto;
+}
+
+.lifelog-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.lifelog-glyph {
+  flex: none;
+  width: 1ch;
+  text-align: center;
+}
+
+.lifelog-year.is-collapsed .lifelog-age {
+  margin-bottom: 0;
+}
+
+.lifelog-year.is-collapsed + .lifelog-year.is-collapsed {
+  margin-top: 0;
+  padding-top: 0;
+}
+
 /* Inbox sheet (R1-T6): where routine notices wait while Quiet Mode is on (InboxSheet.tsx). Tokens only, so it follows
    light and dark mode. A new row is marked by the border and by the word "New" for screen readers, not by colour alone. */
 
