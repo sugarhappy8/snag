@@ -5,20 +5,24 @@
 // thresholds on, one metric at a time, as their work brings the numbers down.
 //
 //   TEXT_KIT_RECORD=1  writes test/fixtures/text-baseline.json from this run
+//   TEXT_KIT_RECORD=r2 writes test/fixtures/text-baseline-r2.json (R2-B2, the text stream) and prints how repeatedShare and
+//                      sameWithin10 compare with the R1 baseline. The R1 file is left alone: test/text-metrics.test.ts pins it.
 //   TEXT_KIT_ENFORCE=1 also asserts DESIGN_THRESHOLDS on each life (fails today on purpose)
 //
 // The harness only reads g.log and the drained popups, so it never changes the game.
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { playLife } from './play-kit'
 import { DESIGN_THRESHOLDS, mergeMetrics, textMetrics, type LifeTrace, type TextMetrics } from './text-metrics'
 
 const FIXTURE = join(__dirname, 'fixtures', 'text-baseline.json')
+const FIXTURE_R2 = join(__dirname, 'fixtures', 'text-baseline-r2.json')
 const UNTIL_AGE = 90
 const TIMEOUT = 120_000
 const ENFORCE = process.env.TEXT_KIT_ENFORCE === '1'
 const RECORD = process.env.TEXT_KIT_RECORD === '1'
+const RECORD_R2 = process.env.TEXT_KIT_RECORD === 'r2'
 
 const LIVES: ReadonlyArray<{ seed: number; birthYear: number; rich: boolean }> = [
   { seed: 1, birthYear: 1950, rich: false },
@@ -104,10 +108,25 @@ describe('text harness', () => {
     if (RECORD) {
       writeFileSync(FIXTURE, `${JSON.stringify({ v: 1, recordedAt: 'v4.1.0 candidate', lives: all, merged }, null, 2)}\n`)
     }
+    if (RECORD_R2) {
+      writeFileSync(FIXTURE_R2, `${JSON.stringify({ v: 1, recordedAt: 'v5.0.0 R2-B2: text stream', lives: all, merged }, null, 2)}\n`)
+      console.info(ratioToR1(merged))
+    }
   })
 })
 
 // ---- the printed table -------------------------------------------------------------------------------------------
+
+/** How the merged repeatedShare and sameWithin10 compare with the R1 baseline (R1 is the denominator). The lead decides the gate. */
+function ratioToR1(merged: TextMetrics): string {
+  const r1 = (JSON.parse(readFileSync(FIXTURE, 'utf8')) as { merged: TextMetrics }).merged
+  const ratio = (now: number, then: number): string => (then === 0 ? 'n/a' : (now / then).toFixed(2))
+  return [
+    'R2 text baseline against R1 (merged, 4 lives):',
+    `  repeatedShare ${pct(r1.repeatedShare)} -> ${pct(merged.repeatedShare)}  ratio ${ratio(merged.repeatedShare, r1.repeatedShare)}`,
+    `  sameWithin10  ${r1.sameWithin10} -> ${merged.sameWithin10}  ratio ${ratio(merged.sameWithin10, r1.sameWithin10)}`,
+  ].join('\n')
+}
 
 const pct = (n: number): string => `${(n * 100).toFixed(1)}%`
 const num = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(2))
