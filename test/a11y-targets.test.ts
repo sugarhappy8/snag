@@ -124,6 +124,10 @@ describe('index.html theme-color', () => {
     expect(dark).toHaveLength(1)
   })
 
+  it('lists the dark one first: a browser takes the first tag whose media matches, and a tag with no media always does', () => {
+    expect(metas.findIndex((t) => /media=/.test(t))).toBeLessThan(metas.findIndex((t) => !/media=/.test(t)))
+  })
+
   it('the colours are the header gradient start of each theme', () => {
     const plain = metas.find((t) => !/media=/.test(t))!
     const dark = metas.find((t) => /media=/.test(t))!
