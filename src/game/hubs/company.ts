@@ -11,7 +11,8 @@
 import { industryDef } from '../business/industries'
 import { findBusiness, HISTORY_ROWS, readBiz, runsIt, totalOutlets } from '../business/state'
 import { money, plural } from '../business/util'
-import { fit, moneyLabel } from '../charts/money'
+import { fit, moneyLabel, priceBasisYear } from '../charts/money'
+import { reveal } from '../charts/reveal'
 import { CHART_LIMITS, SPEC_LIMITS, type ChartSpec } from '../charts/spec'
 import { flagOn } from '../flags'
 import type { Asset, GameState, MenuGroup, MenuInfo, MenuNode } from '../types'
@@ -109,7 +110,8 @@ function points(history: unknown, last: { year: number; revenue: number; net: nu
  * point, 'now'. Sales and net profit are the years' books and have a gap at 'now'; cash and value end at the live cash and
  * valuation, so each tile's number is the one the Annual Report prints. A year whose books have no cash (a row from before
  * R1) is a gap. Null when the company has no settled year, or when nothing in the books is a number a spec can carry.
- * Values are internal dollars; the labels are formatted by the money context of the life.
+ * Values are internal dollars; the labels are formatted by the money context of the life. Like every builder it goes
+ * through reveal (R3 hides what the player has not learned) and names its price basis.
  */
 export function companyKpiSpec(g: GameState, a: Asset): ChartSpec | null {
   const b = readBiz(g, a)
@@ -134,7 +136,7 @@ export function companyKpiSpec(g: GameState, a: Asset): ChartSpec | null {
   if (nCash !== null) parts.push(`cash ${m(nCash)}`)
   if (nValue !== null) parts.push(`value ${m(nValue)}`)
 
-  return {
+  return reveal({
     v: 1,
     kind: 'kpi',
     title: fit(`${name}: at a glance`, CHART_LIMITS.title),
@@ -146,8 +148,9 @@ export function companyKpiSpec(g: GameState, a: Asset): ChartSpec | null {
       { id: 'cash', label: 'Cash', tone: 'c3', values: cash },
       { id: 'value', label: 'Value', tone: 'c2', values: value },
     ],
+    basis: priceBasisYear(g),
     summary: fit(`${name}: ${parts.join(', ')}.`),
-  }
+  })
 }
 
 // ---------------------------------------------------------------------------
