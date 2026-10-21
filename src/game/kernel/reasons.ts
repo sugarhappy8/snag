@@ -44,7 +44,7 @@ export interface SinkDef {
 
 export const MINTS = {
   immigrants: { cap: 500_000_000, why: 'savings that immigrants bring with them' },
-  lending: { cap: 2_500_000_000, why: 'a lender creates the deposit it lends' },
+  lending: { cap: 1_000_000_000_000, why: 'a lender creates the deposit it lends' },
   printing: { cap: 0, why: 'central-bank printing in a declared war (a later release raises the cap)' },
   revaluation: { cap: 1_000_000_000_000, why: 'falling prices raise what held cash buys, and an inflating debt shrinks' },
 } as const satisfies Record<string, SinkDef>

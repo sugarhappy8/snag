@@ -191,19 +191,19 @@ describe('mints and burns', () => {
 
   it('clips a mint at its yearly cap, logs a cap row, and gives the room back next year', () => {
     const g = makeTestGame()
-    expect(mintRoom(g, 'lending')).toBe(2_500_000_000)
-    expect(bookMint(g, 'lending', 'person:a', 1_000_000_000)).toBe(1_000_000_000)
-    expect(bookMint(g, 'lending', 'person:a', 2_000_000_000)).toBe(1_500_000_000)
-    expect(peekLedger(g).l.find((r) => r[1] === 'cap')).toEqual([2026, 'cap', 'lending', 500_000_000])
+    expect(mintRoom(g, 'lending')).toBe(1_000_000_000_000)
+    expect(bookMint(g, 'lending', 'person:a', 400_000_000_000)).toBe(400_000_000_000)
+    expect(bookMint(g, 'lending', 'person:a', 800_000_000_000)).toBe(600_000_000_000)
+    expect(peekLedger(g).l.find((r) => r[1] === 'cap')).toEqual([2026, 'cap', 'lending', 200_000_000_000])
     expect(mintRoom(g, 'lending')).toBe(0)
     expect(bookMint(g, 'lending', 'person:a', 1)).toBe(0)
-    expect(acctBalance(g, 'person:a')).toBe(2_500_000_000)
+    expect(acctBalance(g, 'person:a')).toBe(1_000_000_000_000)
     expect(sumA(g)).toBe(peekLedger(g).m.lending)
     g.year += 1
-    expect(mintRoom(g, 'lending')).toBe(2_500_000_000)
+    expect(mintRoom(g, 'lending')).toBe(1_000_000_000_000)
     expect(bookMint(g, 'lending', 'person:a', 100)).toBe(100)
     expect(peekLedger(g).ym).toEqual({ lending: 100 })
-    expect(peekLedger(g).m.lending).toBe(2_500_000_100)
+    expect(peekLedger(g).m.lending).toBe(1_000_000_000_100)
     expect(checkLedger(g).ok).toBe(true)
   })
 
@@ -811,7 +811,7 @@ describe('the tables', () => {
     for (const [name, m] of Object.entries(MINTS)) expect(Number.isFinite(m.cap) && m.cap >= 0 && Number.isInteger(m.cap), name).toBe(true)
     for (const [name, b] of Object.entries(BURNS)) expect(Number.isFinite(b.cap) && b.cap > 0 && Number.isInteger(b.cap), name).toBe(true)
     expect({ lending: MINTS.lending.cap, printing: MINTS.printing.cap, immigrants: MINTS.immigrants.cap, revaluation: MINTS.revaluation.cap }).toEqual({
-      lending: 2_500_000_000,
+      lending: 1_000_000_000_000,
       printing: 0,
       immigrants: 500_000_000,
       revaluation: 1_000_000_000_000,
@@ -1041,14 +1041,14 @@ describe('bookPlayer, bookAcct and roomFor', () => {
 
   it('mints a receipt whose payer is a mint, clipped to the room, and burns a payment whose payee is a burn', () => {
     const g = makeTestGame()
-    expect(roomFor(g, 'loan.principal')).toBe(2_500_000_000)
+    expect(roomFor(g, 'loan.principal')).toBe(1_000_000_000_000)
     expect(roomFor(g, 'wage')).toBe(Infinity)
     expect(roomFor(g, undefined)).toBe(Infinity)
-    expect(bookPlayer(g, 'loan.principal', 1_000_000_000)).toBe(1_000_000_000)
-    expect(roomFor(g, 'loan.principal')).toBe(1_500_000_000)
-    expect(bookPlayer(g, 'loan.principal', 2_000_000_000)).toBe(1_500_000_000)
+    expect(bookPlayer(g, 'loan.principal', 400_000_000_000)).toBe(400_000_000_000)
+    expect(roomFor(g, 'loan.principal')).toBe(600_000_000_000)
+    expect(bookPlayer(g, 'loan.principal', 800_000_000_000)).toBe(600_000_000_000)
     expect(roomFor(g, 'loan.principal')).toBe(0)
-    expect(peekLedger(g).m.lending).toBe(2_500_000_000)
+    expect(peekLedger(g).m.lending).toBe(1_000_000_000_000)
     expect(bookPlayer(g, 'inflation', -1000)).toBe(-1000)
     expect(peekLedger(g).b.inflation).toBe(1000)
     expect(bookPlayer(g, 'inflation', 700)).toBe(700)

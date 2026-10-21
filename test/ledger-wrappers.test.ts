@@ -21,7 +21,7 @@ import {
 import { addMoney, earnIncome, spend } from '../src/game/core'
 import { addLoan } from '../src/game/finance'
 import { acctBalance, checkLedger, flowsOf, peekLedger, playerAcct, tokenSeen, type Why } from '../src/game/kernel/ledger'
-import type { Reason } from '../src/game/kernel/reasons'
+import { MINTS, type Reason } from '../src/game/kernel/reasons'
 import { createNewLife } from '../src/game/life'
 import { careerCtx } from '../src/game/special/kit/year'
 import type { CareerBase } from '../src/game/special/kit/state'
@@ -246,26 +246,26 @@ describe('a mint clips what a wrapper adds', () => {
   it('raises the cash by the room the lending mint has, logs a cap row, and gives the room back next year', () => {
     const g = withMoney(0)
     const before = booksOf(g)
-    expect(addMoney(g, 5e9, 'loan.principal')).toBe(2.5e9)
-    expect(g.character.money).toBe(2.5e9)
+    expect(addMoney(g, 2e12, 'loan.principal')).toBe(1e12)
+    expect(g.character.money).toBe(1e12)
     const cap = peekLedger(g).l.find((r) => r[1] === 'cap' && r[2] === 'lending')
-    expect(cap?.[3]).toBe(2.5e9)
-    expect(peekLedger(g).m.lending).toBe(2.5e9)
+    expect(cap?.[3]).toBe(1e12)
+    expect(peekLedger(g).m.lending).toBe(1e12)
     expect(addMoney(g, 1e9, 'loan.principal')).toBe(0)
-    expect(g.character.money).toBe(2.5e9)
+    expect(g.character.money).toBe(1e12)
     expect(driftSince(g, before)).toBe(0)
 
     g.year += 1
     expect(addMoney(g, 1000, 'loan.principal')).toBe(1000)
-    expect(g.character.money).toBe(2.5e9 + 1000)
+    expect(g.character.money).toBe(1e12 + 1000)
     expectConserved(g)
   })
 
   it('clips earnIncome the same way and takes only what was received into taxable income', () => {
     const g = withMoney(0)
     const before = booksOf(g)
-    expect(earnIncome(g, 4e9, { reason: 'loan.principal' })).toBe(2.5e9)
-    expect(g.flags.taxableIncome).toBe(2.5e9)
+    expect(earnIncome(g, 4e12, { reason: 'loan.principal' })).toBe(1e12)
+    expect(g.flags.taxableIncome).toBe(1e12)
     expect(driftSince(g, before)).toBe(0)
   })
 
@@ -588,8 +588,8 @@ describe('the cash helpers', () => {
     expect(lend(g, 10_000)).toBe(10_000)
     expect(acctOf(g, 'pool:sellers')).toBe(10_000)
     expect(peekLedger(g).m.lending).toBe(10_000)
-    expect(lend(g, 3e9, 'bank:b1')).toBe(2.5e9 - 10_000)
-    expect(acctOf(g, 'bank:b1')).toBe(2.5e9 - 10_000)
+    expect(lend(g, 3e12, 'bank:b1')).toBe(1e12 - 10_000)
+    expect(acctOf(g, 'bank:b1')).toBe(1e12 - 10_000)
     expect(lend(g, 100)).toBe(0)
     expect(lend(g, Number.NaN)).toBe(0)
     expect(lend(g, 0)).toBe(0)
@@ -665,6 +665,24 @@ describe('addLoan books the lending mint', () => {
     expect(acctOf(g, 'pool:sellers')).toBe(0)
   })
 
+  // The R2-L5 probe found it: in 6 of 40 lives a founding (a deep-tech company or a big start-up) borrowed more than the 2.5e9 the
+  // lending cap first allowed in a year, up to 40.5e9 (seed 109 of the probe), so the mint was clipped and the books held less
+  // than the loan. The cap is a brake on a runaway mint, not on a rich life: it sits at 1e12 like the other big sinks.
+  it('books a founding loan of $40 billion whole, with no cap row', () => {
+    const g = withMoney(0)
+    const l = addLoan(g, { kind: 'business', lender: 'The bank', principal: 40_510_884_816, rate: 0.06, years: 7 })
+    expect(l.balance).toBe(40_510_884_816)
+    expect(acctOf(g, 'pool:sellers')).toBe(40_510_884_816)
+    expect(peekLedger(g).m.lending).toBe(40_510_884_816)
+    expect(peekLedger(g).l.some((r) => r[1] === 'cap')).toBe(false)
+    expectConserved(g)
+  })
+
+  it('keeps a quarter of the lending cap above the largest request the probe saw', () => {
+    expect(MINTS.lending.cap / 4).toBeGreaterThan(40_510_884_816)
+    expect(MINTS.lending.cap).toBeLessThanOrEqual(MINTS.revaluation.cap)
+  })
+
   it('creates no money when it only restructures a debt (noMint)', () => {
     const g = withMoney(0)
     const l = addLoan(g, { ...loan, noMint: true })
@@ -676,11 +694,11 @@ describe('addLoan books the lending mint', () => {
 
   it('still adds the loan when the mint has no room left', () => {
     const g = withMoney(0)
-    lend(g, 2.5e9)
+    lend(g, 1e12)
     const l = addLoan(g, loan)
     expect(l.balance).toBe(20_000)
     expect(g.character.loans).toHaveLength(1)
-    expect(peekLedger(g).m.lending).toBe(2.5e9)
+    expect(peekLedger(g).m.lending).toBe(1e12)
   })
 })
 
