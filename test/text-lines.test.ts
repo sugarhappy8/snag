@@ -9,6 +9,7 @@ import { futureHeadlines, GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../src/ga
 import { eraSafe } from '../src/game/history/events-guard'
 import { BOUNDARY_LINES } from '../src/game/events/wealth-resolve'
 import { ADMIRER_LINES, SCAM_LINES } from '../src/game/events/wealth-world'
+import { PROMO_LINES } from '../src/game/npc-lives'
 import { PRO_SEASON_LINES } from '../src/game/special/athlete'
 import { isMemKey } from '../src/game/text/memory'
 import { defineLines, registeredLines } from '../src/game/text/registry'
@@ -239,6 +240,8 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'wealth.scam', lines: SCAM_LINES, role: 'log', slots: ['money'] },
   { id: 'wealth.admirer', lines: ADMIRER_LINES, role: 'log', slots: ['money'] },
   { id: 'wealth.boundary', lines: BOUNDARY_LINES, role: 'log', slots: ['who'] },
+  // The log puts the person's name and a colon before this one: judged with that frame on.
+  { id: 'npc.promotion', lines: PROMO_LINES, role: 'log', slots: [], frame: (line) => `{name}: ${line}` },
 ]
 
 describe('the pools of R2-P10', () => {

@@ -18,6 +18,8 @@ import { askDef } from '../src/game/events/wealth-catalog'
 import { ASK_SCRIPT, BOUNDARY_LINES, presentAskDirect } from '../src/game/events/wealth-resolve'
 import { ADMIRER_LINES, SCAM_LINES } from '../src/game/events/wealth-world'
 import type { Ask } from '../src/game/events/wealth-ask'
+import { initializeNpc, PROMO_LINES, yearlyNpcLife } from '../src/game/npc-lives'
+import { npcLife, saveNpcLife } from '../src/game/npc-state'
 import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
 import { PRO_SEASON_LINES, yearlyAthlete } from '../src/game/special/athlete'
@@ -234,6 +236,15 @@ const FAMILIES: readonly Family[] = [
     pools: [BOUNDARY_LINES],
     was: 'I set money boundaries with my sister Marit.',
     slots: { who: 'my sister Marit' },
+  },
+  {
+    name: 'promotion',
+    re: /^[^:]+: (earned a promotion and higher pay|moved up at work and got a raise|was promoted and paid more|got a step up at work and better pay|landed a better role and a raise)$/,
+    maxExtra: 4,
+    pools: [PROMO_LINES],
+    frame: (line) => `Leah: ${line}`,
+    was: 'Leah: earned a promotion and higher pay',
+    slots: {},
   },
 ]
 
@@ -555,5 +566,54 @@ describe('R2-P10 sites, played directly', () => {
         setBoundaries(g, i % 3)
       }
     })
+  })
+
+  /** A sister who lives with you and is promoted on a schedule: her experience is set so that every year is her sixth. */
+  function promotedSister(): { g: GameState; sister: ReturnType<typeof createPerson> } {
+    const g = richStranger()
+    g.character.age = 40
+    const sister = createPerson(g, { relation: 'sibling', age: 34, relationship: 80, livesWithPlayer: true, firstName: 'Leah', gender: 'female' })
+    sister.occupation = 'Engineer'
+    initializeNpc(g, sister)
+    return { g, sister }
+  }
+
+  function playPromotions(g: GameState, sister: ReturnType<typeof createPerson>, years: number): void {
+    for (let y = 0; y < years; y++) {
+      g.year += 1
+      g.character.age += 1
+      sister.age += 1
+      g.yearActions = {}
+      const life = npcLife(sister)!
+      sister.occupation = 'Engineer'
+      life.experience = 5
+      life.skill = 90
+      saveNpcLife(sister, life)
+      yearlyNpcLife(g, sister)
+      g.queue = []
+    }
+  }
+
+  it('a promoted sister is told of in different words each time, and her saved history keeps the original text', () => {
+    const { g, sister } = promotedSister()
+    playPromotions(g, sister, 14)
+    const said = lines(g).filter((t) => family('promotion').re.test(normalize(t)))
+    expect(said.length, said.join(' | ')).toBeGreaterThanOrEqual(PROMO_LINES.length + 1)
+    const frames = said.map((t) => PROMO_LINES.findIndex((line) => t === `Leah: ${line}`))
+    expect(frames.every((f) => f >= 0), said.join(' | ')).toBe(true)
+    expect(new Set(frames.slice(0, PROMO_LINES.length)).size, said.join(' | ')).toBe(PROMO_LINES.length)
+    for (let i = 1; i < frames.length; i++) expect(frames[i], `promotions ${i} and ${i + 1}: ${said[i]}`).not.toBe(frames[i - 1])
+    // The saved history is the person's record: it never takes the log's variants.
+    const history = npcLife(sister)!.history.filter((h) => /promot|raise|paid more|step up|better role/.test(h))
+    expect(history.length).toBeGreaterThanOrEqual(PROMO_LINES.length + 1)
+    for (const h of history) expect(h, h).toMatch(/^\d+: earned a promotion and higher pay$/)
+  })
+
+  it('the promotion line is text only: plain pick and the next line leave g.rng and every other state alone, the people included', () => {
+    const run = (g: GameState): void => {
+      const sister = g.people.find((p) => p.firstName === 'Leah')!
+      playPromotions(g, sister, 7)
+    }
+    leaksNothing(() => promotedSister().g, run)
   })
 })
