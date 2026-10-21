@@ -3,7 +3,7 @@
 // here, so the main save and the Time Machine's snapshots can both load through it.
 import { GAME_VERSION, SAVE_SCHEMA } from './core'
 import { INBOX_LINK_MAX } from './inbox'
-import { migrateSlices } from './kernel/slices'
+import { cleanVersions, migrateSlices } from './kernel/slices'
 import './save-slices'
 import { HIDDEN_KEYS, STAT_KEYS, type GameState, type ModalItem } from './types'
 
@@ -43,30 +43,6 @@ const STEPS: Readonly<Record<number, MigrationStep>> = {
     g.schemaVersion = 3
     return g
   },
-}
-
-/** The most slice versions read from a record's `sv` map (the table has about twenty rows; a hostile map is cut here). */
-const MAX_SLICE_VERSIONS = 256
-/** The highest slice version a record may name. */
-const MAX_SLICE_VERSION = 1000
-
-/**
- * The slice versions a v3 head names, cleaned: a plain object's own entries whose value is a whole number from 1 to 1000, at most
- * MAX_SLICE_VERSIONS of them. Anything else (a non-object, an array, a value out of range or of another type) is ignored, so a
- * damaged map reads as "every slice is current" for the entries it spoils. The result has no prototype to pollute.
- */
-function cleanVersions(raw: unknown): Record<string, number> | null {
-  if (!isRecord(raw)) return null
-  const out: Record<string, number> = Object.create(null) as Record<string, number>
-  let kept = 0
-  for (const key of Object.keys(raw)) {
-    if (kept >= MAX_SLICE_VERSIONS) break
-    const version = raw[key]
-    if (!isBoundedInteger(version, 1, MAX_SLICE_VERSION)) continue
-    out[key] = version
-    kept++
-  }
-  return out
 }
 
 /**

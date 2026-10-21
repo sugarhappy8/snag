@@ -321,3 +321,28 @@ export function migrateSlices(game: Record<string, unknown>, versions: Readonly<
     }
   }
 }
+
+/** The most slice versions read from a record's `sv` map (the table has about twenty rows; a hostile map is cut here). */
+const MAX_SLICE_VERSIONS = 256
+/** The highest slice version a record may name. */
+const MAX_SLICE_VERSION = 1000
+
+/**
+ * The slice versions a v3 head names, cleaned: a plain object's own entries whose value is a whole number from 1 to 1000, at most
+ * MAX_SLICE_VERSIONS of them. Anything else (a non-object, an array, a value out of range or of another type) is ignored, so a
+ * damaged map reads as "every slice is current" for the entries it spoils. The result has no prototype to pollute. Null when `raw`
+ * is not a plain object. Both the loader (migrateSave) and the chunk decoder (assembleSave) read a head's `sv` through this.
+ */
+export function cleanVersions(raw: unknown): Record<string, number> | null {
+  if (!isHolder(raw)) return null
+  const out: Record<string, number> = Object.create(null) as Record<string, number>
+  let kept = 0
+  for (const key of Object.keys(raw)) {
+    if (kept >= MAX_SLICE_VERSIONS) break
+    const version = raw[key]
+    if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1 || version > MAX_SLICE_VERSION) continue
+    out[key] = version
+    kept++
+  }
+  return out
+}

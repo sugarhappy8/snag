@@ -1,5 +1,6 @@
-// The save codec (R2, K.5, design 13.5): a GameState as a head and chunks. This is the encode half (R2-S3); the decode half
-// (assembleSave, the hostile-chunk policy) joins it in R2-S4. Nothing here touches storage, and nothing calls it yet.
+// The save codec (R2, K.5, design 13.5): a GameState as a head and chunks, and back. The encode half (encodeSave, R2-S3) and the
+// decode half (assembleSave, R2-S4, the hostile-chunk policy) are here. Nothing here touches storage; the store and the boot (R2-S6,
+// R2-S7) fetch the chunk texts and hand them over.
 //
 // A save is a HEAD plus CHUNK records:
 //
@@ -27,7 +28,22 @@
 //
 // The encoder draws no random numbers, never changes the state it reads (a deep-frozen state is fine), and keeps only caches that
 // are a pure function of the text. It is a leaf of the layering: it imports the slice registry, the slice table and types.
-import { LOG_GROUP_YEARS, LOG_TAIL, freezeRoot, getAt, listSlices, setAt, sliceOf, type SliceDef } from './kernel/slices'
+//
+// The decoder (assembleSave) is the other direction, and the one that meets hostile input, so it never trusts a head or a chunk:
+//
+//   - a manifest entry is checked against the grammar (name, id, length) before its text is even asked for;
+//   - a text must have the manifest's length and checksum before it is parsed, and the parsed value must stay inside the caps of
+//     the slices that live in its chunk (nodes and characters, summed over a decade or shard group), at most 100 levels deep, with
+//     finite numbers, and the shape its chunk kind has (a world chunk an object, a log chunk an array of log years, an entity
+//     shard an object whose keys hash to its shard);
+//   - a chunk that fails any of that is a LostChunk (missing, hostile or size) and is never half applied;
+//   - a good chunk is normalized slice by slice and put where the core holds its placeholder, the key keeping its place; a core
+//     value that is not a placeholder wins over its chunk; a placeholder nothing replaced is deleted, so the slice reads as absent
+//     (the economy then re-seeds at the current year with no retroactive earnings, economy/index.ts ensureEconomy);
+//   - keys that reach the prototype chain are never written (slices.ts setAt refuses them, the entity merge refuses them).
+//
+// The result is a v2-shaped record plus schemaVersion, ready for migrateSave(game, { versions }); the migration is not run here.
+import { LOG_GROUP_YEARS, LOG_TAIL, cleanVersions, countNodes, deleteAt, freezeRoot, getAt, listSlices, setAt, sliceOf, type SliceDef } from './kernel/slices'
 import { ensureSliceTable } from './save-slices'
 import type { GameState } from './types'
 
@@ -531,4 +547,378 @@ export function encodeSave(g: GameState): EncodedSave {
 /** The state as plain JSON, whole: a valid record with no `chunks` key, for backups, exports and a backend with no chunk store. */
 export function inlineSave(g: GameState): string {
   return JSON.stringify(g)
+}
+
+// ---------------------------------------------------------------------------
+// The decoder (R2-S4)
+
+/** Most characters of a hostile chunk text kept for the quarantine copy. */
+export const MAX_RAW_CHARS = 2_000_000
+/** Most losses one assemble reports: a hostile head could hold thousands of placeholders. */
+const MAX_LOST = 128
+/** Deepest nesting a chunk may have (isLoadableGame allows 128 for the whole record, and a chunk sits a few levels down). */
+const MAX_CHUNK_DEPTH = 100
+/** The longest chunk name kept in a LostChunk. */
+const MAX_NAME_CHARS = 64
+/** Segments no key from a file may be written under: they reach the prototype chain. */
+const FORBIDDEN_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
+
+/** What did not load: a chunk by name (or, when no chunk was named for it, a slice by key), and why. */
+export interface LostChunk {
+  readonly name: string
+  /** 'missing': no text. 'hostile': the text, the manifest entry or the value is not what a writer makes. 'size': it passes its caps. */
+  readonly why: 'missing' | 'hostile' | 'size'
+  /** The hostile text, at most MAX_RAW_CHARS characters, kept for the quarantine copy. Only a hostile text has one. */
+  readonly raw?: string
+}
+
+export type Assembled =
+  | { readonly kind: 'ready'; readonly game: Record<string, unknown>; readonly versions: Readonly<Record<string, number>>; readonly lost: readonly LostChunk[] }
+  | { readonly kind: 'invalid'; readonly reason: string }
+
+/** A plain object at schema 3 or later whose own `chunks` is a plain object (not an array): a head that names chunks. */
+export function isChunkedHead(value: unknown): value is Record<string, unknown> {
+  if (!isHolder(value)) return false
+  const schema = value.schemaVersion
+  return typeof schema === 'number' && Number.isSafeInteger(schema) && schema >= 3 && hasOwn(value, HEAD_CHUNKS_KEY) && isHolder(value[HEAD_CHUNKS_KEY])
+}
+
+interface Entry {
+  readonly name: string
+  readonly id: string
+  readonly len: number
+}
+
+const clip = (name: string): string => (name.length > MAX_NAME_CHARS ? name.slice(0, MAX_NAME_CHARS) : name)
+
+/** A hostile chunk's loss, with its text (cut at MAX_RAW_CHARS) kept for the quarantine copy. */
+const hostileLoss = (name: string, text: string): LostChunk => ({ name, why: 'hostile', raw: text.length > MAX_RAW_CHARS ? text.slice(0, MAX_RAW_CHARS) : text })
+
+/**
+ * The manifest of a head: its valid entries in manifest order, and a loss for each that fails. At most MAX_CHUNKS keys are looked
+ * at (a longer manifest is cut there and the cut is one loss), so a hostile one costs a bounded read. Null when it is not an object.
+ */
+function readManifest(head: Rec): { entries: Entry[]; lost: LostChunk[] } | null {
+  const manifest = head[HEAD_CHUNKS_KEY]
+  if (!isHolder(manifest)) return null
+  const entries: Entry[] = []
+  const lost: LostChunk[] = []
+  let seen = 0
+  for (const name in manifest) {
+    if (!hasOwn(manifest, name)) continue
+    if (++seen > MAX_CHUNKS) {
+      lost.push({ name: HEAD_CHUNKS_KEY, why: 'hostile' })
+      break
+    }
+    const ref = manifest[name]
+    const good =
+      CHUNK_NAME_PATTERN.test(name) &&
+      isHolder(ref) &&
+      typeof ref.id === 'string' &&
+      CHUNK_ID_PATTERN.test(ref.id) &&
+      ref.id.startsWith(`${name}.`) &&
+      typeof ref.len === 'number' &&
+      Number.isSafeInteger(ref.len) &&
+      ref.len >= 0 &&
+      ref.len <= MAX_CHUNK_CHARS
+    if (good) entries.push({ name, id: (ref as Rec).id as string, len: (ref as Rec).len as number })
+    else lost.push({ name: clip(name), why: 'hostile' })
+  }
+  return { entries, lost }
+}
+
+/** The chunk ids a head names, valid ones only, in manifest order, at most MAX_CHUNKS. [] for a head with no usable manifest. */
+export function neededChunkIds(head: Record<string, unknown>): string[] {
+  if (!isHolder(head)) return []
+  const manifest = readManifest(head)
+  return manifest === null ? [] : manifest.entries.map((e) => e.id)
+}
+
+/** Where a chunk's content goes. */
+type Place =
+  | { readonly kind: 'world' }
+  | { readonly kind: 'log' }
+  | { readonly kind: 'entity'; readonly row: SliceDef; readonly shard: number }
+
+/** The kind of chunk a name is, by the table; null when no slice claims it (an entity kind nobody declares, a shard past the count). */
+function placeOf(name: string, table: readonly SliceDef[]): Place | null {
+  if (name === 'world') return { kind: 'world' }
+  if (name.startsWith('log.')) return table.some((s) => s.shape === 'logYears') ? { kind: 'log' } : null
+  const [, kind, n] = name.split('.')
+  const row = table.find((s) => s.chunk === 'entities' && s.entities?.kind === kind)
+  const shard = Number(n)
+  return row !== undefined && shard < row.entities!.shards ? { kind: 'entity', row, shard } : null
+}
+
+/** What is left of the caps of a group of chunks (every log decade is one group, every entity slice's shards another). */
+interface Room {
+  nodes: number
+  chars: number
+}
+
+const groupOf = (place: Place): string => (place.kind === 'entity' ? place.row.key : place.kind)
+
+/** The caps of a group: the world chunk may hold any world slice (or an entity record riding whole), the others have one row. */
+function roomFor(place: Place, table: readonly SliceDef[]): Room {
+  const rows =
+    place.kind === 'world'
+      ? table.filter((s) => s.chunk === 'world' || s.chunk === 'entities')
+      : place.kind === 'log'
+        ? table.filter((s) => s.shape === 'logYears')
+        : [place.row]
+  return { nodes: rows.reduce((a, s) => a + s.caps.nodes, 0), chars: rows.reduce((a, s) => a + s.caps.chars, 0) }
+}
+
+/** Depth and finite numbers, walked without recursion: a value JSON can parse but the engine cannot safely calculate with. */
+function isSound(value: unknown): boolean {
+  const items: unknown[] = [value]
+  const depths: number[] = [0]
+  while (items.length > 0) {
+    const item = items.pop()
+    const depth = depths.pop()!
+    if (depth > MAX_CHUNK_DEPTH) return false
+    if (typeof item === 'number') {
+      if (!Number.isFinite(item)) return false
+    } else if (isObj(item)) {
+      for (const child of Array.isArray(item) ? item : Object.values(item)) {
+        items.push(child)
+        depths.push(depth + 1)
+      }
+    }
+  }
+  return true
+}
+
+/** A completed life-log year as save-schema.ts validLogYear reads it (its bounds are copied here so the codec stays a leaf): a bad decade is then a lost chunk, not a life that will not load. */
+function isLogYear(y: unknown): boolean {
+  return (
+    isHolder(y) &&
+    typeof y.age === 'number' &&
+    Number.isSafeInteger(y.age) &&
+    y.age >= 0 &&
+    y.age <= 10_000 &&
+    typeof y.year === 'number' &&
+    Number.isSafeInteger(y.year) &&
+    y.year >= 1900 &&
+    y.year <= 100_000 &&
+    Array.isArray(y.entries) &&
+    y.entries.every((entry: unknown) => isHolder(entry) && typeof entry.id === 'string' && typeof entry.text === 'string' && typeof entry.tone === 'string')
+  )
+}
+
+/** The shape a chunk of this kind has. A world chunk is an object whose 'subkeys' members are objects; a log chunk an array of log years; an entity shard an object of its own keys. */
+function hasShape(place: Place, value: unknown, table: readonly SliceDef[]): boolean {
+  if (place.kind === 'log') return Array.isArray(value) && value.every(isLogYear)
+  if (!isHolder(value)) return false
+  if (place.kind === 'entity') {
+    const shards = place.row.entities!.shards
+    return Object.keys(value).every((k) => !FORBIDDEN_KEYS.has(k) && shardOf(k, shards) === place.shard)
+  }
+  const containers = new Set(table.filter((s) => s.shape === 'subkeys').map((s) => s.key))
+  return Object.keys(value).every((k) => !containers.has(k) || isHolder(value[k]))
+}
+
+type Got = { readonly ok: true; readonly value: unknown; readonly place: Place; readonly text: string } | { readonly ok: false; readonly lost: LostChunk }
+
+/** Fetch, check and parse one chunk. Every way it can be wrong is a LostChunk; a chunk that gets through is whole. */
+function readChunk(entry: Entry, text: unknown, table: readonly SliceDef[], rooms: Map<string, Room>): Got {
+  const { name } = entry
+  if (typeof text !== 'string') return { ok: false, lost: { name, why: 'missing' } }
+  const hostile: Got = { ok: false, lost: hostileLoss(name, text) }
+  const place = placeOf(name, table)
+  if (place === null) return hostile
+  if (text.length !== entry.len || textSum(text) !== entry.id.slice(name.length + 1)) return hostile
+  const group = groupOf(place)
+  let room = rooms.get(group)
+  if (room === undefined) {
+    room = roomFor(place, table)
+    rooms.set(group, room)
+  }
+  const tooBig: Got = { ok: false, lost: { name, why: 'size' } }
+  if (text.length > room.chars) return tooBig
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return hostile
+  }
+  const nodes = countNodes(value, room.nodes)
+  if (nodes > room.nodes) return tooBig
+  if (!isSound(value) || !hasShape(place, value, table)) return hostile
+  room.nodes -= nodes
+  room.chars -= text.length
+  return { ok: true, value, place, text }
+}
+
+/** What a game is built into: a shallow copy of the head whose containers are copied before they are written, so the head is never touched. */
+interface Build {
+  readonly game: Rec
+  readonly copied: Set<string>
+  /** Slices whose normalize has run (a chunk value was normalized as it was placed). */
+  readonly normalized: Set<string>
+}
+
+/** `row.normalize`, which never throws by contract; a buggy one reads as "drop this slice" and does not take the record with it. */
+function normalizeOf(row: SliceDef, value: unknown): unknown {
+  try {
+    return row.normalize(value)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Put a chunk's value where the core holds the placeholder of `path`. 'kept': the core holds something else there (a real value
+ * wins, normalized later) or nothing. 'dropped': the slice's own normalize refused the value, so the placeholder stays for the sweep.
+ */
+function place(b: Build, path: string, value: unknown): 'placed' | 'kept' | 'dropped' {
+  if (getAt(b.game, path) !== placeholder(path)) return 'kept'
+  const row = sliceOf(path)
+  if (row === undefined) return 'kept'
+  b.normalized.add(path)
+  const out = normalizeOf(row, value)
+  if (out === undefined) return 'dropped'
+  const dot = path.indexOf('.')
+  if (dot > 0 && detach(b.game, b.copied, path.slice(0, dot)) === undefined) return 'kept'
+  setAt(b.game, path, out)
+  return 'placed'
+}
+
+/** The members of a world chunk: whole slices under their own keys, and the shards of each 'subkeys' container. True when a member was dropped. */
+function applyWorld(b: Build, value: Rec, rows: ReadonlyMap<string, SliceDef>): boolean {
+  let dropped = false
+  // A member no declared row names is ignored. A shard name is a row only when it is a short lower case word (sliceOf), so the
+  // names that reach the prototype chain (__proto__, constructor, prototype) are never a path, and setAt is never asked for one.
+  for (const key of Object.keys(value)) {
+    const row = rows.get(key)
+    if (row === undefined) continue
+    const member = value[key]
+    if (row.shape === 'subkeys') {
+      const shards = member as Rec
+      for (const name of Object.keys(shards)) {
+        if (sliceOf(`${key}.${name}`) === undefined) continue
+        if (place(b, `${key}.${name}`, shards[name]) === 'dropped') dropped = true
+      }
+    } else if (place(b, key, member) === 'dropped') dropped = true
+  }
+  return dropped
+}
+
+/** The log: the decade chunks in age order, then what the core still holds (the tail, and any years from a dip on). */
+function applyLog(b: Build, row: SliceDef, decades: readonly { readonly n: number; readonly years: readonly unknown[] }[]): void {
+  const tail = b.game[row.key]
+  if (decades.length === 0 || !Array.isArray(tail)) return
+  const years = [...decades].sort((x, y) => x.n - y.n).flatMap((d) => d.years)
+  b.normalized.add(row.key)
+  const out = normalizeOf(row, [...years, ...tail])
+  if (out === undefined) deleteAt(b.game, row.key)
+  else setAt(b.game, row.key, out)
+}
+
+/** One record from its shards, in ascending key order (the order the encoder required of it). The keys are checked, and made by fromEntries, which defines properties and never assigns. */
+function mergeShards(parts: readonly Rec[]): Rec {
+  const entries: [string, unknown][] = []
+  for (const part of parts) for (const k of Object.keys(part)) entries.push([k, part[k]])
+  entries.sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0))
+  return Object.fromEntries(entries)
+}
+
+/** True when the chunk that would have held a placeholder's slice is already a named loss, so the placeholder is not a second one. */
+function attributed(row: SliceDef | undefined, lost: readonly LostChunk[]): boolean {
+  if (row?.chunk === 'entities' && row.entities !== undefined) {
+    const prefix = `e.${row.entities.kind}.`
+    return lost.some((l) => l.name.startsWith(prefix))
+  }
+  return lost.some((l) => l.name === 'world')
+}
+
+/**
+ * Rebuild a GameState record from a head and its chunk texts (by id; null or absent is a record the store does not have). The
+ * result is the encoded state exactly (the same JSON string) when every chunk is good, and otherwise the state without what was
+ * lost, named in `lost`. Never throws: whatever goes wrong, the answer is `invalid` or a record with a loss.
+ */
+export function assembleSave(head: Record<string, unknown>, texts: ReadonlyMap<string, string | null>): Assembled {
+  try {
+    if (!isChunkedHead(head)) return { kind: 'invalid', reason: 'not a chunked head: it needs schemaVersion 3 or later and a chunks object' }
+    ensureSliceTable()
+    const manifest = readManifest(head)
+    if (manifest === null) return { kind: 'invalid', reason: 'the chunk manifest is not an object' }
+    const table = listSlices()
+    const rows = new Map(table.map((s) => [s.key, s] as const))
+    const logRow = table.find((s) => s.shape === 'logYears')
+    const fetchText = (id: string): unknown => (typeof texts?.get === 'function' ? texts.get(id) : undefined)
+
+    const game: Rec = { ...head }
+    delete game[HEAD_CHUNKS_KEY]
+    delete game[HEAD_VERSIONS_KEY]
+    const b: Build = { game, copied: new Set(), normalized: new Set() }
+    const lost: LostChunk[] = [...manifest.lost]
+
+    // Read and check every chunk first, so one that fails is never half applied; then apply them in a fixed order.
+    const rooms = new Map<string, Room>()
+    const worlds: { entry: Entry; value: Rec; text: string }[] = []
+    const decades: { n: number; years: unknown[] }[] = []
+    const shards = new Map<string, { row: SliceDef; parts: Rec[]; chunks: { name: string; text: string }[] }>()
+    for (const entry of manifest.entries) {
+      const got = readChunk(entry, fetchText(entry.id), table, rooms)
+      if (!got.ok) {
+        lost.push(got.lost)
+        continue
+      }
+      if (got.place.kind === 'world') worlds.push({ entry, value: got.value as Rec, text: got.text })
+      else if (got.place.kind === 'log') decades.push({ n: Number(entry.name.slice(4)), years: got.value as unknown[] })
+      else {
+        const group = shards.get(got.place.row.key) ?? { row: got.place.row, parts: [], chunks: [] }
+        group.parts.push(got.value as Rec)
+        group.chunks.push({ name: entry.name, text: got.text })
+        shards.set(got.place.row.key, group)
+      }
+    }
+
+    for (const w of worlds) if (applyWorld(b, w.value, rows)) lost.push(hostileLoss(w.entry.name, w.text))
+    if (logRow !== undefined) applyLog(b, logRow, decades)
+    for (const group of shards.values()) {
+      if (place(b, group.row.key, mergeShards(group.parts)) === 'dropped') for (const c of group.chunks) lost.push(hostileLoss(c.name, c.text))
+    }
+
+    // A placeholder nothing replaced: the slice reads as absent.
+    const swept: { path: string; row: SliceDef }[] = []
+    for (const row of table) {
+      if (row.chunk === 'core' || row.shape === 'logYears' || underSubkeys(table, row.key)) continue
+      if (row.shape === 'subkeys') {
+        const container = b.game[row.key]
+        if (!isHolder(container)) continue
+        const names = Object.keys(container).filter((n) => container[n] === placeholder(`${row.key}.${n}`))
+        const holder = names.length > 0 ? detach(b.game, b.copied, row.key) : undefined
+        if (holder === undefined) continue
+        for (const n of names) {
+          delete holder[n]
+          swept.push({ path: `${row.key}.${n}`, row: sliceOf(`${row.key}.${n}`) ?? row })
+        }
+      } else if (getAt(b.game, row.key) === placeholder(row.key)) {
+        const dot = row.key.indexOf('.')
+        if (dot > 0 && detach(b.game, b.copied, row.key.slice(0, dot)) === undefined) continue
+        deleteAt(b.game, row.key)
+        swept.push({ path: row.key, row })
+      }
+    }
+    for (const { path, row } of swept) if (!attributed(row, lost)) lost.push({ name: clip(path), why: 'missing' })
+
+    // What the core held itself, and what no chunk replaced, is normalized by its own slice, once, in the table's order.
+    for (const row of table) {
+      if (b.normalized.has(row.key)) continue
+      const value = getAt(b.game, row.key)
+      if (value === undefined) continue
+      const out = normalizeOf(row, value)
+      if (out === value) continue
+      const dot = row.key.indexOf('.')
+      if (dot > 0 && detach(b.game, b.copied, row.key.slice(0, dot)) === undefined) continue
+      if (out === undefined) deleteAt(b.game, row.key)
+      else setAt(b.game, row.key, out)
+    }
+
+    return { kind: 'ready', game: b.game, versions: cleanVersions(head[HEAD_VERSIONS_KEY]) ?? {}, lost: lost.length > MAX_LOST ? lost.slice(0, MAX_LOST) : lost }
+  } catch (error) {
+    return { kind: 'invalid', reason: error instanceof Error ? clip(error.message) : 'unreadable chunked head' }
+  }
 }
