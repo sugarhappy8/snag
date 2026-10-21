@@ -23,7 +23,7 @@ import { standingOf } from '../src/game/special/kit/rivals'
 import { MUSIC_SPEC } from '../src/game/special/music-market'
 import { musicStanding } from '../src/game/special/music-menu'
 import { musicStore, type MusicState } from '../src/game/special/music-state'
-import { timelineFamily } from '../src/game/timeMachine'
+import { arriveInPast, timelineFamily } from '../src/game/timeMachine'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../src/game/types'
 import { infoChart, infoText } from '../src/ui/components/menuModel'
 import { lab, node, offBest, rated } from './ai-bench-kit'
@@ -678,6 +678,40 @@ describe('stockTrail', () => {
     const after = stockTrail(g, q)
     expect(after.slice(0, -1)).toEqual(before.slice(0, -1))
     expect(after[after.length - 1]).toBeCloseTo((before[before.length - 1] as number) * 2, 6)
+  })
+
+  it('does not carry a settled year over a Time Machine jump, so the abandoned timeline keeps its own price', () => {
+    const g = adult(41, 2040, 'us')
+    const start = structuredClone(g)
+    const info = exchangeInfo(g.character.countryId)
+    const { q } = listed(g).find((l) => (stockTrail(g, l.q).at(-1) ?? null) !== null)!
+    // 2040 as the player lived it: a big buy moved the price that year. Once 2041 starts, 2040 is a settled year.
+    addMarketShock(g, {
+      asset: 'stock',
+      secId: q.secId,
+      exKey: info.key,
+      slot: Number((q.details as Record<string, unknown>).slot),
+      name: 'Test Co',
+      symbol: 'TST',
+      cause: 'liquidity',
+      year: 2040,
+      mult: 1.8,
+      fade: 0.5,
+      countryId: g.character.countryId,
+    })
+    g.year = 2041
+    g.character.age += 1
+    const abandoned = stockTrail(g, q)
+    // Back to the start of 2040, no trade this time. The price of 2040 is the plain one, in 2040 and once 2041 has come.
+    const back = arriveInPast(g, start)
+    expect(back.year).toBe(2040)
+    const plain = stockTrail(back, q).at(-1)
+    expect(typeof plain).toBe('number')
+    back.year = 2041
+    back.character.age += 1
+    const again = stockTrail(back, q)
+    expect(again.at(-2)).toBeCloseTo(plain as number, 6)
+    expect(again.at(-2)).not.toBeCloseTo(abandoned.at(-2) as number, 6)
   })
 
   it('draws no random number and writes nothing', () => {
