@@ -32,7 +32,8 @@ the table doesn't know lands in "More". `test/nav-sections.test.ts` pins the dat
 A cockpit tile on the company screen is a `MenuGroup` whose id starts with `hub.` (`HUB_PREFIX`, `src/game/hubs/company.ts`;
 the ids come from `hubIds(assetId)`). The tiles hold the very nodes of the flat list in the flat order, so a walk that
 leaves out the `hub.` segments sees the same action sequence with the flag off and on. The walker in `test/nav-kit.ts` does
-that (`canonical`), and `test/fuzz-kit.ts` gives a `hub.` group no depth. Rules for a tile:
+that (`canonical`), `test/fuzz-kit.ts` gives a `hub.` group no depth, and so does the search index: `IndexEntry.depth` and the depth cap
+count the ids of a path that are not `hub.` tiles (the path itself keeps them, the resolver needs them). Rules for a tile:
 
 - Its `children` reads the latest state each time (the sheet re-resolves the open group on every render), so `businessScreen`
   hands the hub a `rebuild` function. A hub must not import `manage.ts`, `business.ts`, `career.ts`, `assets.ts` or `menus.ts`

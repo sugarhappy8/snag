@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resetFlags, setFlags } from '../src/game/flags'
+import { resetFlags, setFlags, type FlagOverrides } from '../src/game/flags'
 import { createPerson } from '../src/game/people'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode, Prison } from '../src/game/types'
 import {
@@ -24,6 +24,7 @@ import {
   type IndexRoots,
   type SearchIndex,
 } from '../src/ui/nav/searchIndex'
+import { parsePlaceKey, placeKey, placeOfEntry } from '../src/ui/nav/place'
 import { normalize } from '../src/ui/nav/searchRank'
 import { NAV_OFF, buildIndexCached, frozen, navState, walkTreeCached, type NavStateName, type NavTab } from './nav-kit'
 
@@ -590,4 +591,100 @@ describe('coverage', () => {
     },
     HEAVY,
   )
+})
+
+describe('hub groups cost no depth (R1-N4)', () => {
+  /** The cockpit alone, and the three nav flags together as the release has them. Spelled out, never the defaults. */
+  const COCKPITS: FlagOverrides = { ...NAV_OFF, cockpits: true }
+  const ALL_NAV: FlagOverrides = { navRegroup: true, navPalette: true, cockpits: true }
+  const isHub = (id: string): boolean => id.startsWith('hub.')
+
+  /** A chain of lists, a leaf in each; with `hubAt` set, a cockpit tile (id `hub.tile`) stands in front of that list. */
+  const chain = (hubAt: number): MenuGroup => {
+    const mk = (n: number): MenuGroup => {
+      const real = grp(`d${n}`, () => [act(`leaf${n}`), mk(n + 1)])
+      return n === hubAt ? grp('hub.tile', () => [real]) : real
+    }
+    return mk(1)
+  }
+
+  it('13. a hub. segment is free in the depth count: the same real lists are indexed with and without one', () => {
+    const flat = buildIndex(frozen('kid'), only('assets', chain(0)))
+    const hubbed = buildIndex(frozen('kid'), only('assets', chain(4)))
+    const leaves = (i: SearchIndex): string[] => ids(i).filter((id) => id.startsWith('leaf'))
+    expect(leaves(hubbed)).toEqual(leaves(flat))
+    expect(Math.max(...flat.entries.map((e) => e.depth))).toBe(INDEX_LIMITS.depth)
+    expect(Math.max(...hubbed.entries.map((e) => e.depth))).toBe(INDEX_LIMITS.depth)
+    // The path still holds the tile (the resolver needs it); only the count leaves it out.
+    const deepest = hubbed.entries.reduce((a, b) => (b.idPath.length > a.idPath.length ? b : a))
+    expect(deepest.idPath.filter(isHub)).toEqual(['hub.tile'])
+    expect(deepest.idPath.length).toBe(deepest.depth + 1)
+    expect(hubbed.truncated).toBe(true)
+    expect(hubbed.complete).toBe(true)
+    // Every entry, the tile's own row included, resolves through the tile.
+    const g = frozen('kid')
+    const roots = only('assets', chain(4))
+    const resolve = createResolver(g, roots)
+    for (const e of hubbed.entries) expect(resolve(e)?.id, e.idPath.join('/')).toBe(e.id)
+  })
+
+  it('13b. depth is the count of real lists; a row in the tile itself sits where the tile does', () => {
+    const root = grp('root', [grp('a', [grp('hub.t', [act('inside'), grp('b', [act('deeper')])])])])
+    const index = buildIndex(frozen('kid'), only('activities', root))
+    const at = (id: string): [string[], number] => [entryOf(index, id).idPath, entryOf(index, id).depth]
+    expect(at('a')).toEqual([['a'], 1])
+    expect(at('hub.t')).toEqual([['a', 'hub.t'], 1])
+    expect(at('inside')).toEqual([['a', 'hub.t', 'inside'], 2])
+    expect(at('b')).toEqual([['a', 'hub.t', 'b'], 2])
+    expect(at('deeper')).toEqual([['a', 'hub.t', 'b', 'deeper'], 3])
+  })
+
+  it('13c. tiles that nest without end stop at 12 path segments, so every place key stays valid', () => {
+    const loop = (n: number): MenuGroup => grp(`hub.again${n}`, () => [act(`x${n}`), loop(n + 1)])
+    const index = buildIndex(frozen('kid'), only('activities', grp('root', [loop(1)])))
+    expect(Math.max(...index.entries.map((e) => e.idPath.length))).toBe(12)
+    expect(index.truncated).toBe(true)
+    expect(index.complete).toBe(true)
+    for (const e of index.entries) expect(parsePlaceKey(placeKey(placeOfEntry(e))), e.idPath.join('/')).not.toBeNull()
+  })
+
+  /** Walker actions (depth up to 7, outside the caps by design) that the index has no entry for. */
+  function missing(name: NavStateName, index: SearchIndex): string[] {
+    const have = new Set(index.entries.map((e) => `${e.type}|${e.id}|${e.label}`))
+    const ENTITY = /^(person\.|biz\.company\.|asset-|inv-offer-)/
+    const out: string[] = []
+    for (const w of walkTreeCached(name, { maxDepth: 7 })) {
+      if (w.type !== 'action') continue
+      const inEntity = w.ids.slice(0, -1).some((id) => ENTITY.test(id))
+      if (w.rows > INDEX_LIMITS.perGroup || (inEntity && w.rows > INDEX_LIMITS.perEntity)) continue
+      if (!have.has(`action|${w.node.id}|${w.node.label}`)) out.push(`${w.tab}/${w.ids.join('/')}`)
+    }
+    return out
+  }
+
+  for (const [what, flags] of [['the cockpits alone', COCKPITS], ['all three nav flags', ALL_NAV]] as const) {
+    it(
+      `14. ${what} on: the CEO index loses no entry the flat one has, and none the walker reaches`,
+      () => {
+        setFlags(NAV_OFF)
+        const flat = buildIndexCached('ceo')
+        const flatMissing = missing('ceo', flat)
+        setFlags(flags)
+        const on = buildIndexCached('ceo')
+        expect(on).not.toBe(flat)
+        expect(on.complete).toBe(true)
+        expect(on.failures).toBe(0)
+        const kept = new Set(on.entries.map((e) => e.key))
+        const lost = flat.entries.filter((e) => !kept.has(e.key)).map((e) => `${e.tab}/${e.idPath.join('/')}`)
+        expect(lost).toEqual([])
+        expect(missing('ceo', on)).toEqual(flatMissing)
+        expect(flatMissing).toEqual([])
+        // The cockpit's tiles are in the index, and no entry is deeper than the cap.
+        expect(on.entries.some((e) => e.idPath.some(isHub))).toBe(true)
+        expect(Math.max(...on.entries.map((e) => e.depth))).toBeLessThanOrEqual(INDEX_LIMITS.depth)
+        expect(on.entries.length).toBeGreaterThanOrEqual(flat.entries.length)
+      },
+      HEAVY,
+    )
+  }
 })

@@ -8,6 +8,7 @@
 // small steps (startIndexJob, stepIndexJob, finishIndex) so a phone is never blocked, and buildIndex runs it to the end.
 //
 // Part of the palette zone (test/lazy-zones.test.ts): only the palette and its gate import this file at run time.
+import { HUB_PREFIX } from '../../game/hubs/company'
 import { keywordsOf } from '../../game/hubs/keywords'
 import { peopleMenu } from '../../game/hubs/people'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../../game/menus'
@@ -41,7 +42,10 @@ export interface IndexEntry {
   labelN: string
   kwN: string
   crumbN: string
-  /** How many lists deep the row sits: idPath.length. */
+  /**
+   * How many lists deep the row sits: the ids of idPath that are not cockpit tiles (a `hub.` group adds no depth, as in the
+   * nav-kit walker and the fuzz walker). idPath.length when the path has no tile in it.
+   */
   depth: number
   entity?: EntityRef
   /** Why the row is locked (disabledReason), or null. Advisory: the palette checks again live. */
@@ -68,7 +72,17 @@ export type IndexRoots = Record<SearchTab, MenuGroup>
 
 export const INDEX_LIMITS = { entries: 6000, nodes: 20000, depth: 7, perGroup: 120, perEntity: 40 } as const
 
+/** A path longer than this could not be written as a place key (place.ts refuses more than 12 segments), so no group is entered beyond it. */
+const MAX_PATH = 12
+
 const TABS: readonly SearchTab[] = ['occupation', 'assets', 'relationships', 'activities']
+
+/** The lists a path is deep: its ids without the cockpit tiles. A tile is a window on the list it stands in, not a level. */
+function depthOf(idPath: readonly string[]): number {
+  let depth = 0
+  for (const id of idPath) if (!id.startsWith(HUB_PREFIX)) depth++
+  return depth
+}
 
 /** The four roots as the bottom bar shows them. Relationships is a custom sheet, so its root is the people adapter. */
 export function defaultRoots(): IndexRoots {
@@ -194,7 +208,7 @@ function makeEntry(job: Job, frame: Frame, node: MenuAction | MenuGroup, own: En
     labelN: normalize(entity && !own ? `${label} ${entity.name}` : label),
     kwN: normalize(keywordsOf(node).join(' ')),
     crumbN: frame.crumbN,
-    depth: idPath.length,
+    depth: depthOf(idPath),
     locked: nodeDisabled(node, job.g),
     input: node.type === 'action' && Boolean(node.input),
   }
@@ -250,7 +264,7 @@ function runFrame(job: Job, frame: Frame): void {
     const entry = makeEntry(job, frame, node, own, key, label)
     job.entries.push(entry)
     if (node.type !== 'menu' || entry.locked !== null) continue
-    if (entry.depth >= INDEX_LIMITS.depth) {
+    if (entry.depth >= INDEX_LIMITS.depth || entry.idPath.length >= MAX_PATH) {
       job.truncated = true
       continue
     }
