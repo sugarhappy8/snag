@@ -32,7 +32,7 @@ import type { GameState } from '../src/game/types'
 import { makeTestGame } from './helpers'
 import { findSeed } from './seed-kit'
 import { normalize, textMetrics, type LifeTrace } from './text-metrics'
-import { formatProbe, playProbeLife, probeLives, PROBE_UNTIL_AGE, summarize, writeTextMetrics, type ProbeLife, type ProbeResult } from './text-probe'
+import { formatProbe, playProbeLife, probeLives, PROBE_UNTIL_AGE, ratioToR1, readBaseline, summarize, writeTextMetrics, type ProbeLife, type ProbeResult } from './text-probe'
 
 const TIMEOUT = 120_000
 const LIVES = probeLives(13)
@@ -615,5 +615,50 @@ describe('R2-P10 sites, played directly', () => {
       playPromotions(g, sister, 7)
     }
     leaksNothing(() => promotedSister().g, run)
+  })
+})
+
+// ---- R2-P10: the gate -------------------------------------------------------------------------------------------------------
+
+/** R2 acceptance bullet 5: the pooled repeated-line share of the 13 lives is at most this fraction of R1's. */
+const GATE_RATIO = 0.5
+
+/** What a failed gate says: the share, the ratio, the ten heaviest families and what to do about them. */
+function gateMessage(r: ProbeResult): string {
+  const base = readBaseline().merged
+  const top = r.families
+    .slice(0, 10)
+    .map((f) => `${String(f.extra).padStart(4)} x ${f.text}`)
+    .join('\n')
+  return [
+    `the 13 lives repeat ${(r.merged.repeatedShare * 100).toFixed(2)}% of their log lines; R1 repeated ${(base.repeatedShare * 100).toFixed(2)}%, so the ratio is ${ratioToR1(r).toFixed(2)} and the bar is ${GATE_RATIO.toFixed(2)}`,
+    'the ten heaviest families (repeats beyond the first):',
+    top,
+    'convert the next heaviest family (scripts/text-probe.ts shows them all), do not move the baseline',
+  ].join('\n')
+}
+
+describe('R2-P10 the gate: repeated lines, half of R1 or better', () => {
+  it('the 13 lives repeat at most half the share of lines that R1 did', () => {
+    const r = pooled()
+    expect(ratioToR1(r), gateMessage(r)).toBeLessThanOrEqual(GATE_RATIO)
+  })
+
+  it('has teeth: the tree before R2-P10 failed it, and the message names the way out', () => {
+    // 247 repeats in 4,919 lines is what the probe measured on the tree after R2-P9, a ratio of 0.60.
+    const before = { lives: [], merged: { repeatedShare: 247 / 4919, lines: 4919 }, repeated: 247, families: [{ text: '\u{1F4F0} #: the summer olympics open.', extra: 31, total: 38, lives: 7 }] } as unknown as ProbeResult
+    expect(ratioToR1(before)).toBeGreaterThan(GATE_RATIO)
+    expect(gateMessage(before)).toMatch(/ratio is 0\.60 and the bar is 0\.50/)
+    expect(gateMessage(before)).toContain('31 x \u{1F4F0} #: the summer olympics open.')
+    expect(gateMessage(before)).toContain('convert the next heaviest family')
+    const after = { ...before, merged: { repeatedShare: 154 / 4910, lines: 4910 }, repeated: 154 } as unknown as ProbeResult
+    expect(ratioToR1(after)).toBeLessThanOrEqual(GATE_RATIO)
+  })
+
+  it('measures against the R1 record as it was taken, which this release never moves', () => {
+    const base = readBaseline().merged
+    expect(base.lines).toBe(5093)
+    expect(base.repeated).toBe(423)
+    expect(base.repeatedShare).toBeCloseTo(423 / 5093, 12)
   })
 })
