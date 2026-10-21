@@ -11,6 +11,7 @@
 // To shrink the baseline after an edge goes away:
 //   UPDATE_LAYER_BASELINE=1 npx vitest run --maxWorkers=1 test/layers.test.ts
 // The update only ever removes edges (shrinkLayers throws on a new one). With no baseline file yet it writes the first.
+// R2-K4 added the domains and eager sections, which test/layers-domains.test.ts also writes: run both files to update them all.
 // One more mode exists for the day a track that was built beside this one merges in:
 //   UPDATE_LAYER_BASELINE=rebase npx vitest run --maxWorkers=1 --silent=false test/layers.test.ts
 // It accepts growth once, prints every entry it added (the commit message lists them; `git diff test/layers-baseline.json`
@@ -349,10 +350,10 @@ describe('shrinkLayers', () => {
     expect(shrinkLayers(both, base).upward).toEqual([E2, E1])
   })
 
-  it('leaves the sections it does not own as given', () => {
+  it('shrinks the domains section with the graph, and leaves the eager section as given without the reads (R2-K4 owns both now)', () => {
     const wide: LayerBaseline = { ...base, domains: { 'a->b': 3 }, eager: { 'src/game/x.ts': ['NAME'] } }
     const out = shrinkLayers(graphOf({}), wide)
-    expect(out.domains).toEqual({ 'a->b': 3 })
+    expect(out.domains).toEqual({}) // no import between two domains is left, so the pair goes
     expect(out.eager).toEqual({ 'src/game/x.ts': ['NAME'] })
     expect(out.upward).toEqual([])
   })
@@ -418,11 +419,12 @@ describe('rebaseLayers', () => {
     expect(() => rebaseLayers(graphOf({ [L0]: [L3], [L3]: [] }), EMPTY)).toThrow(/kernel\/ports\.ts -> src\/game\/business\/manage\.ts/)
   })
 
-  it('leaves the sections it does not own as given, and does not change its input', () => {
-    const wide: LayerBaseline = { ...base, domains: { 'a->b': 3 } }
+  it('rebuilds the domains section from the graph, leaves the eager section as given without the reads, and does not change its input (R2-K4 owns both now)', () => {
+    const wide: LayerBaseline = { ...base, domains: { 'a->b': 3 }, eager: { 'src/game/x.ts': ['NAME'] } }
     const before = JSON.stringify(wide)
     const { baseline } = rebaseLayers(graphOf({ [L3]: [L4], [L4]: [] }), wide)
-    expect(baseline.domains).toEqual({ 'a->b': 3 })
+    expect(baseline.domains).toEqual({})
+    expect(baseline.eager).toEqual({ 'src/game/x.ts': ['NAME'] })
     expect(JSON.stringify(wide)).toBe(before)
   })
 })

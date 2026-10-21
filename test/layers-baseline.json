@@ -102,5 +102,396 @@
     "src/game/special/politics.ts -> src/game/nation/regime.ts",
     "src/game/special/politics.ts -> src/game/nation/yearly.ts",
     "src/game/underworld.ts -> src/game/business/economy.ts"
-  ]
+  ],
+  "domains": {
+    "activities->business": 1,
+    "activities->events": 15,
+    "activities->life": 35,
+    "activities->shops": 4,
+    "activities->special": 3,
+    "advisors->business": 3,
+    "advisors->computer": 1,
+    "advisors->events": 4,
+    "advisors->invest": 1,
+    "advisors->life": 4,
+    "advisors->nation": 1,
+    "business->activities": 1,
+    "business->charts": 5,
+    "business->computer": 5,
+    "business->events": 20,
+    "business->invest": 18,
+    "business->life": 56,
+    "business->special": 8,
+    "business->workshop": 2,
+    "charts->business": 7,
+    "computer->activities": 1,
+    "computer->business": 2,
+    "computer->events": 4,
+    "computer->invest": 8,
+    "computer->life": 15,
+    "computer->shops": 2,
+    "computer->special": 7,
+    "events->business": 5,
+    "events->computer": 1,
+    "events->life": 36,
+    "events->shops": 6,
+    "invest->business": 2,
+    "invest->events": 1,
+    "invest->life": 2,
+    "life->activities": 12,
+    "life->business": 28,
+    "life->charts": 1,
+    "life->computer": 6,
+    "life->events": 15,
+    "life->invest": 8,
+    "life->shops": 5,
+    "life->special": 6,
+    "life->workplace": 5,
+    "nation->activities": 1,
+    "nation->business": 10,
+    "nation->charts": 1,
+    "nation->events": 5,
+    "nation->life": 3,
+    "nation->special": 2,
+    "shops->activities": 4,
+    "shops->events": 9,
+    "shops->life": 26,
+    "shops->special": 4,
+    "special->activities": 9,
+    "special->business": 11,
+    "special->charts": 1,
+    "special->computer": 19,
+    "special->events": 12,
+    "special->invest": 3,
+    "special->life": 48,
+    "special->nation": 6,
+    "special->shops": 6,
+    "workplace->life": 4,
+    "workshop->business": 10,
+    "workshop->events": 2,
+    "workshop->life": 3,
+    "workshop->special": 5
+  },
+  "eager": {
+    "src/game/activities.ts": [
+      "miscActivities"
+    ],
+    "src/game/business/books-menu.ts": [
+      "ROWS"
+    ],
+    "src/game/business/competition-data.ts": [
+      "MARKETS"
+    ],
+    "src/game/business/deeptech-data.ts": [
+      "LAST_SERIES"
+    ],
+    "src/game/business/deeptech-state.ts": [
+      "MAX_STORED_PROGRAMS"
+    ],
+    "src/game/business/dividend-menu.ts": [
+      "PCT_SLIDER"
+    ],
+    "src/game/business/events-extra.ts": [
+      "extraEventInternals"
+    ],
+    "src/game/business/events.ts": [
+      "EVENTS"
+    ],
+    "src/game/business/franchise.ts": [
+      "UNIT_YEARS"
+    ],
+    "src/game/business/industries.ts": [
+      "INDUSTRIES",
+      "RAW_INDUSTRIES"
+    ],
+    "src/game/business/own-listing-menu.ts": [
+      "CLASSES_LINE"
+    ],
+    "src/game/business/sector-care-play.ts": [
+      "CARE_COPY",
+      "CARE_MODEL"
+    ],
+    "src/game/business/sector-food-play.ts": [
+      "FOOD_COPY",
+      "FOOD_MODEL"
+    ],
+    "src/game/business/sector-util-play.ts": [
+      "UTIL_COPY",
+      "UTIL_MODEL"
+    ],
+    "src/game/business/share-classes-menu.ts": [
+      "CHOICE_SUBTITLE"
+    ],
+    "src/game/business/tech-waves.ts": [
+      "RIVAL_KINDS"
+    ],
+    "src/game/charts/books.ts": [
+      "WALK_BOUND",
+      "YEARS"
+    ],
+    "src/game/charts/pl.ts": [
+      "BOUND",
+      "L"
+    ],
+    "src/game/charts/ranks.ts": [
+      "MAX_ROWS"
+    ],
+    "src/game/computer/dev-learn.ts": [
+      "BOOTCAMP_TRACKS",
+      "competitionsMenu",
+      "learnMenu"
+    ],
+    "src/game/computer/dev-projects.ts": [
+      "projectsMenu"
+    ],
+    "src/game/data/brands-rivals.ts": [
+      "RIVAL_BRANDS"
+    ],
+    "src/game/data/brands-stocks.ts": [
+      "STOCK_BRANDS"
+    ],
+    "src/game/events.ts": [
+      "EVENT_LIBRARY"
+    ],
+    "src/game/events/adult.ts": [
+      "ADULT_EVENTS"
+    ],
+    "src/game/events/baby.ts": [
+      "BABY_EVENTS"
+    ],
+    "src/game/events/elder.ts": [
+      "ELDER_EVENTS"
+    ],
+    "src/game/events/era-life.ts": [
+      "ERA_PACKS"
+    ],
+    "src/game/events/era-pack-1900-adultevents.ts": [
+      "ADULT_EVENTS_1900"
+    ],
+    "src/game/events/era-pack-1900-adults.ts": [
+      "ADULTS_1900"
+    ],
+    "src/game/events/era-pack-1900-kidevents.ts": [
+      "KID_EVENTS_1900"
+    ],
+    "src/game/events/era-pack-1900-kids.ts": [
+      "KIDS_1900"
+    ],
+    "src/game/events/era-pack-1900-worldevents.ts": [
+      "WORLD_EVENTS_1900"
+    ],
+    "src/game/events/era-pack-1900.ts": [
+      "ERA_PACK_1900"
+    ],
+    "src/game/events/era-pack-1946-adultevents.ts": [
+      "ADULT_EVENTS_1946"
+    ],
+    "src/game/events/era-pack-1946-adults.ts": [
+      "ADULTS_1946"
+    ],
+    "src/game/events/era-pack-1946-kidevents.ts": [
+      "KID_EVENTS_1946"
+    ],
+    "src/game/events/era-pack-1946-kids.ts": [
+      "KIDS_1946"
+    ],
+    "src/game/events/era-pack-1946-worldevents.ts": [
+      "WORLD_EVENTS_1946"
+    ],
+    "src/game/events/era-pack-1946.ts": [
+      "ERA_PACK_1946"
+    ],
+    "src/game/events/era-pack-1980-events-life.ts": [
+      "EVENTS_1980_LIFE"
+    ],
+    "src/game/events/era-pack-1980-events.ts": [
+      "EVENTS_1980_YOUTH"
+    ],
+    "src/game/events/era-pack-1980.ts": [
+      "ERA_PACK_1980"
+    ],
+    "src/game/events/era-pack-2000-events-life.ts": [
+      "EVENTS_2000_LIFE"
+    ],
+    "src/game/events/era-pack-2000-events.ts": [
+      "EVENTS_2000_CULTURE"
+    ],
+    "src/game/events/era-pack-2000.ts": [
+      "ERA_PACK_2000"
+    ],
+    "src/game/events/family.ts": [
+      "FAMILY_EVENTS"
+    ],
+    "src/game/events/friends.ts": [
+      "FRIEND_EVENTS"
+    ],
+    "src/game/events/kid.ts": [
+      "KID_EVENTS"
+    ],
+    "src/game/events/prison.ts": [
+      "PRISON_EVENTS"
+    ],
+    "src/game/events/school.ts": [
+      "SCHOOL_EVENTS"
+    ],
+    "src/game/events/sos.ts": [
+      "SOS",
+      "SOS_EVENTS"
+    ],
+    "src/game/events/teen.ts": [
+      "TEEN_EVENTS"
+    ],
+    "src/game/events/work.ts": [
+      "WORK_EVENTS"
+    ],
+    "src/game/invest/stocks-americas.ts": [
+      "STOCKS_AMERICAS"
+    ],
+    "src/game/invest/stocks-asia.ts": [
+      "STOCKS_ASIA"
+    ],
+    "src/game/invest/stocks-europe.ts": [
+      "STOCKS_EUROPE"
+    ],
+    "src/game/invest/stocks-mea.ts": [
+      "STOCKS_MEA"
+    ],
+    "src/game/invest/stocks-more.ts": [
+      "STOCKS_MORE"
+    ],
+    "src/game/shops/luxury-brands-catalog.ts": [
+      "ALL_LINES",
+      "TIER_NET_WORTH"
+    ],
+    "src/game/shops/luxury-brands-cellar.ts": [
+      "s",
+      "w"
+    ],
+    "src/game/shops/luxury-brands-craft.ts": [
+      "a",
+      "b"
+    ],
+    "src/game/shops/luxury-brands-goods.ts": [
+      "e",
+      "f",
+      "fi",
+      "h",
+      "j",
+      "l",
+      "p",
+      "s",
+      "t",
+      "w"
+    ],
+    "src/game/shops/luxury-brands-wheels.ts": [
+      "c",
+      "m"
+    ],
+    "src/game/shops/luxury-fleet.ts": [
+      "jetBrokerMenu",
+      "megayachtDealerMenu"
+    ],
+    "src/game/shops/luxury-islands.ts": [
+      "ISLAND_PLANS",
+      "islandRealtorMenu"
+    ],
+    "src/game/shops/luxury-pamper.ts": [
+      "luxuryExperiencesMenu",
+      "vipEventsMenu"
+    ],
+    "src/game/shops/luxury-secretary.ts": [
+      "secretaryDeskMenu"
+    ],
+    "src/game/special.ts": [
+      "YEARLY",
+      "influencerMenu"
+    ],
+    "src/game/special/actor-events.ts": [
+      "actorCrises"
+    ],
+    "src/game/special/actor-legacy.ts": [
+      "INDUSTRY_KEYS"
+    ],
+    "src/game/special/actor-sim.ts": [
+      "hook"
+    ],
+    "src/game/special/actor-state.ts": [
+      "BUDGET_KEYS",
+      "INDUSTRY_KEYS",
+      "actorStore"
+    ],
+    "src/game/special/actor-world.ts": [
+      "ACTOR_SPEC"
+    ],
+    "src/game/special/astronaut-events.ts": [
+      "astroCrises"
+    ],
+    "src/game/special/astronaut-sim.ts": [
+      "hook"
+    ],
+    "src/game/special/astronaut-state.ts": [
+      "astronautStore"
+    ],
+    "src/game/special/astronaut-world.ts": [
+      "ASTRO_SPEC"
+    ],
+    "src/game/special/author.ts": [
+      "quitAction"
+    ],
+    "src/game/special/fame.ts": [
+      "autographAction",
+      "bookAction",
+      "commercialAction",
+      "photoAction",
+      "startPodcastAction",
+      "stuntAction",
+      "talkShowAction"
+    ],
+    "src/game/special/kit/careers.ts": [
+      "CAREER_SIMS"
+    ],
+    "src/game/special/kit/menu.ts": [
+      "LINE"
+    ],
+    "src/game/special/model-events.ts": [
+      "modelCrises"
+    ],
+    "src/game/special/model-sim.ts": [
+      "hook"
+    ],
+    "src/game/special/model-state.ts": [
+      "modelStore"
+    ],
+    "src/game/special/music-events.ts": [
+      "musicCrises"
+    ],
+    "src/game/special/music-label.ts": [
+      "planRow"
+    ],
+    "src/game/special/music-market.ts": [
+      "MUSIC_SPEC"
+    ],
+    "src/game/special/music-menu.ts": [
+      "LINE",
+      "musicStanding"
+    ],
+    "src/game/special/music-sim.ts": [
+      "hook"
+    ],
+    "src/game/special/music-state.ts": [
+      "musicStore"
+    ],
+    "src/game/special/music-tour.ts": [
+      "tourAction"
+    ],
+    "src/game/workplace/parttime.ts": [
+      "VALID_REFERENCE_TAGS"
+    ],
+    "src/game/workplace/progression.ts": [
+      "FAMILIES"
+    ],
+    "src/game/workshop/yearly.ts": [
+      "SCENES"
+    ]
+  }
 }
