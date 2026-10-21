@@ -5,6 +5,7 @@ import { getPerson, personAvatar, relationLabel } from '../../game/core'
 import { FLAGS } from '../../game/flags'
 import type { ChoiceModal, GameState, InputModal, MinigameModal, NoticeModal, Tone } from '../../game/types'
 import { MINIGAMES } from '../minigames'
+import { isBook } from '../minigames/bookModel'
 import {
   chooseOption,
   dismissNotice,
@@ -278,7 +279,7 @@ function MinigameCard({ modal }: { modal: MinigameModal }) {
     finishMinigame(modal.id, result)
   }
   return (
-    <PopupFrame wide label={modal.title}>
+    <PopupFrame wide label={modal.title} className={modal.game === 'annualReport' && isBook(modal.data) ? 'is-report' : undefined}>
       <h2 className="popup-title">{modal.title}</h2>
       {Game ? (
         <Game modal={modal} onDone={onDone} />
