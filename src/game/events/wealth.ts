@@ -15,6 +15,8 @@
 import { addMoney, addRelationship, log, notice, scriptChoice } from '../core'
 import { notePerson } from '../people'
 import { chance, rand, randFloat, randInt, weightedPick } from '../rng'
+import { stateLine } from '../text/state'
+import { logStateLine } from '../text/state-log'
 import { askDefs } from './wealth-catalog'
 import { ADULT_SCRIPT, presentAsk, presentBundle } from './wealth-resolve'
 import type { Ask, AskDef } from './wealth-ask'
@@ -138,7 +140,9 @@ function payAllowances(g: GameState): void {
       log(g, missed >= 2 ? `I couldn't afford ${myOf(p)}'s allowance again, so I stopped it.` : `I couldn't afford ${myOf(p)}'s allowance this year.`, 'bad')
     }
   }
-  if (count > 0) log(g, count === 1 ? `I paid ${money(paid)} in allowance this year.` : `I paid ${money(paid)} in allowances and support to ${count} people this year.`)
+  // What the allowances cost, said through its row (text/state-table.ts): in the first year, when the total steps up or down a
+  // band after 2 years, or after 5 quiet years. A quiet year still takes the log id the line took, so no later id moves.
+  if (count > 0) logStateLine(g, stateLine(g, count === 1 ? 'allowance.one' : 'allowance.many', paid, { slots: { money: money(paid), count: String(count) } }))
 }
 
 /** People who owe you sometimes pay some back, and sometimes start avoiding you. */

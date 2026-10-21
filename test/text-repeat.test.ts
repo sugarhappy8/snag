@@ -10,6 +10,9 @@
 //
 // The harness only reads g.log and the drained popups, so it never changes the game.
 import { describe, expect, it } from 'vitest'
+import { yearlyWealth } from '../src/game/events/wealth'
+import { setAllowance } from '../src/game/events/wealth-kids'
+import { createPerson } from '../src/game/people'
 import { sportsProfile, yearlySponsors } from '../src/game/special/sports-core'
 import { fillSlots } from '../src/game/text/state'
 import { STATE_TABLE } from '../src/game/text/state-table'
@@ -151,6 +154,14 @@ const FAMILIES: readonly Family[] = [
     was: 'I earned $120k from endorsements this year.',
     slots: { money: '$120k' },
   },
+  {
+    name: 'allowance',
+    re: /^(i paid \S+ in allowances?\b|my allowance cost me \S+ this year|i handed out \S+ in allowance|i supported # people with \S+ this year|# people leaned on me for \S+ this year)/,
+    maxExtra: 3,
+    rows: ['allowance.one', 'allowance.many'],
+    was: 'I paid $2,000 in allowance this year.',
+    slots: { money: '$2,000', count: '3' },
+  },
 ]
 
 const family = (name: string): Family => FAMILIES.find((f) => f.name === name)!
@@ -185,8 +196,8 @@ describe('R2-P9 families', () => {
   })
 })
 
-// A family the 13 lives never repeat today (the probe's lives rarely pay an allowance or an endorsement deal two years in a
-// row) is played directly: the same state held for twelve years used to print twelve times.
+// The two families the 13 lives never repeat today (the probe's lives rarely pay an allowance or an endorsement deal two
+// years in a row) are played directly: the same state held for twelve years used to print twelve times.
 
 const SPOKEN_LIFE = 5
 
@@ -194,7 +205,36 @@ function lines(g: GameState): string[] {
   return g.log.flatMap((y) => y.entries.map((e) => e.text))
 }
 
+function richGame(money: number): GameState {
+  const g = makeTestGame(SPOKEN_LIFE, { age: 45, money, countryId: 'us', residence: { status: 'renting', rent: 0 } })
+  g.year = 2026
+  g.log = [{ age: g.character.age, year: g.year, entries: [] }]
+  return g
+}
+
 describe('R2-P9 sites, played directly', () => {
+  it('an allowance that stays the same for twelve years is said in the first year and then once in five', () => {
+    const g = richGame(50_000_000)
+    const kid = createPerson(g, { relation: 'child', age: 2, relationship: 70, lastName: g.character.lastName, livesWithPlayer: true })
+    setAllowance(g, kid, 1_000)
+    g.queue = []
+    const cash = g.character.money
+    for (let y = 0; y < 12; y++) {
+      g.year += 1
+      g.character.age += 1
+      for (const p of g.people) if (p.alive) p.age += 1
+      g.yearActions = {}
+      yearlyWealth(g)
+      g.queue = []
+    }
+    // The allowance was paid every year: only the line is rationed.
+    expect(g.character.money).toBeLessThan(cash - 11_000)
+    const said = lines(g).filter((t) => family('allowance').re.test(normalize(t)))
+    expect(said.length, said.join(' | ')).toBeGreaterThanOrEqual(2)
+    expect(said.length, said.join(' | ')).toBeLessThanOrEqual(3)
+    for (let i = 1; i < said.length; i++) expect(said[i]).not.toBe(said[i - 1])
+  })
+
   it('a deal that pays the same for twelve years is said in the first year and then once in five', () => {
     const g = makeTestGame(SPOKEN_LIFE, { age: 27, countryId: 'us' })
     g.year = 2026
