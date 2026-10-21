@@ -5,7 +5,7 @@
 import { addHidden, addStat, attractedTo, count, currentPartner, log, notice, preferredGender, remember, removePerson, spend, useYearAction } from '../core'
 import { pick, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
-import { defineLines } from '../text/registry'
+import { ADMIRER_LINES, SCAM_LINES } from '../text/pools'
 import { fillSlots } from '../text/state'
 import { randomFirstName } from '../world'
 import { eraPick, eraPickPlain, landline } from './era'
@@ -29,20 +29,7 @@ import {
 } from './wealth-core'
 import type { GameState, Person } from '../types'
 
-/** The log line for money sent to a stranger's "opportunity". R2-P10 (E.T3 d): one template read the same on every loss. */
-export const SCAM_LINES = defineLines('wealth.scam', [
-  'I lost {money} to a scam.',
-  'The {money} I sent was gone for good.',
-  'I got scammed out of {money}.',
-  'A scam cost me {money} and I never saw it again.',
-])
-/** The log line for the gifts an admirer took before leaving. */
-export const ADMIRER_LINES = defineLines('wealth.admirer', [
-  'I spent {money} on an admirer who left when the gifts stopped.',
-  'An admirer took {money} in gifts and then vanished.',
-  'I paid {money} for an admirer who was never serious.',
-  'My admirer cost me {money} and then stopped calling.',
-])
+export { ADMIRER_LINES, SCAM_LINES }
 
 function he(p: Person): string {
   return p.gender === 'male' ? 'he' : 'she'

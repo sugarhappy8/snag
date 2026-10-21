@@ -7,7 +7,7 @@ import { arrestPlayer } from '../crime'
 import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
-import { defineLines } from '../text/registry'
+import { PRO_SEASON_LINES } from '../text/pools'
 import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -1122,16 +1122,7 @@ export function yearlyAthlete(g: GameState): void {
   }
 }
 
-/**
- * The yearly pro season line. Four frames, every one true in a first season and after a trade (nothing says "still" or "again"),
- * so a career reads in different words; {stats} is the sport's own sentence (seasonStats). R2-P10, E.T3 d.
- */
-export const PRO_SEASON_LINES = defineLines('athlete.proSeason', [
-  'I played my {nth} pro season with the {team}. {stats}',
-  'That was my {nth} pro season, this one with the {team}. {stats}',
-  'My {nth} year as a pro was with the {team}. {stats}',
-  'My {nth} pro season is in the books, with the {team}. {stats}',
-])
+export { PRO_SEASON_LINES }
 
 function seasonStats(g: GameState, sport: Sport, greatness: number, position: string): string {
   const k = greatness / 100

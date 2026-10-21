@@ -7,7 +7,7 @@ import { addHidden, addStat, count, getPerson, log, notice, scriptChoice, script
 import { touch } from '../love'
 import { chance, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
-import { defineLines } from '../text/registry'
+import { BOUNDARY_LINES } from '../text/pools'
 import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
@@ -37,14 +37,7 @@ import {
 } from './wealth-core'
 import type { ChoiceOption, GameState, Json, Person } from '../types'
 
-/** The log line for setting boundaries with someone who keeps asking: {who} is "my sister Marit". R2-P10 (E.T3 d). */
-export const BOUNDARY_LINES = defineLines('wealth.boundary', [
-  'I set money boundaries with {who}.',
-  'I told {who} I was done talking about money.',
-  'I said no to {who} and meant it.',
-  'I drew a line with {who} about money.',
-  'Money was off the table with {who} for a while.',
-])
+export { BOUNDARY_LINES }
 
 export const ASK_SCRIPT = 'wealth.ask'
 export const LESS_SCRIPT = 'wealth.ask.less'

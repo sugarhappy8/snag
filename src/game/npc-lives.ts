@@ -27,7 +27,7 @@ import type { BizState } from './business/state'
 import { clampN, money, num, pct, rec } from './business/util'
 import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
 import { pickLine } from './text/pick'
-import { defineLines } from './text/registry'
+import { PROMO_LINES, PROMOTED } from './text/pools'
 import { npcCompany } from './npc-company-state'
 import { inheritFamilyTalent, npcHasMainCharacter } from './talents'
 import { ageCeiling } from './mastery'
@@ -105,10 +105,7 @@ export function initializeNpc(g: GameState, p: Person): NpcLife {
   saveNpcLife(p, life)
   return life
 }
-/** The milestone text of a promotion: what the saved history keeps, and the first of the log's words for it. */
-const PROMOTED = 'earned a promotion and higher pay'
-/** The log's words for a promotion (R2-P10, E.T3 d): a person is promoted several times in a life and the log said it the same way each time. The saved history keeps PROMOTED whatever the log says. */
-export const PROMO_LINES = defineLines('npc.promotion', [PROMOTED, 'moved up at work and got a raise', 'was promoted and paid more', 'got a step up at work and better pay', 'landed a better role and a raise'])
+export { PROMO_LINES }
 function milestone(g: GameState, p: Person, l: NpcLife, text: string): void {
   l.history = [...l.history, `${g.year}: ${text}`].slice(-24)
   if ((p.livesWithPlayer || p.relationship >= 55) && (g.yearActions['npc.news'] ?? 0) < 3) {

@@ -2,7 +2,7 @@
 // (eclipses, Olympics, World Cups, a famous asteroid and comet); every other year gets one item
 // from a pool of plausible-to-silly futures, each used once before the pool repeats. Pure and
 // deterministic per year: the same future for every life, no RNG.
-import { defineLines } from '../text/registry'
+import { GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../text/pools'
 import type { HeadlineRow, WorldEventKind } from './events-types'
 import { PRESENT_YEAR } from './timeline'
 
@@ -122,34 +122,7 @@ function poolIndex(year: number): number {
   return (((k * STRIDE) % n) + n) % n
 }
 
-/**
- * The Games and the World Cup keep their rhythm after the calendar runs out, and a life reads one line a year, so each edition
- * reads its own words: the lines go round by edition (a pure function of the year, no draw), so two editions in a row never
- * read the same and a line is back only after the other seven. Eight lines, not three: the headline of a year is the top of
- * the year's news, so a life sees about half the editions, and with three lines the 13-life probe repeated them 27 times
- * (12 with eight). Every line names the Olympics or the World Cup, which is how test/history.test.ts tells the rhythm lines
- * from the pool of one-off futures.
- */
-export const GAMES_HEADLINES = defineLines('news.games', [
-  'The Summer Olympics open',
-  'The Olympics open and the world tunes in',
-  'Athletes arrive for the Summer Olympics',
-  'The Olympics light their flame in a new host city',
-  'A new host city welcomes the Summer Olympics',
-  'Crowds pack the stands as the Olympics begin',
-  'The Summer Olympics start with a full stadium',
-  'The Olympics return and every medal is up for grabs',
-])
-export const WORLD_CUP_HEADLINES = defineLines('news.worldCup', [
-  'The World Cup kicks off',
-  'The World Cup returns and fans pack the streets',
-  'Fans fill the stadiums as the World Cup starts',
-  'The World Cup begins and the world picks a side',
-  'Flags go up in the streets as the World Cup begins',
-  'Another World Cup opens with the stands full',
-  'The World Cup starts and the bars fill up',
-  'Teams take the field as the World Cup gets going',
-])
+export { GAMES_HEADLINES, WORLD_CUP_HEADLINES }
 
 /** The first edition of each after the calendar: the Games of 2036, the World Cup of 2038, every fourth year after. */
 const GAMES_FIRST = 2036
