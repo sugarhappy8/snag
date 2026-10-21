@@ -56,7 +56,7 @@ import { groupById, groupsOf, groupStake, groupValue, inGroup, sharePriceOf, typ
 import { oddsText } from './board-vote'
 import { industryDef } from './industries'
 import { isFinanceFirm } from './finance-firm-state'
-import { businessView, shopCompany } from './manage'
+import { businessScreen, shopCompany } from './manage'
 import { equityMenu } from './executive'
 import { delegationMenu } from './conglomerate-management'
 import { groupFamilyMenu } from './conglomerate-family'
@@ -320,7 +320,7 @@ function divisionRow(g: GameState, groupId: string, a: Asset): MenuGroup {
     },
     children: (gg) => {
       const cur = findBusiness(gg, a.id)
-      return cur ? businessView(gg, cur) : [info('biz.gone', 'You no longer own this business.', '\u{1F937}')]
+      return cur ? businessScreen(gg, cur) : [info('biz.gone', 'You no longer own this business.', '\u{1F937}')]
     },
   }
 }

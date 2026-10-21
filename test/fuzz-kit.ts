@@ -389,9 +389,11 @@ function walk(ctx: Ctx, g: GameState, nodes: MenuNode[], path: string, depth: nu
     // A group.
     if (disabled) continue
     if (opt.full && n.header) checkText(ctx, safe(ctx, `header ${p}`, () => n.header!(g), ''), `header ${p}`)
-    if (depth >= opt.maxDepth) continue
+    // A cockpit tile (R1-N8, id `hub.`) adds no depth: the company screen is walked as deep as the flat list was.
+    const next = n.id.startsWith('hub.') ? depth : depth + 1
+    if (next > opt.maxDepth) continue
     const kids = safe(ctx, `children ${p}`, () => n.children(g), [] as MenuNode[])
-    walk(ctx, g, kids, p, depth + 1, opt, out, counter)
+    walk(ctx, g, kids, p, next, opt, out, counter)
   }
 }
 

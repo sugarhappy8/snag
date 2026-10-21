@@ -10,7 +10,7 @@ import { conglomerateNodes, groupOfCompany, groupsOf, inGroup } from './business
 import { deepTechSummary } from './business/deeptech'
 import { buyBusinessMenu, startBusinessMenu } from './business/founding'
 import { industryDef } from './business/industries'
-import { businessView } from './business/manage'
+import { businessScreen } from './business/manage'
 // Side effect: adds your listed companies to Investments > Stocks (registerOwnListings).
 import './business/own-listing-menu'
 // Side effect: adds Hedge Funds to Investments and the fund screens to Assets (registerHedgeFunds).
@@ -32,7 +32,7 @@ function companyNode(g: GameState, a: Asset): MenuGroup {
     header: (gg) => (findBusiness(gg, a.id) ? '' : 'You no longer own this business.'),
     children: (gg) => {
       const cur = findBusiness(gg, a.id)
-      return cur ? businessView(gg, cur) : [{ type: 'info', id: 'biz.gone', text: 'You no longer own this business.' }]
+      return cur ? businessScreen(gg, cur) : [{ type: 'info', id: 'biz.gone', text: 'You no longer own this business.' }]
     },
   }
 }
@@ -85,7 +85,7 @@ export function businessJobNodes(g: GameState): MenuNode[] {
 
 /** Owned-asset screen for a kind 'business' asset (registered in menus.ts). */
 export function businessAssetView(g: GameState, a: Asset): MenuNode[] {
-  return businessView(g, a)
+  return businessScreen(g, a)
 }
 
 export function businessAssetSubtitle(g: GameState, a: Asset): string {

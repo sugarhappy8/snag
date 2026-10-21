@@ -8,6 +8,7 @@ import { sectorMenu } from './sector-menu'
 import { familyOf } from './sector-state'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { flagOn } from '../flags'
+import { companyScreen } from '../hubs/company'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -2275,4 +2276,16 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   nodes.push({ type: 'heading', id: `biz.exitH.${a.id}`, label: 'Exit' })
   nodes.push(...exitNodes(a, g))
   return nodes
+}
+
+/**
+ * The screen of one company (R1 cockpits, G.5): the flat businessView list, or with FLAGS.cockpits on the same nodes under a
+ * short top and four tiles (hubs/company.ts). The tiles rebuild the flat list from the latest state each time they open,
+ * so the rebuild comes from here and the hub never imports this file. Flag off, it returns exactly what businessView returns.
+ */
+export function businessScreen(g: GameState, a: Asset): MenuNode[] {
+  return companyScreen(g, a, businessView(g, a), (gg) => {
+    const cur = findBusiness(gg, a.id)
+    return cur ? businessView(gg, cur) : null
+  })
 }
