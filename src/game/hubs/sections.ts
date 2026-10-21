@@ -1,5 +1,5 @@
 // The sections of the Activities list (G.8). Pure data and one lookup, no imports: the list is regrouped at render time
-// (src/ui/nav/sections.ts), never in the data, because five seeded tests pick actions by position in
+// (regroupForDisplay, in the UI layer), never in the data, because five seeded tests pick actions by position in
 // activitiesMenu.children and the data order must not move.
 
 export type SectionId = 'health' | 'love' | 'money' | 'law' | 'travel' | 'fame' | 'home' | 'world' | 'more'

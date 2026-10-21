@@ -18,6 +18,7 @@ import { recentFromSpot } from '../src/ui/nav/place'
 import { shortcutFor } from '../src/ui/nav/shortcuts'
 import { deepFreeze } from './fuzz-kit'
 import { makeTestGame } from './helpers'
+import { NAV_OFF } from './nav-kit'
 
 // Built-in tasks resolve to nothing here (the pattern of test/ui-return.test.ts), so only what a test queues shows up.
 const offline = vi.hoisted(() => {
@@ -56,7 +57,7 @@ function inboxLabel(html: string): { count: number } | null {
 }
 
 beforeEach(() => {
-  resetFlags()
+  setFlags(NAV_OFF)
   vi.spyOn(console, 'error').mockImplementation(() => {})
   offline.resolveTask.mockReset()
   store.startNewLife({ seed: 7, year: 2026 })
@@ -150,7 +151,7 @@ describe('9. BottomBar: the shortcut hints', () => {
   })
 
   it('carries aria-keyshortcuts 1 to 4 on the tabs and A on the age button with navPalette on', () => {
-    const html = withFlags({ navPalette: true }, bar)
+    const html = withFlags({ ...NAV_OFF, navPalette: true }, bar)
     const hints = [...html.matchAll(/<button[^>]*aria-label="([^"]+)"[^>]*>/g)].map((m) => {
       const key = /aria-keyshortcuts="([^"]+)"/.exec(m[0])
       return `${m[1]}=${key ? key[1] : ''}`
@@ -158,11 +159,11 @@ describe('9. BottomBar: the shortcut hints', () => {
     expect(hints).toEqual(['Occupation=1', 'Assets=2', 'Age up one year=A', 'Relationships=3', 'Activities=4'])
     // No other change.
     expect(html.replace(KEY_HINTS, '')).toBe(BAR_V402)
-    expect(withFlags({ navPalette: true }, () => bar(true)).replace(KEY_HINTS, '')).toBe(BAR_OFF_V402)
+    expect(withFlags({ ...NAV_OFF, navPalette: true }, () => bar(true)).replace(KEY_HINTS, '')).toBe(BAR_OFF_V402)
   })
 
   it('names the same digit that shortcutFor turns into that tab', () => {
-    const html = withFlags({ navPalette: true }, bar)
+    const html = withFlags({ ...NAV_OFF, navPalette: true }, bar)
     const quiet = { typing: false, queueBusy: false, dead: false, sheetOpen: false, paletteOpen: false, popupOpen: false }
     for (const tab of ['occupation', 'assets', 'relationships', 'activities']) {
       const m = new RegExp(`<button[^>]*aria-label="${tab[0].toUpperCase()}${tab.slice(1)}"[^>]*>`).exec(html)
@@ -174,7 +175,7 @@ describe('9. BottomBar: the shortcut hints', () => {
 
 describe('10. GameScreen: the search button', () => {
   it('shows the Search button with navPalette on, and no palette markup until it is opened', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     const html = render(createElement(GameScreen))
     expect(html).toContain('aria-label="Search"')
     expect(html).toContain('aria-keyshortcuts="Control+K /"')
@@ -183,17 +184,17 @@ describe('10. GameScreen: the search button', () => {
 
   it('shows no Search button with navPalette off, and the rest of the screen is the same', () => {
     // quietInbox is pinned off too, so the screen is the one v4.0.2 drew whatever the release commit sets as default.
-    setFlags({ quietInbox: false })
+    setFlags({ ...NAV_OFF, quietInbox: false })
     const off = render(createElement(GameScreen))
     expect(off).not.toContain('aria-label="Search"')
     expect(off).not.toContain('aria-keyshortcuts')
     expect(off).not.toContain('hdr-bell')
-    const on = withFlags({ navPalette: true }, () => render(createElement(GameScreen)))
+    const on = withFlags({ ...NAV_OFF, navPalette: true }, () => render(createElement(GameScreen)))
     expect(on.replace(SEARCH_BUTTON, '').replace(KEY_HINTS, '')).toBe(off)
   })
 
   it('hides the button while a popup waits and once the character is dead', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     store.act((g) => {
       notice(g, 'Rent', 'The landlord knocked.')
     })
@@ -223,14 +224,14 @@ describe('13. GameScreen: the inbox count', () => {
     })
 
   it('passes inboxUnread(g) to the bell', () => {
-    setFlags({ quietInbox: true })
+    setFlags({ ...NAV_OFF, quietInbox: true })
     addRows(3)
     expect(inboxUnread(game())).toBe(3)
     expect(inboxLabel(render(createElement(GameScreen)))).toEqual({ count: 3 })
   })
 
   it('shows 0 for no inbox at all, and for rows the player has seen', () => {
-    setFlags({ quietInbox: true })
+    setFlags({ ...NAV_OFF, quietInbox: true })
     expect(inboxLabel(render(createElement(GameScreen)))).toEqual({ count: 0 })
     addRows(2)
     store.markInboxSeen()
@@ -238,7 +239,7 @@ describe('13. GameScreen: the inbox count', () => {
   })
 
   it('stays bounded when the saved inbox is hostile: a string, a 500-element array, null', () => {
-    setFlags({ quietInbox: true })
+    setFlags({ ...NAV_OFF, quietInbox: true })
     setRaw('open sesame')
     expect(inboxLabel(render(createElement(GameScreen)))?.count).toBe(0)
     setRaw(Array.from({ length: 500 }, (_, i) => ({ id: `x${i}`, y: 2026, a: 30, t: 'Row.' })))
@@ -255,15 +256,15 @@ describe('13. GameScreen: the inbox count', () => {
 describe('14. GameScreen: the bell and the inbox sheet', () => {
   it('draws the bell only with quietInbox on, whatever navPalette says', () => {
     // The off half pins quietInbox off, so the case means the same thing before and after the release commit flips it.
-    setFlags({ quietInbox: false })
+    setFlags({ ...NAV_OFF, quietInbox: false })
     expect(render(createElement(GameScreen))).not.toContain('hdr-bell')
-    setFlags({ navPalette: true, quietInbox: false })
+    setFlags({ ...NAV_OFF, navPalette: true, quietInbox: false })
     expect(render(createElement(GameScreen))).not.toContain('hdr-bell')
-    setFlags({ quietInbox: true })
+    setFlags({ ...NAV_OFF, quietInbox: true })
     const html = render(createElement(GameScreen))
     expect(html).toContain('hdr-bell')
     expect(html).not.toContain('aria-label="Search"')
-    setFlags({ quietInbox: true, navPalette: true })
+    setFlags({ ...NAV_OFF, quietInbox: true, navPalette: true })
     const both = render(createElement(GameScreen))
     expect(both).toContain('hdr-bell')
     expect(both).toContain('aria-label="Search"')
@@ -389,7 +390,7 @@ describe('12. the Back to chip is the newest recent', () => {
   const spot = { path: ['computer'], scrolls: [0, 0] }
 
   it('puts the chip place first among the recents, and the palette lists the live chip before them', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     store.setReturnPoint({ sheet: 'activities', ...spot })
     const point = store.getApp().returnPoint
     expect(point).not.toBeNull()
@@ -410,7 +411,7 @@ describe('12. the Back to chip is the newest recent', () => {
   })
 
   it('rememberSpot writes the chip and the recent together, the recent staying when the chip goes', () => {
-    setFlags({ navPalette: true })
+    setFlags({ ...NAV_OFF, navPalette: true })
     rememberSpot(game(), 'activities', spot)
     expect(store.getApp().returnPoint).toMatchObject({ sheet: 'activities', path: ['computer'] })
     store.clearReturnPoint()

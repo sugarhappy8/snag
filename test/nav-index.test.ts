@@ -25,7 +25,7 @@ import {
   type SearchIndex,
 } from '../src/ui/nav/searchIndex'
 import { normalize } from '../src/ui/nav/searchRank'
-import { buildIndexCached, frozen, navState, walkTreeCached, type NavStateName, type NavTab } from './nav-kit'
+import { NAV_OFF, buildIndexCached, frozen, navState, walkTreeCached, type NavStateName, type NavTab } from './nav-kit'
 
 const NAMES: NavStateName[] = ['kid', 'adult', 'ceo', 'elder']
 const TABS: NavTab[] = ['occupation', 'assets', 'relationships', 'activities']
@@ -34,7 +34,7 @@ const TABS: NavTab[] = ['occupation', 'assets', 'relationships', 'activities']
 const HEAVY = 120_000
 
 beforeEach(() => {
-  resetFlags()
+  setFlags(NAV_OFF)
   clearIndexCache()
 })
 
@@ -149,9 +149,9 @@ describe('buildIndex on the canned states', () => {
   it('1d. the kit memo gives one object per name and flag state', () => {
     const a = buildIndexCached('kid')
     expect(buildIndexCached('kid')).toBe(a)
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     expect(buildIndexCached('kid')).not.toBe(a)
-    resetFlags()
+    setFlags(NAV_OFF)
     expect(buildIndexCached('kid')).toBe(a)
   })
 

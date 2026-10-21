@@ -20,14 +20,14 @@ import { applyPlan, autoPlan } from '../src/game/business/yearly'
 import { businessAssetView, businessCareerMenu } from '../src/game/business'
 import { companyKpis } from '../src/game/charts/books'
 import { CHART_LIMITS, readChartSpec, SPEC_LIMITS, type ChartSpec } from '../src/game/charts/spec'
-import { resetFlags, withFlags, type FlagOverrides } from '../src/game/flags'
+import { resetFlags, setFlags, withFlags, type FlagOverrides } from '../src/game/flags'
 import { companyKpiSpec, companyScreen, HUB_PREFIX, hubIds } from '../src/game/hubs/company'
 import { createNewLife } from '../src/game/life'
 import { gameIndustryMenu } from '../src/game/special/gamedev'
 import type { Asset, GameState, Json, MenuGroup, MenuInfo, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { FailureLog, deepFreeze, probeActions } from './fuzz-kit'
-import { canonical, isTruncated, walkTree, type Walked } from './nav-kit'
+import { canonical, isTruncated, NAV_OFF, walkTree, type Walked } from './nav-kit'
 
 /** A walk of a company tree can take seconds on a loaded box. */
 const HEAVY = 120_000
@@ -35,7 +35,7 @@ const DASH = new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`)
 const BAD = /NaN|undefined|Infinity/
 
 beforeEach(() => {
-  resetFlags()
+  setFlags(NAV_OFF)
 })
 
 afterEach(() => {
@@ -104,7 +104,7 @@ function kind(k: Kind): { g: GameState; a: Asset } {
 }
 
 const idOf = (n: MenuNode): string => n.id
-const COCKPIT: FlagOverrides = { cockpits: true }
+const COCKPIT: FlagOverrides = { ...NAV_OFF, cockpits: true }
 
 function groupNode(nodes: readonly MenuNode[], id: string): MenuGroup {
   const found = nodes.find((n): n is MenuGroup => n.type === 'menu' && n.id === id)
@@ -283,7 +283,7 @@ describe('the screen', () => {
       const { g, a } = kind(k)
       deepFreeze(g)
       const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      const off = walkScreen(g, a, {})
+      const off = walkScreen(g, a, NAV_OFF)
       const on = walkScreen(g, a, COCKPIT)
       expect(spy.mock.calls.map((c) => String(c[0])).slice(0, 5), `${k.name}: a menu complained`).toEqual([])
       spy.mockRestore()
@@ -306,7 +306,7 @@ describe('the screen', () => {
     it('3b. the Books group sits in the Money tile right after Why Profit Changed, and adds no action', () => {
       const { g, a } = kind(KINDS[0]!)
       deepFreeze(g)
-      const both: FlagOverrides = { cockpits: true, chartKit: true }
+      const both: FlagOverrides = { ...NAV_OFF, cockpits: true, chartKit: true }
       withFlags(both, () => {
         const money = groupNode(businessScreen(g, a), hubIds(a.id).money).children(g)
         const at = money.findIndex((n) => n.id === `biz.economicReport.${a.id}`)
@@ -315,7 +315,7 @@ describe('the screen', () => {
         const books = money[at + 1] as MenuGroup
         expect(books.children(g).every((n) => n.type === 'info')).toBe(true)
       })
-      const off = actionPaths(walkScreen(g, a, {}))
+      const off = actionPaths(walkScreen(g, a, NAV_OFF))
       const on = actionPaths(walkScreen(g, a, both))
       expect(on).toEqual(off)
     }, HEAVY)
@@ -554,7 +554,7 @@ describe('purity', () => {
       deepFreeze(g)
       const before = JSON.stringify(g)
       const rng = JSON.stringify(g.rng)
-      withFlags({ cockpits: true, chartKit: true }, () => {
+      withFlags({ ...NAV_OFF, cockpits: true, chartKit: true }, () => {
         const one = JSON.stringify(dump(g, businessScreen(g, a)))
         const two = JSON.stringify(dump(g, businessScreen(g, a)))
         expect(two, k.name).toBe(one)
@@ -581,7 +581,7 @@ describe('wiring', () => {
     const { g, a } = company(31, 'restaurant', { years: 2 })
     const studio = createBusinessAsset(g, 'Studio Co', newBiz(g, 'gameStudio', 'us', 'Chicago', { cash: 800_000 }), 0)
     g.assets.push(studio)
-    for (const flags of [{}, COCKPIT]) {
+    for (const flags of [NAV_OFF, COCKPIT]) {
       withFlags(flags, () => {
         const screen = businessScreen(g, a).map(idOf)
         const row = groupNode(businessCareerMenu.children(g), `biz.company.${a.id}`)
@@ -601,7 +601,7 @@ describe('wiring', () => {
     expect(formGroup(grp.g, [grp.a.id, other.id], 'Test Holdings')).toBe(true)
     grp.g.queue = []
     const groupId = groupOfCompany(grp.g, findBusiness(grp.g, grp.a.id)!)!.core.id
-    for (const flags of [{}, COCKPIT]) {
+    for (const flags of [NAV_OFF, COCKPIT]) {
       withFlags(flags, () => {
         const division = groupNode(groupView(grp.g, groupId), `biz.company.${grp.a.id}`)
         expect(division.children(grp.g).map(idOf)).toEqual(businessScreen(grp.g, findBusiness(grp.g, grp.a.id)!).map(idOf))

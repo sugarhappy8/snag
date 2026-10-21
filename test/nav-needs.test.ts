@@ -16,7 +16,7 @@ import type { Asset, Condition, GameState, MenuAction, MenuGroup, MenuNode } fro
 import { MenuRow } from '../src/ui/components/MenuList'
 import { nodeBadge, nodeVisible } from '../src/ui/components/menuModel'
 import { NeedsYouCard } from '../src/ui/nav/NeedsYouCard'
-import { frozen, navState } from './nav-kit'
+import { NAV_OFF, frozen, navState } from './nav-kit'
 
 // The memo test counts calls to the real companyHealth through a spy that delegates to it.
 vi.mock('../src/game/business/dashboard', async (importOriginal) => {
@@ -28,7 +28,7 @@ const store = await import('../src/ui/store')
 const { MenuSheet } = await import('../src/ui/components/MenuSheet')
 
 beforeEach(() => {
-  resetFlags()
+  setFlags(NAV_OFF)
 })
 
 afterEach(() => {
@@ -373,7 +373,7 @@ describe('the markup', () => {
   const sick: MenuAction = action('sick', { label: 'Doctor', subtitle: 'Visit a clinic', badge: () => 'Sick' })
 
   it('18. MenuRow shows the pill with the flag on, inside the text and outside the aria-hidden end slot', () => {
-    const on = withFlags({ navRegroup: true }, () => renderToStaticMarkup(createElement(MenuRow, { node: sick, g, onTap: () => {} })))
+    const on = withFlags({ ...NAV_OFF, navRegroup: true }, () => renderToStaticMarkup(createElement(MenuRow, { node: sick, g, onTap: () => {} })))
     expect(on).toContain('class="menu-row-badge"')
     expect(on).toContain('>Sick</span>')
     const text = on.indexOf('menu-row-text')
@@ -390,7 +390,7 @@ describe('the markup', () => {
     const off = renderToStaticMarkup(createElement(MenuRow, { node: sick, g, onTap: () => {} }))
     expect(off).not.toContain('menu-row-badge')
     expect(off).not.toContain('Sick')
-    const locked = withFlags({ navRegroup: true }, () =>
+    const locked = withFlags({ ...NAV_OFF, navRegroup: true }, () =>
       renderToStaticMarkup(createElement(MenuRow, { node: { ...sick, disabledReason: () => 'Not yet.' }, g, onTap: () => {} })),
     )
     expect(locked).not.toContain('menu-row-badge')
@@ -399,8 +399,8 @@ describe('the markup', () => {
 
   it('nodeBadge follows the flag', () => {
     expect(nodeBadge(sick, g)).toBeNull()
-    expect(withFlags({ navRegroup: true }, () => nodeBadge(sick, g))).toBe('Sick')
-    expect(withFlags({ navRegroup: true }, () => nodeBadge(action('quiet'), g))).toBeNull()
+    expect(withFlags({ ...NAV_OFF, navRegroup: true }, () => nodeBadge(sick, g))).toBe('Sick')
+    expect(withFlags({ ...NAV_OFF, navRegroup: true }, () => nodeBadge(action('quiet'), g))).toBeNull()
   })
 
   it('18. NeedsYouCard has the heading, one button per row and nothing for no rows', () => {
@@ -476,7 +476,7 @@ describe('the Activities sheet', () => {
       g.character.wantedLevel = 2
       g.character.conditions = [cond(60)]
     })
-    const html = withFlags({ navRegroup: true }, sheet)
+    const html = withFlags({ ...NAV_OFF, navRegroup: true }, sheet)
     expect(html).toContain('needs-card')
     expect(html).toContain('Needs you')
     expect(html).toContain('>Wanted</span>')
@@ -490,16 +490,16 @@ describe('the Activities sheet', () => {
   })
 
   it('with the flag on and nothing to flag, shows no card but still sections the list', () => {
-    const html = withFlags({ navRegroup: true }, sheet)
+    const html = withFlags({ ...NAV_OFF, navRegroup: true }, sheet)
     expect(html).not.toContain('needs-card')
     expect(html).not.toContain('menu-row-badge')
     expect(html).toContain('<div class="menu-heading">Health and Mind</div>')
   })
 
   it('setFlags works like withFlags for the sheet', () => {
-    setFlags({ navRegroup: true })
+    setFlags({ ...NAV_OFF, navRegroup: true })
     expect(sheet()).toContain('<div class="menu-heading">Health and Mind</div>')
-    resetFlags()
+    setFlags(NAV_OFF)
     expect(sheet()).not.toContain('menu-heading')
   })
 })
