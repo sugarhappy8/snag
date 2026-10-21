@@ -276,11 +276,19 @@ export function cashLinesSpec(g: GameState, b: BizState): ChartSpec | null {
 // ---------------------------------------------------------------------------
 // KPI tiles
 
-/** 'back in profit', 'into a loss' or the change in dollars. */
-function profitNote(g: GameState, prev: number, now: number): string {
+/** 'back in profit' or 'into a loss' when the sign flips, else null. */
+function profitFlip(prev: number, now: number): string | null {
   if (prev < 0 && now > 0) return 'back in profit'
   if (prev > 0 && now < 0) return 'into a loss'
-  return deltaLabel(g, now - prev)
+  return null
+}
+
+/**
+ * How the net profit moved, in words, for the tile's summary: 'back in profit', 'into a loss' or the change in dollars. The
+ * tile draws the change in dollars as its chip, so only the first two are its note (see companyKpis).
+ */
+function profitNote(g: GameState, prev: number, now: number): string {
+  return profitFlip(prev, now) ?? deltaLabel(g, now - prev)
 }
 
 /** 'up 20%', 'down 8%', 'up 3.4%' or 'unchanged'; null when last year sold nothing to compare with. */
@@ -293,11 +301,26 @@ function salesNote(prev: number, now: number): string | null {
   return `${frac > 0 ? 'up' : 'down'} ${pctLabel(size, size < 0.1 ? 1 : 0).replace(/\.0%$/, '%')}`
 }
 
-/** One KPI tile: a one-series spec whose last point is the number the tile prints. Null when that number is missing. */
-function tile(g: GameState, id: string, label: string, tone: ChartTone, x: number[], values: (number | null)[], lead: (now: number) => string, note: string | null): ChartSpec | null {
+/**
+ * One KPI tile: a one-series spec whose last point is the number the tile prints. Null when that number is missing. `note`
+ * is the line under the tile; `said` is what the summary adds in brackets, the note unless the caller has more to say there
+ * (the net profit tile says its change in the summary and leaves it to the chip on the tile).
+ */
+function tile(
+  g: GameState,
+  id: string,
+  label: string,
+  tone: ChartTone,
+  x: number[],
+  values: (number | null)[],
+  lead: (now: number) => string,
+  note: string | null,
+  said: string | null = note,
+): ChartSpec | null {
   const now = values[values.length - 1]
   if (now === null || now === undefined) return null
   const shown = note === null ? null : fit(note, SPEC_LIMITS.note)
+  const aside = said === null ? null : fit(said, SPEC_LIMITS.note)
   return reveal({
     v: 1,
     kind: 'kpi',
@@ -307,7 +330,7 @@ function tile(g: GameState, id: string, label: string, tone: ChartTone, x: numbe
     series: [{ id, label, tone, values }],
     basis: priceBasisYear(g),
     ...(shown ? { note: shown } : {}),
-    summary: fit(`${lead(now)}${shown ? ` (${shown})` : ''}.`),
+    summary: fit(`${lead(now)}${aside ? ` (${aside})` : ''}.`),
   })
 }
 
@@ -321,8 +344,9 @@ function lastTwo(values: (number | null)[]): [number, number] | null {
 /**
  * The Annual Report's four tiles: Net profit, Sales, Cash and Value, each the last ten years of the matching field with
  * its last point as the tile's number. Net profit and Sales end at the statement when it is of the last booked year;
- * Cash and Value end at the live cash and valuation. The notes are the change in profit, the change in sales, the debt,
- * and the market rank (when the caller passes a booked market view) or else the owner's stake. A first-year company gets
+ * Cash and Value end at the live cash and valuation. The notes are a change of sign in profit (the tile's chip draws the
+ * change in dollars, so the note does not say it again), the change in sales as a percentage, the debt, and the market
+ * rank (when the caller passes a booked market view) or else the owner's stake. A first-year company gets
  * one-point tiles. A tile whose number is missing is left out; no history gives an empty list.
  */
 export function companyKpis(g: GameState, b: BizState, view: MarketView | null): ChartSpec[] {
@@ -348,7 +372,18 @@ export function companyKpis(g: GameState, b: BizState, view: MarketView | null):
   const m = (n: number): string => moneyLabel(g, n)
 
   const out = [
-    tile(g, 'net', 'Net profit', 'c1', x, profit, (n) => `Net ${n < 0 ? 'loss' : 'profit'} ${m(Math.abs(n))} in ${year}`, profitPair ? profitNote(g, profitPair[0], profitPair[1]) : null),
+    // The tile draws the change in dollars as its chip, so its note keeps only a change of sign (the chip cannot say that).
+    tile(
+      g,
+      'net',
+      'Net profit',
+      'c1',
+      x,
+      profit,
+      (n) => `Net ${n < 0 ? 'loss' : 'profit'} ${m(Math.abs(n))} in ${year}`,
+      profitPair ? profitFlip(profitPair[0], profitPair[1]) : null,
+      profitPair ? profitNote(g, profitPair[0], profitPair[1]) : null,
+    ),
     tile(g, 'sales', 'Sales', 'c2', x, sales, (n) => `Sales ${m(n)} in ${year}`, salesPair ? salesNote(salesPair[0], salesPair[1]) : null),
     tile(g, 'cash', 'Cash', 'c3', x, cash, (n) => `Cash ${m(n)} now`, `Debt ${m(debt)}`),
     tile(g, 'value', 'Value', 'c4', x, value, (n) => `Value ${m(n)} now`, ranked ? `#${view.rank} of ${1 + view.rivals.length}` : `Your stake ${m(stakeValue(b))}`),

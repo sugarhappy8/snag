@@ -674,15 +674,23 @@ describe('companyKpis', () => {
     expect(tiles[0]!.series[0]!.values).toEqual(Array.from({ length: 10 }, (_, i) => 15_000 + i * 1_000).map((v) => v - 0))
   })
 
-  it('notes the change in net profit against the year before', () => {
+  // The tile draws the change in net profit itself, as a signed chip made from the last two points. A note that said it
+  // again ("up $6,000" under "+ $6,000") was the same figure twice, so the note keeps only what the chip cannot say.
+  it('leaves the change in net profit to the tile chip: the note does not repeat it', () => {
     const up = company([booked(2030, { profit: 10_000 }), booked(2031, { profit: 16_000 })])
     const tile = companyKpis(...pair(up), null)[0]!
-    expect(tile.note).toBe(deltaLabel(up.g, 6_000))
-    expect(tile.note).toBe('up $6,000')
+    expect(tile.note).toBeUndefined()
+    // The change is still said once in the summary, which is what a screen reader gets.
+    expect(tile.summary).toBe(`Net profit $16K in 2031 (${deltaLabel(up.g, 6_000)}).`)
+    expect(tile.summary).toBe('Net profit $16K in 2031 (up $6,000).')
     const down = company([booked(2030, { profit: 16_000 }), booked(2031, { profit: 10_000 })])
-    expect(companyKpis(...pair(down), null)[0]!.note).toBe('down $6,000')
+    const fell = companyKpis(...pair(down), null)[0]!
+    expect(fell.note).toBeUndefined()
+    expect(fell.summary).toBe('Net profit $10K in 2031 (down $6,000).')
     const same = company([booked(2030, { profit: 16_000 }), booked(2031, { profit: 16_000 })])
-    expect(companyKpis(...pair(same), null)[0]!.note).toBe('unchanged')
+    const flat = companyKpis(...pair(same), null)[0]!
+    expect(flat.note).toBeUndefined()
+    expect(flat.summary).toBe('Net profit $16K in 2031 (unchanged).')
   })
 
   it('says back in profit or into a loss when the sign flips', () => {
@@ -692,9 +700,11 @@ describe('companyKpis', () => {
     const loss = company([booked(2030, { profit: 5_000 }), booked(2031, { profit: -3_000 })])
     expect(loss.b.last!.net).toBe(-3_000)
     expect(companyKpis(...pair(loss), null)[0]!.note).toBe('into a loss')
-    // A loss that stays a loss is a plain change.
+    // A loss that stays a loss is a plain change: the chip has it, and the summary says it.
     const deeper = company([booked(2030, { profit: -5_000 }), booked(2031, { profit: -8_000 })])
-    expect(companyKpis(...pair(deeper), null)[0]!.note).toBe('down $3,000')
+    const worse = companyKpis(...pair(deeper), null)[0]!
+    expect(worse.note).toBeUndefined()
+    expect(worse.summary).toBe('Net loss $8,000 in 2031 (down $3,000).')
   })
 
   it('notes the change in sales as a percentage', () => {

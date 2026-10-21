@@ -826,6 +826,27 @@ describe('a real company', () => {
     expect(summary).toContain(charts!.summary.title)
   })
 
+  // The tile draws the change as a signed chip (made from its last two points). A note under it that said the same change
+  // in words was the same figure twice ("+ $9,260" and "up $9,260"), so no tile may print its change twice.
+  it('prints the change on a tile once: no note repeats its chip', () => {
+    const r = readReportData(data)
+    const head: BookHead = { businessName: r.businessName, emoji: r.emoji, year: r.year, industryLabel: r.industryLabel, location: r.location, marketNote: r.marketNote, lines: r.lines }
+    const html = renderToStaticMarkup(createElement(ReportBook, { head, charts: charts!, plan: PLAN, actions: ACTIONS }))
+    const tiles = html.split('class="ch-kpi"').slice(1)
+    expect(tiles).toHaveLength(4)
+    const chips = tiles.map((t) => /ch-kpi-delta[^>]*><span[^>]*>[^<]*<\/span> ([^<]*?) <span/.exec(t)?.[1])
+    const notes = tiles.map((t) => /ch-kpi-note">([^<]*)</.exec(t)?.[1])
+    // Net profit has a chip (the real company has two booked years), and its note is at most a change of sign.
+    expect(chips[0]).toMatch(/^\$[\d,.]+[KM]?$/)
+    expect(notes[0] === undefined || notes[0] === 'back in profit' || notes[0] === 'into a loss').toBe(true)
+    for (let i = 0; i < tiles.length; i++) {
+      const chip = chips[i]
+      const note = notes[i]
+      if (chip && note) expect(note, `tile ${i}`).not.toContain(chip)
+      if (note) expect(note, `tile ${i}`).not.toMatch(/^(up|down) \$|^unchanged$/)
+    }
+  })
+
   it('opens through AnnualReport once the chunk is loaded', async () => {
     await LazyReportBook.preload()
     const r = renderReport(data)
