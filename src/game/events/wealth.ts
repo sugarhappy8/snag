@@ -164,7 +164,11 @@ function collectLoans(g: GameState): void {
       })
       addRelationship(p, 2)
       const left = t.owes - pay
-      log(g, left > 0 ? `${cap(myOf(p))} paid back ${money(pay)} of what ${p.gender === 'male' ? 'he' : 'she'} owes me (${money(left)} to go).` : `${cap(myOf(p))} paid back the last ${money(pay)} ${p.gender === 'male' ? 'he' : 'she'} owed me!`, 'good')
+      // A part payment is said through its row (text/state-table.ts), one record per person: when the debt has halved since the
+      // last line (after 2 years) or after 5 quiet years. A quiet year still takes the log id the line took. The last payment
+      // is its own line and always speaks.
+      if (left > 0) logStateLine(g, stateLine(g, 'loan.back', left, { id: p.id, slots: { who: cap(myOf(p)), whom: myOf(p), he: p.gender === 'male' ? 'he' : 'she', money: money(pay), left: money(left) } }), 'good')
+      else log(g, `${cap(myOf(p))} paid back the last ${money(pay)} ${p.gender === 'male' ? 'he' : 'she'} owed me!`, 'good')
     } else if (chance(g, Math.min(0.5, 0.1 + years * 0.04))) {
       addRelationship(p, -randInt(g, 1, 4))
       // The last mark is read before this year's is written: the line comes once in five years.

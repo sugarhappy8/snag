@@ -11,6 +11,7 @@
 // The harness only reads g.log and the drained popups, so it never changes the game.
 import { describe, expect, it } from 'vitest'
 import { yearlyWealth } from '../src/game/events/wealth'
+import { readTies, updateTies } from '../src/game/events/wealth-core'
 import { setAllowance } from '../src/game/events/wealth-kids'
 import { createPerson } from '../src/game/people'
 import { sportsProfile, yearlySponsors } from '../src/game/special/sports-core'
@@ -18,6 +19,7 @@ import { fillSlots } from '../src/game/text/state'
 import { STATE_TABLE } from '../src/game/text/state-table'
 import type { GameState } from '../src/game/types'
 import { makeTestGame } from './helpers'
+import { findSeed } from './seed-kit'
 import { normalize, textMetrics, type LifeTrace } from './text-metrics'
 import { formatProbe, playProbeLife, probeLives, PROBE_UNTIL_AGE, summarize, writeTextMetrics, type ProbeLife, type ProbeResult } from './text-probe'
 
@@ -162,6 +164,14 @@ const FAMILIES: readonly Family[] = [
     was: 'I paid $2,000 in allowance this year.',
     slots: { money: '$2,000', count: '3' },
   },
+  {
+    name: 'loan paid back',
+    re: / paid back \S+ of what \w+ owes me|^[^.]+ sent \S+ toward the loan|^i got \S+ back from /,
+    maxExtra: 4,
+    rows: ['loan.back'],
+    was: 'My sister Marit paid back $2,500 of what she owes me ($1,200 to go).',
+    slots: { who: 'My sister Marit', whom: 'my sister Marit', he: 'she', money: '$2,500', left: '$1,200' },
+  },
 ]
 
 const family = (name: string): Family => FAMILIES.find((f) => f.name === name)!
@@ -196,8 +206,8 @@ describe('R2-P9 families', () => {
   })
 })
 
-// The two families the 13 lives never repeat today (the probe's lives rarely pay an allowance or an endorsement deal two
-// years in a row) are played directly: the same state held for twelve years used to print twelve times.
+// The families the 13 lives rarely or never repeat (the probe's lives seldom pay an allowance, hold an endorsement deal or
+// collect on a loan two years in a row) are played directly: the same state held for years used to print every year.
 
 const SPOKEN_LIFE = 5
 
@@ -205,8 +215,8 @@ function lines(g: GameState): string[] {
   return g.log.flatMap((y) => y.entries.map((e) => e.text))
 }
 
-function richGame(money: number): GameState {
-  const g = makeTestGame(SPOKEN_LIFE, { age: 45, money, countryId: 'us', residence: { status: 'renting', rent: 0 } })
+function richGame(money: number, seed = SPOKEN_LIFE): GameState {
+  const g = makeTestGame(seed, { age: 45, money, countryId: 'us', residence: { status: 'renting', rent: 0 } })
   g.year = 2026
   g.log = [{ age: g.character.age, year: g.year, entries: [] }]
   return g
@@ -233,6 +243,46 @@ describe('R2-P9 sites, played directly', () => {
     expect(said.length, said.join(' | ')).toBeGreaterThanOrEqual(2)
     expect(said.length, said.join(' | ')).toBeLessThanOrEqual(3)
     for (let i = 1; i < said.length; i++) expect(said[i]).not.toBe(said[i - 1])
+  })
+
+  it('a loan that is paid back in part is said in the first payment year and then once in five, with who and how much', () => {
+    // A debtor whose money is topped up every year and whose debt is huge, so that each payment is a small part of it and
+    // the state never changes a band: only the five year rule decides when the line speaks again.
+    const YEARS = 20
+    const play = (seed: number): { payments: number; said: string[]; name: string } => {
+      const g = richGame(50_000_000, seed)
+      const debtor = createPerson(g, { relation: 'sibling', age: 41, relationship: 100 })
+      debtor.traits = ['honest', 'loyal']
+      updateTies(g, debtor, (t) => {
+        t.owes = 900_000_000
+        t.owesSince = g.year
+      })
+      let payments = 0
+      for (let y = 0; y < YEARS; y++) {
+        g.year += 1
+        g.character.age += 1
+        for (const p of g.people) if (p.alive) p.age += 1
+        g.yearActions = {}
+        debtor.money = 20_000_000
+        const before = readTies(g, debtor).owes
+        yearlyWealth(g)
+        g.queue = []
+        if (readTies(g, debtor).owes < before) payments++
+      }
+      return { payments, said: lines(g).filter((t) => family('loan paid back').re.test(normalize(t))), name: debtor.firstName }
+    }
+    const seed = findSeed((s) => play(s).payments >= 8, { label: 'a debtor who pays back in 8 of 20 years' })
+    const { payments, said, name } = play(seed)
+    expect(said.length, said.join(' | ')).toBeGreaterThanOrEqual(2)
+    expect(said.length, said.join(' | ')).toBeLessThanOrEqual(YEARS / 5)
+    expect(payments - said.length, 'payments that were not said').toBeGreaterThanOrEqual(4)
+    for (let i = 1; i < said.length; i++) expect(said[i]).not.toBe(said[i - 1])
+    for (const text of said) {
+      expect(text, text).toContain(name)
+      expect((text.match(/\$/g) ?? []).length, `${text}: the payment and what is left`).toBeGreaterThanOrEqual(2)
+      // A slot nothing filled leaves a brace, an empty bracket or a name missing after 'from'.
+      expect(text, text).not.toMatch(/[{}]|\( |\bfrom \./)
+    }
   })
 
   it('a deal that pays the same for twelve years is said in the first year and then once in five', () => {
