@@ -7,6 +7,7 @@ import { Fragment, type ReactElement, type ReactNode } from 'react'
 import type { ChartSpec } from '../../game/charts/spec'
 import { lazyView, type LazyView } from '../lazy/lazyView'
 import type { KpiTileProps } from './KpiTile'
+import type { ReportBookProps } from './ReportBook'
 import type { SparklineProps } from './Sparkline'
 
 /** The chart for a spec: a Frame and the plot for its kind. */
@@ -26,3 +27,9 @@ export function LazyChartView(p: { spec: ChartSpec | null; fallback?: ReactNode 
   if (p.spec === null) return p.fallback === undefined || p.fallback === null ? null : <Fragment>{p.fallback}</Fragment>
   return <ChartViewLazy spec={p.spec} fallback={p.fallback} />
 }
+
+/**
+ * The Annual Report 2.0 book: five tabs over the report's charts. Give it the text layout as `fallback`: that is what shows
+ * while the chunk loads, on the server, and when the load fails (lazyView adds a way to try again).
+ */
+export const LazyReportBook: LazyView<ReportBookProps> = lazyView('report-book', () => import('./ReportBook'))

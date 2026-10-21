@@ -855,7 +855,8 @@ describe('lazy.tsx', () => {
       expect(to === null || !to.includes('/src/ui/charts/'), `${spec} resolves into the chart zone`).toBe(true)
     }
     const dynamic = dynamicImports(file).map((s) => resolveImport(file, s)?.split('/src/ui/charts/')[1])
-    expect(dynamic.sort()).toEqual(['ChartView.tsx', 'KpiTile.tsx', 'Sparkline.tsx'])
+    // R1-C11 adds the report book; R1-C12 adds the Year-End Desk in the same way.
+    expect(dynamic.sort()).toEqual(['ChartView.tsx', 'KpiTile.tsx', 'ReportBook.tsx', 'Sparkline.tsx'])
     expect(DASHES.test(readFileSync(file, 'utf8'))).toBe(false)
   })
 })
