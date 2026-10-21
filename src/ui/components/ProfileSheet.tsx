@@ -32,6 +32,7 @@ import type {
   SchoolLevel,
 } from '../../game/types'
 import { useApp } from '../store'
+import { LifeLine } from './LifeLine'
 import { useSheetEscape } from './MenuList'
 import { Sheet } from './Sheet'
 import { StatBar } from './StatBar'
@@ -540,6 +541,7 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
 
       <Section title="Money">
         <KV rows={moneyRows} />
+        <LifeLine g={g} />
         {g.assets.length > 0 ? (
           <ul className="list-plain" style={{ marginTop: 6 }}>
             {g.assets.map((a) => (

@@ -13,11 +13,14 @@ import {
   pronouns,
   relationLabel,
 } from '../../game/core'
+import { netWorthSpec } from '../../game/charts/networth'
+import { flagOn } from '../../game/flags'
 import type { NewLifeOptions } from '../../game/life'
 import { getRibbon } from '../../game/ribbons'
 import { pickedTalents } from '../../game/talents'
 import type { Degree, DegreeKind, GameState, Person, RelationKind } from '../../game/types'
 import { getCountry } from '../../game/world'
+import { LifeLine } from '../components/LifeLine'
 import { StatBar } from '../components/StatBar'
 import { TimeMachineDeathButton, TimeMachineSheet } from '../components/TimeMachine'
 import { continueAs, goTo, startNewLife, useApp } from '../store'
@@ -323,6 +326,9 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
     }
   }, [g])
 
+  // The "Your life in numbers" card is there only when the net-worth line has something to draw.
+  const hasLine = useMemo(() => (g && flagOn('chartKit') ? netWorthSpec(g) !== null : false), [g])
+
   if (!g || !view) return null
   const c = g.character
   const bornYear = g.year - c.age
@@ -394,6 +400,13 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
           <StatBar label="Karma" emoji="☯️" value={c.hidden.karma} />
         </div>
       </section>
+
+      {hasLine ? (
+        <section className="al-card">
+          <h3 style={{ margin: '0 0 10px' }}>📈 Your life in numbers</h3>
+          <LifeLine g={g} />
+        </section>
+      ) : null}
 
       {view.legacy.length > 0 ? (
         <section className="al-card">

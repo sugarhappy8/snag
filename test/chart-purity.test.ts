@@ -1,14 +1,15 @@
 // R1-C10: the purity gate of the Charts track. Every builder of C4 (Profit and Loss), C5 (books), C6 (market and ranks)
 // and the report assembler runs on a deeply frozen copy of a real game: it must not throw, must return null or a spec
 // that readChartSpec accepts, and must leave the generator and the whole state byte-for-byte as they were. A builder that
-// wrote anything would throw on the frozen state; one that drew a random number would move g.rng. (R1-C15 adds
-// netWorthSpec to this file.)
+// wrote anything would throw on the frozen state; one that drew a random number would move g.rng. R1-C15 adds
+// netWorthSpec, which is a builder of the whole life and not of one company, so it runs once for each game.
 import { describe, expect, it } from 'vitest'
 import { marketViewOf, type MarketView } from '../src/game/business/competition'
 import { scoreRow } from '../src/game/business/scorecard'
 import { businessAssets, readBiz, type BizState } from '../src/game/business/state'
 import { cashLinesSpec, cashWalkSpec, companyKpis, companyStrip, costShareSpec, profitSpec } from '../src/game/charts/books'
 import { marketLadderSpec, marketSizeSpec, shareSpec } from '../src/game/charts/market'
+import { netWorthSpec } from '../src/game/charts/networth'
 import { bridgeSpec, plSpec, plSteps, plSummarySpec, profitVerdict } from '../src/game/charts/pl'
 import { approvalSpec, ladderSpec, scorecardSpec, standingSpec } from '../src/game/charts/ranks'
 import { readReportCharts, reportCharts } from '../src/game/charts/report'
@@ -95,6 +96,10 @@ function gate(label: string, g: GameState): number {
   const before = JSON.stringify(frozen)
   const rng = frozen.rng
   let seen = 0
+  // The net-worth line belongs to the life, not to a company: once for the game, null when the life has no series yet.
+  const line = netWorthSpec(frozen)
+  if (line) expect(readChartSpec(line), `${label} netWorthSpec`).not.toBeNull()
+  expect(netWorthSpec(frozen), `${label} netWorthSpec again`).toEqual(line)
   for (const a of businessAssets(frozen)) {
     // The company as the books hand it over (a normalized copy) and as the yearly loop holds it (the stored object).
     const copies: [string, BizState][] = [
@@ -131,6 +136,10 @@ describe('the chart builders are pure', () => {
   it('over an owner-CEO with eight years of books and a second company', { timeout: 300_000 }, () => {
     const { g, a } = ownerGame({ years: 8, companies: 2 })
     expect(gate('owner', g)).toBe(2)
+    // Eight years through ageUp wrote the life series, so the line has points to draw.
+    const line = netWorthSpec(g)
+    expect(line).not.toBeNull()
+    expect(line!.x.length).toBeGreaterThanOrEqual(8)
     const b = readBiz(g, a)
     const c = reportCharts(g, a, b, marketViewOf(g, b))
     expect(c).not.toBeNull()
