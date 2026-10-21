@@ -8,7 +8,7 @@ import { Fragment, useContext, type ReactElement, type ReactNode } from 'react'
 import { moneyScale } from '../../game/core'
 import type { ChartSpec, ChartUnit } from '../../game/charts/spec'
 import { FrameContext } from './Frame'
-import { clipText, formatUnit, readoutFor, xText } from './format'
+import { clipText, formatTicks, formatUnit, readoutFor, xText } from './format'
 import { MARKER_SHAPES, dodgeLabels, extentOf, linePath, linearScale, markerPath, niceTicks, xTicks, type Scale } from './geometry'
 import type { ScrubApi } from './useScrub'
 import './charts.css'
@@ -99,6 +99,7 @@ export function yTicks(lo: number, hi: number, unit: ChartUnit): number[] {
 
 /** The y axis: a grid line and a label for each tick. `right` is where the grid ends. */
 export function YAxis(p: { ticks: readonly number[]; sy: Scale; unit: ChartUnit; right: number }): ReactElement {
+  const labels = formatTicks(p.unit, p.ticks)
   return (
     <>
       {p.ticks.map((t, i) => {
@@ -107,7 +108,7 @@ export function YAxis(p: { ticks: readonly number[]; sy: Scale; unit: ChartUnit;
           <Fragment key={i}>
             <line className="ch-grid" x1={BOX.left} x2={r2(p.right)} y1={y} y2={y} />
             <text className="ch-ax ch-ax-y" x={BOX.left - 4} y={r2(y + END_FONT_BASELINE)} textAnchor="end">
-              {formatUnit(p.unit, t)}
+              {labels[i]}
             </text>
           </Fragment>
         )

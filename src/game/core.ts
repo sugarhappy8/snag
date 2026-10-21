@@ -323,6 +323,60 @@ export function tinyMoney(n: number): string {
   return formatMoney(n)
 }
 
+// The ticks of one axis are written together: shortMoney gives a decimal under ten units and none from ten
+// ('$5.0M' beside '$10M'), which is right for one number and wrong for a column of them.
+const AXIS_UNITS: readonly [number, string][] = [
+  [1e12, 'T'],
+  [1e9, 'B'],
+  [1e6, 'M'],
+  [1e3, 'K'],
+]
+
+/** '5.0' -> '5', '2.50' -> '2.5', '12' stays. */
+function noTrailingZeros(s: string): string {
+  return s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s
+}
+
+/** True when `x` is a whole number of tenths or hundredths, as far as `decimals` digits go (the converter leaves float dust). */
+function exactAt(x: number, decimals: number): boolean {
+  return Math.abs(x - Number(x.toFixed(decimals))) <= 1e-6 * Math.max(1, x)
+}
+
+/**
+ * The labels of one money axis, in tick order, written together: the compact units of shortMoney ($5M, $10M, $2.5M), no
+ * trailing '.0', and one decimal (two at most) only when some tick needs it to be what it says, so '$10.5M' never reads
+ * '$11M' beside another '$11M'. An axis that stays under ten thousand writes the plain figures ($2,000, $4,000); from ten
+ * thousand up every tick of a thousand or more is counted in K, M, B or T, so '$5,000' never sits beside '$10K'.
+ */
+export function axisMoney(ticks: readonly number[]): string[] {
+  const ns = ticks.map((n) => (Number.isFinite(n) ? n : 0))
+  const shown = ns.map((n) => showMoney(n))
+  const amounts = shown.map((m) => (Number.isFinite(m.amount) ? Math.abs(m.amount) : 0))
+  if (amounts.every((a) => a < 1e4)) return ns.map((n) => formatMoney(n))
+  const unitOf = (a: number): number => AXIS_UNITS.findIndex(([v]) => a >= v)
+  let decimals = 0
+  amounts.forEach((a) => {
+    const k = unitOf(a)
+    if (a >= HUGE || k < 0) return
+    while (decimals < 2 && !exactAt(a / AXIS_UNITS[k]![0], decimals)) decimals++
+  })
+  return shown.map((m, i) => {
+    const a = amounts[i]!
+    if (a >= HUGE) return compactMoney(m)
+    let k = unitOf(a)
+    if (k < 0) return formatMoney(ns[i]!)
+    const sign = m.amount < 0 ? '-' : ''
+    let text = noTrailingZeros((a / AXIS_UNITS[k]![0]).toFixed(decimals))
+    // 999,999 rounds to '1000K' in thousands, so it moves up a unit and reads '1M'.
+    while (Number(text) >= 1000 && k > 0) {
+      k--
+      text = noTrailingZeros((a / AXIS_UNITS[k]![0]).toFixed(decimals))
+    }
+    if (Number(text) >= 1000) return compactMoney(m)
+    return joinMoney(sign, `${text}${AXIS_UNITS[k]![1]}`, m)
+  })
+}
+
 /**
  * Money with the digits written by the caller, e.g. moneyWith(p, (a) => a.toFixed(2)) → '$8.17'.
  * `digits` gets the absolute display amount; the sign and the currency symbol are added here.

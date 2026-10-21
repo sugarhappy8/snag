@@ -1,7 +1,7 @@
 // Chart text: values, signed changes and the one-line readout under a chart. Money goes through the game's own
 // shortMoney, so it follows the live bound money context (the player's currency and price year), like every component.
 // Every function is total: a non-finite number reads as 0, and no string holds NaN, Infinity or undefined.
-import { shortMoney } from '../../game/core'
+import { axisMoney, shortMoney } from '../../game/core'
 import { CHART_LIMITS, type ChartSpec, type ChartUnit } from '../../game/charts/spec'
 
 function safe(v: number): number {
@@ -81,6 +81,16 @@ export function formatUnit(unit: ChartUnit, v: number): string {
       return `${n < 0 && text !== '0' ? '-' : ''}${text} ${one ? 'yr' : 'yrs'}`
     }
   }
+}
+
+/**
+ * The labels down one axis, together. Money is written as one short format for the whole column ($5M, $10M, $15M; $2.5M
+ * only when a tick needs the decimal), where formatUnit writes each number alone ($5.0M beside $10M). The other units
+ * are written one by one, as formatUnit writes them. Total: a tick that is not a number reads as 0.
+ */
+export function formatTicks(unit: ChartUnit, ticks: readonly number[]): string[] {
+  if (unit === 'money') return axisMoney(ticks.map(safe))
+  return ticks.map((t) => formatUnit(unit, t))
 }
 
 /** Text with a digit from 1 to 9 in it is a value that is not zero. */
