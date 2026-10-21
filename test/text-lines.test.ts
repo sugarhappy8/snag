@@ -67,6 +67,46 @@ describe('STATE_TABLE', () => {
   })
 })
 
+// R2-P9: the nine rows the status-line sites call. Each site fills the slots listed here and no others, so a variant that
+// names {mony} (or a slot its site does not have) would print an empty hole: the lint above cannot see that, this can.
+const SITE_SLOTS: Readonly<Record<string, readonly string[]>> = {
+  'around.growth': ['cause'],
+  'around.credit': ['cause'],
+  'around.supply': ['cause'],
+  'index.crash': ['index', 'move'],
+  'index.boom': ['index', 'move'],
+  'endorse.income': ['money'],
+  'allowance.one': ['money'],
+  'allowance.many': ['money', 'count'],
+  'loan.back': ['who', 'whom', 'he', 'money', 'left'],
+}
+
+describe('the rows of R2-P9', () => {
+  it('are the nine of the worklist', () => {
+    expect(Object.keys(STATE_TABLE).sort()).toEqual(Object.keys(SITE_SLOTS).sort())
+  })
+
+  it('use only the slots their call sites fill, and every slot the site fills is used by some variant', () => {
+    for (const [key, spec] of Object.entries(STATE_TABLE as Record<string, StateSpec>)) {
+      const filled = SITE_SLOTS[key] ?? []
+      const used = new Set<string>()
+      for (const text of spec.variants) for (const m of text.matchAll(SLOT_RE)) used.add(m[1])
+      for (const slot of used) expect(filled, `${key}: {${slot}} is not filled by its call site`).toContain(slot)
+      for (const slot of filled) expect([...used], `${key}: the site fills {${slot}} and no variant uses it`).toContain(slot)
+    }
+  })
+
+  it('keep a slot filled with the same words in every variant of a row, so a speaker reads the same in each', () => {
+    // Every variant of a row names the same facts: the slots one variant uses, the others use too, apart from the person's
+    // two spellings in the loan row ({who} opens a sentence, {whom} sits inside one, {he} only in the first variant).
+    for (const [key, spec] of Object.entries(STATE_TABLE as Record<string, StateSpec>)) {
+      if (key === 'loan.back') continue
+      const sets = spec.variants.map((t) => [...new Set([...t.matchAll(SLOT_RE)].map((m) => m[1]))].sort().join(','))
+      expect(new Set(sets).size, `${key}: variants name different slots (${sets.join(' | ')})`).toBe(1)
+    }
+  })
+})
+
 describe('the lint itself', () => {
   const GOOD: StateSpec = {
     variants: ['Money got tight around me. {cause}', 'Times got harder in my town. {cause}', 'The squeeze reached my whole street. {cause}'],
