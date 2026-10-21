@@ -633,14 +633,13 @@ function usage(err) {
   err.write('usage: node scripts/codemod-pickline.mjs [--apply] [--list] [--helpers] [--report <file.json>] [--root <dir>] [--only <path-substring>]\n')
 }
 
+/** The skip list of the tree under `root`. A tree without one has none: the list of this repository says nothing about another tree. */
 function loadSkip(root) {
-  for (const file of [join(root, SKIP_FILE), join(HERE, 'codemod-pickline-skip.json')]) {
-    if (!existsSync(file)) continue
-    const raw = JSON.parse(readFileSync(file, 'utf8'))
-    if (!raw || raw.v !== 1 || !Array.isArray(raw.skip)) throw new Error(`${file}: expected { "v": 1, "skip": [...] }`)
-    return raw
-  }
-  return { v: 1, skip: [] }
+  const file = join(root, SKIP_FILE)
+  if (!existsSync(file)) return { v: 1, skip: [] }
+  const raw = JSON.parse(readFileSync(file, 'utf8'))
+  if (!raw || raw.v !== 1 || !Array.isArray(raw.skip)) throw new Error(`${file}: expected { "v": 1, "skip": [...] }`)
+  return raw
 }
 
 export function run(argv, { out = process.stdout, err = process.stderr } = {}) {
