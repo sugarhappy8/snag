@@ -14,6 +14,9 @@ import { yearlyWealth } from '../src/game/events/wealth'
 import { readTies, updateTies } from '../src/game/events/wealth-core'
 import { setAllowance } from '../src/game/events/wealth-kids'
 import { GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../src/game/history/events-future'
+import { askDef } from '../src/game/events/wealth-catalog'
+import { ADMIRER_LINES, SCAM_LINES } from '../src/game/events/wealth-world'
+import type { Ask } from '../src/game/events/wealth-ask'
 import { createPerson } from '../src/game/people'
 import { PRO_SEASON_LINES, yearlyAthlete } from '../src/game/special/athlete'
 import { hire } from '../src/game/special/common'
@@ -205,6 +208,22 @@ const FAMILIES: readonly Family[] = [
     pools: [PRO_SEASON_LINES],
     was: 'I played my 3rd pro season with the Seoul Falcons. I hit .310 with 22 home runs.',
     slots: { nth: '3rd', team: 'Seoul Falcons', stats: 'I hit .310 with 22 home runs.' },
+  },
+  {
+    name: 'scam',
+    re: /^(i lost \S+ to a scam\.|the \S+ i sent was gone for good\.|i got scammed out of \S+\.|a scam cost me \S+ and i never saw it again\.)/,
+    maxExtra: 2,
+    pools: [SCAM_LINES],
+    was: 'I lost $15,000 to a scam.',
+    slots: { money: '$15,000' },
+  },
+  {
+    name: 'admirer',
+    re: /^(i spent \S+ on an admirer who left when the gifts stopped\.|an admirer took \S+ in gifts and then vanished\.|i paid \S+ for an admirer who was never serious\.|my admirer cost me \S+ and then stopped calling\.)/,
+    maxExtra: 2,
+    pools: [ADMIRER_LINES],
+    was: 'I spent $8,000 on an admirer who left when the gifts stopped.',
+    slots: { money: '$8,000' },
   },
 ]
 
@@ -418,5 +437,67 @@ describe('R2-P10 sites, played directly', () => {
 
   it('the season line is text only: plain pick and the next line leave g.rng and every other state alone', () => {
     leaksNothing(athleteLife, (g) => playSeasons(g, 4))
+  })
+
+  /** A game rich enough to answer every stranger who asks. */
+  function richStranger(): GameState {
+    const g = makeTestGame(SPOKEN_LIFE, { age: 50, money: 50_000_000, countryId: 'us' })
+    g.year = 2026
+    g.log = [{ age: 50, year: g.year, entries: [] }]
+    return g
+  }
+
+  const answerWith = (k: string, extra: string, name: string, amt: number, what: string) => (g: GameState): void => {
+    const ask: Ask = { k, name, title: name, emoji: '\u{1F4B8}', text: '', amt, what }
+    const e = askDef(k)?.extras?.find((x) => x.id === extra)
+    if (!e) throw new Error(`${k} has no extra ${extra}`)
+    e.run(g, ask)
+    g.queue = []
+  }
+  const sendToScammer = answerWith('stranger.scam', 'send', 'a stranger', 15_000, 'a stranger\'s "opportunity"')
+  const treatAdmirer = answerWith('stranger.golddigger', 'enjoy', 'Dana', 8_000, 'an admirer')
+
+  /** Answers the same stranger `n` times, a year apart, and returns the log lines of the family. */
+  function repeatAnswers(answer: (g: GameState) => void, n: number, f: Family): string[] {
+    const g = richStranger()
+    for (let i = 0; i < n; i++) {
+      g.year += 1
+      g.character.age += 1
+      answer(g)
+    }
+    return lines(g).filter((t) => f.re.test(normalize(t)))
+  }
+
+  /** The frame of a pool each line used, -1 for a line of none. */
+  const framesOf = (said: readonly string[], pool: readonly string[]): number[] => said.map((t) => pool.findIndex((line) => lineRe(line).test(t)))
+
+  it('a scammed life reads each loss in different words: every frame inside the first cycle, never the same one twice running', () => {
+    const said = repeatAnswers(sendToScammer, 7, family('scam'))
+    expect(said, said.join(' | ')).toHaveLength(7)
+    const frames = framesOf(said, SCAM_LINES)
+    expect(frames.every((f) => f >= 0), said.join(' | ')).toBe(true)
+    expect(new Set(frames.slice(0, SCAM_LINES.length)).size, said.join(' | ')).toBe(SCAM_LINES.length)
+    for (let i = 1; i < frames.length; i++) expect(frames[i], `losses ${i} and ${i + 1}: ${said[i]}`).not.toBe(frames[i - 1])
+    for (const t of said) expect(t, t).toContain('$15,000')
+  })
+
+  it('an admirer who takes the gifts is told in different words each time, with the amount', () => {
+    const said = repeatAnswers(treatAdmirer, 7, family('admirer'))
+    expect(said, said.join(' | ')).toHaveLength(7)
+    const frames = framesOf(said, ADMIRER_LINES)
+    expect(frames.every((f) => f >= 0), said.join(' | ')).toBe(true)
+    expect(new Set(frames.slice(0, ADMIRER_LINES.length)).size, said.join(' | ')).toBe(ADMIRER_LINES.length)
+    for (let i = 1; i < frames.length; i++) expect(frames[i], `gifts ${i} and ${i + 1}: ${said[i]}`).not.toBe(frames[i - 1])
+    for (const t of said) expect(t, t).toContain('$8,000')
+  })
+
+  it('the scam and admirer lines are text only: plain pick and the next line leave g.rng and every other state alone', () => {
+    leaksNothing(richStranger, (g) => {
+      for (let i = 0; i < 3; i++) {
+        g.year += 1
+        sendToScammer(g)
+        treatAdmirer(g)
+      }
+    })
   })
 })
