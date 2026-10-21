@@ -42,7 +42,7 @@ function nodeCount(value: unknown): number {
 
 describe('limits', () => {
   it('are the agreed caps', () => {
-    expect(TEXT_MEM_LIMITS).toEqual({ pools: 300, families: 120, recent: 8, bag: 12, famYears: 12, famWindow: 10, rings: 4, ring: 64, ringKey: 80 })
+    expect(TEXT_MEM_LIMITS).toEqual({ pools: 300, families: 120, recent: 8, bag: 12, famYears: 12, famWindow: 10, rings: 4, ring: 64, ringKey: 80, states: 120 })
   })
 })
 

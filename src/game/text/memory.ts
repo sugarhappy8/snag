@@ -6,6 +6,8 @@
 // caps, so a damaged or oversized memory can never make the state grow.
 // R2-B2 adds one more string, the text cursor c ('<year>,<count>', see text/draw.ts): it lives here because it is stored in the
 // memory, and this file owns the codec and the repair of everything stored in it.
+// R2-P8 adds a map of state records, s ('<year>,<band>,<variant>,<previous variant or ->' per state key, at most 120, see
+// text/state.ts), created only when a state line first speaks, so an untouched life holds exactly { v, p, f, r }.
 // Imports types only, so it is a leaf.
 import type { GameState } from '../types'
 
@@ -25,6 +27,8 @@ export const TEXT_MEM_LIMITS = Object.freeze({
   ring: 64,
   /** Characters in a ring key. */
   ringKey: 80,
+  /** State records (R2-P8): one per state line key, or per key and person. */
+  states: 120,
 } as const)
 
 /** g.flags.textMem. Every value is a string or a string array so a pool costs one JSON node. */
@@ -38,6 +42,16 @@ export type TextMem = {
   r: Record<string, string[]>
   /** The text cursor (R2-B2): '<year>,<count>', how many text draws that year has made. Absent until the first draw. */
   c?: string
+  /** State line records (R2-P8): state key (or 'key.id') -> '<year>,<band>,<variant>,<previous variant or ->'. Absent until a state line first speaks. */
+  s?: Record<string, string>
+}
+
+/** What a state line last said (R2-P8): the year, the band of the value, the variant used and the one before it (-1 for none). */
+export interface StateRecord {
+  year: number
+  band: number
+  v1: number
+  v2: number
 }
 
 export type PoolRecall =
@@ -50,8 +64,11 @@ const BAG_RE = /^b(\d{1,4})(?:\.(\d{1,2}))?$/
 const WINDOW_RE = /^w\d{1,5}(?:,\d{1,5}){0,7}$/
 const FAMILY_RE = /^\d{1,6}(?:,\d{1,6}){0,11}$/
 const CURSOR_RE = /^(\d{1,7}),(\d{1,9})$/
+const STATE_RE = /^(\d{1,6}),(\d{1,2}),(\d),(\d|-)$/
 /** The longest valid cursor: a seven digit year, a comma, a nine digit count. Longer strings are rejected unread. */
 const MAX_CURSOR_RECORD = 17
+/** The longest valid state record: a six digit year, a two digit band, a variant, a previous variant and three commas. Longer strings are rejected unread. */
+const MAX_STATE_RECORD = 13
 /** The longest valid records: a window of 8 five-digit indexes, a family of 12 six-digit years. Longer strings are rejected unread. */
 const MAX_POOL_RECORD = 48
 const MAX_FAMILY_RECORD = 83
@@ -59,7 +76,7 @@ const MAX_FAMILY_RECORD = 83
 const MAX_INDEX = 99_999
 const BAG_MASKS = 4096
 
-/** A key the memory accepts for a pool, a family or a ring: a letter, then letters, digits and _ . : -, 48 characters at most. */
+/** A key the memory accepts for a pool, a family, a ring or a state: a letter, then letters, digits and _ . : -, 48 characters at most. */
 export function isMemKey(key: unknown): key is string {
   return typeof key === 'string' && KEY_RE.test(key)
 }
@@ -92,6 +109,13 @@ export function parseTextCursor(s: unknown): { year: number; n: number } | null 
   if (typeof s !== 'string' || s.length > MAX_CURSOR_RECORD) return null
   const m = CURSOR_RE.exec(s)
   return m ? { year: Number(m[1]), n: Number(m[2]) } : null
+}
+
+/** The state record a string holds, or null when it is not exactly the codec ('<year>,<band>,<variant>,<previous variant or ->'). */
+function parseState(s: unknown): StateRecord | null {
+  if (typeof s !== 'string' || s.length > MAX_STATE_RECORD) return null
+  const m = STATE_RE.exec(s)
+  return m ? { year: Number(m[1]), band: Number(m[2]), v1: Number(m[3]), v2: m[4] === '-' ? -1 : Number(m[4]) } : null
 }
 
 /** The newest `cap` strings of at most 80 characters, oldest first. Anything else in the list is dropped. */
@@ -128,6 +152,8 @@ function clean(raw: unknown): TextMem {
     }
   }
   if (parseTextCursor(raw.c) !== null) mem.c = raw.c as string
+  const states = newest(raw.s, TEXT_MEM_LIMITS.states, (v) => parseState(v) !== null)
+  if (states.length) mem.s = Object.fromEntries(states)
   return mem
 }
 
@@ -235,4 +261,29 @@ export function ringWrite(g: GameState, name: string, keys: readonly string[], c
   if (!Object.hasOwn(mem.r, name) && Object.keys(mem.r).length >= TEXT_MEM_LIMITS.rings) return
   const size = Number.isFinite(cap) ? Math.min(TEXT_MEM_LIMITS.ring, Math.max(1, Math.floor(cap))) : TEXT_MEM_LIMITS.ring
   mem.r[name] = cleanRing(keys, size)
+}
+
+/**
+ * Pure. What the state line `key` last said, or null when it never spoke, the record is damaged, or it is from a year after
+ * `year` (no foresight: a later year is never read, so the line speaks as if it had not spoken). Reads an own key only.
+ */
+export function readState(mem: TextMem, key: string, year: number): StateRecord | null {
+  const s = mem.s
+  if (!s || !isMemKey(key) || !Object.hasOwn(s, key)) return null
+  const rec = parseState(s[key])
+  return rec && rec.year <= year ? rec : null
+}
+
+/**
+ * Records what the state line `key` said. Touches the key (moves it last), evicts the oldest past 120 and creates `s` when it is
+ * the first. A key or a record the reader would not accept is ignored, so the memory can never hold what clean() would drop.
+ */
+export function rememberState(mem: TextMem, key: string, rec: StateRecord): void {
+  const { year, band, v1, v2 } = rec
+  if (!isMemKey(key) || !Number.isInteger(year) || year < 0 || year > 999_999) return
+  if (!Number.isInteger(band) || band < 0 || band > 99 || !Number.isInteger(v1) || v1 < 0 || v1 > 9 || !Number.isInteger(v2) || v2 < -1 || v2 > 9) return
+  const s = (mem.s ??= {})
+  delete s[key]
+  s[key] = `${year},${band},${v1},${v2 < 0 ? '-' : v2}`
+  evict(s, TEXT_MEM_LIMITS.states)
 }
