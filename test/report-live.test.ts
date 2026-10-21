@@ -99,9 +99,12 @@ function tilesOf(markup: string): { value?: string; chip?: string; note?: string
     }))
 }
 
-/** A dollar figure as the game prints it ("-$73K", "$1.2M", "$8,803") back to dollars, and how far the print can be from the truth. */
+/**
+ * A dollar figure as the game prints it ("-$73K", "$1.2M", "$8,803") back to dollars, and how far the print can be from the truth.
+ * The bridge labels come from formatSigned, which writes a gain with an ASCII plus ("+$8,803"), so the sign may be either one.
+ */
 function unmoney(text: string): { value: number; half: number } {
-  const m = /^(-?)\$([\d,]+)(\.\d+)?([KMBT]?)$/.exec(text)
+  const m = /^([+-]?)\$([\d,]+)(\.\d+)?([KMBT]?)$/.exec(text)
   if (!m) throw new Error(`not money: ${text}`)
   const unit = ({ '': 1, K: 1e3, M: 1e6, B: 1e9, T: 1e12 } as Record<string, number>)[m[4]!]!
   const digits = (m[3] ?? '').length === 0 ? 0 : m[3]!.length - 1
