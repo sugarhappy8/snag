@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "recordedAt": "a65349a (v4.1.1), before wave 0 and before any R2 text change; written once by R2-P7",
+  "spec": {
+    "lives": 13,
+    "firstSeed": 101,
+    "birthYears": [1925, 1950, 1975, 1990, 2010, 2026],
+    "richOn": "every second life (the second, fourth, ...), 60,000,000 at 25",
+    "untilAge": 85,
+    "weighting": "mergeMetrics of test/text-metrics.ts: shares are means weighted by each life's log lines"
+  },
+  "merged": {
+    "lines": 5093,
+    "repeated": 423,
+    "repeatedShare": 0.08305517376791675,
+    "sameWithin10": 266,
+    "over3": { "distinct": 41, "max": 17 }
+  },
+  "perLife": [
+    { "lines": 365, "share": 0.09315068493150686, "in10": 31, "max": 11, "over3": 4 },
+    { "lines": 479, "share": 0.07306889352818371, "in10": 16, "max": 6, "over3": 2 },
+    { "lines": 159, "share": 0.012578616352201259, "in10": 2, "max": 2, "over3": 0 },
+    { "lines": 406, "share": 0.09852216748768473, "in10": 22, "max": 4, "over3": 6 },
+    { "lines": 271, "share": 0.03690036900369004, "in10": 8, "max": 6, "over3": 1 },
+    { "lines": 444, "share": 0.1373873873873874, "in10": 27, "max": 10, "over3": 5 },
+    { "lines": 368, "share": 0.11956521739130435, "in10": 42, "max": 17, "over3": 4 },
+    { "lines": 597, "share": 0.07537688442211055, "in10": 25, "max": 5, "over3": 4 },
+    { "lines": 410, "share": 0.08048780487804878, "in10": 15, "max": 4, "over3": 1 },
+    { "lines": 452, "share": 0.09513274336283185, "in10": 31, "max": 9, "over3": 4 },
+    { "lines": 320, "share": 0.05625, "in10": 12, "max": 6, "over3": 4 },
+    { "lines": 348, "share": 0.09770114942528736, "in10": 24, "max": 6, "over3": 4 },
+    { "lines": 474, "share": 0.05063291139240506, "in10": 11, "max": 8, "over3": 2 }
+  ]
+}

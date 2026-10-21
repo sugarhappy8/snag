@@ -28,6 +28,11 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   nothing.
 - An identity pool (a name, a title or anything stored on a person, an asset, a flag, or something the code branches on) stays
   `pick(g, ...)`. `eraPickPlain` and `vPlain` are the identity versions of `eraPick` and `v`.
+- A status line that comes back every year (a market, an allowance, "around me") is a row of `STATE_TABLE` in
+  `src/game/text/state-table.ts` and one `stateLine(g, key, value, { id?, slots? })` call, never a hand-written "once in five
+  years" gate. It speaks when the value's band changes (at least 2 years after the last line) or after 5 quiet years, in 3 to 6
+  variants that never repeat the last two. It draws nothing (a hash of the life, year and key picks the variant) and keeps its
+  records in `flags.textMem.s`, at most 120.
 - `scripts/codemod-pickline.mjs` finds the prose pools still written with `pick`. A pool that must stay `pick` is listed in
   `scripts/codemod-pickline-skip.json` with a reason, and `test/r2-pickline-ratchet.test.ts` fails on any other.
 
