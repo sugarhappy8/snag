@@ -14,6 +14,7 @@
 //   3. MOVED: what a cut moved out of a file is still served by that file, and is the same function (a re-export, never a copy).
 //   4. PORTS AT WORK: a port gives its callers what the import it replaced gave them, and does nothing while unbound.
 //
+// R2-K6 added the last two ports (activities.relocate, workplace.ordinaryJobs) and the block that shows them at work.
 // Later tasks append to both lists: a new hub goes in HUBS, a new port in EXPECTED_PORTS.
 import { describe, expect, it, vi } from 'vitest'
 
@@ -52,7 +53,7 @@ const HUBS: readonly (readonly [string, () => Promise<object>])[] = [
 const UNDEFINED_OK: Readonly<Record<string, { names: readonly string[]; why: string }>> = {}
 
 /** The ports the game defines, by name. Each task that cuts an import with a port adds its name here. */
-const EXPECTED_PORTS: readonly string[] = ['business.revalueCompany', 'computer.gameMakingMenu']
+const EXPECTED_PORTS: readonly string[] = ['activities.relocate', 'business.revalueCompany', 'computer.gameMakingMenu', 'workplace.ordinaryJobs']
 
 describe('enter the game through each hub, in a fresh module registry', () => {
   it('lists each hub once', () => {
@@ -157,5 +158,80 @@ describe('a port gives its callers what the import it replaced gave them (R2-K5)
     const { makeGamesMenu } = await import('../src/game/special/gamedev-make')
     expect(gameMakingMenu.bound).toBe(true)
     expect(gameMakingMenu()).toBe(makeGamesMenu)
+  }, 120_000)
+})
+
+describe('the last two ports give their callers what the imports they replaced gave them (R2-K6)', () => {
+  it('relocatePlayer does nothing while the immigration move is not loaded', async () => {
+    vi.resetModules()
+    const { relocatePlayer } = await import('../src/game/activities/contract')
+    expect(relocatePlayer.bound).toBe(false)
+    const g = { character: { countryId: 'us' } }
+    relocatePlayer(g as never, 'ae', 'asylum', { status: 'asylum' }, { title: 'Exile', opener: 'You left.' })
+    expect(g).toEqual({ character: { countryId: 'us' } })
+  }, 120_000)
+
+  it('relocatePlayer is relocate once immigration-move has loaded, and moves the household the same way', async () => {
+    vi.resetModules()
+    const { relocatePlayer } = await import('../src/game/activities/contract')
+    const move = await import('../src/game/activities/immigration-move')
+    const { statusOf } = await import('../src/game/activities/immigration-state')
+    const { makeTestGame } = await import('./helpers')
+    expect(relocatePlayer.bound).toBe(true)
+    const make = () => makeTestGame(7, { age: 40, countryId: 'us', birthCountryId: 'us', citizenships: ['us'], money: 50_000 })
+    const via = make()
+    const direct = make()
+    const how = { status: 'asylum', visa: 'protection' } as const
+    const text = { title: 'Exile', opener: 'You landed.' }
+    relocatePlayer(via, 'ae', 'asylum', how, text)
+    move.relocate(direct, 'ae', 'asylum', how, text)
+    expect(via.character.countryId).toBe('ae')
+    expect(statusOf(via)).toMatchObject({ status: 'asylum', visa: 'protection' })
+    expect(JSON.stringify(via)).toBe(JSON.stringify(direct))
+  }, 120_000)
+
+  it('an official who flees lands in a haven through the port, the same as through relocate', async () => {
+    vi.resetModules()
+    const { goIntoExile } = await import('../src/game/nation/consequences')
+    await import('../src/game/activities/immigration-move')
+    const { statusOf } = await import('../src/game/activities/immigration-state')
+    const { makeTestGame } = await import('./helpers')
+    const g = makeTestGame(7, { age: 50, countryId: 'us', birthCountryId: 'us', citizenships: ['us'], money: 50_000 })
+    goIntoExile(g, 'The coup succeeded. You were bundled onto a plane.')
+    expect(g.character.countryId).not.toBe('us')
+    expect(statusOf(g)).toMatchObject({ status: 'asylum', visa: 'protection' })
+    expect(g.log.flat().length).toBeGreaterThan(0)
+  }, 120_000)
+
+  it('ordinaryJobs is null while careers is not loaded, and the four careers helpers once it is', async () => {
+    vi.resetModules()
+    const { ordinaryJobs } = await import('../src/game/workplace/contract')
+    expect(ordinaryJobs.bound).toBe(false)
+    expect(ordinaryJobs()).toBeNull()
+    const careers = await import('../src/game/careers')
+    expect(ordinaryJobs.bound).toBe(true)
+    const jobs = ordinaryJobs()!
+    expect(Object.keys(jobs).sort()).toEqual(['companyName', 'eraPayShape', 'hireForJob', 'jobRequirementProblem'])
+    expect(jobs.companyName).toBe(careers.companyName)
+    expect(jobs.eraPayShape).toBe(careers.eraPayShape)
+    expect(jobs.hireForJob).toBe(careers.hireForJob)
+    expect(jobs.jobRequirementProblem).toBe(careers.jobRequirementProblem)
+  }, 120_000)
+
+  it('the photographer exit reads its gate and its hiring through the port, and the four helpers are the careers ones', async () => {
+    vi.resetModules()
+    const exit = await import('../src/game/special/model-exit')
+    const careers = await import('../src/game/careers')
+    const { ordinaryJobs } = await import('../src/game/workplace/contract')
+    const { getJobDef } = await import('../src/game/data/jobs')
+    const { modelStore } = await import('../src/game/special/model-state')
+    const { makeTestGame } = await import('./helpers')
+    expect(ordinaryJobs.bound).toBe(true)
+    const g = makeTestGame(7, { age: 30, countryId: 'us', birthCountryId: 'us', citizenships: ['us'], money: 50_000 })
+    const s = modelStore.mut(g)
+    s.photographers = ['Mara Lund', 'Teo Valdis', 'Ines Okoro']
+    s.book = 60
+    const def = getJobDef('photographer')!
+    expect(exit.exitBlock(g, s, 'photographer')).toBe(careers.jobRequirementProblem(g, def))
   }, 120_000)
 })

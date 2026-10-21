@@ -20,7 +20,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { cyclePath, readImportGraph, type Graph } from './arch-kit'
+import { compareToBaseline, cycleComponents, cyclePath, readImportGraph, type Graph } from './arch-kit'
 import {
   LAYER_NAMES,
   compareLayers,
@@ -557,6 +557,62 @@ describe('the first twelve cuts (R2-K5)', () => {
     const inCycles = (JSON.parse(readFileSync(join(ROOT, 'test', 'architecture-baseline.json'), 'utf8')) as { components: string[][] }).components.flat()
     expect(inCycles.length).toBeLessThanOrEqual(108)
     expect(cycleDirEdges(g).length).toBeLessThanOrEqual(18)
+  }, 60_000)
+})
+
+/**
+ * R2-K6 (K.2a): the last two import statements cut out of the cycles, and the rule that follows: no import cycle crosses a directory,
+ * a hard zero (the baseline section is empty and the real graph has none). Cut 13 is a move that stays where it is behind a port
+ * (relocate spends money, so the money ratchet keeps it in its file); cut 14 is a port to the ordinary job market.
+ */
+const LAST_CUTS: readonly { edge: string; how: string }[] = [
+  { edge: 'src/game/nation/consequences.ts -> src/game/activities/immigration-move.ts', how: 'call the relocatePlayer port (activities/contract.ts)' },
+  { edge: 'src/game/special/model-exit.ts -> src/game/careers.ts', how: 'call the ordinaryJobs port (workplace/contract.ts)' },
+]
+
+describe('the last two cuts and the zero rule (R2-K6)', () => {
+  it('neither of the two import statements is back', async () => {
+    const g = await realGraphOnce()
+    const back = LAST_CUTS.filter(({ edge }) => {
+      const [from, to] = edge.split(' -> ')
+      return (g.get(from!) ?? []).includes(to!)
+    })
+    expect(back.map(({ edge, how }) => `${edge}: ${how}`)).toEqual([])
+  }, 60_000)
+
+  it('no import cycle crosses a directory: the real graph has none, and neither has the baseline', async () => {
+    const g = await realGraphOnce()
+    expect(cycleDirEdges(g)).toEqual([])
+    expect(readBaseline().cycleDirEdges).toEqual([])
+  }, 60_000)
+
+  it('the zero is a rule, not a snapshot: one cycle edge across directories is a violation even from an empty baseline', async () => {
+    const g = await realGraphOnce()
+    const loop = new Map(g)
+    loop.set('src/game/zz-a/x.ts', ['src/game/zz-b/y.ts'])
+    loop.set('src/game/zz-b/y.ts', ['src/game/zz-a/x.ts'])
+    const v = compareLayers(loop, readBaseline())
+    expect(v.map((x) => x.kind)).toEqual(['new-cycle-dir'])
+  }, 60_000)
+
+  it('the cycle set shrank to the true components: at most 90 modules in at most 8 import cycles', () => {
+    const { components } = JSON.parse(readFileSync(join(ROOT, 'test', 'architecture-baseline.json'), 'utf8')) as { components: string[][] }
+    expect(components.flat().length).toBeLessThanOrEqual(90)
+    expect(components.length).toBeLessThanOrEqual(8)
+  })
+
+  it('the baseline is split to the real cycles, so two of them fusing is a violation again', async () => {
+    const g = await realGraphOnce()
+    const { components } = JSON.parse(readFileSync(join(ROOT, 'test', 'architecture-baseline.json'), 'utf8')) as { components: string[][] }
+    const real = cycleComponents(g)
+    expect(components.map((c) => c.length)).toEqual(real.map((c) => c.length))
+    // the fusion is a violation: the second-largest and the third-largest cycle are one cycle through an added edge pair
+    const a = real[1]![0]!
+    const b = real[2]![0]!
+    const fused = new Map(g)
+    fused.set(a, [...(g.get(a) ?? []), b])
+    fused.set(b, [...(g.get(b) ?? []), a])
+    expect(compareToBaseline(cycleComponents(fused), { v: 1, components }).map((x) => x.kind)).toEqual(['merged'])
   }, 60_000)
 })
 

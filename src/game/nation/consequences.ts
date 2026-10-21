@@ -5,7 +5,7 @@
 import { addHidden, count, formatMoney, log, notice, remember, scriptChoice } from '../core'
 import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
-import { relocate } from '../activities/immigration-move'
+import { relocatePlayer } from '../activities/contract'
 import { marketOf } from '../data/markets'
 import { chance, pick } from '../rng'
 import { defineScript } from '../scripts'
@@ -80,7 +80,7 @@ export function goIntoExile(g: GameState, why: string): void {
   const haven = havenFor(g)
   count(g, 'exiles')
   remember(g, `Fled ${getCountry(from).name} into exile.`)
-  relocate(g, haven, 'asylum', { status: 'asylum', visa: 'protection' }, {
+  relocatePlayer(g, haven, 'asylum', { status: 'asylum', visa: 'protection' }, {
     title: 'Exile',
     opener: `${why} You landed in ${getCountry(haven).name}, which does not send people back.${lost > 0 ? ` The ${formatMoney(lost)} you hid at home stayed behind.` : ''}${me.offshore > 0 ? ` Your ${formatMoney(me.offshore)} abroad is still yours.` : ''} Going home means facing the courts.`,
     emoji: '✈️',
