@@ -2,9 +2,10 @@
 // (disabled reasons, input + confirm dialogs, stay-open vs close). Used by MenuSheet
 // (Occupation / Assets / Activities) and PersonSheet (person interactions).
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { formatPrice } from '../../game/core'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/types'
 import { rovingMove, rovingStop } from '../a11y/roving'
-import { LazyChartView } from '../charts/lazy'
+import { LazyChartView, LazySparkline } from '../charts/lazy'
 import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
 import {
@@ -407,6 +408,24 @@ function onRovingKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>, group: string
   stops[next]?.focus()
 }
 
+/**
+ * The trend a row draws at its end (MenuBase.spark): null for none, for fewer than two real points, and for a spark that
+ * throws (reported, like a subtitle). The row is drawn either way.
+ */
+function nodeSpark(node: MenuAction | MenuGroup, g: GameState): (number | null)[] | null {
+  if (typeof node.spark !== 'function') return null
+  try {
+    const values: unknown = node.spark(g)
+    if (!Array.isArray(values)) return null
+    let real = 0
+    for (const v of values as unknown[]) if (typeof v === 'number' && Number.isFinite(v)) real++
+    return real >= 2 ? (values as (number | null)[]) : null
+  } catch (err) {
+    report(`spark(${node.id})`, err)
+    return null
+  }
+}
+
 export function MenuRow({
   node,
   g,
@@ -429,6 +448,7 @@ export function MenuRow({
   const subtitle = nodeSubtitle(node, g)
   const hint = nodeHint(node, g)
   const badge = reason ? null : nodeBadge(node, g)
+  const trend = nodeSpark(node, g)
   const cls = ['menu-row', reason ? 'is-disabled' : '', hint ? 'has-hint' : ''].filter(Boolean).join(' ')
   return (
     <button
@@ -452,6 +472,13 @@ export function MenuRow({
         {hint ? <TalentHint text={hint} className="menu-row-hint" /> : null}
       </span>
       <span className="menu-row-end" aria-hidden>
+        {trend ? (
+          // The box holds the place until the chunk is in. The sparkline has no fallback of its own, so a failed load leaves
+          // the box empty instead of a retry button in every row (lazyView: a decorative view in a row passes null).
+          <span className="menu-spark-ph" aria-hidden>
+            <LazySparkline values={trend} tone="c6" label={`${node.label}, price over ten years`} fmt={formatPrice} fallback={null} />
+          </span>
+        ) : null}
         {reason ? <span className="menu-row-lock">🔒</span> : null}
         {node.type === 'menu' && !reason ? <span className="menu-row-chevron">›</span> : null}
       </span>

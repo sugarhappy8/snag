@@ -3,9 +3,10 @@
 // at no year after the ones given. A builder that cannot build returns null, never throws, and never puts a number that
 // is not a finite, sane size, or a string the reader would refuse, into a spec.
 import type { ScoreRow } from '../business/scorecard'
-import { fit, pctLabel } from './money'
+import type { GameState } from '../types'
+import { fit, moneyLabel, pctLabel, priceBasisYear } from './money'
 import { reveal } from './reveal'
-import { CHART_LIMITS, SPEC_LIMITS, type ChartSpec, type ChartUnit, type LadderRow } from './spec'
+import { CHART_LIMITS, SPEC_LIMITS, type ChartSpec, type ChartTone, type ChartUnit, type LadderRow } from './spec'
 
 /** One entry of a ladder, as a caller knows it. Only `value` decides the order. */
 export interface RankSource {
@@ -37,6 +38,11 @@ const BASIS_MIN = 1800
 const BASIS_MAX = 2300
 /** Ids that would be dangerous as a lookup key. */
 const POISON_IDS: readonly string[] = ['__proto__', 'constructor', 'prototype']
+/** The tones and units the spec reader knows, so a builder never hands it a word it would refuse. */
+const TONES: readonly ChartTone[] = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'good', 'bad', 'muted']
+const UNITS: readonly ChartUnit[] = ['money', 'pct', 'count', 'rank', 'years']
+/** What a growth chart starts from, and the cents its values are held to. */
+const GROWTH_BASE = 100
 
 // ---------------------------------------------------------------------------
 // Small readers shared with market.ts
@@ -345,4 +351,86 @@ export function approvalSpec(reports: readonly { year: number; approval: number 
     series: [{ id: 'approval', label: 'Approval', tone: 'c1', values: kept.map(([, v]) => v) }],
     summary: fit(`Approval was ${pctLabel(last)} in ${lastYear}, from ${pctLabel(first)} in ${firstYear}.`),
   })
+}
+
+// ---------------------------------------------------------------------------
+// Plain lines
+
+/**
+ * A plain line of one series (a benchmark score by year, the price of a share). `x` and `values` pair up one for one; an x
+ * that is not a number or a text is left out with its value, a value that is not a number becomes a gap, and the last
+ * sixty-four pairs are kept. Needs two real values. `summary` is the caller's sentence (cut to fit); with none it is the
+ * title. Null for arrays that do not pair up, an unknown unit, or fewer than two real values; it never throws.
+ */
+export function lineSpec(o: {
+  title: string
+  unit: ChartUnit
+  x: (number | string)[]
+  label: string
+  values: (number | null)[]
+  tone?: ChartTone
+  summary: string
+  basis?: number
+}): ChartSpec | null {
+  if (o === null || typeof o !== 'object') return null
+  const xs: unknown = o.x
+  const vs: unknown = o.values
+  if (!Array.isArray(xs) || !Array.isArray(vs) || xs.length !== vs.length) return null
+  if (!UNITS.includes(o.unit)) return null
+  // Only the tail is walked, so a hostile length costs nothing.
+  const kept: { x: number | string; v: number | null }[] = []
+  for (let i = Math.max(0, xs.length - CHART_LIMITS.points); i < xs.length; i++) {
+    const at: unknown = xs[i]
+    const value: unknown = vs[i]
+    let x: number | string | null = null
+    if (typeof at === 'string') x = cleanText(at, SPEC_LIMITS.label) || null
+    else if (isNum(at)) x = sane(at)
+    if (x === null) continue
+    kept.push({ x, v: isNum(value) ? sane(value) : null })
+  }
+  if (kept.filter((p) => p.v !== null).length < 2) return null
+  const title = fit(cleanText(o.title, 400), CHART_LIMITS.title) || 'Trend'
+  const label = cleanText(o.label, SPEC_LIMITS.label) || 'Value'
+  const tone = TONES.includes(o.tone as ChartTone) ? (o.tone as ChartTone) : 'c1'
+  const basis = isNum(o.basis) && o.basis >= BASIS_MIN && o.basis <= BASIS_MAX ? Math.round(o.basis) : null
+  return reveal({
+    v: 1,
+    kind: 'line',
+    title,
+    unit: o.unit,
+    x: kept.map((p) => p.x),
+    series: [{ id: 'line', label, tone, values: kept.map((p) => p.v) }],
+    ...(basis !== null ? { basis } : {}),
+    summary: fit(cleanText(o.summary, 400)) || fit(title),
+  })
+}
+
+/**
+ * What 100 put in at the first price became, year by year: each price over the first usable one, times 100, in money
+ * (the amount reads in the player's currency through the usual money labels, so a share worth a fraction of a cent still
+ * draws a line). A price that is not a positive number is a gap; years before the first usable price are gaps too. Needs
+ * two usable prices. In the prices of the chart's basis year, like every multi-year money chart.
+ */
+export function growthSpec(g: GameState, title: string, years: number[], prices: (number | null)[]): ChartSpec | null {
+  const ys: unknown = years
+  const ps: unknown = prices
+  if (!Array.isArray(ys) || !Array.isArray(ps) || ys.length !== ps.length) return null
+  let base: number | null = null
+  const x: number[] = []
+  const values: (number | null)[] = []
+  for (let i = Math.max(0, ys.length - CHART_LIMITS.points); i < ys.length; i++) {
+    const year = yearOf(ys[i])
+    if (year === null) continue
+    const price: unknown = ps[i]
+    const real = isNum(price) && price > 0
+    if (real && base === null) base = price
+    x.push(year)
+    values.push(real && base !== null ? Math.round(((GROWTH_BASE * price) / base) * 100) / 100 : null)
+  }
+  const real = values.map((v, i) => ({ v, i })).filter((p): p is { v: number; i: number } => p.v !== null)
+  if (real.length < 2) return null
+  const first = real[0]!
+  const last = real[real.length - 1]!
+  const said = `Put ${moneyLabel(g, GROWTH_BASE)} in back in ${x[first.i]} and it'd be ${moneyLabel(g, last.v)} by ${x[last.i]}.`
+  return lineSpec({ title, unit: 'money', x, label: 'Your stake', values, tone: 'c6', summary: said, basis: priceBasisYear(g) })
 }

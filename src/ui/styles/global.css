@@ -1693,6 +1693,19 @@ label {
   opacity: 0.8;
 }
 
+/* A price trend at the end of a stock row (R1-C14). The box holds its place until the chart chunk is in. */
+.menu-spark-ph {
+  display: block;
+  width: 56px;
+  height: 18px;
+}
+
+.menu-spark-ph .ch-spark {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+}
+
 .menu-info {
   display: flex;
   gap: 10px;

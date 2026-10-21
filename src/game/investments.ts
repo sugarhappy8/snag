@@ -14,8 +14,11 @@
 // funds, REITs and crypto only appear when they were invented, exchanges close in wars and
 // vanish after revolutions, gold was illegal to hoard in some places, and savings and bonds pay
 // the nominal rates of the day while inflation eats them (engine money is constant dollars).
+import { chartInfo, growthSpec } from './charts'
+import type { ChartSpec } from './charts/spec'
 import { currencyOf } from './data/currencies'
 import { bound, economyMarketFactor, economyOf, economyState, economicRoll, initialCountry } from './economy'
+import { flagOn } from './flags'
 import { timelineFamily } from './timeMachine'
 import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
@@ -1805,6 +1808,8 @@ function lineSection(g: GameState, q: Quote): MenuNode[] {
 }
 
 function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup {
+  // Stocks and pennies carry their ten-year price trail (R1-C14); funds, REITs, gold, crypto and bonds do not.
+  const trailed = q.type === 'stock' || q.type === 'penny'
   return {
     type: 'menu',
     id: `inv-offer-${q.secId}`,
@@ -1812,6 +1817,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
     emoji: q.emoji,
     subtitle: offerSubtitle(q),
     hint: (gg) => gutHint(gg, q.secId),
+    ...(trailed ? { spark: (gg: GameState) => (flagOn('chartKit') ? stockTrail(gg, q) : null) } : {}),
     header: () => `${q.emoji} ${q.name}\n${q.blurb}`,
     children: (gg) => {
       const held = findHolding(gg, q.secId)
@@ -1825,6 +1831,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       else if (q.yield > 0) rows.push(`${q.type === 'crypto' ? 'Rewards' : q.type === 'reit' ? 'Payout' : 'Dividend'}: ${rateText(q.yield)} a year, taxed as income.`)
       rows.push(...extraInfo)
       rows.forEach((text, i) => nodes.push({ type: 'info', id: `inv-oinfo-${q.secId}-${i}`, text }))
+      if (trailed) nodes.push(...chartInfo(`inv-ochart-${q.secId}`, '📈', (_x, spec) => spec?.summary ?? '', (g3) => growthChart(g3, q)))
       if (held) nodes.push({ type: 'info', id: `inv-oheld-${q.secId}`, text: `You own ${formatMoney(held.value)} of this (${change(basis(held) > 0 ? (held.value - basis(held)) / basis(held) : 0)} overall).`, emoji: '💼' })
       nodes.push(buyAction(gg, q, !!held))
       if (held) nodes.push(...sellActions(gg, held))
@@ -1846,6 +1853,65 @@ function stockHistory(g: GameState, info: ExInfo, slot: number, gen: number, pen
     parts.push(`'${String(y).slice(-2)} ${pct(reportedMove(info, y, ret).pct, 0)}`)
   }
   return parts.length ? `Recent years: ${parts.join(' · ')}` : 'Recently listed: no track record yet.'
+}
+
+/** Years a trail covers: the spark on a stock row and the growth chart in its detail (R1-C14). */
+const TRAIL_YEARS = 10
+/** Settled years kept by stockTrail: at most this many entries, and the lot is dropped when it is full. */
+const TRAIL_CACHE_MAX = 400
+const trailCache = new Map<string, number | null>()
+
+/**
+ * The list price of one stock or penny stock in each of the last `years` years (ten at most, ten by default), oldest first, ending at
+ * this year's price. The years are worked out exactly as `listing` works out this year's: the exchange's year, the quote
+ * for the company's slot, then the market shocks. A year the company was not listed (another company held its slot, or it
+ * just listed) is null, and no year at or before the family's anchor is asked for, so a young life gets a short trail. It
+ * only ever looks at years up to this one. A settled year is remembered for the life (shocks start in their own year, so
+ * a later one cannot change it); this year is always worked out again, since a shock or a trade can still move it.
+ * Nothing but a stock or penny quote has a trail: any other gets an empty list. Pure: no dice and no writes.
+ */
+export function stockTrail(g: GameState, q: Quote, years: number = TRAIL_YEARS): (number | null)[] {
+  const penny = q.type === 'penny'
+  if (q.type !== 'stock' && !penny) return []
+  const slot = num(q.details.slot, -1)
+  const gen = num(q.details.gen, -1)
+  if (!Number.isInteger(slot) || slot < 0 || !Number.isInteger(gen) || gen < 0) return []
+  const span = Number.isFinite(years) ? Math.max(0, Math.min(TRAIL_YEARS, Math.floor(years))) : TRAIL_YEARS
+  const info = exchangeInfo(g.character.countryId)
+  const f = fam(g)
+  const an = anchor(g)
+  const out: (number | null)[] = []
+  for (let k = span - 1; k >= 0; k--) {
+    const y = g.year - k
+    if (y <= an) continue
+    const key = `${g.lifeId}|${f}|${y}|${q.secId}`
+    const kept = y < g.year ? trailCache.get(key) : undefined
+    if (kept !== undefined) {
+      out.push(kept)
+      continue
+    }
+    const ey = exchangeYear(f, an, info, y)
+    const s = (penny ? ey.pennies : ey.stocks)[slot]
+    let price: number | null = null
+    if (s && s.gen === gen && s.event !== 'ipo') {
+      const id = penny ? s.id : companyDef(info, s.slot, s.gen).id
+      const shocked = withShock(g, stockQuote(info, s, penny, y, null), shockFactor(g, id, y), shockFactor(g, id, y - 1))
+      price = Number.isFinite(shocked.price) ? shocked.price : null
+    }
+    if (y < g.year) {
+      if (trailCache.size >= TRAIL_CACHE_MAX) trailCache.clear()
+      trailCache.set(key, price)
+    }
+    out.push(price)
+  }
+  return out
+}
+
+/** What 100 put into this stock when its trail begins would be worth now, as a chart (null with under two priced years). */
+function growthChart(g: GameState, q: Quote): ChartSpec | null {
+  const prices = stockTrail(g, q)
+  const years = prices.map((_, i) => g.year - (prices.length - 1 - i))
+  return growthSpec(g, 'What 100 would have become', years, prices)
 }
 
 /** The size headings of a Stocks list, biggest first. Every made-up company is a Small-cap. */
