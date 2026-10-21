@@ -10,8 +10,9 @@
 //   NAV_LINT_UPDATE=1 NODE_OPTIONS=--max-old-space-size=2048 npx vitest run --maxWorkers=1 test/nav-tree.test.ts
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { canonical, frozen, isTruncated, lintOf, walkTree, walkTreeCached, type NavStateName, type Walked } from './nav-kit'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { resetFlags, withFlags } from '../src/game/flags'
+import { actionSequenceCached, canonical, frozen, isTruncated, lintOf, normId, walkTree, walkTreeCached, type NavStateName, type Walked } from './nav-kit'
 
 const NAMES: NavStateName[] = ['kid', 'adult', 'ceo', 'elder']
 const BASELINE_PATH = fileURLToPath(new URL('./fixtures/nav-lint-baseline.json', import.meta.url))
@@ -154,4 +155,44 @@ describe('menu tree of the canned states', () => {
       for (const id of list) expect(id).not.toMatch(/\d/)
     }
   })
+})
+
+describe('cockpit parity (R1-N8)', () => {
+  afterEach(() => {
+    resetFlags()
+  })
+
+  it('8. FLAGS.cockpits adds hub groups to the company screens and changes no action sequence, on the ceo state through every tab', () => {
+    const off = actionSequenceCached('ceo')
+    const on = withFlags({ cockpits: true }, () => actionSequenceCached('ceo'))
+    expect(on.length, 'ceo: actions found').toBeGreaterThan(2000)
+    // The seeded drivers pick actions by position: the order matters, not only the set.
+    expect(on).toEqual(off)
+    expect(new Set(on)).toEqual(new Set(off))
+    // The whole assets tab on its own, which holds both companies twice (Businesses and each owned-asset row).
+    const assetsOff = off.filter((p) => p.startsWith('assets/'))
+    const assetsOn = on.filter((p) => p.startsWith('assets/'))
+    expect(assetsOn.length).toBeGreaterThan(300)
+    expect(assetsOn).toEqual(assetsOff)
+  }, HEAVY)
+
+  it('8b. the cockpit walk really has the tiles, no duplicate canonical path, and no hub group trips the lint', () => {
+    const walked = withFlags({ cockpits: true }, () => walkTreeCached('ceo'))
+    expect(isTruncated(walked), 'ceo: the walk was cut by the depth or node cap').toBe(false)
+    const hubs = walked.filter((w) => w.type === 'menu' && w.ids[w.ids.length - 1]!.startsWith('hub.'))
+    // Two companies, each with four tiles, on at least the Occupation and the two Assets routes.
+    expect(hubs.length).toBeGreaterThanOrEqual(2 * 4 * 3)
+    expect(new Set(hubs.map((w) => w.ids[w.ids.length - 1]!.split('.')[2])), 'tile kinds').toEqual(new Set(['run', 'money', 'lead', 'exit']))
+    const seen = new Map<string, number>()
+    for (const w of walked) {
+      if (w.type === 'menu' && w.ids[w.ids.length - 1]!.startsWith('hub.')) continue
+      const key = canonical(w)
+      seen.set(key, (seen.get(key) ?? 0) + 1)
+    }
+    const dupes = [...seen].filter(([, n]) => n > 1).map(([key, n]) => `${key} x${n}`)
+    expect(dupes.slice(0, 20), `duplicate canonical paths (${dupes.length})`).toEqual([])
+    const lint = lintOf(walked)
+    const hubLint = [...lint.tooLong, ...lint.single].filter((id) => id.startsWith(normId('hub.')))
+    expect(hubLint, 'a cockpit tile is a long list without a heading, or has a single row').toEqual([])
+  }, HEAVY)
 })

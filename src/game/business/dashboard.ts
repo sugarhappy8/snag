@@ -59,7 +59,7 @@ export function trend(now: number, before: number | null | undefined, kind: 'sal
 }
 
 /** Years the company's cash lasts at last year's loss (Infinity when it made money). */
-function runway(g: GameState, a: Asset, b: BizState): number {
+export function runway(g: GameState, a: Asset, b: BizState): number {
   if (isDeepTech(b)) return runwayYears(g, a, b, techView(b))
   const loss = b.last && b.last.net < 0 ? -b.last.net : 0
   return loss > 0 ? Math.max(0, b.cash) / loss : Infinity

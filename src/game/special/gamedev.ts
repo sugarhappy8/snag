@@ -10,7 +10,7 @@
 //   gamedev-make    making your own games, releasing them, DLC, sequels, jams
 //   business/gamestudio  owned studios: pipeline, releases, publishers, acquisitions, IPO
 // The home computer's old indie-game projects and indie-game ventures show up here too.
-import { businessView } from '../business/manage'
+import { businessScreen } from '../business/manage'
 import { hasTech } from '../history/timeline'
 import { getCountry } from '../world'
 import { foundingProblem, startFounding } from '../business/founding'
@@ -149,7 +149,7 @@ function studioNode(a: Asset): MenuGroup {
     },
     children: (g) => {
       const cur = g.assets.find((x) => x.id === a.id)
-      return cur ? businessView(g, cur) : [{ type: 'info', id: 'gamedev.studio.gone', text: 'You no longer own this studio.' }]
+      return cur ? businessScreen(g, cur) : [{ type: 'info', id: 'gamedev.studio.gone', text: 'You no longer own this studio.' }]
     },
   }
 }
