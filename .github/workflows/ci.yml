@@ -33,6 +33,7 @@ jobs:
         continue-on-error: true
         run: node scripts/voice-report.mjs --ci
       - run: npx vite build
+      - run: node scripts/bundle-budget.mjs
 
   fast:
     name: Guards (fast tier)
