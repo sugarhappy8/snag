@@ -4,10 +4,12 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/types'
 import { rovingMove, rovingStop } from '../a11y/roving'
+import { LazyChartView } from '../charts/lazy'
 import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
 import {
   confirmText,
+  infoChart,
   infoText,
   isMultiline,
   nodeBadge,
@@ -355,6 +357,16 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
     }
     if (node.type === 'info') {
       const text = infoText(node, g)
+      const chart = infoChart(node, g)
+      if (chart) {
+        // The words are what shows while the chart chunk loads, on the server, and if the load fails.
+        current.rows.push(
+          <div className="menu-info menu-info-chart" key={key}>
+            <LazyChartView spec={chart} fallback={text ? <span>{text}</span> : undefined} />
+          </div>,
+        )
+        continue
+      }
       if (!text) continue
       current.rows.push(
         <div className={node.emoji === HINT_EMOJI ? 'menu-info menu-info-hint' : 'menu-info'} key={key}>
