@@ -42,7 +42,10 @@ function CrumbList({ end, children }: { end: string; children: ReactNode }): Rea
   )
 }
 
-/** Null for one crumb (a root list needs no strip). */
+/**
+ * Null for one crumb (a root list needs no strip). The star is a toggle: its name stays "Pin {place}" and `aria-pressed`
+ * says whether it is pinned (a name that flipped to "Unpin" as well would be read "Unpin Computer, pressed").
+ */
 export function Breadcrumbs({ crumbs, onGo, pin }: BreadcrumbsProps): ReactElement | null {
   if (crumbs.length < 2) return null
   return (
@@ -69,7 +72,7 @@ export function Breadcrumbs({ crumbs, onGo, pin }: BreadcrumbsProps): ReactEleme
           type="button"
           className="crumbs-pin"
           aria-pressed={pin.pinned}
-          aria-label={`${pin.pinned ? 'Unpin' : 'Pin'} ${pin.label}`}
+          aria-label={`Pin ${pin.label}`}
           onClick={pin.onToggle}
         >
           <span aria-hidden>{pin.pinned ? '★' : '☆'}</span>

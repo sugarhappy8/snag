@@ -19,9 +19,11 @@ import {
   SUBMIT_QUERY_MAX,
   activate,
   doAnythingLabel,
+  highlightOf,
   openPlace,
   paletteReduce,
   paletteRows,
+  rowLabel,
   rowLock,
   rowPlace,
   type PaletteEvent,
@@ -37,6 +39,10 @@ import '../styles/nav.css'
 
 export const STALE_TEXT = "That's not there any more."
 export const EMPTY_TEXT = 'Type to search actions, people and companies.'
+/** Shown under the list while a row can be pinned. Hidden where there is no keyboard (a touch screen). */
+export const PIN_HINT = 'Alt or Option+P pins the highlighted row.'
+/** The longest row name a pin toast repeats. */
+const TOAST_LABEL_MAX = 60
 const PLACEHOLDER = 'Search actions, people, companies'
 const BREADCRUMB_SEP = ' › '
 
@@ -144,7 +150,12 @@ export function makeController(d: ControllerDeps): Controller {
       }
     },
     pin(row) {
-      if (togglePinRow(row, d.lifeId) === 'full') d.runner.toast(PINS_FULL_TEXT)
+      // The star is hidden from a screen reader, so the key says what it did.
+      const outcome = togglePinRow(row, d.lifeId)
+      const name = rowLabel(row).slice(0, TOAST_LABEL_MAX)
+      if (outcome === 'full') d.runner.toast(PINS_FULL_TEXT)
+      else if (outcome === 'pinned') d.runner.toast(`Pinned ${name}.`)
+      else if (outcome === 'unpinned') d.runner.toast(`Unpinned ${name}.`)
     },
   }
 }
@@ -247,6 +258,7 @@ export function PaletteViewMarkup(p: PaletteMarkupProps): ReactElement {
           </span>
           <span className="palette-text">
             <span className="palette-label">{parts.label}</span>
+            {parts.pinned ? <span className="sr-only"> (pinned)</span> : null}
             {parts.sub ? <span className="palette-sub">{parts.sub}</span> : null}
           </span>
           {parts.badge ? <span className="menu-row-badge">{parts.badge}</span> : null}
@@ -261,6 +273,7 @@ export function PaletteViewMarkup(p: PaletteMarkupProps): ReactElement {
             type="button"
             className="palette-pin"
             tabIndex={-1}
+            aria-hidden="true"
             aria-pressed={parts.pinned}
             aria-label={`Pin ${parts.label}`}
             onClick={() => p.onPin(at)}
@@ -286,6 +299,7 @@ export function PaletteViewMarkup(p: PaletteMarkupProps): ReactElement {
               aria-controls={ids.list}
               aria-autocomplete="list"
               aria-activedescendant={active >= 0 ? ids.option(active) : undefined}
+              aria-keyshortcuts="Alt+P"
               placeholder={PLACEHOLDER}
               value={state.query}
               maxLength={SUBMIT_QUERY_MAX}
@@ -299,7 +313,7 @@ export function PaletteViewMarkup(p: PaletteMarkupProps): ReactElement {
             />
           </div>
           <div className="sr-only" role="status" aria-live="polite">
-            {view.status}
+            {view.note ? `${view.status} ${view.note}` : view.status}
           </div>
           {reading && view.rows.length > 0 ? (
             <p className="palette-note" aria-hidden="true">
@@ -321,6 +335,12 @@ export function PaletteViewMarkup(p: PaletteMarkupProps): ReactElement {
             )}
           </div>
           {view.rows.length === 0 ? <p className="palette-empty">{reading ? READING_TEXT : EMPTY_TEXT}</p> : null}
+          {view.note ? (
+            <p className="palette-note" aria-hidden="true">
+              {view.note}
+            </p>
+          ) : null}
+          {view.rows.some((r) => rowPlace(r) !== null && rowLock(r) !== GONE_TEXT) ? <p className="palette-hint">{PIN_HINT}</p> : null}
         </div>
       </ModalSurface>
     </div>
@@ -341,10 +361,10 @@ export interface PaletteProps {
   initialQuery?: string
 }
 
-/** Home and End move the highlight here, so they are taken from the text field. */
-const KEYS = new Set(['ArrowDown', 'ArrowUp', 'Home', 'End', 'PageDown', 'PageUp', 'Enter', 'Escape'])
+/** The keys the list takes from the text field. Home and End stay with the caret, as in the combobox pattern for a field you type in. */
+const KEYS = new Set(['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Enter', 'Escape'])
 
-function eventOf(e: KeyboardEvent<HTMLInputElement>): PaletteEvent | null {
+export function paletteEventOf(e: KeyboardEvent<HTMLInputElement>): PaletteEvent | null {
   if (e.nativeEvent.isComposing || e.ctrlKey || e.metaKey) return null
   // Option+P types a different letter on a Mac, so the key code decides.
   if (e.altKey) return e.key.toLowerCase() === 'p' || e.code === 'KeyP' ? { type: 'key', key: 'p', alt: true } : null
@@ -371,7 +391,8 @@ export function Palette({ g, onClose, onOpenPlace, indexOverride, initialQuery }
   useSheetEscape(anchorRef, onClose)
 
   const view = useMemo(() => paletteRows({ g, index, query: state.query, prefs, returnPoint }), [g, index, state.query, prefs, returnPoint])
-  const active = view.selectable.length === 0 ? 0 : Math.min(state.active, view.selectable.length - 1)
+  // Where the player put the highlight, else where the list says to start (Do Anything, when the best hit is a guess).
+  const active = highlightOf(state, view)
   const rowAt = (at: number): PaletteRow | null => view.rows[view.selectable[at] ?? -1] ?? null
   const controller = makeController({ g, runner, spot, lifeId, onClose, onOpenPlace, onStale: live.refresh })
   const ids = { list: `${base}-list`, option: (i: number) => `${base}-opt-${i}` }
@@ -382,11 +403,13 @@ export function Palette({ g, onClose, onOpenPlace, indexOverride, initialQuery }
   }, [base, active, view])
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
-    const ev = eventOf(e)
+    const ev = paletteEventOf(e)
     if (!ev) return
     e.preventDefault()
-    const out = paletteReduce({ query: state.query, active }, view, ev)
-    setState(out.state)
+    const here: PaletteState = { query: state.query, active }
+    const out = paletteReduce(here, view, ev)
+    // Only a move changes the state; Enter and Alt+P act on the row that is highlighted now.
+    if (out.state !== here) setState(out.state)
     const row = rowAt(out.state.active)
     if (out.effect === 'close') onClose()
     else if (out.effect === 'activate' && row) controller.pick(row)
@@ -403,7 +426,7 @@ export function Palette({ g, onClose, onOpenPlace, indexOverride, initialQuery }
         onPick={(at) => {
           const row = rowAt(at)
           if (!row) return
-          setState({ query: state.query, active: at })
+          setState({ query: state.query, active: at, moved: true })
           controller.pick(row)
         }}
         onPin={(at) => {

@@ -15,6 +15,7 @@ import { readChartSpec } from '../src/game/charts/spec'
 import { netWorth, shortMoney } from '../src/game/core'
 import { resetFlags, setFlags } from '../src/game/flags'
 import { cockpitOf, type CockpitModel, type CockpitTab } from '../src/game/hubs/cockpit'
+import { hubIds } from '../src/game/hubs/company'
 import { peopleMenu, personGroupId } from '../src/game/hubs/people'
 import { needsYou } from '../src/game/hubs/needs'
 import { companyCards, type CompanyCard } from '../src/game/hubs/wealth'
@@ -824,6 +825,21 @@ describe('12. jumpLinks', () => {
     expect(links[0]!.label).toBe('Businesses')
     expect(paths(links)).toContain('banking')
     expect(links.map((l) => l.key)).toHaveLength(new Set(links.map((l) => l.key)).size)
+  })
+
+  it('puts the company in the label of a tile, so two companies are not both "Money"', () => {
+    setFlags({ ...NAV_OFF, cockpits: true, navRegroup: true, navPalette: true })
+    const g = frozen('ceo')
+    const a = businessAssets(g)[0]!
+    const ids = hubIds(a.id)
+    let p = recent(emptyPrefs(), g, 'assets', [`asset-${a.id}`, ids.money])
+    p = recent(p, g, 'assets', [`asset-${a.id}`, ids.run])
+    const links = jumpLinks(g, p, 'assets')
+    expect(links.map((l) => l.label)).toEqual([`${a.name} · Run`, `${a.name} · Money`])
+    // The tooltip still carries the whole trail.
+    expect(links[1]!.crumbs).toEqual(['Assets', a.name, 'Money'])
+    const html = render(createElement(JumpStrip, { links, onOpen: () => {} }))
+    expect(html).toContain(`${a.name} · Money`)
   })
 
   it('leaves out the places of other tabs and of other lives', () => {

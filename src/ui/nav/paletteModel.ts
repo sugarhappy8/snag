@@ -1,7 +1,9 @@
 // The palette's rows and keys (G.9), as pure functions. paletteRows gives the list for a query: with nothing typed, the
 // places worth a tap (Back to, Needs you, Pinned, Recent); with a query, the ranked hits of the index with their lock read
 // again from the live menus, then "Do Anything: {query}" last. paletteReduce is the keyboard, activate says what a tap on
-// a row means. Nothing here writes the game, draws, runs a row, or reads a hint, subtitle or header.
+// a row means. The highlight starts on the first row, except when the best hit is only a subsequence guess (tier 3): then it
+// starts on the Do Anything row, so Enter on a sentence meant for Do Anything never runs an unrelated row. Nothing here
+// writes the game, draws, runs a row, or reads a hint, subtitle or header.
 //
 // Part of the palette zone (test/lazy-zones.test.ts): only Palette.tsx and the gate import this file at run time.
 import { personIdOf } from '../../game/hubs/people'
@@ -28,6 +30,8 @@ export const PAGE_STEP = 8
 
 export const READING_TEXT = 'Still reading the menus.'
 export const GONE_TEXT = 'Not available any more.'
+/** The index stopped at a cap (6,000 rows, or 7 lists deep): a search can miss a row at the bottom of a long tree. */
+export const CUT_TEXT = 'Search skips some deep rows.'
 const TYPE_TEXT = 'Type to search.'
 
 const TABS: readonly SearchTab[] = ['occupation', 'assets', 'relationships', 'activities']
@@ -55,11 +59,17 @@ export type PaletteRow =
   | { kind: 'hit'; id: string; hit: SearchHit; pinned: boolean }
   | { kind: 'doAnything'; id: string; query: string; locked: string | null }
 
-/** `selectable`: the indexes in `rows` of the rows that can be activated. `status`: the text for the live region. */
+/**
+ * `selectable`: the indexes in `rows` of the rows that can be activated. `status`: the text for the live region.
+ * `start`: where the highlight sits until the player moves it, as a position in `selectable` (0 when absent).
+ * `note`: a line to show with the list, for a query whose index was cut short.
+ */
 export interface PaletteView {
   rows: PaletteRow[]
   selectable: number[]
   status: string
+  start?: number
+  note?: string
 }
 
 type Resolver = ReturnType<typeof createResolver>
@@ -308,7 +318,13 @@ function queryView(a: PaletteArgs, query: string, resolve: Resolver, ready: bool
   rows.push({ kind: 'doAnything', id: 'doAnything', query, locked: nodeDisabled(doAnythingAction, g) })
   const hits = live.length
   const status = hits > 0 ? count(hits, 'result', 'results') : ready ? `Nothing matches "${cut(query, LABEL_QUERY_MAX)}".` : READING_TEXT
-  return finish(rows, status)
+  const view = finish(rows, status)
+  // A subsequence guess is not worth a tap: Enter then takes the player's own words to Do Anything.
+  const best = open[0] ?? shut[0]
+  if (best !== undefined && best.tier === 3) view.start = view.selectable.length - 1
+  // A full list of hits needs no excuse; a short one (or none) may be missing a row the walk never reached.
+  if (a.index && a.index.truncated && hits < MAX_HIT_ROWS) view.note = CUT_TEXT
+  return view
 }
 
 /**
@@ -327,22 +343,41 @@ export function paletteRows(a: PaletteArgs): PaletteView {
 // ---------------------------------------------------------------------------
 // The keyboard
 
-/** `active` counts rows that can be activated (an index into `view.selectable`), so a heading is never the highlight. */
+/**
+ * `active` counts rows that can be activated (an index into `view.selectable`), so a heading is never the highlight.
+ * `moved`: the player moved the highlight, so `active` is theirs; without it the highlight sits on `view.start`.
+ */
 export interface PaletteState {
   query: string
   active: number
+  moved?: boolean
+}
+
+/** The highlighted position (in `view.selectable`): where the player put it, else where the view says to start. Always inside the list. */
+export function highlightOf(s: PaletteState, view: PaletteView): number {
+  const n = view.selectable.length
+  if (n === 0) return 0
+  const want = s.moved === true ? s.active : (view.start ?? 0)
+  return Math.min(Math.max(0, Math.floor(want) || 0), n - 1)
 }
 
 export type PaletteEvent = { type: 'query'; value: string } | { type: 'key'; key: string; alt?: boolean }
 
 export type PaletteEffect = null | 'activate' | 'close' | 'pin'
 
-/** ArrowDown and ArrowUp wrap; Home, End, PageDown and PageUp move without wrapping; typing starts again at the top. */
+/**
+ * ArrowDown and ArrowUp wrap; Home, End, PageDown and PageUp move without wrapping (the text field keeps Home and End, so
+ * the screen does not send them); typing hands the highlight back to the view's start. `s.active` is where the highlight
+ * is now: pass highlightOf, not the stored value.
+ */
 export function paletteReduce(s: PaletteState, view: PaletteView, ev: PaletteEvent): { state: PaletteState; effect: PaletteEffect } {
   if (ev.type === 'query') return { state: { query: ev.value, active: 0 }, effect: null }
   const n = view.selectable.length
   const at = n === 0 ? 0 : Math.min(Math.max(0, Math.floor(s.active) || 0), n - 1)
-  const move = (to: number): { state: PaletteState; effect: PaletteEffect } => ({ state: { query: s.query, active: Math.min(Math.max(0, to), Math.max(0, n - 1)) }, effect: null })
+  const move = (to: number): { state: PaletteState; effect: PaletteEffect } => ({
+    state: { query: s.query, active: Math.min(Math.max(0, to), Math.max(0, n - 1)), moved: true },
+    effect: null,
+  })
   const same = (effect: PaletteEffect): { state: PaletteState; effect: PaletteEffect } => ({ state: s, effect })
   if (ev.alt === true) return ev.key.toLowerCase() === 'p' && n > 0 ? same('pin') : same(null)
   switch (ev.key) {

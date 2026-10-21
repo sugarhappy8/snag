@@ -179,6 +179,26 @@ describe('returnTarget (pure)', () => {
     expect(t.exact).toBe(false)
   })
 
+  it('names the group a cockpit tile belongs to, so the chip does not read just "Money"', () => {
+    const g = makeTestGame()
+    const kids = (): MenuNode[] => [
+      group('biz.company.b1', 'Test Co', () => [
+        group('hub.biz.money.b1', 'Money', () => [group('books', 'Books and Charts', () => [action('open')])]),
+        group('hub.biz.run.b1', 'Run', () => []),
+      ]),
+    ]
+    const root = { label: 'Assets', emoji: '💰', nodes: kids() }
+    const tile = returnTarget(g, root, ['biz.company.b1', 'hub.biz.money.b1'])
+    expect(tile).toMatchObject({ label: 'Test Co · Money', exact: true, crumbs: ['Assets', 'Test Co', 'Money'] })
+    // Below a tile the company still leads the label.
+    expect(returnTarget(g, root, ['biz.company.b1', 'hub.biz.money.b1', 'books']).label).toBe('Test Co · Books and Charts')
+    // The company itself, and a plain group, are named as they always were.
+    expect(returnTarget(g, root, ['biz.company.b1']).label).toBe('Test Co')
+    // A tile straight under the root has no company above it.
+    const lone = { label: 'Assets', emoji: '💰', nodes: [group('hub.top', 'Top tile', () => [])] }
+    expect(returnTarget(g, lone, ['hub.top']).label).toBe('Top tile')
+  })
+
   it('falls back to the root for missing, locked or action ids', () => {
     const g = makeTestGame()
     for (const path of [['gone'], ['locked', 'inner'], ['top']]) {

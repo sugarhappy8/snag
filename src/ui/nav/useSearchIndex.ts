@@ -72,8 +72,11 @@ export function runIndexJob(g: GameState, done: (index: SearchIndex) => void, op
   }
 }
 
-/** The last index built or found, so an older one can be served while a new one is read. */
-let latest: SearchIndex | null = null
+/**
+ * The last index built or found, so an older one can be served while a new one is read. It is served only inside the life it
+ * was built for: person ids (p3) and company ids repeat from life to life, so another life's names would open the wrong rows.
+ */
+let latest: { lifeId: string; index: SearchIndex } | null = null
 
 /** Forget the cache and the last index. For tests. */
 export function resetSearchIndexForTest(): void {
@@ -82,7 +85,7 @@ export function resetSearchIndexForTest(): void {
 }
 
 export interface SearchIndexView {
-  /** The index for this state when it is there, else the last one built (it may be out of date), else null. */
+  /** The index for this state when it is there, else the last one built for this life (it may be out of date), else null. */
   index: SearchIndex | null
   /** `index` was built for this state. */
   ready: boolean
@@ -96,13 +99,13 @@ export function useSearchIndex(g: GameState, enabled: boolean): SearchIndexView 
   const [, setBuilt] = useState<SearchIndex | null>(null)
   const key = indexKey(g)
   const fresh = enabled ? cachedIndex(g) : null
-  if (fresh) latest = fresh
+  if (fresh) latest = { lifeId: g.lifeId, index: fresh }
 
   // `g` is read when the effect starts: a new key (the state moved on) or a refresh starts the read over.
   useEffect(() => {
     if (!enabled || cachedIndex(g) !== null) return
     return runIndexJob(g, (index) => {
-      latest = index
+      latest = { lifeId: g.lifeId, index }
       setBuilt(index)
     })
   }, [enabled, key, round])
@@ -112,5 +115,6 @@ export function useSearchIndex(g: GameState, enabled: boolean): SearchIndexView 
     setRound((n) => n + 1)
   }, [])
 
-  return { index: enabled ? (fresh ?? latest) : null, ready: fresh !== null && fresh.complete, refresh }
+  const older = latest !== null && latest.lifeId === g.lifeId ? latest.index : null
+  return { index: enabled ? (fresh ?? older) : null, ready: fresh !== null && fresh.complete, refresh }
 }

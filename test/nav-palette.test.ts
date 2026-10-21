@@ -17,10 +17,12 @@ import { doAnythingAction } from '../src/game/menus'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import type { MenuRunner, MenuRunnerOptions } from '../src/ui/components/MenuList'
 import {
+  CUT_TEXT,
   GONE_TEXT,
   READING_TEXT,
   activate,
   doAnythingLabel,
+  highlightOf,
   openPlace,
   paletteReduce,
   paletteRows,
@@ -39,12 +41,13 @@ import {
   STALE_TEXT,
   leaveFrom,
   makeController,
+  paletteEventOf,
   ranFrom,
   togglePinRow,
   type Spot,
 } from '../src/ui/nav/Palette'
 import PaletteDefault from '../src/ui/nav/Palette'
-import { LazyPalette } from '../src/ui/nav/lazy'
+import { LazyPalette, PaletteGate, PaletteWaiting } from '../src/ui/nav/lazy'
 import { buildIndex, cachedIndex, clearIndexCache, createResolver, indexKey, storeIndex, type IndexRoots, type SearchIndex } from '../src/ui/nav/searchIndex'
 import { search, tapsToReach } from '../src/ui/nav/searchRank'
 import { runIndexJob, resetSearchIndexForTest, useSearchIndex } from '../src/ui/nav/useSearchIndex'
@@ -444,6 +447,96 @@ describe('2. a query', () => {
 
 // ---------------------------------------------------------------------------
 
+describe('2b. where the highlight starts (Enter never runs a fuzzy guess)', () => {
+  /** One shop row whose letters hello appear in order but which is no real match: tier 3. */
+  const junk = () => only('activities', grp('activities', [act('cello', { label: 'Used Yamaha Cello' })]))
+  const rowAtHighlight = (view: PaletteView, query: string, moved = false): PaletteRow => view.rows[view.selectable[highlightOf({ query, active: 0, ...(moved ? { moved: true } : {}) }, view)]!]!
+
+  it('starts on the Do Anything row when the best hit is only a subsequence match', () => {
+    const g = frozen('adult')
+    const roots = junk()
+    const view = paletteRows({ g, index: buildIndex(g, roots), query: 'hello', prefs: emptyPrefs(), returnPoint: null, roots })
+    expect(rowsOf(view, 'hit')).toHaveLength(1)
+    const hit = view.rows[0]!
+    expect(hit.kind === 'hit' && hit.hit.tier).toBe(3)
+    const on = rowAtHighlight(view, 'hello')
+    expect(on.kind).toBe('doAnything')
+    expect(activate(on, g, createResolver(g, roots))).toEqual({ kind: 'doAnything', query: 'hello' })
+  })
+
+  it('starts on the first hit when it is a prefix, a word start or a substring', () => {
+    const g = frozen('adult')
+    const roots = only('activities', grp('activities', [act('cello', { label: 'Used Yamaha Cello' }), act('hk', { label: 'Hello Kitty Fan Club' })]))
+    const view = paletteRows({ g, index: buildIndex(g, roots), query: 'hello', prefs: emptyPrefs(), returnPoint: null, roots })
+    expect(rowAtHighlight(view, 'hello').kind).toBe('hit')
+    expect(highlightOf({ query: 'hello', active: 0 }, view)).toBe(0)
+    const sub = paletteRows({ g, index: buildIndex(g, roots), query: 'ello', prefs: emptyPrefs(), returnPoint: null, roots })
+    expect(rowAtHighlight(sub, 'ello').kind).toBe('hit')
+  })
+
+  it('keeps the first row for the empty query, for no hits, and for a list with no start', () => {
+    const g = frozen('adult')
+    const empty = paletteRows({ g, index: buildIndexCached('adult'), query: '', prefs: emptyPrefs(), returnPoint: null })
+    expect(highlightOf({ query: '', active: 0 }, empty)).toBe(0)
+    const none = paletteRows({ g, index: buildIndexCached('adult'), query: 'qqzzxx', prefs: emptyPrefs(), returnPoint: null })
+    expect(highlightOf({ query: 'qqzzxx', active: 0 }, none)).toBe(0)
+    expect(highlightOf({ query: 'x', active: 2 }, { rows: [], selectable: [4, 5, 6], status: '' })).toBe(0)
+    expect(highlightOf({ query: 'x', active: 0 }, { rows: [], selectable: [], status: '' })).toBe(0)
+  })
+
+  it('leaves the highlight where the player put it, and clamps it to the list', () => {
+    const g = frozen('adult')
+    const roots = junk()
+    const view = paletteRows({ g, index: buildIndex(g, roots), query: 'hello', prefs: emptyPrefs(), returnPoint: null, roots })
+    expect(rowAtHighlight(view, 'hello', true).kind).toBe('hit')
+    expect(highlightOf({ query: 'hello', active: 9, moved: true }, view)).toBe(view.selectable.length - 1)
+  })
+
+  it('the keys move from where the highlight is, mark it as moved, and typing hands the start back', () => {
+    const g = frozen('adult')
+    const roots = junk()
+    const view = paletteRows({ g, index: buildIndex(g, roots), query: 'hello', prefs: emptyPrefs(), returnPoint: null, roots })
+    const at = highlightOf({ query: 'hello', active: 0 }, view)
+    const up = paletteReduce({ query: 'hello', active: at }, view, { type: 'key', key: 'ArrowUp' })
+    expect(up.state).toEqual({ query: 'hello', active: 0, moved: true })
+    expect(highlightOf(up.state, view)).toBe(0)
+    const typed = paletteReduce(up.state, view, { type: 'query', value: 'hell' })
+    expect(typed.state).toEqual({ query: 'hell', active: 0 })
+    expect('moved' in typed.state).toBe(false)
+  })
+
+  it('the first row of a query is never a fuzzy hit that would run, whatever is typed', () => {
+    const g = frozen('adult')
+    const index = buildIndexCached('adult')
+    const resolve = createResolver(g)
+    const words = ['sleep', 'smoke', 'kiss', 'fight', 'friend', 'hello', 'adopt a dog', 'go on a date', 'cheat', 'nap', 'drink', 'zzz', 'qwerty']
+    let fuzzy = 0
+    for (const query of words) {
+      const view = paletteRows({ g, index, query, prefs: emptyPrefs(), returnPoint: null })
+      const first = view.rows[0]!
+      if (first.kind === 'hit' && first.hit.tier === 3) fuzzy++
+      const row = rowAtHighlight(view, query)
+      if (row.kind === 'hit') expect(row.hit.tier, query).toBeLessThan(3)
+      const act2 = activate(row, g, resolve)
+      if (first.kind === 'hit' && first.hit.tier === 3) expect(act2.kind, query).toBe('doAnything')
+    }
+    expect(fuzzy).toBeGreaterThan(0)
+  })
+
+  it('reads the keys of the text field: Home and End stay with the caret, the arrows and Enter go to the list', () => {
+    const ev = (key: string, over: Record<string, unknown> = {}) =>
+      paletteEventOf({ key, code: key, ctrlKey: false, metaKey: false, altKey: false, nativeEvent: { isComposing: false }, ...over } as never)
+    expect(ev('Home')).toBeNull()
+    expect(ev('End')).toBeNull()
+    for (const key of ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Enter', 'Escape']) expect(ev(key)).toEqual({ type: 'key', key })
+    expect(ev('p', { altKey: true })).toEqual({ type: 'key', key: 'p', alt: true })
+    expect(ev('π', { altKey: true, code: 'KeyP' })).toEqual({ type: 'key', key: 'p', alt: true })
+    expect(ev('ArrowDown', { ctrlKey: true })).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+
 describe('3. the Do Anything lock', () => {
   it('is "You are too young to do that." for a child of 3, and null for the adult', () => {
     const kid = navState('kid')
@@ -754,6 +847,51 @@ describe('7. the markup', () => {
     expect(html.match(/<button[^>]*class="palette-pin"/g)!.length).toBe(rowsOf(v, 'hit').length)
   })
 
+  it('names Alt+P for the keyboard, hints at it, and keeps the stars out of the listbox for a screen reader', () => {
+    const g = frozen('adult')
+    const prefs = prefsWith(g, [{ tab: 'assets', path: ['investments', 'inv-stocks'] }], [])
+    const v = paletteRows({ g, index: buildIndexCached('adult'), query: 'stock', prefs, returnPoint: null })
+    const html = markup(v, { query: 'stock', active: 0 })
+    expect(attr(/<input[^>]*>/.exec(html)![0], 'aria-keyshortcuts')).toBe('Alt+P')
+    expect(html).toMatch(/<p class="palette-hint"[^>]*>[^<]*Alt/)
+    const stars = [...html.matchAll(/<button[^>]*class="palette-pin"[^>]*>/g)].map((m) => m[0])
+    expect(stars.length).toBeGreaterThan(0)
+    for (const b of stars) expect(attr(b, 'aria-hidden')).toBe('true')
+    // A pinned row says so in its own words, since its star is hidden.
+    expect(optionTexts(html)[0]).toContain('pinned')
+    expect(optionTexts(html)[1]).not.toContain('pinned')
+    // Nothing to pin (only the Do Anything row): no hint.
+    const bare = markup({ rows: [{ kind: 'doAnything', id: 'doAnything', query: 'x', locked: null }], selectable: [0], status: '' }, { query: 'x', active: 0 })
+    expect(bare).not.toContain('palette-hint')
+  })
+
+  it('says when the index was cut short, in the list and in the status line', () => {
+    const g = frozen('adult')
+    const base = buildIndexCached('adult')
+    expect(base.truncated).toBe(false)
+    const cutIndex = { ...base, truncated: true }
+    const query = 'banking'
+    const cut = paletteRows({ g, index: cutIndex, query, prefs: emptyPrefs(), returnPoint: null })
+    expect(rowsOf(cut, 'hit').length).toBeGreaterThan(0)
+    expect(rowsOf(cut, 'hit').length).toBeLessThan(30)
+    expect(cut.note).toBe(CUT_TEXT)
+    expect(CUT_TEXT.length).toBeLessThanOrEqual(90)
+    expect(CUT_TEXT).not.toMatch(DASH)
+    const html = markup(cut, { query, active: 0 })
+    expect(html).toContain(`<p class="palette-note" aria-hidden="true">${CUT_TEXT}</p>`)
+    expect(/<div[^>]*role="status"[^>]*>(.*?)<\/div>/.exec(html)![1]).toContain(CUT_TEXT)
+    const none = paletteRows({ g, index: cutIndex, query: 'qqzzxx', prefs: emptyPrefs(), returnPoint: null })
+    expect(none.status).toBe('Nothing matches "qqzzxx".')
+    expect(none.note).toBe(CUT_TEXT)
+    // A whole index, the empty query and a full list of hits say nothing.
+    expect(paletteRows({ g, index: base, query, prefs: emptyPrefs(), returnPoint: null }).note).toBeUndefined()
+    expect(paletteRows({ g, index: cutIndex, query: '', prefs: emptyPrefs(), returnPoint: null }).note).toBeUndefined()
+    const full = paletteRows({ g, index: cutIndex, query: 'stock', prefs: emptyPrefs(), returnPoint: null })
+    expect(rowsOf(full, 'hit')).toHaveLength(30)
+    expect(full.note).toBeUndefined()
+    expect(markup(paletteRows({ g, index: base, query, prefs: emptyPrefs(), returnPoint: null }), { query, active: 0 })).not.toContain(CUT_TEXT)
+  })
+
   it('shows the section headings as groups, and the lock reason with a lock glyph', () => {
     const g = deepFreeze(sickAdult())
     let lock: string | null = null
@@ -914,6 +1052,21 @@ describe('10. pins', () => {
     const c = controllerFor(frozen('adult'), calls, undefined, { lifeId: id })
     c.pin(placeRow({ tab: 'activities', path: ['one-too-many'] }))
     expect(calls).toContain(`toast:${PINS_FULL_TEXT}`)
+  })
+
+  it('says what the pin key did, so a screen reader hears it', () => {
+    freshLife()
+    const id = game().lifeId
+    const entry = buildIndexCached('adult').entries.find((e) => e.id === 'inv-stocks')!
+    const hit: PaletteRow = { kind: 'hit', id: 'h', hit: { entry, tier: 0, pinned: false, recent: -1, locked: null }, pinned: false }
+    const calls: string[] = []
+    const c = controllerFor(frozen('adult'), calls, undefined, { lifeId: id })
+    c.pin(hit)
+    c.pin(hit)
+    expect(calls).toEqual(['toast:Pinned Stocks.', 'toast:Unpinned Stocks.'])
+    // A row with nothing to pin says nothing.
+    c.pin({ kind: 'doAnything', id: 'doAnything', query: 'x', locked: null })
+    expect(calls).toHaveLength(2)
   })
 
   it('has nothing to pin on the Do Anything row, a heading, or a row that has gone', () => {
@@ -1086,6 +1239,56 @@ describe('11. voice', () => {
 // ---------------------------------------------------------------------------
 
 describe('12. the lazy contract', () => {
+  const gateProps = () => ({ g: frozen('adult'), onClose: () => {}, onOpenPlace: () => {}, indexOverride: buildIndexCached('adult'), initialQuery: 'stock' })
+
+  it('PaletteGate shows a way out, not an in-flow box, until the chunk is there', () => {
+    expect(LazyPalette.isReady()).toBe(false)
+    const html = render(createElement(PaletteGate, gateProps()))
+    expect(html).not.toContain('role="dialog"')
+    expect(html).not.toContain('lazy-box')
+    expect(html).not.toContain('lazy-failure')
+    expect(html).toContain('palette-wait')
+    expect(html).toMatch(/<button[^>]*>Close<\/button>/)
+    expect(html).toContain('Opening search.')
+    expect(html).not.toContain('Try again')
+  })
+
+  it('PaletteWaiting says when the load failed, and offers Try again and Close', () => {
+    const calls: string[] = []
+    const failed = createElement(PaletteWaiting, { failed: true, onClose: () => calls.push('close'), onRetry: () => calls.push('retry') })
+    const html = render(failed)
+    expect(html).toContain('role="alert"')
+    expect(html).toMatch(/Search didn(?:'|&#x27;)t load\./)
+    expect(html).toMatch(/<button[^>]*>Try again<\/button>/)
+    expect(html).toMatch(/<button[^>]*>Close<\/button>/)
+    const walk = (node: unknown, out: { text: string; click: () => void }[]): void => {
+      if (Array.isArray(node)) return node.forEach((n) => walk(n, out))
+      if (typeof node !== 'object' || node === null) return
+      const e = node as { type: unknown; props: { children?: unknown; onClick?: () => void } }
+      if (e.type === 'button' && e.props.onClick) out.push({ text: String(e.props.children), click: e.props.onClick })
+      walk(e.props?.children, out)
+    }
+    const buttons: { text: string; click: () => void }[] = []
+    walk(PaletteWaiting({ failed: true, onClose: () => calls.push('close'), onRetry: () => calls.push('retry') }), buttons)
+    expect(buttons.map((b) => b.text)).toEqual(['Try again', 'Close'])
+    for (const b of buttons) b.click()
+    expect(calls).toEqual(['retry', 'close'])
+    expect(render(createElement(PaletteWaiting, { failed: false, onClose: () => {}, onRetry: () => {} }))).not.toContain('role="alert"')
+  })
+
+  it('keeps the waiting bar out of the layout and the buttons 44 px high', () => {
+    const css = read('src/ui/styles/nav.css')
+    const rule = (sel: string): string => new RegExp(`${sel.replace(/[.]/g, '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? ''
+    expect(rule('.palette-wait')).toMatch(/position:\s*fixed/)
+    expect(rule('.palette-wait .btn')).toMatch(/min-height:\s*var\(--target\)/)
+  })
+
+  it('GameScreen opens the palette through the gate, with a way out', () => {
+    const src = read('src/ui/screens/GameScreen.tsx')
+    expect(src).toContain('PaletteGate')
+    expect(src).not.toContain('<LazyPalette')
+  })
+
   it('Palette has a default export that is a function, the same one', () => {
     expect(typeof PaletteDefault).toBe('function')
     expect(PaletteDefault).toBe(Palette)
@@ -1105,6 +1308,13 @@ describe('12. the lazy contract', () => {
     const after = render(createElement(LazyPalette, props))
     expect(after).toContain('role="dialog"')
     expect(after).toContain('role="combobox"')
+  })
+
+  it('PaletteGate draws the palette alone once the chunk is loaded', async () => {
+    expect(await LazyPalette.preload()).toBe(true)
+    const html = render(createElement(PaletteGate, gateProps()))
+    expect(html).toContain('role="dialog"')
+    expect(html).not.toContain('palette-wait')
   })
 })
 
@@ -1322,5 +1532,19 @@ describe('useSearchIndex', () => {
     expect(stale.index).toBe(index)
     expect(stale.ready).toBe(false)
     expect(typeof stale.refresh).toBe('function')
+  })
+
+  it('never serves the last index of another life: ids such as p3 repeat from life to life', () => {
+    const g = frozen('adult')
+    storeIndex(buildIndexCached('adult'))
+    expect(hook(g, true).ready).toBe(true)
+    // The same year and age, another life: the old names must not show.
+    const heir = navState('adult')
+    heir.lifeId = 'another-life'
+    const view = hook(deepFreeze(heir), true)
+    expect(view.index).toBeNull()
+    expect(view.ready).toBe(false)
+    // Back in the first life the cached index is served again.
+    expect(hook(g, true)).toMatchObject({ ready: true })
   })
 })

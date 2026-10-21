@@ -154,11 +154,11 @@ describe('10. Breadcrumbs markup', () => {
 describe('11. the pin star', () => {
   const crumbs = crumbsOf('Activities', [{ label: 'Computer' }, { label: 'Ventures' }])
 
-  it('is pressed and says Unpin when pinned', () => {
+  it('is pressed when pinned, and keeps its name: a toggle that says Unpin and is pressed reads as double', () => {
     const html = render(createElement(Breadcrumbs, { crumbs, onGo: () => {}, pin: { pinned: true, label: 'Ventures', onToggle: () => {} } }))
     expect(html).toMatch(/<button[^>]*aria-pressed="true"[^>]*>/)
-    expect(html).toContain('aria-label="Unpin Ventures"')
-    expect(html).not.toContain('aria-label="Pin Ventures"')
+    expect(html).toContain('aria-label="Pin Ventures"')
+    expect(html).not.toContain('Unpin')
   })
 
   it('is not pressed and says Pin when not pinned', () => {
@@ -301,7 +301,8 @@ describe('13. MenuSheet with the real store', () => {
     setFlags({ ...NAV_OFF, navRegroup: true, navPalette: true })
     updatePrefs((p) => togglePin(p, game().lifeId, { tab: 'activities', path: ['computer'] }).prefs)
     const html = sheet()
-    expect(html).toContain('aria-label="Unpin Computer"')
+    expect(html).toContain('aria-label="Pin Computer"')
+    expect(html).not.toContain('Unpin')
     expect(html).toMatch(/<button[^>]*aria-pressed="true"[^>]*>/)
   })
 
@@ -309,6 +310,7 @@ describe('13. MenuSheet with the real store', () => {
     setFlags({ ...NAV_OFF, navRegroup: true, navPalette: true })
     updatePrefs((p) => togglePin(p, 'some-other-life', { tab: 'activities', path: ['computer'] }).prefs)
     expect(sheet()).toContain('aria-label="Pin Computer"')
+    expect(sheet()).toMatch(/<button[^>]*aria-pressed="false"[^>]*>/)
   })
 
   it('shows no star with navPalette alone (the star lives in the strip)', () => {

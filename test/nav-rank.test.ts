@@ -6,7 +6,7 @@ import { resetFlags } from '../src/game/flags'
 import { createPerson } from '../src/game/people'
 import { parsePlaceKey, placeKey, placeOfEntry, recentFromSpot, samePlace, type PlaceRef } from '../src/ui/nav/place'
 import { buildIndex, type IndexEntry, type IndexRoots, type SearchIndex } from '../src/ui/nav/searchIndex'
-import { DO_ANYTHING_ID, normalize, search, tapsToReach, type RankContext } from '../src/ui/nav/searchRank'
+import { DO_ANYTHING_ID, SUBSEQUENCE_LABEL_MAX, normalize, search, tapsToReach, type RankContext } from '../src/ui/nav/searchRank'
 import type { MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { buildIndexCached, frozen, navState, type NavTab } from './nav-kit'
 
@@ -87,6 +87,17 @@ describe('tiers', () => {
     expect(tierOf('Stocks', 'zzz')).toBeUndefined()
     expect(tierOf('Stocks', 'stk')).toBe(3)
     expect(tierOf('Stocks', 'tsc')).toBeUndefined()
+  })
+
+  it('14b2. a subsequence is for short labels: a long shop label is a hit only on a real match', () => {
+    // "smoke" appears in order in the letters of this label, but it is not a word or a piece of one.
+    expect(tierOf('Specialized Electric Mountain Bike', 'smoke')).toBeUndefined()
+    expect(tierOf('Specialized Electric Mountain Bike', 'mountain')).toBe(1)
+    // The edge: the label's own length decides, not the token's.
+    const label = (n: number): string => `Stocks ${'z'.repeat(n - 7)}`
+    expect(normalize(label(SUBSEQUENCE_LABEL_MAX))).toHaveLength(SUBSEQUENCE_LABEL_MAX)
+    expect(tierOf(label(SUBSEQUENCE_LABEL_MAX), 'stk')).toBe(3)
+    expect(tierOf(label(SUBSEQUENCE_LABEL_MAX + 1), 'stk')).toBeUndefined()
   })
 
   it('14c. prefix only counts for the first token; a later token that starts the label is a word start', () => {

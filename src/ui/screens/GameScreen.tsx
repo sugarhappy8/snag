@@ -17,7 +17,7 @@ import { ModalHost } from '../components/ModalHost'
 import { ProfileSheet } from '../components/ProfileSheet'
 import { RelationshipsSheet } from '../components/RelationshipsSheet'
 import { MENU_SHEETS, openingClearsReturn, resolveReturnPoint, ReturnChip, type ResolvedReturn } from '../components/ReturnChip'
-import { LazyPalette } from '../nav/lazy'
+import { PaletteGate } from '../nav/lazy'
 import { recentFromSpot } from '../nav/place'
 import { recordRecent } from '../nav/prefs'
 import { placeOfLink, placeToReopen, type OpenablePlace } from '../nav/reopen'
@@ -218,7 +218,7 @@ export function GameScreen({ initialSheet }: GameScreenProps) {
       {kind === 'inbox' ? <InboxSheet onClose={close} onOpenLink={openLink} /> : null}
       {timeMachineOpen && !showDeath ? <TimeMachineSheet g={g} onClose={() => setTimeMachineOpen(false)} /> : null}
       {warp ? <TimeTravelArrival key={warp.id} year={warp.year} age={warp.age} /> : null}
-      {palette ? <LazyPalette g={g} onClose={() => setPalette(false)} onOpenPlace={openPlace} /> : null}
+      {palette ? <PaletteGate g={g} onClose={() => setPalette(false)} onOpenPlace={openPlace} /> : null}
 
       <ModalHost />
     </div>

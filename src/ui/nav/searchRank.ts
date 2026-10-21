@@ -1,8 +1,9 @@
 // Ranking (G.9): a query over a built index, in tiers. A token is a prefix of the label (0, first token only), the start of
 // a word in the label, the keywords or the breadcrumbs (1), a substring of any of them (2), or its letters appear in order
-// in the label (3, three characters or more). Pins and recents only reorder rows inside a tier, so a pinned weak match
-// never beats an unpinned strong one. Locked rows go last whatever their tier; the lock is the index's note, and the
-// palette re-checks it live. Pure: reads the index and the context, writes nothing.
+// in the label (3, three characters or more, and only in a label of 24 characters or fewer: in a long shop label any word
+// has its letters somewhere in order, and that is no match). Pins and recents only reorder rows inside a tier, so a pinned
+// weak match never beats an unpinned strong one. Locked rows go last whatever their tier; the lock is the index's note, and
+// the palette re-checks it live. Pure: reads the index and the context, writes nothing.
 import { placeKey, placeOfEntry, type PlaceRef } from './place'
 import type { IndexEntry, SearchIndex } from './searchIndex'
 
@@ -14,6 +15,8 @@ const DEFAULT_LIMIT = 30
 const MAX_TOKENS = 8
 const MAX_TOKEN = 48
 const MIN_SUBSEQUENCE = 3
+/** A label longer than this (normalised) is never a subsequence hit. The palette also never runs a tier 3 hit on Enter. */
+export const SUBSEQUENCE_LABEL_MAX = 24
 
 /**
  * Lower case, accents folded, `&` read as "and", every other run of non-letters and non-digits one space, trimmed.
@@ -62,7 +65,7 @@ function tokenTier(e: IndexEntry, token: string, first: boolean): Tier | -1 {
   if (first && e.labelN.startsWith(token)) return 0
   if (startsWord(e.labelN, token) || startsWord(e.kwN, token) || startsWord(e.crumbN, token)) return 1
   if (e.labelN.includes(token) || e.kwN.includes(token) || e.crumbN.includes(token)) return 2
-  if (token.length >= MIN_SUBSEQUENCE && isSubsequence(e.labelN, token)) return 3
+  if (token.length >= MIN_SUBSEQUENCE && e.labelN.length <= SUBSEQUENCE_LABEL_MAX && isSubsequence(e.labelN, token)) return 3
   return -1
 }
 
