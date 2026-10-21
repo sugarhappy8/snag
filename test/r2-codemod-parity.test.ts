@@ -5,6 +5,10 @@
 // From then on a moved fixture is a canary: a track that moves it by accident has reordered or added a draw.
 // R2-B2 (the rebaseline) re-recorded it once with R2_PARITY_RECORD=rebase: the text draws left g.rng, so every life moved. The
 // `source` field of the fixture says which recording it is. After the rebaseline it is the canary for every later track.
+// The first CI run of the rebaseline failed 11 of 12 lives in year 1 (economy) on Linux x64: the exact bits of a float are not
+// the same on every machine (Math.log differs in the last bit between arm64 and x64, Math.pow between Node 22 and 24), so the kit
+// rounds a non-integer to PARITY_DIGITS significant digits and the fixture was recorded once more (R2_PARITY_RECORD=update).
+// It now holds on macOS arm64 and Linux x64, Node 22 and Node 24. Record it with any of them (bin/vt22 is the CI version).
 //
 // The recorder is a mode of this test, so it runs under the same transform as the tests (precedent: FLAVOR_GOLDEN=1 in
 // test/flavor-memory.test.ts, TEXT_KIT_RECORD=1 in test/text-kit.test.ts):
