@@ -10,7 +10,7 @@ import { buildSave, DEFAULTS, loadPlaywright, parseOptions, scrollPositions, sho
 import { makeReportState } from '../scripts/r1-screenshot-state'
 import { companyStrip } from '../src/game/charts/books'
 import { readReportCharts } from '../src/game/charts/report'
-import { flagOn, resetFlags } from '../src/game/flags'
+import { flagOn, resetFlags, setFlags } from '../src/game/flags'
 import { rec } from '../src/game/love'
 import { migrateSave } from '../src/game/save-schema'
 import type { GameState, MinigameModal } from '../src/game/types'
@@ -28,6 +28,8 @@ describe('makeReportState', () => {
   let g: GameState
   let flagsAfter: { annualReport2: boolean; chartKit: boolean }
   beforeAll(() => {
+    // Start dark whatever the build defaults are (the lead flips them in the release commit), so "as found" means dark.
+    setFlags({ annualReport2: false, chartKit: false })
     g = makeReportState({ seed: 7, years: 6, companies: 2 })
     // Read before any afterEach can tidy the flags for us.
     flagsAfter = { annualReport2: flagOn('annualReport2'), chartKit: flagOn('chartKit') }
@@ -55,6 +57,7 @@ describe('makeReportState', () => {
   })
 
   it('throws, with the flags still back, when no seed queues a report', () => {
+    setFlags({ annualReport2: false, chartKit: false })
     expect(() => makeReportState({ seed: 3, years: 0, companies: 1 })).toThrow(/seeds 3 to 12/)
     expect(flagOn('annualReport2')).toBe(false)
   })

@@ -8,6 +8,8 @@
 //   - src/game/charts/*.ts: every relative runtime import is on the allow-list below, and none reaches
 //     business/yearly, manage, economy or competition (members of the big import cycle)
 //   - business/state.ts, economy.ts and competition.ts import nothing from a charts path
+//   - R1-C17: the allow-list holds only what the files import (an entry nothing uses fails), and no module in
+//     src/game/charts/ or src/ui/charts/ is longer than MAX_LINES
 //
 // The scan passes for a file that does not exist yet, so later tasks only have to add their file. The zone rule for
 // src/ui/charts/ (nothing outside imports it except lazy.tsx) belongs to test/lazy-zones.test.ts.
@@ -31,9 +33,11 @@ const GUARDED_FILES = [
 /** The files R1-C1 itself adds or extends; if a path moved, the scan above would silently read nothing. */
 const C1_FILES = ['src/game/charts/spec.ts', 'src/game/charts/reveal.ts', 'src/game/charts/money.ts', 'src/game/charts/index.ts'] as const
 
-/** What src/game/charts/*.ts may import at runtime, besides its own siblings (./x). `import type` is always fine. */
+/**
+ * What src/game/charts/*.ts may import at runtime, besides its own siblings (./x). `import type` is always fine, so the
+ * types of ../types and ../business/* are not listed. R1-C17 cut it to what the files really import; a test fails on a spare entry.
+ */
 const IMPORT_ALLOW: ReadonlySet<string> = new Set([
-  '../types',
   '../core',
   '../flags',
   '../life-series',
@@ -44,13 +48,17 @@ const IMPORT_ALLOW: ReadonlySet<string> = new Set([
   '../business/lab-state',
   '../business/lab-text',
   '../business/dividend-policy',
-  '../business/industries',
-  '../business/util',
   '../business/competition-state',
 ])
 
 /** Members of the 85-module import cycle (and the yearly step that calls the report builder): never imported by a chart file. */
 const CYCLE_MEMBERS = ['../business/yearly', '../business/manage', '../business/economy', '../business/competition'] as const
+
+/**
+ * The most lines a module (.ts or .tsx) of the two chart directories may have (R1-C17). A chart file that grows past this
+ * wants splitting. Stylesheets are not modules and are not counted: charts.css keeps the whole kit's rules in one place.
+ */
+const MAX_LINES = 600
 
 // ---------------------------------------------------------------------------
 // The scan
@@ -152,6 +160,20 @@ function chartsImports(src: SourceFile): string[] {
     .map((m) => m.spec)
 }
 
+/** Lines in a file's text. A final newline ends the last line, it does not start another. */
+function lineCount(text: string): number {
+  if (text === '') return 0
+  const n = text.split('\n').length
+  return text.endsWith('\n') ? n - 1 : n
+}
+
+/** The allow-list entries that none of the given files imports at runtime. */
+function unusedAllowed(files: readonly SourceFile[]): string[] {
+  const used = new Set<string>()
+  for (const f of files) for (const m of importsOf(f)) if (m.runtime) used.add(m.spec)
+  return [...IMPORT_ALLOW].filter((spec) => !used.has(spec)).sort()
+}
+
 const DASH = /[\u2013\u2014]/
 
 // ---------------------------------------------------------------------------
@@ -202,6 +224,16 @@ describe('chart hygiene: the real files', () => {
 
   it('never imports yearly, manage, economy or competition at runtime', () => {
     for (const f of gameCharts) expect(cycleImports(f), f.path).toEqual([])
+  })
+
+  it('has an allow-list with nothing spare: every entry is imported at runtime by some chart builder', () => {
+    expect(unusedAllowed(gameCharts)).toEqual([])
+  })
+
+  it(`keeps every chart module (.ts and .tsx) to ${MAX_LINES} lines`, () => {
+    const modules = files.filter((f) => /^src\/(game|ui)\/charts\//.test(f.path))
+    expect(modules.length).toBeGreaterThanOrEqual(C1_FILES.length)
+    for (const f of modules) expect(lineCount(f.text), f.path).toBeLessThanOrEqual(MAX_LINES)
   })
 
   it('is not imported by the business modules the charts read (state, economy, competition)', () => {
@@ -284,7 +316,7 @@ describe('chart hygiene: the scanner', () => {
     expect(cycleImports(bad)).toEqual(['../business/economy'])
     const fine = at(
       'src/game/charts/y.ts',
-      'import type { A } from "../business/economy"\nimport type { M } from "../business/competition"\nimport { n } from "../business/util"\nimport { s } from "./spec"',
+      'import type { A } from "../business/economy"\nimport type { M } from "../business/competition"\nimport { n } from "../business/lab-state"\nimport { s } from "./spec"',
     )
     expect(offAllowList(fine)).toEqual([])
     expect(cycleImports(fine)).toEqual([])
@@ -296,6 +328,28 @@ describe('chart hygiene: the scanner', () => {
     expect(chartsImports(at('src/game/business/state.ts', 'import type { S } from "../charts/spec"'))).toEqual(['../charts/spec'])
     expect(chartsImports(at('src/game/business/state.ts', 'import { x } from "./charts"'))).toEqual(['./charts'])
     expect(chartsImports(at('src/game/business/state.ts', 'import { x } from "./chartsy"'))).toEqual([])
+  })
+
+  it('counts lines the way an editor does', () => {
+    expect(lineCount('')).toBe(0)
+    expect(lineCount('a')).toBe(1)
+    expect(lineCount('a\n')).toBe(1)
+    expect(lineCount('a\nb')).toBe(2)
+    expect(lineCount('a\n\nb\n')).toBe(3)
+    expect(lineCount('x\n'.repeat(MAX_LINES))).toBe(MAX_LINES)
+    expect(lineCount('x\n'.repeat(MAX_LINES + 1))).toBeGreaterThan(MAX_LINES)
+  })
+
+  it('finds an allow-list entry that no file imports, counting runtime imports only', () => {
+    const used = [
+      at('src/game/charts/a.ts', [...IMPORT_ALLOW].map((spec, i) => `import { v${i} } from "${spec}"`).join('\n')),
+    ]
+    expect(unusedAllowed(used)).toEqual([])
+    const typeOnly = [at('src/game/charts/b.ts', `import type { T } from "../core"\nimport { x } from "../flags"`)]
+    const left = unusedAllowed(typeOnly)
+    expect(left).toContain('../core')
+    expect(left).not.toContain('../flags')
+    expect(unusedAllowed([])).toEqual([...IMPORT_ALLOW].sort())
   })
 
   it('spots a dash character', () => {
