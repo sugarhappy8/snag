@@ -319,3 +319,28 @@ div.sheet-backdrop.palette-backdrop {
   font-size: 14px;
   line-height: 1.35;
 }
+
+/* Header bell (R1-N7): the inbox button reuses .hdr-icon, so it gets the same 44 px target. The count sits on its top right
+   corner in the same red as the Needs you pill; the label already says the number, so the pill is for the eye only. */
+
+.hdr-bell {
+  position: relative;
+}
+
+.hdr-bell-count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--action-red);
+  color: var(--header-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+}

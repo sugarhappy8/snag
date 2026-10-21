@@ -3,10 +3,20 @@ import { characterAvatar, formatMoney, fullName, moneyContextOf, roleLabel, shor
 import { getCountry } from '../../game/world'
 import type { GameState } from '../../game/types'
 import { goTo } from '../store'
+import '../styles/nav.css'
 
 export interface HeaderProps {
   g: GameState
   onProfile: () => void
+  /** The search button (G.9): given only while the palette is on and can open. */
+  onSearch?: () => void
+  /** The inbox bell (G.11): `count` is how many rows the player has not seen. Given only while Quiet Mode is built in. */
+  inbox?: { count: number; onOpen: () => void }
+}
+
+/** The number on the bell: a whole number, never below zero. A count that is not a number is none. */
+function bellCount(count: number): number {
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
 }
 
 /** A small badge on the avatar: prison, fame, royalty-like status. */
@@ -20,7 +30,21 @@ function avatarBadge(g: GameState): string | null {
   return null
 }
 
-export function Header({ g, onProfile }: HeaderProps) {
+/** The bell: "Inbox" for none, "Inbox, 3 new" otherwise, with the count in a pill that reads "9+" from ten. */
+function InboxBell({ count, onOpen }: { count: number; onOpen: () => void }) {
+  return (
+    <button type="button" className="hdr-icon hdr-bell" aria-label={count > 0 ? `Inbox, ${count} new` : 'Inbox'} title="Inbox" onClick={onOpen}>
+      🔔
+      {count > 0 ? (
+        <span className="hdr-bell-count" aria-hidden>
+          {count > 9 ? '9+' : count}
+        </span>
+      ) : null}
+    </button>
+  )
+}
+
+export function Header({ g, onProfile, onSearch, inbox }: HeaderProps) {
   const c = g.character
   const country = getCountry(c.countryId)
   const badge = avatarBadge(g)
@@ -42,6 +66,12 @@ export function Header({ g, onProfile }: HeaderProps) {
         <div className="hdr-brand">
           AnotherLife<span className="hdr-brand-year">{g.year}</span>
         </div>
+        {onSearch ? (
+          <button type="button" className="hdr-icon" aria-label="Search" title="Search (Ctrl+K or /)" aria-keyshortcuts="Control+K /" onClick={onSearch}>
+            🔍
+          </button>
+        ) : null}
+        {inbox ? <InboxBell count={bellCount(inbox.count)} onOpen={inbox.onOpen} /> : null}
         <button className="hdr-icon" aria-label="Settings" title="Settings" onClick={() => goTo('settings')}>
           ⚙️
         </button>

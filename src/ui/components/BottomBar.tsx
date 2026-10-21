@@ -1,5 +1,8 @@
 // The bottom navigation: Occupation, Assets, the big green "+ Age" button,
 // Relationships and Activities.
+import { FLAGS } from '../../game/flags'
+import { TAB_KEYS } from '../nav/shortcuts'
+
 export type BottomTab = 'occupation' | 'assets' | 'relationships' | 'activities'
 
 export interface BottomBarProps {
@@ -20,8 +23,10 @@ const RIGHT: { tab: BottomTab; label: string; emoji: string }[] = [
 ]
 
 export function BottomBar({ disabled, onOpen, onAge }: BottomBarProps) {
+  // The keys are named for screen readers only while the shortcuts exist (G.9, FLAGS.navPalette).
+  const hint = FLAGS.navPalette
   const tabButton = ({ tab, label, emoji }: { tab: BottomTab; label: string; emoji: string }) => (
-    <button key={tab} type="button" className="bb-btn" disabled={disabled} onClick={() => onOpen(tab)} aria-label={label}>
+    <button key={tab} type="button" className="bb-btn" disabled={disabled} onClick={() => onOpen(tab)} aria-label={label} aria-keyshortcuts={hint ? TAB_KEYS[tab] : undefined}>
       <span className={`bb-icon c-${tab}`} aria-hidden>
         {emoji}
       </span>
@@ -31,7 +36,7 @@ export function BottomBar({ disabled, onOpen, onAge }: BottomBarProps) {
   return (
     <nav className="bottombar" aria-label="Main menu">
       {LEFT.map(tabButton)}
-      <button type="button" className="bb-age" data-focus-home disabled={disabled} onClick={onAge} aria-label="Age up one year">
+      <button type="button" className="bb-age" data-focus-home disabled={disabled} onClick={onAge} aria-label="Age up one year" aria-keyshortcuts={hint ? 'A' : undefined}>
         <span className="bb-age-plus" aria-hidden>
           +
         </span>
