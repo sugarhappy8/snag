@@ -29,11 +29,10 @@ function shardOf(): number {
 }
 
 /**
- * When NIGHTLY_METRICS_DIR is set, writes <dir>/<job>-<NIGHTLY_SHARD or 0>.json as { v: 1, job, shard, metrics, samples? } (a
- * rerun of the same job and shard replaces the file); otherwise writes nothing. What it is given is checked either way, so a bad
- * name or a NaN fails in a pull request and not only in the nightly.
+ * The file writeMetrics would write, checked the same way: the job, the shard of this run (NIGHTLY_SHARD, or 0), the metrics and
+ * the samples. The life probes (test/nightly-probes.ts) hand it to a script, which writes it where the workflow says.
  */
-export function writeMetrics(job: string, metrics: Record<string, number>, samples?: Record<string, number[]>): void {
+export function metricsFile(job: string, metrics: Record<string, number>, samples?: Record<string, number[]>): MetricsFile {
   if (!JOB.test(job)) throw new Error(`writeMetrics: job "${job}" must be lower-case words joined by hyphens`)
   for (const [name, value] of Object.entries(metrics)) {
     if (!NAME.test(name)) throw new Error(`writeMetrics: metric name "${name}" must be dotted words that start with a lower-case letter`)
@@ -43,10 +42,18 @@ export function writeMetrics(job: string, metrics: Record<string, number>, sampl
     if (!NAME.test(name)) throw new Error(`writeMetrics: sample name "${name}" must be dotted words that start with a lower-case letter`)
     if (!Array.isArray(list) || list.some((x) => typeof x !== 'number' || !Number.isFinite(x))) throw new Error(`writeMetrics: samples ${name} hold a value that is not a finite number`)
   }
+  return { v: 1, job, shard: shardOf(), metrics, ...(samples ? { samples } : {}) }
+}
+
+/**
+ * When NIGHTLY_METRICS_DIR is set, writes <dir>/<job>-<NIGHTLY_SHARD or 0>.json as { v: 1, job, shard, metrics, samples? } (a
+ * rerun of the same job and shard replaces the file); otherwise writes nothing. What it is given is checked either way, so a bad
+ * name or a NaN fails in a pull request and not only in the nightly.
+ */
+export function writeMetrics(job: string, metrics: Record<string, number>, samples?: Record<string, number[]>): void {
+  const file = metricsFile(job, metrics, samples)
   const dir = process.env.NIGHTLY_METRICS_DIR
-  const shard = shardOf()
   if (!dir) return
-  const file: MetricsFile = { v: 1, job, shard, metrics, ...(samples ? { samples } : {}) }
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, `${job}-${shard}.json`), `${JSON.stringify(file)}\n`)
+  writeFileSync(join(dir, `${job}-${file.shard}.json`), `${JSON.stringify(file)}\n`)
 }
