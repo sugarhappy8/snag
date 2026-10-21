@@ -21,3 +21,111 @@
 .needs-card .menu-list {
   border-color: color-mix(in srgb, var(--action-red) 40%, var(--border));
 }
+
+/* Breadcrumbs (R1-N5): the strip between a sheet's header and its body. It sits in the sheet's column, so it stays put while
+   the body scrolls. The list scrolls sideways when the trail is long; a label is cut at 18 characters by CSS alone. */
+
+.crumbs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: var(--target);
+  padding: 0 4px 0 8px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.crumbs-nav {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.crumbs-list {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.crumbs-list::-webkit-scrollbar {
+  display: none;
+}
+
+.crumb {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The chevron is decoration: the empty alternative text keeps it out of the spoken list. */
+.crumb + .crumb::before {
+  content: '\203A';
+  content: '\203A' / '';
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.crumb-link,
+.crumb-current {
+  display: inline-block;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.crumb-link {
+  min-height: var(--target);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--age-heading);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.crumb-link:hover {
+  text-decoration: underline;
+}
+
+.crumb-current {
+  padding: 0 8px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.crumbs-pin {
+  flex: none;
+  width: var(--target);
+  height: var(--target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.crumbs-pin[aria-pressed='true'] {
+  color: var(--age-heading);
+}
+
+.crumbs-pin:hover {
+  background: var(--chip-bg);
+}

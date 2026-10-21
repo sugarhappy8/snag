@@ -4,7 +4,9 @@
 import { FLAGS } from '../../game/flags'
 import { needsYou } from '../../game/hubs/needs'
 import type { MenuGroup } from '../../game/types'
+import { Breadcrumbs, crumbsOf } from '../nav/Breadcrumbs'
 import { NeedsYouCard } from '../nav/NeedsYouCard'
+import { isPinned, PINS_FULL_TEXT, recordRecent, tabOf, togglePin, updatePrefs, usePrefs } from '../nav/prefs'
 import { regroupForDisplay } from '../nav/sections'
 import { useApp } from '../store'
 import { groupChildren, groupHeader, MenuRows, nodeDisabled, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape, type MenuSpot } from './MenuList'
@@ -24,8 +26,18 @@ export function MenuSheet({ root, onClose, initial, onLeave }: MenuSheetProps) {
   const rootReason = g ? nodeDisabled(root, g) : null
   const rootNodes = g && !rootReason ? groupChildren(root, g) : []
   const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []), initial)
-  const runner = useMenuRunner({ onOpenGroup: nav.push, onClose, onLeave: onLeave && (() => onLeave(nav.snapshot())) })
+  // Recents (G.9): a place worth coming back to is one the player acted in. Only the four tabs have places.
+  const tab = tabOf(root.id)
+  const runner = useMenuRunner({
+    onOpenGroup: nav.push,
+    onClose,
+    onLeave: onLeave && (() => onLeave(nav.snapshot())),
+    onRan: (a) => {
+      if (g && tab) recordRecent(g.lifeId, { tab, path: nav.snapshot().path, id: a.id })
+    },
+  })
   useSheetEscape(nav.anchorRef, () => (nav.trail.length > 0 ? nav.pop() : onClose()))
+  const prefs = usePrefs()
 
   if (!g) return null
 
@@ -36,6 +48,25 @@ export function MenuSheet({ root, onClose, initial, onLeave }: MenuSheetProps) {
   const atRoot = FLAGS.navRegroup && nav.trail.length === 0 && !rootReason
   const shown = atRoot ? regroupForDisplay(root.id, nodes, g) : nodes
   const needs = atRoot ? needsYou(nodes, g) : []
+  const crumbs = FLAGS.navRegroup && nav.trail.length > 0 ? crumbsOf(root.label, nav.trail) : null
+  // The star pins the open group (G.9), so it only shows where there is a group to pin.
+  const place = tab && crumbs ? { tab, path: nav.trail.map((t) => t.id) } : null
+  const pin =
+    FLAGS.navPalette && place
+      ? {
+          pinned: isPinned(prefs, g.lifeId, place),
+          label: current.label,
+          onToggle: () => {
+            let full = false
+            updatePrefs((p) => {
+              const r = togglePin(p, g.lifeId, place)
+              full = r.reason === 'full'
+              return r.prefs
+            })
+            if (full) runner.toast(PINS_FULL_TEXT)
+          },
+        }
+      : undefined
 
   return (
     <>
@@ -44,6 +75,7 @@ export function MenuSheet({ root, onClose, initial, onLeave }: MenuSheetProps) {
         emoji={current.emoji}
         onClose={onClose}
         onBack={nav.trail.length > 0 ? nav.pop : undefined}
+        subheader={crumbs ? <Breadcrumbs crumbs={crumbs} onGo={nav.popTo} pin={pin} /> : undefined}
       >
         <div ref={nav.anchorRef}>
           {header ? <div className="menu-header">{header}</div> : null}

@@ -1,8 +1,12 @@
 // A person's profile (family, friends, partners, pets, coworkers...) with their stats and
 // the interactions from personActions().
 import { fullName, personAvatar, relationLabel, shortMoney } from '../../game/core'
+import { FLAGS } from '../../game/flags'
 import { personActions } from '../../game/relationships'
 import type { GameState, MenuNode, Person } from '../../game/types'
+import { Breadcrumbs, crumbsOf } from '../nav/Breadcrumbs'
+import { recentFromSpot } from '../nav/place'
+import { recordRecent } from '../nav/prefs'
 import { useApp } from '../store'
 import { groupChildren, groupHeader, MenuRows, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape, type MenuSpot } from './MenuList'
 import { Sheet } from './Sheet'
@@ -168,7 +172,15 @@ export function PersonSheet({ personId, onClose, onBack, initial, onLeave }: Per
   const person = g?.people.find((p) => p.id === personId)
   const rootNodes = g && person ? safeActions(g, person) : []
   const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []), initial)
-  const runner = useMenuRunner({ onOpenGroup: nav.push, onClose, onLeave: onLeave && (() => onLeave(nav.snapshot())) })
+  const runner = useMenuRunner({
+    onOpenGroup: nav.push,
+    onClose,
+    onLeave: onLeave && (() => onLeave(nav.snapshot())),
+    // Recents (G.9): on Relationships a place starts with the person (person.<id>), then the groups inside the sheet.
+    onRan: (a) => {
+      if (g) recordRecent(g.lifeId, { ...recentFromSpot('relationships', { path: nav.snapshot().path, personId }), id: a.id })
+    },
+  })
   useSheetEscape(nav.anchorRef, () => (nav.trail.length > 0 ? nav.pop() : (onBack ?? onClose)()))
 
   if (!g) return null
@@ -194,6 +206,10 @@ export function PersonSheet({ personId, onClose, onBack, initial, onLeave }: Per
   const current = inGroup ? nav.trail[nav.trail.length - 1] : null
   const nodes = current ? groupChildren(current, g) : rootNodes
   const header = current ? groupHeader(current, g) : null
+  // Breadcrumbs (G.8): Relationships, the person, then the groups. Crumb 0 is the list behind this sheet; crumb 1 is the
+  // person's own page (level 0 of the trail); deeper crumbs are one level less than their place in the strip.
+  const crumbs = FLAGS.navRegroup && inGroup ? crumbsOf(personName(person), nav.trail, ['Relationships']) : null
+  const goCrumb = (depth: number) => (depth === 0 ? (onBack ?? onClose)() : nav.popTo(depth - 1))
 
   return (
     <>
@@ -202,6 +218,7 @@ export function PersonSheet({ personId, onClose, onBack, initial, onLeave }: Per
         emoji={current ? current.emoji : undefined}
         onClose={onClose}
         onBack={inGroup ? nav.pop : onBack}
+        subheader={crumbs ? <Breadcrumbs crumbs={crumbs} onGo={goCrumb} /> : undefined}
       >
         <div ref={nav.anchorRef}>
           {inGroup ? (
