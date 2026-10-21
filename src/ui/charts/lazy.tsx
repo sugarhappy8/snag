@@ -9,6 +9,7 @@ import { lazyView, type LazyView } from '../lazy/lazyView'
 import type { KpiTileProps } from './KpiTile'
 import type { ReportBookProps } from './ReportBook'
 import type { SparklineProps } from './Sparkline'
+import type { YearEndDeskProps } from './YearEndDesk'
 
 /** The chart for a spec: a Frame and the plot for its kind. */
 export const ChartViewLazy: LazyView<{ spec: ChartSpec; className?: string }> = lazyView('chart', () => import('./ChartView'))
@@ -33,3 +34,9 @@ export function LazyChartView(p: { spec: ChartSpec | null; fallback?: ReactNode 
  * while the chunk loads, on the server, and when the load fails (lazyView adds a way to try again).
  */
 export const LazyReportBook: LazyView<ReportBookProps> = lazyView('report-book', () => import('./ReportBook'))
+
+/**
+ * The Year-End Desk: the header block above the book when two or more reports queue for one year. Give it the report as
+ * `fallback` (and as its children): that is what shows while the chunk loads, on the server and when the load fails.
+ */
+export const LazyYearEndDesk: LazyView<YearEndDeskProps> = lazyView('year-end-desk', () => import('./YearEndDesk'))
