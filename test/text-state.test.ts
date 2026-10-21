@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { textCursor } from '../src/game/text/draw'
 import { TEXT_MEM_LIMITS, readState, readTextMem, rememberState, writableTextMem, type TextMem } from '../src/game/text/memory'
 import { STATE_LIMITS, bandBy, fillSlots, logBand, stateLineWith } from '../src/game/text/state'
+import { logStateLine } from '../src/game/text/state-log'
 import type { StateSpec } from '../src/game/text/state-table'
 import type { GameState, Json } from '../src/game/types'
 import { makeTestGame } from './helpers'
@@ -551,5 +552,40 @@ describe('fillSlots', () => {
     expect(fillSlots('{a}', { a: '{a}' })).toBe('{a}')
     expect(fillSlots('{toString} {constructor} {__proto__}', {})).toBe('  ')
     expect(fillSlots('x {1}', { '1': 'one' })).toBe('x one')
+  })
+})
+
+describe('logStateLine (R2-P9)', () => {
+  const entries = (g: GameState): { id: string; text: string; tone: string }[] => g.log.flatMap((y) => y.entries)
+
+  it('logs the line with one uid, as log does, and keeps its tone', () => {
+    const g = life()
+    g.log = [{ age: g.character.age, year: g.year, entries: [] }]
+    const before = g.nextId
+    logStateLine(g, 'Money got tight around me.', 'bad')
+    expect(g.nextId).toBe(before + 1)
+    expect(entries(g)).toEqual([{ id: `l${before + 1}`, text: 'Money got tight around me.', tone: 'bad' }])
+  })
+
+  it('takes the same one uid when the state line is quiet, and logs nothing', () => {
+    const g = life()
+    g.log = [{ age: g.character.age, year: g.year, entries: [] }]
+    const before = g.nextId
+    logStateLine(g, null)
+    expect(g.nextId).toBe(before + 1)
+    expect(entries(g)).toEqual([])
+  })
+
+  it('so a row that speaks once in five years moves g.nextId exactly as a line every year did', () => {
+    const g = life(2030, 'uid-life')
+    g.log = [{ age: g.character.age, year: 2030, entries: [] }]
+    const before = g.nextId
+    for (let y = 2030; y < 2042; y++) {
+      g.year = y
+      logStateLine(g, line(g, 'a', 5))
+    }
+    expect(g.nextId - before).toBe(12)
+    // The first year, the sixth and the eleventh speak; the other nine take their uid in silence.
+    expect(entries(g)).toHaveLength(3)
   })
 })

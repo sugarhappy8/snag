@@ -24,17 +24,36 @@ export interface StateSpec {
 export const STATE_TABLE = {
   // "Around me": the caller fires on a crossing of its own (growth below -2%, credit below 0.72, supply above 12%), so the
   // band is constant and the row's whole job is to stop the same crossing speaking again within 5 years. {cause} is the
-  // economy's first stated cause (economy/index.ts).
+  // economy's first stated cause (economy/index.ts). Five variants each, not three: a rough decade can cross the same line
+  // four times, and the probe still counts a fourth line that reuses the first one's words as a repeat.
   'around.growth': {
-    variants: ['Money got tight around me. {cause}', 'Times got harder in my town. {cause}', 'The squeeze reached my whole street. {cause}'],
+    variants: [
+      'Money got tight around me. {cause}',
+      'Times got harder in my town. {cause}',
+      'The squeeze reached my whole street. {cause}',
+      'Work got scarce where I live. {cause}',
+      'Belts got tighter all over town. {cause}',
+    ],
     band: () => 0,
   },
   'around.credit': {
-    variants: ['Banks stopped lending around me. {cause}', 'Credit dried up where I live. {cause}', 'Borrowing got hard for the people I knew. {cause}'],
+    variants: [
+      'Banks stopped lending around me. {cause}',
+      'Credit dried up where I live. {cause}',
+      'Borrowing got hard for the people I knew. {cause}',
+      'Loans got hard to find in my town. {cause}',
+      'The banks near me shut their wallets. {cause}',
+    ],
     band: () => 0,
   },
   'around.supply': {
-    variants: ['Shortages hit the shops around me. {cause}', 'Prices jumped on everything I buy. {cause}', 'Stores near me ran short of goods. {cause}'],
+    variants: [
+      'Shortages hit the shops around me. {cause}',
+      'Prices jumped on everything I buy. {cause}',
+      'Stores near me ran short of goods. {cause}',
+      'Empty shelves showed up around town. {cause}',
+      "The shops near me couldn't keep things in stock. {cause}",
+    ],
     band: () => 0,
   },
   // Index days for someone with nothing in the market (investments.ts yearlyInvestments). The value is the size of the move
