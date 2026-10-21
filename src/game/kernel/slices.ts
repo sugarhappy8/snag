@@ -9,6 +9,10 @@
 //                     and act() hands every draft the same frozen object (freezeRoot), so a stray in-place write is a TypeError.
 //   write 'inplace'   the default: cloned on every tap, re-stringified on every save.
 //
+// A slice of the world chunk may also say `pack: 'shapes'` (shapes.ts): the codec then writes it with its repeated object shapes in a
+// table, which cuts the key names out of a late save, and reads it back before `normalize` runs. It changes the stored text only,
+// never the state in memory.
+//
 // A key of one segment is a top-level field. A key of two segments carves itself out of its parent ('flags.worldEconomy' out of
 // 'flags'). A slice with shape 'subkeys' ('world') makes every own key of its object a sub-slice, 'world.<name>', declared or
 // not (hasSlice, sliceOf), so a module adds a shard without touching the table.
@@ -31,6 +35,9 @@ export interface SliceCaps {
   /** Most characters of its text. */
   readonly chars: number
 }
+
+/** How a slice's text is packed. 'shapes': repeated object shapes in a table (kernel/shapes.ts). */
+export type SlicePack = 'shapes'
 
 /** How a record of entities is cut into chunk records: `e.<kind>.<n>` for n below `shards`. */
 export interface EntityShards {
@@ -59,6 +66,8 @@ export interface SliceDef {
   readonly entities?: EntityShards
   /** What a lost chunk does: 'fresh' (default, the key is dropped and the game goes on) or 'fatal' (core chunk only). */
   readonly onLost?: 'fresh' | 'fatal'
+  /** Only with chunk 'world'. 'shapes' writes the value with a shape table; a `world.<name>` row derived under a 'subkeys' parent takes its parent's. */
+  readonly pack?: SlicePack
 }
 
 /** Log years that stay in the core: the current one. */
@@ -68,6 +77,7 @@ export const LOG_GROUP_YEARS = 10
 
 const CHUNKS: readonly SliceChunk[] = ['core', 'world', 'log', 'entities']
 const SHAPES: readonly SliceShape[] = ['whole', 'logYears', 'subkeys']
+const PACKS: readonly SlicePack[] = ['shapes']
 /** A declared segment: a field name. */
 const SEGMENT = /^[A-Za-z][A-Za-z0-9]{0,31}$/
 /** A segment that is not declared but derived under a 'subkeys' parent: a short lower case name. */
@@ -120,7 +130,8 @@ function checkEntities(key: string, def: SliceDef): void {
 
 /**
  * Declare a slice. Throws on a malformed declaration (a duplicate or malformed key, a version below 1, caps that are not above 0,
- * entities that do not match the chunk, shape 'logYears' off the key 'log', onLost 'fatal' off the core chunk): the table is
+ * entities that do not match the chunk, shape 'logYears' off the key 'log', onLost 'fatal' off the core chunk, a pack off the world
+ * chunk): the table is
  * code, so a bad row fails at the first import, never in a player's save. Returns the stored (frozen) declaration.
  */
 export function defineSlice(def: SliceDef): SliceDef {
@@ -137,6 +148,8 @@ export function defineSlice(def: SliceDef): SliceDef {
   if (def.shape === 'subkeys' && key.includes('.')) bad(key, "shape 'subkeys' needs a one-segment key")
   if (def.onLost !== undefined && def.onLost !== 'fresh' && def.onLost !== 'fatal') bad(key, "onLost must be 'fresh' or 'fatal'")
   if (def.onLost === 'fatal' && def.chunk !== 'core') bad(key, "onLost 'fatal' is for the core chunk only")
+  if (def.pack !== undefined && !PACKS.includes(def.pack)) bad(key, `pack must be ${PACKS.map((p) => `'${p}'`).join(' or ')}`)
+  if (def.pack !== undefined && def.chunk !== 'world') bad(key, "pack needs chunk 'world' (the core and the log are written as they are, an entity shard must stay a record of its own keys)")
   checkEntities(key, def)
   const stored: SliceDef = Object.freeze({
     ...def,
@@ -164,8 +177,8 @@ function derivedParent(key: string): SliceDef | undefined {
 }
 
 /**
- * The declared row, or for `<parent>.<name>` under a 'subkeys' parent the row it derives: the parent's chunk, version, caps and
- * write rule, shape 'whole', and a normalize that keeps any value. (`world.facts` is a `replace` row in the `world` chunk.)
+ * The declared row, or for `<parent>.<name>` under a 'subkeys' parent the row it derives: the parent's chunk, version, caps, write
+ * rule and pack, shape 'whole', and a normalize that keeps any value. (`world.facts` is a `replace` row in the `world` chunk.)
  */
 export function sliceOf(key: string): SliceDef | undefined {
   const declared = SLICES.get(key)
@@ -180,6 +193,7 @@ export function sliceOf(key: string): SliceDef | undefined {
     normalize: (raw) => raw,
     write: parent.write ?? 'inplace',
     shape: 'whole',
+    ...(parent.pack !== undefined ? { pack: parent.pack } : {}),
   }
   return Object.freeze(derived)
 }

@@ -20,6 +20,11 @@
 //   e.<kind>.<n>  a JSON object holding the entries of an entity record whose key hashes to shard n (shardOf). Only a record
 //                 whose keys are in ascending order is cut this way, so the decoder can merge the shards back in key order.
 //
+// A slice declared `pack: 'shapes'` (the world economy, every `world.<name>` shard; kernel/shapes.ts) is written as an envelope,
+// `{"$s":[shapes],"$v":tree}`, when a shape repeats in it, and as the plain text it always had when none does. The text that is
+// cached by identity, checksummed and measured against the manifest is the packed one. The decoder unpacks it before `normalize`
+// and reads a plain value as it is. A value too deep to pack is written plain.
+//
 // Only a plain object or array, and not an empty one, is ever moved out, so a placeholder can never collide with a real value
 // and an empty container costs nothing. The head keeps the key order of `JSON.stringify(g)`, which makes "reload gives identical
 // JSON" a string comparison. A slice written `replace` is never edited in place: its text is cached by object identity (and the
@@ -33,17 +38,20 @@
 //
 //   - a manifest entry is checked against the grammar (name, id, length) before its text is even asked for;
 //   - a text must have the manifest's length and checksum before it is parsed, and the parsed value must stay inside the caps of
-//     the slices that live in its chunk (nodes and characters, summed over a decade or shard group), at most 100 levels deep, with
-//     finite numbers, and the shape its chunk kind has (a world chunk an object, a log chunk an array of log years, an entity
-//     shard an object whose keys hash to its shard);
+//     the slices that live in its chunk (nodes and characters, summed over a decade or shard group; a packed slice has room for the
+//     nodes of its wrappers), at most 100 levels deep, with finite numbers, and the shape its chunk kind has (a world chunk an
+//     object, a log chunk an array of log years, an entity shard an object whose keys hash to its shard);
 //   - a chunk that fails any of that is a LostChunk (missing, hostile or size) and is never half applied;
+//   - a packed slice is unpacked (kernel/shapes.ts, bounded by its own limits) before its normalize runs; one that does not unpack
+//     drops that slice and names its chunk hostile, like a slice whose normalize refuses it;
 //   - a good chunk is normalized slice by slice and put where the core holds its placeholder, the key keeping its place; a core
 //     value that is not a placeholder wins over its chunk; a placeholder nothing replaced is deleted, so the slice reads as absent
 //     (the economy then re-seeds at the current year with no retroactive earnings, economy/index.ts ensureEconomy);
 //   - keys that reach the prototype chain are never written (slices.ts setAt refuses them, the entity merge refuses them).
 //
 // The result is a v2-shaped record plus schemaVersion, ready for migrateSave(game, { versions }); the migration is not run here.
-import { LOG_GROUP_YEARS, LOG_TAIL, cleanVersions, countNodes, deleteAt, freezeRoot, getAt, listSlices, setAt, sliceOf, type SliceDef } from './kernel/slices'
+import { looksPacked, packShapes, unpackShapes } from './kernel/shapes'
+import { LOG_GROUP_YEARS, LOG_TAIL, cleanVersions, countNodes, deleteAt, freezeRoot, getAt, listSlices, setAt, sliceOf, type SliceDef, type SlicePack } from './kernel/slices'
 import { ensureSliceTable } from './save-slices'
 import type { GameState } from './types'
 
@@ -142,6 +150,8 @@ export function shardOf(key: string, shards: number): number {
 
 /** Text of a frozen `replace` root, by identity. */
 let rootText = new WeakMap<object, string>()
+/** The same for a root whose slice is packed: the cached text is the packed one. */
+let packedRootText = new WeakMap<object, string>()
 /** Text of a completed (frozen) log year, by identity. */
 let yearText = new WeakMap<object, string>()
 /** One memo per log decade: the years it was built from (by identity), its text and id. */
@@ -171,6 +181,7 @@ interface EntityMemo {
 /** Forget every cache (tests start from a cold encoder; nothing else needs this). */
 export function resetCodecCachesForTests(): void {
   rootText = new WeakMap()
+  packedRootText = new WeakMap()
   yearText = new WeakMap()
   logMemo = new Map()
   worldMemo = null
@@ -185,21 +196,39 @@ interface Run {
 }
 
 /**
- * The text of a slice value. A `replace` root is frozen on its first sight and its text cached by identity, so a hit costs
- * nothing; an `inplace` value is stringified every time.
+ * The text of a value written with shape tables: the envelope `{"$s":[...],"$v":...}` when a shape repeats in it, else the plain
+ * text (the decoder reads a plain value as it is). A value that looks like an envelope always gets one, so a reader cannot take it
+ * for something it is not. A value nested too deep to pack is written plain.
  */
-function sliceText(value: object, replace: boolean, run: Run): string {
+function packedText(value: object): string {
+  let packed: unknown
+  try {
+    packed = packShapes(value)
+  } catch {
+    return JSON.stringify(value)
+  }
+  const nothing = (packed as { $s: readonly unknown[] }).$s.length === 0
+  return nothing && !looksPacked(value) ? JSON.stringify(value) : JSON.stringify(packed)
+}
+
+/**
+ * The text of a slice value. A `replace` root is frozen on its first sight and its text cached by identity, so a hit costs
+ * nothing (the packing of a `pack: 'shapes'` slice is part of the miss, once); an `inplace` value is written every time.
+ */
+function sliceText(value: object, replace: boolean, run: Run, pack?: SlicePack): string {
+  const write = pack === 'shapes' ? packedText : (v: object): string => JSON.stringify(v)
   if (replace) {
-    const hit = rootText.get(value)
+    const cache = pack === 'shapes' ? packedRootText : rootText
+    const hit = cache.get(value)
     if (hit !== undefined) return hit
     freezeRoot(value)
     run.stringified++
-    const text = JSON.stringify(value)
-    rootText.set(value, text)
+    const text = write(value)
+    cache.set(value, text)
     return text
   }
   run.stringified++
-  return JSON.stringify(value)
+  return write(value)
 }
 
 // ---------------------------------------------------------------------------
@@ -478,7 +507,7 @@ export function encodeSave(g: GameState): EncodedSave {
         const member: Member = { key: name, container: def.key }
         if (row.chunk === 'entities' && isHolder(value)) jobs.push({ def: row, path, holder, name, value, member })
         else {
-          members.push({ ...member, text: sliceText(value, row.write === 'replace', run) })
+          members.push({ ...member, text: sliceText(value, row.write === 'replace', run, row.pack) })
           holder[name] = placeholder(path)
         }
       }
@@ -493,7 +522,7 @@ export function encodeSave(g: GameState): EncodedSave {
         continue
       }
       const moved = takeOut(view, copied, def.key)
-      if (moved !== undefined) members.push({ key: def.key, text: sliceText(moved, def.write === 'replace', run) })
+      if (moved !== undefined) members.push({ key: def.key, text: sliceText(moved, def.write === 'replace', run, def.pack) })
     }
   }
 
@@ -658,6 +687,13 @@ interface Room {
 
 const groupOf = (place: Place): string => (place.kind === 'entity' ? place.row.key : place.kind)
 
+/**
+ * A packed slice's nodes as the chunk stores them: each wrapper adds two (its `$` and its values array) to the object it replaces
+ * and an object has at least four values, so the packed tree has at most 1.4 times the nodes of the plain one, plus the shape table
+ * (at most a third of the plain nodes, a shape needing three objects of four keys). Twice the cap holds both.
+ */
+const PACKED_NODE_FACTOR = 2
+
 /** The caps of a group: the world chunk may hold any world slice (or an entity record riding whole), the others have one row. */
 function roomFor(place: Place, table: readonly SliceDef[]): Room {
   const rows =
@@ -666,7 +702,7 @@ function roomFor(place: Place, table: readonly SliceDef[]): Room {
       : place.kind === 'log'
         ? table.filter((s) => s.shape === 'logYears')
         : [place.row]
-  return { nodes: rows.reduce((a, s) => a + s.caps.nodes, 0), chars: rows.reduce((a, s) => a + s.caps.chars, 0) }
+  return { nodes: rows.reduce((a, s) => a + s.caps.nodes * (s.pack === undefined ? 1 : PACKED_NODE_FACTOR), 0), chars: rows.reduce((a, s) => a + s.caps.chars, 0) }
 }
 
 /** Depth and finite numbers, walked without recursion: a value JSON can parse but the engine cannot safely calculate with. */
@@ -768,15 +804,31 @@ function normalizeOf(row: SliceDef, value: unknown): unknown {
 }
 
 /**
+ * The value of a packed slice as it was before packing: an envelope (an object with an own `$s`) is unpacked, a plain value stays as
+ * it is. The unpack is bounded by its default limits, and the value it reads has already passed the chunk's caps. Undefined when the
+ * envelope is not one a writer makes.
+ */
+function unpacked(row: SliceDef, value: unknown): unknown {
+  if (row.pack !== 'shapes' || !looksPacked(value)) return value
+  try {
+    return unpackShapes(value)
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Put a chunk's value where the core holds the placeholder of `path`. 'kept': the core holds something else there (a real value
- * wins, normalized later) or nothing. 'dropped': the slice's own normalize refused the value, so the placeholder stays for the sweep.
+ * wins, normalized later) or nothing. 'dropped': the slice's own normalize refused the value, or a packed value did not unpack,
+ * so the placeholder stays for the sweep.
  */
 function place(b: Build, path: string, value: unknown): 'placed' | 'kept' | 'dropped' {
   if (getAt(b.game, path) !== placeholder(path)) return 'kept'
   const row = sliceOf(path)
   if (row === undefined) return 'kept'
   b.normalized.add(path)
-  const out = normalizeOf(row, value)
+  const plain = unpacked(row, value)
+  const out = plain === undefined ? undefined : normalizeOf(row, plain)
   if (out === undefined) return 'dropped'
   const dot = path.indexOf('.')
   if (dot > 0 && detach(b.game, b.copied, path.slice(0, dot)) === undefined) return 'kept'
