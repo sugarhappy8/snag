@@ -3,6 +3,7 @@
 // After an action closes a sheet, a "↩ Back to <menu>" chip reopens it where you left off.
 // Once there's a past year to go back to, a ⏳ button opens the Time Machine.
 import { useEffect, useRef, useState } from 'react'
+import type { GameState } from '../../game/types'
 import type { MenuSpot } from '../components/MenuList'
 import { BottomBar, type BottomTab } from '../components/BottomBar'
 import { Header } from '../components/Header'
@@ -12,6 +13,8 @@ import { ModalHost } from '../components/ModalHost'
 import { ProfileSheet } from '../components/ProfileSheet'
 import { RelationshipsSheet } from '../components/RelationshipsSheet'
 import { MENU_SHEETS, openingClearsReturn, resolveReturnPoint, ReturnChip, type ResolvedReturn } from '../components/ReturnChip'
+import { recentFromSpot } from '../nav/place'
+import { recordRecent } from '../nav/prefs'
 import { StatPanel } from '../components/StatPanel'
 import { canOfferTimeMachine, TimeMachineButton, TimeMachineSheet, TimeTravelArrival } from '../components/TimeMachine'
 import { ageUpAction, clearReturnPoint, goTo, returnChipVisible, returnPointLive, setReturnPoint, useApp, type ReturnSheet } from '../store'
@@ -21,6 +24,15 @@ type SheetKind = BottomTab | 'profile'
 
 /** The open sheet; `reopen` is set when the "Back to …" chip opened it. */
 type OpenSheet = { kind: SheetKind; reopen?: ResolvedReturn } | null
+
+/**
+ * What leaving a sheet remembers: the spot for the "Back to" chip, and (G.9) the same place as a recent. The chip goes
+ * when it is dismissed or the year turns; the recent stays, which is how the chip's place "becomes the newest recent".
+ */
+export function rememberSpot(g: GameState, kind: ReturnSheet, spot: MenuSpot): void {
+  setReturnPoint({ sheet: kind, path: spot.path, scrolls: spot.scrolls })
+  recordRecent(g.lifeId, recentFromSpot(kind, spot))
+}
 
 export function GameScreen() {
   const g = useApp((s) => s.game)
@@ -80,7 +92,7 @@ export function GameScreen() {
     if (openingClearsReturn(kind)) clearReturnPoint()
     setSheet({ kind })
   }
-  const remember = (kind: ReturnSheet) => (spot: MenuSpot) => setReturnPoint({ sheet: kind, path: spot.path, scrolls: spot.scrolls })
+  const remember = (kind: ReturnSheet) => (spot: MenuSpot) => rememberSpot(g, kind, spot)
 
   const target = !sheet && !showDeath && returnChipVisible(returnPoint, g) ? resolveReturnPoint(g, returnPoint) : null
   // The ⏳ button: alive, nothing on screen, and a past year to go back to.

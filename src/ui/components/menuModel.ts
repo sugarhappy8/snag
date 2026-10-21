@@ -349,3 +349,32 @@ export function returnTarget(
 export function nodeBadge(node: MenuAction | MenuGroup, g: GameState): string | null {
   return FLAGS.navRegroup ? badgeText(node, g) : null
 }
+
+// Paths in a sheet's menu tree (R1-N5). useMenuNav builds its path changes from these, so they are testable without a
+// renderer. `path` is the stored group ids, `depth` the number of them that still resolve (the stored path can be longer
+// when a group has vanished since).
+
+/** A group opened from the list at `depth`: the ids above that list, then the group. */
+export function pathAfterPush(path: string[], depth: number, id: string): string[] {
+  return [...path.slice(0, depth), id]
+}
+
+/** Back to the list at `n` (0 is the root list): the first `n` ids. An `n` outside 0 to depth - 1 returns `path` itself. */
+export function pathAfterPopTo(path: string[], depth: number, n: number): string[] {
+  if (!Number.isInteger(n) || n < 0 || n >= depth) return path
+  return path.slice(0, n)
+}
+
+/** The most group ids a sheet is opened on at once. */
+const MAX_OPEN_DEPTH = 12
+
+/** A path to open a sheet on: the non-empty strings of `ids`, at most 12. Anything else is dropped. */
+export function pathAfterOpen(ids: readonly string[]): string[] {
+  const out: string[] = []
+  if (!Array.isArray(ids)) return out
+  for (const id of ids) {
+    if (typeof id === 'string' && id !== '') out.push(id)
+    if (out.length >= MAX_OPEN_DEPTH) break
+  }
+  return out
+}

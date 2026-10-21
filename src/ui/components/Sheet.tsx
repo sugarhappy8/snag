@@ -10,10 +10,12 @@ export interface SheetProps {
   onBack?: () => void
   children: ReactNode
   footer?: ReactNode
+  /** A strip between the header and the body (the breadcrumbs). It does not scroll with the body. */
+  subheader?: ReactNode
 }
 
 /** Bottom sheet over the game screen, used for menus, people and the profile. */
-export function Sheet({ title, emoji, onClose, onBack, children, footer }: SheetProps) {
+export function Sheet({ title, emoji, onClose, onBack, children, footer, subheader }: SheetProps) {
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <ModalSurface role="dialog" label={title} className="sheet">
@@ -33,6 +35,7 @@ export function Sheet({ title, emoji, onClose, onBack, children, footer }: Sheet
             ✕
           </button>
         </header>
+        {subheader}
         <div className="sheet-body">{children}</div>
         {footer ? <footer className="sheet-footer">{footer}</footer> : null}
       </ModalSurface>

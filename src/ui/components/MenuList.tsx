@@ -6,7 +6,21 @@ import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/type
 import { rovingMove, rovingStop } from '../a11y/roving'
 import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
-import { confirmText, infoText, isMultiline, nodeBadge, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report, sliderPreview } from './menuModel'
+import {
+  confirmText,
+  infoText,
+  isMultiline,
+  nodeBadge,
+  nodeDisabled,
+  nodeHint,
+  nodeSubtitle,
+  nodeVisible,
+  pathAfterOpen,
+  pathAfterPopTo,
+  pathAfterPush,
+  report,
+  sliderPreview,
+} from './menuModel'
 import { TalentHint } from './TalentHint'
 import { HINT_EMOJI } from '../../game/talents'
 import '../styles/nav.css'
@@ -23,6 +37,10 @@ export interface MenuNav {
   push: (group: MenuGroup) => void
   /** Go back one level. */
   pop: () => void
+  /** Go back to the list at level `n` (0 is the root list); an `n` that is not above the current list does nothing. */
+  popTo: (n: number) => void
+  /** Open a sheet's tree at this group path from anywhere (the ids are re-resolved against the latest state). */
+  openPath: (ids: string[]) => void
   /** Attach to an element inside the scrolling sheet body (scroll restoration). */
   anchorRef: React.RefObject<HTMLDivElement | null>
   /** Where the player is right now: open group ids and every level's scroll offset. */
@@ -76,12 +94,23 @@ export function useMenuNav(resolve: (path: string[]) => MenuGroup[], initial?: M
     push: (group) => {
       scrolls.current[depth] = scroller()?.scrollTop ?? 0
       pendingScroll.current = 0
-      setPath([...path.slice(0, depth), group.id])
+      setPath(pathAfterPush(path, depth, group.id))
     },
     pop: () => {
       if (depth === 0) return
       pendingScroll.current = scrolls.current[depth - 1] ?? 0
       setPath(path.slice(0, depth - 1))
+    },
+    popTo: (n) => {
+      const next = pathAfterPopTo(path, depth, n)
+      if (next === path) return
+      pendingScroll.current = scrolls.current[n] ?? 0
+      setPath(next)
+    },
+    openPath: (ids) => {
+      scrolls.current[depth] = scroller()?.scrollTop ?? 0
+      pendingScroll.current = 0
+      setPath(pathAfterOpen(ids))
     },
     snapshot: () => ({
       path: trail.map((t) => t.id),
@@ -127,6 +156,8 @@ export interface MenuRunnerOptions {
   onClose: () => void
   /** Called right before an action closes the sheet (remember where the player was). */
   onLeave?: () => void
+  /** Called when an action is about to run, before onLeave and before the action, also for a stayOpen action. */
+  onRan?: (action: MenuAction) => void
 }
 
 export interface MenuRunner {
@@ -135,6 +166,8 @@ export interface MenuRunner {
   overlay: ReactNode
   /** Show a short message (e.g. a locked feature). */
   toast: (message: string) => void
+  /** Run an action whose input is already in hand (a search row): skips the input dialog, keeps the confirm step. */
+  submit: (action: MenuAction, input: string) => void
 }
 
 export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
@@ -154,6 +187,11 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
     setPending(null)
     const g = getApp().game
     if (!g || !g.character.alive) return
+    try {
+      optsRef.current.onRan?.(action)
+    } catch (err) {
+      report(`onRan(${action.id})`, err)
+    }
     if (!action.stayOpen) {
       // Snapshot first: the action may change which menus exist.
       try {
@@ -256,6 +294,7 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
   return {
     tap,
     toast: setToast,
+    submit: afterInput,
     overlay: (
       <>
         {dialog}
