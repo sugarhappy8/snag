@@ -1706,6 +1706,27 @@
   font-weight: 700;
 }
 
+/* The trail of a grave's net worth (R1 charts): a small sparkline, or one plain line while it loads. */
+.grave-spark {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.grave-spark-text,
+.life-line-text {
+  margin: 0;
+  color: var(--muted, #566072);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+/* The net-worth line on the Profile and the Death screen: room above it, and a plain line until the chart has loaded. */
+.life-line {
+  margin-top: 12px;
+}
+
 /* ------------------------------------------------------------------------ */
 /* Dark mode: only the colors that aren't driven by shared variables.        */
 
