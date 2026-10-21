@@ -143,6 +143,15 @@ The tabs, in order: **Summary** (tiles, verdict, short waterfall, the company st
 the text report). The two buttons sit in a bar under every tab. Left, Right, Home and End move between tabs (`tabKey`, over
 `rovingMove`). The book holds no plan state.
 
+**One set of prices.** The report waits in the saved queue, but the book draws its numbers (the axes, the tile values and
+chips, the waterfall rows, the price chip) when it opens, in the money display on screen then. Its sentences (the verdict, the
+tile notes, the market note, the statement lines and the Business instinct) were written when the year closed, so a report
+built under "prices as they were" and opened in today's money, or the other way round, printed two sets of prices on one
+screen. `reportDataNow` (`yearly.ts`, called by `MinigameCard` in `ModalHost.tsx`) writes those texts again from the books when
+the card opens and leaves the plan as it was queued; it hands the data back untouched when it cannot (the company is gone, or
+the year moved on). Nothing queued or saved changes. The Net profit tile's note says only a change of sign, because its chip
+already draws the change. A y axis writes its ticks together (`formatTicks`, `axisMoney`): $5M, $10M, $2.5M, never $5.0M.
+
 The Year-End Desk (`yearEnd.ts`, `YearEndDesk.tsx`) sits above the book when two or more reports queue for one year: a
 "2 of 6" header, a chip for each company and one button, "Keep every plan", which keeps last year's plan rather than taking
 the suggested one. It is dormant in today's play, because one company is owner-run and one report queues a year; it is tested

@@ -1,6 +1,7 @@
 // Shows the head of the modal queue above everything: notices, choices, inputs and minigames.
 // Built-in tasks ('aiTask' modals) are never shown: the store resolves them on the spot.
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { reportDataNow } from '../../game/business/yearly'
 import { companyStrip } from '../../game/charts/books'
 import { getPerson, personAvatar, relationLabel } from '../../game/core'
 import { FLAGS, flagOn } from '../../game/flags'
@@ -298,19 +299,28 @@ function FieldInputCard({ modal }: { modal: InputModal }) {
   )
 }
 
-export function MinigameCard({ modal, batch = null }: { modal: MinigameModal; batch?: DeskBatch | null }) {
-  const Game = MINIGAMES[modal.game]
+export function MinigameCard({ modal: queued, batch = null }: { modal: MinigameModal; batch?: DeskBatch | null }) {
+  const Game = MINIGAMES[queued.game]
   const done = useRef(false)
   const onDone = (result: string) => {
     if (done.current) return
     done.current = true
-    finishMinigame(modal.id, result)
+    finishMinigame(queued.id, result)
   }
 
   // The company strip and the Year-End Desk (R1-C12): the annual report only, and only behind annualReport2. companyStrip and
   // reportsIn read the game and write nothing; the memos keep them from running again until the game changes.
   const game = useApp((s) => s.game)
-  const isReport = modal.game === 'annualReport'
+  const isReport = queued.game === 'annualReport'
+  // The report was written when the year closed and the queue is saved, but the card draws its numbers now, in the prices
+  // the player reads now. Its sentences (verdict, notes, market note, statement) are written again here from the books, so
+  // no figure on the card is in other prices than its chip names. Nothing queued or saved changes; reportDataNow hands the
+  // data back as it was when it cannot write it again.
+  const modal = useMemo(() => {
+    if (!isReport || !game) return queued
+    const data = reportDataNow(game, queued.data)
+    return data === queued.data ? queued : { ...queued, data }
+  }, [isReport, game, queued])
   const on = isReport && flagOn('annualReport2')
   const strip = useMemo(() => (on && game ? companyStrip(game) : undefined), [on, game])
   const reports = useMemo(() => (isReport && game ? reportsIn(game.queue) : []), [isReport, game])
