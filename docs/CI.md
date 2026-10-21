@@ -28,8 +28,13 @@ Useful commands: `node scripts/ci-shard.mjs --plan 4` (seconds and file counts p
 
 Five files are 45% of the run time, so each shard runs a slice of their seeds: `simulate`, `era-features`,
 `main-character-life`, `sector-story` and `anachronism`. They are the `split` list in `scripts/test-timings.json`, they
-import `./shard-kit`, and `ci-shard.mjs --verify` fails if the two ever disagree. The shard sets `SLICE=<i>/4` and
-`SLICE_DIR=test-slices`; the `aggregate` job sets `SLICE=merge`.
+use `test/shard-kit.ts`, and `ci-shard.mjs --verify` fails if the two ever disagree. The check goes by what a file does,
+not by how it spells the import: any other test file that imports the kit (`./shard-kit`, `../test/shard-kit`, with or
+without `.js`, a `require` or a dynamic `import()`) or names `readSlice`, `seedSlice`, `ownedHere`, `recordSlice`,
+`mergedSlices` or `process.env.SLICE` is reported until it is in `split`, because a sliced file outside `split` would play
+one quarter of its seeds and the merge step would never run it. `shard-kit.test.ts` and `ci-shard.test.ts` are the
+two files that mention the kit on purpose. The shard sets `SLICE=<i>/4` and `SLICE_DIR=test-slices`; the `aggregate` job
+sets `SLICE=merge`.
 
 | `SLICE` | What the file does |
 |---|---|
@@ -60,6 +65,14 @@ The committed numbers start as an estimate. After a green run, and again when ma
 
 Commit `scripts/test-timings.json`. The update sums a file over the reports, keeps files no report mentions, and
 drops files that no longer exist.
+
+## Re-runs and cancelling
+
+A newer run of the same branch cancels the older one, except on `main`. The group is the event plus the PR number (or
+the branch name for a push), so the `push` run and the `pull_request` run of a release branch do not cancel each other,
+and two fork PRs that both call their branch `main` stay apart. A shard uploads its artifact with `overwrite: true`, so
+Re-run failed jobs can repeat one shard in the same run; the `aggregate` job still sees one `shard-N` per shard, from
+the latest attempt.
 
 ## The required check
 

@@ -172,6 +172,67 @@ describe('planShards and verifyCoverage', () => {
     expect(verifyCoverage(2, noTimings)).toHaveLength(1)
     expect(verifyCoverage(0)).toHaveLength(1)
   })
+
+  // A sliced file that the check cannot see would run one quarter of its seeds in the shards, and the merge step never
+  // runs a file that is not in split. So the check goes by what the file does, not by how it spells the import.
+  it('finds a file that uses the seed-slice kit however it spells the import or the reader', () => {
+    const timings = (split: string[]): Timings => ({ v: 1, source: 'test', files: {}, split })
+    const plain = 'export {}\n'
+    const spellings: Record<string, string> = {
+      'a parent path': "import { seedSlice } from '../test/shard-kit'\nexport const s = seedSlice([1], 'k')\n",
+      'a .js extension': "import { seedSlice } from './shard-kit.js'\nexport const s = seedSlice([1], 'k')\n",
+      'a .ts extension': "import { seedSlice } from './shard-kit.ts'\nexport const s = seedSlice([1], 'k')\n",
+      'a side-effect import': "import './shard-kit'\nexport {}\n",
+      'a re-export': "export * from './shard-kit'\n",
+      'a dynamic import': "const kit = await import('./shard-kit')\nexport const s = kit.seedSlice([1], 'k')\n",
+      'a require': "const kit = require('./shard-kit')\nexport {}\n",
+      'a multi-line import': "import {\n  readSlice,\n  seedSlice,\n} from '../test/shard-kit.js'\nexport {}\n",
+      'readSlice with no import in sight': 'const spec = globalThis.kit.readSlice()\nexport {}\n',
+      'ownedHere': "export const own = globalThis.kit.ownedHere('k')\n",
+      'recordSlice': "globalThis.kit.recordSlice('k', [])\nexport {}\n",
+      'mergedSlices': "export const rows = globalThis.kit.mergedSlices('k')\n",
+      'process.env.SLICE': "export const slice = process.env.SLICE ?? ''\n",
+    }
+    for (const [how, code] of Object.entries(spellings)) {
+      const unlisted = fixture({ 'test/a.test.ts': code, 'test/b.test.ts': plain }, timings([]))
+      const found = verifyCoverage(3, unlisted).join('\n')
+      expect(found, how).toMatch(/test\/a\.test\.ts .*but is not in split/)
+      expect(found, how).not.toMatch(/test\/b\.test\.ts/)
+      const listed = fixture({ 'test/a.test.ts': code, 'test/b.test.ts': plain }, timings(['test/a.test.ts']))
+      expect(verifyCoverage(3, listed), how).toEqual([])
+    }
+  })
+
+  it('names the reader when the file never imports the kit by its name', () => {
+    const timings: Timings = { v: 1, source: 'test', files: {}, split: [] }
+    const root = fixture({ 'test/a.test.ts': 'const s = globalThis.kit.recordSlice("k", [])\nexport {}\n' }, timings)
+    expect(verifyCoverage(2, root).join('\n')).toMatch(/test\/a\.test\.ts uses the seed-slice kit \(recordSlice\) but is not in split/)
+  })
+
+  it('counts a split file that spells the import some other way as a user of the kit', () => {
+    const timings: Timings = { v: 1, source: 'test', files: {}, split: ['test/a.test.ts', 'test/b.test.ts'] }
+    const root = fixture(
+      { 'test/a.test.ts': "import { seedSlice } from '../test/shard-kit'\nexport {}\n", 'test/b.test.ts': 'export const none = 1\n' },
+      timings,
+    )
+    const found = verifyCoverage(2, root).join('\n')
+    expect(found).not.toMatch(/test\/a\.test\.ts/)
+    expect(found).toMatch(/test\/b\.test\.ts is in split but does not import \.\/shard-kit/)
+  })
+
+  it('leaves the kit tests and a plain mention of the module alone', () => {
+    const timings: Timings = { v: 1, source: 'test', files: {}, split: [] }
+    const mentions = "import { readSlice } from '../test/shard-kit'\nexport const s = readSlice()\n"
+    const root = fixture(
+      {
+        'test/shard-kit.test.ts': mentions,
+        'test/ci-shard.test.ts': "const fixture = \"import { slice } from './shard-kit'\"\n" + mentions,
+        'test/notes.test.ts': '// the slice kit lives in test/shard-kit.ts and this file does not use it\nexport {}\n',
+      },
+      timings,
+    )
+    expect(verifyCoverage(3, root).join('\n')).not.toMatch(/shard-kit\.test|ci-shard\.test/)
+  })
 })
 
 describe('parseTimingReport', () => {
@@ -422,5 +483,48 @@ describe('the CI workflow', () => {
     expect(gate).toContain('if: ${{ always() }}')
     expect(gate).toContain('needs: [checks, fast, test, aggregate]')
     expect(yml.split('\n').some((line) => /\bnpm (run )?test\b/.test(line))).toBe(false)
+  })
+
+  // The group a run lands in, worked out from the workflow's own expression and a small context. `a || b` takes the
+  // first non-empty name, as GitHub does.
+  const groupFor = (ctx: Record<string, string>): string => {
+    const expr = /^ {2}group: (.+)$/m.exec(yml)?.[1] ?? ''
+    return expr.replace(/\$\{\{([^}]+)\}\}/g, (_all, e: string) => e.split('||').map((name) => ctx[name.trim()] ?? '').find((v) => v !== '') ?? '')
+  }
+  const push = (ref: string): Record<string, string> => ({ 'github.event_name': 'push', 'github.ref_name': ref, 'github.ref': `refs/heads/${ref}` })
+  const pull = (number: number, head: string): Record<string, string> => ({
+    'github.event_name': 'pull_request',
+    'github.event.pull_request.number': String(number),
+    'github.head_ref': head,
+    'github.ref_name': `${number}/merge`,
+    'github.ref': `refs/pull/${number}/merge`,
+  })
+
+  it('gives the push run and the pull_request run of one branch separate concurrency groups', () => {
+    // Same branch, same commit: one run must not cancel the other, or the cancelled run's gate goes red.
+    expect(groupFor(push('release/v4.1.0'))).not.toBe(groupFor(pull(7, 'release/v4.1.0')))
+    // A fork PR whose head branch is called main is not the push run of main.
+    expect(groupFor(pull(9, 'main'))).not.toBe(groupFor(push('main')))
+    // Two PRs from forks that both call their branch main do not cancel each other.
+    expect(groupFor(pull(9, 'main'))).not.toBe(groupFor(pull(10, 'main')))
+  })
+
+  it('keeps a newer run of the same branch in the group of the older one, so it still cancels it', () => {
+    expect(groupFor(push('release/v4.1.0'))).toBe(groupFor(push('release/v4.1.0')))
+    expect(groupFor(pull(7, 'release/v4.1.0'))).toBe(groupFor(pull(7, 'release/v4.1.0')))
+    expect(groupFor(push('release/v4.1.0'))).not.toBe(groupFor(push('release/v4.1.1')))
+    expect(groupFor(push('release/v4.1.0'))).not.toBe('')
+    // main never cancels a run in progress.
+    expect(yml).toContain("cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}")
+  })
+
+  it('lets a re-run of one failed shard upload its artifact again', () => {
+    // upload-artifact v4 refuses a second artifact of the same name in a run unless it may overwrite.
+    const test = yml.slice(yml.indexOf('\n  test:\n'), yml.indexOf('\n  aggregate:\n'))
+    const upload = test.slice(test.indexOf('actions/upload-artifact@v4'))
+    expect(upload).toContain('name: shard-${{ matrix.shard }}')
+    expect(upload).toMatch(/^ {10}overwrite: true$/m)
+    // Still one artifact per shard for the aggregate job to merge.
+    expect(yml).toContain('pattern: shard-*')
   })
 })

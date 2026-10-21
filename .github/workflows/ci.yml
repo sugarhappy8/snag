@@ -8,8 +8,11 @@ on:
     branches: [main, 'release/**']
   workflow_dispatch:
 
+# One group per event and branch (or PR): the push run and the pull_request run of a release branch are not
+# the same run, and a newer one must not cancel the other (its gate would read red). A PR is told apart by its
+# number, so two fork PRs that both call their branch main stay apart.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref_name }}
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
@@ -85,6 +88,8 @@ jobs:
             test-slices
           if-no-files-found: ignore
           retention-days: 14
+          # Re-run failed jobs repeats this shard in the same run; v4 refuses a second artifact of the same name.
+          overwrite: true
 
   aggregate:
     name: Merge sliced results

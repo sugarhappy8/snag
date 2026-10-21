@@ -33,8 +33,17 @@ export const FILE_OVERHEAD_SECONDS = 1.5
 
 const FAST_MARKER = '// ci: fast'
 const FAST_WINDOW_LINES = 10
-// A real import statement at the start of a line (a string that quotes one, as a fixture does, is not an import).
-const SHARD_KIT_IMPORT = /^[ \t]*import\s[^'"`;]*?['"]\.\/shard-kit(?:\.ts)?['"]/m
+// The seed-slice kit (test/shard-kit.ts) is spelled many ways: './shard-kit', '../test/shard-kit', './shard-kit.js', a
+// dynamic import() or a require(). So a file counts as using it by what it does, not by one spelling.
+const KIT_MODULE = String.raw`['"\`](?:[^'"\`\n]*/)?shard-kit(?:\.[cm]?[jt]s)?['"\`]`
+// A real import or re-export statement at the start of a line (a string that quotes one, as a fixture does, is not one),
+// or an import() or require() call anywhere.
+const SHARD_KIT_IMPORT = new RegExp(String.raw`^[ \t]*(?:import|export)\s[^'"\`;]*?${KIT_MODULE}|\b(?:import|require)\s*\(\s*${KIT_MODULE}`, 'm')
+// The kit's readers, and the variable that carries the slice. A file that names one runs only slice i of its seeds in
+// shard i, so it has to be in split, or three quarters of its seeds are never played.
+const SHARD_KIT_NAMES = /\b(?:readSlice|seedSlice|ownedHere|recordSlice|mergedSlices)\b|\bprocess\.env\.SLICE\b/
+// The tests of the kit itself and of this planner write all of the above on purpose.
+const SHARD_KIT_TESTS = new Set(['test/shard-kit.test.ts', 'test/ci-shard.test.ts'])
 const TOTAL_ESTIMATE_SECONDS = 3869
 // Measured at v4.0.2 (digest K, worker-seconds). The other files share the remaining 2,142 seconds.
 const PINNED_SECONDS = {
@@ -148,8 +157,10 @@ export function shardLoads(plan, t, count) {
   return plan.map((shard) => sum(shard.map((f) => (weightOf(t, f) + FILE_OVERHEAD_SECONDS) / (split.has(f) ? count : 1))))
 }
 
-function importsShardKit(root, file) {
-  return SHARD_KIT_IMPORT.test(readFileSync(join(root, file), 'utf8'))
+/** How a test file reaches the seed-slice kit: { imports: it imports the module, name: the first reader it names or null }. */
+function shardKitUse(root, file) {
+  const text = readFileSync(join(root, file), 'utf8')
+  return { imports: SHARD_KIT_IMPORT.test(text), name: SHARD_KIT_NAMES.exec(text)?.[0] ?? null }
 }
 
 /** Every reason the shards would skip or repeat a test file. An empty list means CI runs each file as intended. */
@@ -190,9 +201,12 @@ export function verifyCoverage(count, root = ROOT) {
     if (where.length !== want) problems.push(`${f} is in ${where.length} shard${where.length === 1 ? '' : 's'}, expected ${want}`)
   }
   for (const f of all) {
-    const imports = importsShardKit(root, f)
+    if (SHARD_KIT_TESTS.has(f)) continue
+    const { imports, name } = shardKitUse(root, f)
+    const uses = imports || name !== null
     if (imports && !split.has(f)) problems.push(`${f} imports ./shard-kit but is not in split`)
-    if (!imports && split.has(f)) problems.push(`${f} is in split but does not import ./shard-kit`)
+    else if (name !== null && !split.has(f)) problems.push(`${f} uses the seed-slice kit (${name}) but is not in split`)
+    if (!uses && split.has(f)) problems.push(`${f} is in split but does not import ./shard-kit`)
   }
   return problems
 }
