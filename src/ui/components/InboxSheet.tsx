@@ -90,7 +90,15 @@ export function InboxSheet({ onClose, onOpenLink }: InboxSheetProps): ReactEleme
                 const isNew = fresh.has(item.id)
                 return (
                   <li key={item.id} className={isNew ? 'inbox-row is-new' : 'inbox-row'}>
-                    {isNew ? <span className="sr-only">New</span> : null}
+                    {isNew ? (
+                      <>
+                        {/* The word for a screen reader, and the same word as a badge for everyone else: the border colour alone is not enough. */}
+                        <span className="sr-only">New</span>
+                        <span className="inbox-new" aria-hidden>
+                          New
+                        </span>
+                      </>
+                    ) : null}
                     <span className="inbox-text">{item.t}</span>
                     {link !== undefined && onOpenLink ? (
                       <button type="button" className="btn btn-ghost inbox-open" onClick={() => onOpenLink(link)}>

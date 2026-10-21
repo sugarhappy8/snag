@@ -223,6 +223,31 @@ describe('digestTone, digestTitle and digestRows', () => {
     expect(rows[0].title).toBe('A long title that is never cut')
     expect(rows[0].text).toBe('A long text. '.repeat(30).trim())
   })
+
+  it('digestRows carries the tone in a glyph and in words, even for a notice with an emoji of its own', () => {
+    const rows = digestRows([
+      N('a', { tone: 'good' }),
+      N('b', { tone: 'bad', emoji: '💸' }),
+      N('c', { tone: 'good', emoji: '🎓' }),
+      N('d', { tone: 'event', emoji: '🎉' }),
+      N('e', { tone: 'neutral', emoji: '🎓' }),
+      N('f', { emoji: '🎓' }),
+      N('g', { tone: 'bad' }),
+      N('h', { tone: 'good', emoji: '😄' }),
+    ])
+    // A glyph shows only when the row emoji is something else: with the tone emoji already in the slot it would repeat.
+    expect(rows.map((r) => r.mark)).toEqual(['', '😟', '😄', '📣', '', '', '', ''])
+    expect(rows.map((r) => r.toneLabel)).toEqual(['Good news', 'Bad news', 'Good news', 'Event', '', '', 'Bad news', 'Good news'])
+    // A row never loses its own emoji to the mark.
+    expect(rows.map((r) => r.emoji)).toEqual(['😄', '💸', '🎓', '🎉', '🎓', '🎓', '😟', '😄'])
+  })
+
+  it('the tone words pass the voice rules and have no dash', () => {
+    for (const row of digestRows([N('a', { tone: 'good' }), N('b', { tone: 'bad' }), N('c', { tone: 'event' })])) {
+      expect(unitFlags(row.toneLabel, 'tooltip'), row.toneLabel).toEqual([])
+      expect(row.toneLabel).not.toMatch(/[\u2013\u2014]/)
+    }
+  })
 })
 
 describe('DigestCard', () => {
@@ -248,6 +273,34 @@ describe('DigestCard', () => {
     // The emoji is decoration (the tone is also in the row emoji, never colour alone).
     expect(html).toContain('<span class="digest-emoji" aria-hidden="true">😄</span>')
     expect(html).toContain('📣')
+  })
+
+  it('says the tone of a row in more than its border colour, whatever emoji the notice brings', () => {
+    const html = render([
+      N('a', { tone: 'bad', emoji: '💸', title: 'Debt Collectors' }),
+      N('b', { tone: 'good', emoji: '👶', title: 'Baby Brother!' }),
+      N('c', { emoji: '🎓', title: 'Graduation' }),
+    ])
+    const rowOf = (title: string): string => html.split('<li ').find((chunk) => chunk.includes(`>${title}<`)) ?? ''
+    const bad = rowOf('Debt Collectors')
+    expect(bad).toContain('<span class="sr-only">Bad news: </span>')
+    expect(bad).toContain('<span class="digest-mark" aria-hidden="true">😟</span>')
+    expect(bad).toContain('<span class="digest-emoji" aria-hidden="true">💸</span>')
+    const good = rowOf('Baby Brother!')
+    expect(good).toContain('<span class="sr-only">Good news: </span>')
+    expect(good).toContain('<span class="digest-mark" aria-hidden="true">😄</span>')
+    expect(good).toContain('<span class="digest-emoji" aria-hidden="true">👶</span>')
+    // A neutral row has nothing to add.
+    const plain = rowOf('Graduation')
+    expect(plain).not.toContain('sr-only')
+    expect(plain).not.toContain('digest-mark')
+  })
+
+  it('does not repeat the tone emoji when it is already the row emoji', () => {
+    const html = render([N('a', { tone: 'bad', title: 'Rough day' }), N('b', { tone: 'good', title: 'Good day' })])
+    expect(count(html, 'digest-mark')).toBe(0)
+    expect(html).toContain('<span class="sr-only">Bad news: </span>')
+    expect(html).toContain('<span class="sr-only">Good news: </span>')
   })
 
   it('tone-bad when any item is bad, tone-good when all are good, plain otherwise', () => {
@@ -408,7 +461,7 @@ describe('voice and styles', () => {
 
   it('notices.css has the digest rules, and the new files carry no en or em dash', () => {
     const css = readFileSync(new URL('../src/ui/styles/notices.css', import.meta.url), 'utf8')
-    for (const rule of ['.digest-list', '.digest-item', '.digest-title', '.digest-text']) expect(css, rule).toContain(rule)
+    for (const rule of ['.digest-list', '.digest-item', '.digest-title', '.digest-text', '.digest-mark']) expect(css, rule).toContain(rule)
     for (const tone of ['good', 'bad', 'event']) expect(css, tone).toMatch(new RegExp(`\\.digest-item\\.tone-${tone}`))
     expect(css).not.toMatch(/[\u2013\u2014]/)
     const model = readFileSync(new URL('../src/ui/components/noticeModel.ts', import.meta.url), 'utf8')

@@ -48,9 +48,24 @@ export function digestTitle(n: number): string {
   return `${n} updates`
 }
 
+/** The words for a row's tone, read out by a screen reader. A neutral row has none. */
+const TONE_LABEL: Partial<Record<Tone, string>> = {
+  good: 'Good news',
+  bad: 'Bad news',
+  event: 'Event',
+}
+
 export interface DigestRow {
   id: string
+  /** The notice's own emoji, or the emoji of its tone when it has none. */
   emoji: string
+  /**
+   * The emoji of the row's tone when the row emoji is something else, so the tone is a visible glyph and not only the
+   * border colour; '' when the row emoji already is that glyph, or the tone is neutral.
+   */
+  mark: string
+  /** 'Good news', 'Bad news' or 'Event' for a screen reader; '' for a neutral row. */
+  toneLabel: string
   title: string
   text: string
   tone: Tone
@@ -58,13 +73,19 @@ export interface DigestRow {
 
 /** One row per notice, in queue order, with the text in full. */
 export function digestRows(items: readonly NoticeModal[]): DigestRow[] {
-  return items.map((m) => ({
-    id: m.id,
-    emoji: m.emoji ?? (m.tone ? TONE_EMOJI[m.tone] : undefined) ?? '',
-    title: m.title,
-    text: m.text,
-    tone: m.tone ?? 'neutral',
-  }))
+  return items.map((m) => {
+    const toneEmoji = m.tone ? TONE_EMOJI[m.tone] : undefined
+    const emoji = m.emoji ?? toneEmoji ?? ''
+    return {
+      id: m.id,
+      emoji,
+      mark: toneEmoji !== undefined && toneEmoji !== emoji ? toneEmoji : '',
+      toneLabel: (m.tone ? TONE_LABEL[m.tone] : undefined) ?? '',
+      title: m.title,
+      text: m.text,
+      tone: m.tone ?? 'neutral',
+    }
+  })
 }
 
 export type HeadPlan = { kind: 'digest'; items: NoticeModal[] } | { kind: 'single'; modal: ModalItem } | { kind: 'none' }

@@ -271,7 +271,23 @@ describe('new rows', () => {
     setInbox(stateOf(items(4), { total: 4, seen: 2 }))
     const out = html()
     expect(count(out, 'sr-only')).toBe(2)
-    expect(count(out, '>New<')).toBe(2)
+    expect(count(out, '<span class="sr-only">New</span>')).toBe(2)
+  })
+
+  it('show the word New to a sighted reader too, hidden from a screen reader so it is not heard twice', () => {
+    setInbox(stateOf(items(4), { total: 4, seen: 2 }))
+    const out = html()
+    expect(count(out, '<span class="inbox-new" aria-hidden="true">New</span>')).toBe(2)
+    // The badge sits inside the new rows only, ahead of the text.
+    const newRows = out.split('<li ').filter((chunk) => chunk.includes('is-new'))
+    expect(newRows).toHaveLength(2)
+    for (const chunk of newRows) {
+      expect(chunk.indexOf('inbox-new')).toBeGreaterThan(-1)
+      expect(chunk.indexOf('inbox-new')).toBeLessThan(chunk.indexOf('inbox-text'))
+    }
+    const seenRows = out.split('<li ').slice(1).filter((chunk) => !chunk.includes('is-new'))
+    expect(seenRows).toHaveLength(2)
+    for (const chunk of seenRows) expect(chunk).not.toContain('inbox-new')
   })
 
   it('are none when everything was seen', () => {
@@ -403,7 +419,7 @@ describe('voice and styles', () => {
 
   it('notices.css has the inbox rules', () => {
     expect(css).toContain('/* Inbox sheet')
-    for (const rule of ['.inbox-group', '.inbox-heading', '.inbox-row', '.inbox-row.is-new', '.inbox-open', '.inbox-footer']) {
+    for (const rule of ['.inbox-group', '.inbox-heading', '.inbox-row', '.inbox-row.is-new', '.inbox-new', '.inbox-open', '.inbox-footer']) {
       expect(inboxCss, rule).toContain(rule)
     }
   })

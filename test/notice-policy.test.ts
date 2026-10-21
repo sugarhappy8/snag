@@ -3,6 +3,7 @@
 // figure. Everything the policy decides is pure, so these tests walk a table (test/notice-table.ts, shared with the
 // store and the acceptance sweep) and freeze the inputs to prove nothing is written.
 import { describe, expect, it } from 'vitest'
+import { formatMoney } from '../src/game/core'
 import { HEALTH_RE, LARGE_FIGURE, LEGAL_RE, largestFigure, neverRoute, routesToInbox } from '../src/game/notice-policy'
 import type { ChoiceModal, InputModal, MinigameModal, AiTaskModal, NoticeModal } from '../src/game/types'
 import { deepFreeze } from './fuzz-kit'
@@ -16,6 +17,13 @@ const HEALTH_WORDS = [
   'addiction', 'therapy', 'therapist', 'depressed', 'depression', 'anxiety', 'panic', 'medic', 'medical', 'medication',
   'medicine', 'pill', 'pills', 'pain', 'hurt', 'accident', 'ambulance', 'emergency', 'died', 'dies', 'death', 'dead',
   'dying', 'funeral',
+  // Plurals and other endings of the same words, and the obvious words the first list missed.
+  'doctors', 'hospitals', 'hospitalized', 'hospitalised', 'hospitalization', 'nurses', 'surgeries', 'surgeons', 'cancers',
+  'deaths', 'deathbed', 'accidents', 'killed', 'kills', 'killing', 'killer', 'kill', 'die', 'diseases', 'diseased', 'illnesses',
+  'infections', 'viruses', 'fevers', 'overdosed', 'overdoses', 'overdosing', 'stroke', 'strokes', 'heart', 'hearts', 'suicide',
+  'suicidal', 'seizure', 'seizures', 'coma', 'bleeding', 'bleeds', 'bled', 'fatal', 'fatally', 'deadly', 'lethal', 'tumor', 'tumors',
+  'tumour', 'chemo', 'chemotherapy', 'hospice', 'funerals', 'harm', 'harmed', 'harms', 'harming', 'painful', 'pains',
+  'hurting', 'hurts', 'ambulances', 'emergencies', 'pregnancies', 'addicts', 'addicted', 'depressed', 'medicines',
 ]
 
 /** The same for the legal rule. */
@@ -25,6 +33,14 @@ const LEGAL_WORDS = [
   'legal', 'illegal', 'crime', 'criminal', 'investigate', 'investigated', 'investigation', 'fine', 'fined', 'fines',
   'penalty', 'probation', 'parole', 'bail', 'audit', 'audited', 'fraud', 'charged', 'indicted', 'indictment', 'subpoena',
   'deport', 'deported', 'deportation', 'immigration',
+  // Plurals and other endings, and the obvious words the first list missed.
+  'lawsuits', 'lawyers', 'judges', 'judged', 'judgement', 'trials', 'crimes', 'attorneys', 'courts', 'courtroom',
+  'jailed', 'jailing', 'prisoner', 'prisoners', 'prisons', 'sentences', 'sentencing', 'penalties', 'warrants', 'criminals',
+  'convicts', 'frauds', 'fraudulent', 'murder', 'murdered', 'murders', 'murderer', 'assault', 'assaulted', 'assaults',
+  'theft', 'thefts', 'thief', 'thieves', 'robbed', 'robbery', 'robber', 'robbers', 'robbing', 'burglar', 'burglary',
+  'burglars', 'stole', 'stolen', 'steal', 'steals', 'stealing', 'evict', 'evicted', 'eviction', 'evictions', 'evicting',
+  'bankrupt', 'bankruptcy', 'bankruptcies', 'foreclosed', 'foreclosure', 'repossessed', 'repossession', 'policeman',
+  'policemen', 'policewoman', 'policewomen', 'verdict', 'juror', 'jurors', 'judgment',
 ]
 
 describe('largestFigure', () => {
@@ -45,8 +61,44 @@ describe('largestFigure', () => {
     ['Rp 800,000', 800_000],
     ['in 2026, 3 people', 2026],
     ['1 million', 1_000_000],
+    ['a 3 trillion deal', 3e12],
   ] as [string, number][])('%j is %d', (text, expected) => {
     expect(largestFigure(text)).toBe(expected)
+  })
+
+  // formatMoney spells these out from a quadrillion up (core.ts BIG_UNITS), so the policy has to read them.
+  it.each([
+    ['2 quadrillion', 2e15],
+    ['3 quintillion', 3e18],
+    ['4 sextillion', 4e21],
+    ['5 septillion', 5e24],
+    ['61 octillion pengő', 6.1e28],
+    ['7 nonillion', 7e30],
+    ['1.5 Quadrillion', 1.5e15],
+    ['$2.5 QUINTILLION', 2.5e18],
+  ] as [string, number][])('%j is about %d', (text, expected) => {
+    // Multiplying by 1e24 and the like is not exact, so the check is on the ratio.
+    expect(largestFigure(text) / expected).toBeCloseTo(1, 9)
+  })
+
+  it('reads an unlisted number word that ends in illion as a large figure', () => {
+    for (const text of ['It was 5 zillion', 'About 2 decillion pengő', 'a 9 bazillion fine']) {
+      expect(largestFigure(text), text).toBeGreaterThanOrEqual(LARGE_FIGURE)
+    }
+  })
+
+  it('does not take an ordinary word after a number for a unit', () => {
+    for (const text of ['5 minutes', '12 players', '7 kids', '3 missions', '2 stallions', '4 Tuesdays', '8 big ones', '6 Bs and 2 Ms apart']) {
+      expect(largestFigure(text), text).toBeLessThan(LARGE_FIGURE)
+    }
+  })
+
+  it('reads every amount the game itself writes, however large (formatMoney)', () => {
+    for (const n of [1e12, 9.9e14, 1e15, 3.3e16, 1e18, 4e19, 1e21, 8e22, 1e24, 6.1e27, 1e30, 5e31, 1e33, 7e40, 1e60]) {
+      const text = formatMoney(n)
+      expect(largestFigure(text), `${n} is written ${text}`).toBeGreaterThanOrEqual(LARGE_FIGURE)
+      expect(neverRoute({ title: 'A windfall', text: `You earned ${text}.` }), text).toBe('money')
+    }
   })
 
   it('takes the biggest number in the text', () => {

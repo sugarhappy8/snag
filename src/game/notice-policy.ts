@@ -18,19 +18,32 @@ function wholeWords(list: string): RegExp {
   return new RegExp(`\\b(?:${parts.join('|')})\\b`, 'i')
 }
 
+// The lists name the stems of the words, since a notice says "doctors" and "hospitalized" as often as "doctor" and
+// "hospital". A star lets a word take any ending; a word with no star is that word only, where a star would pull in
+// an everyday word that has nothing to do with it (pain and paint, dead and deadline, court and courtesy, warrant and
+// warranty, harm and harmony, accident and accidentally, legal and legally).
 export const HEALTH_RE: RegExp = wholeWords(
-  'health sick sickness ill illness disease diagnos* hospital surgery surgeon doctor nurse injur* wound* cancer ' +
-    'infection infected flu fever virus symptom* pregnan* miscarriage overdose rehab addict* therap* depress* ' +
-    'anxiety panic medic* pill* pain hurt accident ambulance emergency died dies death dead dying funeral',
+  'health sick* ill illness* disease* diagnos* hospital* hospice surgery surgeries surgeon* doctor* nurse* injur* wound* ' +
+    'cancer* infection* infected flu fever* virus* symptom* pregnan* miscarriage overdos* rehab addict* therap* depress* ' +
+    'anxiety panic medic* pill* pain pains painful hurt* accident accidents ambulance* emergenc* die died dies dead deadly ' +
+    'dying death* fatal* lethal funeral* kill* stroke strokes heart hearts suicid* seizure* coma bleed* bled tumor* tumour* ' +
+    'chemo* harm harms harmed harming',
 )
 
 export const LEGAL_RE: RegExp = wholeWords(
-  'arrest* police cop cops court judge jury lawsuit sue sued suing trial convict* prison jail sentence* warrant ' +
-    'lawyer attorney legal illegal crime criminal investigat* fine fined fines penalty probation parole bail audit* ' +
-    'fraud charged indict* subpoena deport* immigration',
+  'arrest* police policeman policemen policewoman policewomen cop cops court courts courtroom judg* jury juror* verdict ' +
+    'lawsuit* sue sued suing trial* convict* prison* jail* sentenc* warrant warrants lawyer* attorney* legal illegal crime ' +
+    'crimes crimin* investigat* fine fined fines penalt* probation parole bail audit* fraud* charged indict* subpoena deport* ' +
+    'immigration murder* assault* theft* thie* robbed robbery robber* robbing burglar* burglary steal steals stealing stole ' +
+    'stolen evict* bankrupt* foreclos* repossess*',
 )
 
-const FIGURE_RE = /(\d[\d,]*(?:\.\d+)?)(?:\s?(K|M|B|T|thousand|million|billion|trillion)\b)?/gi
+const NUMBER_WORDS =
+  'thousand|million|billion|trillion|quadrillion|quintillion|sextillion|septillion|octillion|nonillion'
+
+// A number, then optionally a unit: K, M, B or T, or a number word. formatMoney spells the number words out from a
+// quadrillion up, so the list runs to nonillion; any other word ending in illion after a number is read as larger still.
+const FIGURE_RE = new RegExp(`(\\d[\\d,]*(?:\\.\\d+)?)(?:\\s?(K|M|B|T|${NUMBER_WORDS}|[a-z]*illion)\\b)?`, 'gi')
 
 const SCALE: Readonly<Record<string, number>> = {
   k: 1e3,
@@ -41,14 +54,23 @@ const SCALE: Readonly<Record<string, number>> = {
   billion: 1e9,
   t: 1e12,
   trillion: 1e12,
+  quadrillion: 1e15,
+  quintillion: 1e18,
+  sextillion: 1e21,
+  septillion: 1e24,
+  octillion: 1e27,
+  nonillion: 1e30,
 }
+
+/** An unlisted number word ending in illion (decillion, zillion): past every word the game writes. */
+const BEYOND = 1e33
 
 /** The biggest number in a text in display units ("$1.2M" is 1,200,000, "12,500" is 12500); 0 when there is none. */
 export function largestFigure(text: string): number {
   let best = 0
   for (const m of String(text).matchAll(FIGURE_RE)) {
     let n = Number.parseFloat((m[1] ?? '').replace(/,/g, ''))
-    const scale = m[2] === undefined ? undefined : SCALE[m[2].toLowerCase()]
+    const scale = m[2] === undefined ? undefined : (SCALE[m[2].toLowerCase()] ?? BEYOND)
     if (scale !== undefined) n = Math.round(n * scale)
     if (!Number.isFinite(n)) n = Number.MAX_SAFE_INTEGER
     if (n > best) best = n

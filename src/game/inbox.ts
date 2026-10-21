@@ -40,16 +40,17 @@ function validLink(v: unknown): v is string {
   return typeof v === 'string' && v.length <= INBOX_LINK_MAX && LINK_RE.test(v)
 }
 
+/** A text without a trailing high surrogate: a cut between the two halves of a pair would leave one alone. */
+function dropHalfPair(t: string): string {
+  const last = t.charCodeAt(t.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? t.slice(0, -1) : t
+}
+
 /** A text trimmed and cut to the row limit (never in the middle of a surrogate pair); '' when it is not a string. */
 function cleanText(v: unknown): string {
   if (typeof v !== 'string') return ''
   let t = v.trim()
-  if (t.length > INBOX_TEXT_MAX) {
-    t = t.slice(0, INBOX_TEXT_MAX)
-    const last = t.charCodeAt(t.length - 1)
-    if (last >= 0xd800 && last <= 0xdbff) t = t.slice(0, -1)
-    t = t.trimEnd()
-  }
+  if (t.length > INBOX_TEXT_MAX) t = dropHalfPair(t.slice(0, INBOX_TEXT_MAX)).trimEnd()
   return t
 }
 
@@ -109,7 +110,8 @@ export function clipInboxText(title: string, text: string): string {
   if (s.length <= INBOX_TEXT_MAX) return s
   const room = INBOX_TEXT_MAX - 3
   const space = s.lastIndexOf(' ', room)
-  const cut = space >= room / 2 ? s.slice(0, space) : s.slice(0, room)
+  // The hard cut can land between the two halves of an emoji; the cut at a space never does.
+  const cut = space >= room / 2 ? s.slice(0, space) : dropHalfPair(s.slice(0, room))
   return `${cleanText(cut)}...`
 }
 

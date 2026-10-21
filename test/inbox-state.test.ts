@@ -376,6 +376,40 @@ describe('clipInboxText', () => {
       expect(out.length, String(n)).toBeLessThanOrEqual(INBOX_TEXT_MAX)
     }
   })
+
+  // A lone half of an emoji renders as a replacement character, so a cut must never split a pair.
+  const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/
+
+  it('never leaves half an emoji when the hard cut lands inside a pair', () => {
+    // 'Title: ' is 7 characters, so 149 more put the first emoji's high half at index 156, the last one before the cut at 157.
+    const out = clipInboxText('Title', `${'a'.repeat(149)}\u{1F604}\u{1F604}${'b'.repeat(50)}`)
+    expect(out).not.toMatch(LONE_SURROGATE)
+    expect(out.endsWith('...')).toBe(true)
+    expect(out.length).toBeLessThanOrEqual(INBOX_TEXT_MAX)
+    expect(out.startsWith(`Title: ${'a'.repeat(149)}`)).toBe(true)
+  })
+
+  it('keeps a whole emoji when the hard cut falls just after it', () => {
+    const out = clipInboxText('Title', `${'a'.repeat(148)}\u{1F604}${'b'.repeat(50)}`)
+    expect(out).not.toMatch(LONE_SURROGATE)
+    expect(out).toContain('\u{1F604}')
+    expect(out.length).toBeLessThanOrEqual(INBOX_TEXT_MAX)
+  })
+
+  it('has no lone half in any cut of a long run of emoji', () => {
+    for (let pad = 0; pad < 6; pad++) {
+      const out = clipInboxText('T', `${'x'.repeat(140 + pad)}${'\u{1F604}'.repeat(40)}`)
+      expect(out, String(pad)).not.toMatch(LONE_SURROGATE)
+      expect(out.length, String(pad)).toBeLessThanOrEqual(INBOX_TEXT_MAX)
+    }
+  })
+
+  it('a row made from the clipped text passes the writer unchanged', () => {
+    const g = makeTestGame(1)
+    const t = clipInboxText('Title', `${'a'.repeat(149)}\u{1F604}\u{1F604}${'b'.repeat(50)}`)
+    pushInbox(g, [{ id: 'e1', y: 2026, a: 30, t }])
+    expect(readInbox(g).items.map((r) => r.t)).toEqual([t])
+  })
 })
 
 describe('inboxItemOf', () => {

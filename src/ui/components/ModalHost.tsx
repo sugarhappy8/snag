@@ -41,6 +41,15 @@ function isTyping(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT' || target.isContentEditable
 }
 
+/**
+ * A ref callback that focuses its element without scrolling to it. React's autoFocus calls focus() with no options, so
+ * a card taller than the screen would open scrolled down to the button. The function is one stable reference, so React
+ * calls it when the button mounts and not again on a re-render, which would pull focus back from wherever it went.
+ */
+export function focusWithoutScroll(el: HTMLElement | null): void {
+  el?.focus({ preventScroll: true })
+}
+
 export function ModalHost() {
   const head = useApp((s) => s.game?.queue[0] ?? null)
   const game = useApp((s) => s.game)
@@ -116,7 +125,10 @@ export function NoticeCard({ modal }: { modal: NoticeModal }) {
   )
 }
 
-/** One card for a run of plain notices: every row in full, one OK for all. Tone is also in the row emoji, never colour alone. */
+/**
+ * One card for a run of plain notices: every row in full, one OK for all. A row's tone is never colour alone: it is the
+ * row emoji, or a small tone glyph beside the notice's own emoji, and the words for a screen reader.
+ */
 export function DigestCard({ items }: { items: readonly NoticeModal[] }): ReactElement {
   const rows = digestRows(items)
   const tone = digestTone(items)
@@ -145,16 +157,23 @@ export function DigestCard({ items }: { items: readonly NoticeModal[] }): ReactE
       <ul className="digest-list">
         {rows.map((r) => (
           <li key={r.id} className={`digest-item tone-${r.tone}`}>
+            {r.toneLabel ? <span className="sr-only">{r.toneLabel}: </span> : null}
             <span className="digest-emoji" aria-hidden>
               {r.emoji}
-            </span>{' '}
+            </span>
+            {r.mark ? (
+              <span className="digest-mark" aria-hidden>
+                {r.mark}
+              </span>
+            ) : null}{' '}
             <strong className="digest-title">{r.title}</strong>
             <span className="digest-text">{r.text}</span>
           </li>
         ))}
       </ul>
       <div className="popup-actions">
-        <button className="btn btn-primary btn-block" onClick={() => dismissNotices(ids)} autoFocus>
+        {/* Focused without scrolling: a tall digest must open at its title, with the first rows in view. */}
+        <button ref={focusWithoutScroll} className="btn btn-primary btn-block" onClick={() => dismissNotices(ids)}>
           OK
         </button>
       </div>
