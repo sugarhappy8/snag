@@ -22,7 +22,8 @@ import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { businessAssetView } from '../src/game/business'
 import { businessAssets } from '../src/game/business/state'
-import { bindMoneyContext, netWorth } from '../src/game/core'
+import { addMoney, bindMoneyContext, netWorth } from '../src/game/core'
+import { acctBalance, flowsOf, ledgerProblems, peekLedger, playerAcct } from '../src/game/kernel/ledger'
 import { continueAsChild, createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
 import { createPerson } from '../src/game/people'
@@ -569,6 +570,8 @@ function checkInvariants(ctx: Ctx, g: GameState, where: string): boolean {
     if (a.mortgage && !(a.mortgage.balance >= 0)) fail(`asset ${a.name} mortgage balance ${a.mortgage.balance}`)
   }
   for (const l of c.loans) if (!(Number.isFinite(l.balance) && l.balance >= -0.01)) fail(`loan ${l.kind} balance ${l.balance}`)
+  // The books: every account whole, the sum equal to mint less burn, every flow row netting to zero, every cap kept (R2-L5).
+  for (const p of ledgerProblems(g)) fail(`ledger: ${p}`)
   return ok
 }
 
@@ -764,6 +767,102 @@ export interface LifeStats {
   industries: string[]
   generations: number
   ms: number
+  /** The books of a life, from fuzzLife (R2-L5). Absent when the life could not be created. */
+  ledger?: LedgerStats
+}
+
+// ---------------------------------------------------------------------------
+// The books of a life (R2-L5): what the conservation probe reads. The ledger's own invariants run in checkInvariants after every
+// step; this part measures what the ledger cannot see by itself, a write to the player's cash that nothing booked.
+
+export interface LedgerStats {
+  /** The sum of every account at the end (it equals the cumulative mint less the cumulative burn). */
+  sum: number
+  /** Cumulative mint and burn by name at the end, every generation together. */
+  mint: Record<string, number>
+  burn: Record<string, number>
+  accounts: number
+  flowRows: number
+  /** Bookings since the ledger began. */
+  bookings: number
+  /** The largest mint per name between two year ends: one year of play (the year change falls inside ageUp, so a window can reach a little into the next ledger year). */
+  maxYearMint: Record<string, number>
+  /** Every reason that had a flow row at some year end, sorted. */
+  reasons: string[]
+  /** Total unbooked change of the player's cash over all generations, absolute (0 when every write was booked). */
+  drift: number
+  /** The first year drift appeared, how a surviving raw writer is found. */
+  firstDrift: { year: number; age: number; delta: number } | null
+}
+
+/** Where fuzzLife is when it looks at the books: a first look, a new player (an heir, a restored snapshot), or the end of a year. */
+export type LedgerLook = 'start' | 'heir' | 'rebase' | 'year'
+
+export interface LedgerWatch {
+  /** The player's cash and account at the last look, or null before the first. */
+  last: { cash: number; acct: number } | null
+  /** Cumulative mint at the last year end. */
+  mint: Record<string, number>
+  maxYearMint: Record<string, number>
+  reasons: Set<string>
+  drift: number
+  firstDrift: { year: number; age: number; delta: number } | null
+}
+
+export function newLedgerWatch(): LedgerWatch {
+  return { last: null, mint: {}, maxYearMint: {}, reasons: new Set(), drift: 0, firstDrift: null }
+}
+
+/**
+ * One look at the books. Drift is the change of the player's cash less the change of the player's account since the last look:
+ * zero when every change was booked. A gap under a dollar is the rounding the wrappers close at their next call, so it is not
+ * counted. An heir or a restored snapshot is another player (another account, another opening balance, which is not a flow), so
+ * 'heir' and 'rebase' only move the baseline. A 'year' look also reads the mint since the last year end (one year of play, the
+ * year ends being the ends of ageUp) and the reasons of the flow rows. It reads the game and never writes it.
+ */
+export function watchLedger(w: LedgerWatch, g: GameState, look: LedgerLook): void {
+  const cash = g.character.money
+  const acct = acctBalance(g, playerAcct(g))
+  if (look === 'year' && w.last) {
+    const delta = cash - w.last.cash - (acct - w.last.acct)
+    if (Number.isFinite(delta) && Math.abs(delta) >= 1) {
+      w.drift += Math.abs(delta)
+      w.firstDrift ??= { year: g.year, age: g.character.age, delta: Math.round(delta) }
+    }
+  }
+  w.last = { cash, acct }
+  const L = peekLedger(g)
+  if (look === 'year') {
+    for (const [name, total] of Object.entries(L.m)) {
+      const made = total - (w.mint[name] ?? 0)
+      if (made > (w.maxYearMint[name] ?? 0)) w.maxYearMint[name] = made
+      w.mint[name] = total
+    }
+    for (const row of flowsOf(g)) w.reasons.add(row.reason)
+  } else if (look !== 'heir') w.mint = { ...L.m } // an heir carries on the same calendar year: its window stays open
+}
+
+/** The stats of a life from its watch and the books as they stand. */
+export function ledgerStatsOf(w: LedgerWatch, g: GameState): LedgerStats {
+  const L = peekLedger(g)
+  let accounts = 0
+  let total = 0
+  for (const v of Object.values(L.a)) {
+    accounts++
+    total += v
+  }
+  return {
+    sum: total,
+    mint: { ...L.m },
+    burn: { ...L.b },
+    accounts,
+    flowRows: Object.keys(L.f).length,
+    bookings: L.k,
+    maxYearMint: { ...w.maxYearMint },
+    reasons: [...w.reasons].sort(),
+    drift: Math.round(w.drift),
+    firstDrift: w.firstDrift,
+  }
 }
 
 function chooseAction(ctx: Ctx, g: GameState, d: Driver, walked: Found[] | null): Found | undefined {
@@ -999,6 +1098,8 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
   bindMoneyContext(g)
   drain(ctx, g, d)
   checkInvariants(ctx, g, 'birth')
+  const books = newLedgerWatch()
+  watchLedger(books, g, 'start')
   deepFreeze(g)
 
   let gen = 0
@@ -1038,6 +1139,7 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
       bindMoneyContext(g)
       drain(ctx, g, d)
       checkInvariants(ctx, g, 'heir')
+      watchLedger(books, g, 'heir')
       deepFreeze(g)
     }
     if (g.character.age > 130) {
@@ -1046,7 +1148,7 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
     }
     if (rich && !madeRich && g.character.age >= richAt && !g.character.prison) {
       g = structuredClone(g)
-      g.character.money += richAmount
+      addMoney(g, richAmount, 'prize')
       deepFreeze(g)
       madeRich = true
       ctx.trail.push(`+$${richAmount}`)
@@ -1117,6 +1219,7 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
     stats.years++
     drain(ctx, g, d)
     checkInvariants(ctx, g, 'year end')
+    watchLedger(books, g, 'year')
     if (g.character.alive && g.queue.length) ctx.fail('stuck-queue', new Error('queue left after drain'), 'year end')
     if (year % opts.saveEvery === 0 || !g.character.alive) checkSaveLoad(ctx, g)
     if (!g.character.alive && !g.obituary) ctx.fail('invariant', new Error('dead without an obituary'), 'death')
@@ -1128,12 +1231,14 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
         bindMoneyContext(g)
         drain(ctx, g, d)
         checkInvariants(ctx, g, 'time machine')
+        watchLedger(books, g, 'rebase')
       }
     }
     deepFreeze(g)
   }
   stats.businesses = industries.size
   stats.industries = [...industries]
+  stats.ledger = ledgerStatsOf(books, g)
   stats.ms = Date.now() - t0
   return stats
 }

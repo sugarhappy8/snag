@@ -27,8 +27,11 @@ Useful commands: `node scripts/ci-shard.mjs --plan 4` (seconds and file counts p
 ## The seed-sliced files
 
 Five files are 45% of the run time, so each shard runs a slice of their seeds: `simulate`, `era-features`,
-`main-character-life`, `sector-story` and `anachronism`. They are the `split` list in `scripts/test-timings.json`, they
-use `test/shard-kit.ts`, and `ci-shard.mjs --verify` fails if the two ever disagree. The check goes by what a file does,
+`main-character-life`, `sector-story` and `anachronism`. A sixth file, `ledger-conservation` (R2: forty seeded lives of a
+hundred years with heirs, the books checked after every step), is sliced the same way, ten lives to a shard;
+`ledger-conservation-fast` plays three of them in the fast tier. If a shard goes past the 12 minute wall, lower
+`PROBE_ACTIONS` in `test/ledger-probe.ts` before touching the lives or the years. The six are the `split` list in
+`scripts/test-timings.json`, they use `test/shard-kit.ts`, and `ci-shard.mjs --verify` fails if the two ever disagree. The check goes by what a file does,
 not by how it spells the import: any other test file that imports the kit (`./shard-kit`, `../test/shard-kit`, with or
 without `.js`, a `require` or a dynamic `import()`) or names `readSlice`, `seedSlice`, `ownedHere`, `recordSlice`,
 `mergedSlices` or `process.env.SLICE` is reported until it is in `split`, because a sliced file outside `split` would play
