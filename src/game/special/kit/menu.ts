@@ -3,6 +3,8 @@
 // row or a replayed tap changes nothing. Everything a menu, hint or subtitle reads comes from `view`
 // and `standingOf`, which never write and never draw g.rng: a `mut` in a render throws under the
 // fuzzer's deepFreeze.
+import { chartInfo, ladderSpec, standingSpec } from '../../charts'
+import type { ChartSpec } from '../../charts/spec'
 import { useYearAction } from '../../core'
 import type { GameState, MenuAction, MenuGroup, MenuInfo, MenuInput, MenuNode } from '../../types'
 import { blocked, money, tell } from '../common'
@@ -102,6 +104,21 @@ export function standingMenu<S extends CareerBase>(o: {
     const st = standingOf(g, o.peers.spec, o.peers.score(g, s), s.memory)
     return st.top.length > 0 ? st : null
   }
+  /** A chart row's words (R1-C14): the spec's summary, held to the line cap like every other row of the card. */
+  const chartText = (_g: GameState, spec: ChartSpec | null): string => fit(spec?.summary ?? '', LINE)
+  /** The peer ladder (R1-C14): the top peers and you, by score. */
+  const peerLadder = (st: Standing): ChartSpec | null => {
+    const spec = ladderSpec({
+      title: 'Where you stand among peers',
+      unit: 'count',
+      rows: [...st.top.map((p) => ({ id: p.id, name: p.name, value: p.score })), { id: 'you', name: 'You', value: st.me, you: true }],
+      summary: fit(`You rank ${st.rank} of ${st.of}. ${st.top[0]?.name ?? 'Nobody'} is first with ${st.top[0]?.score ?? 0}.`, 120),
+    })
+    // Only the top five are listed, so below them you are further down than the ladder's own count says.
+    const me = spec?.rows?.find((r) => r.you === true)
+    if (me && st.rank > me.rank) me.rank = st.rank
+    return spec
+  }
   return {
     type: 'menu',
     id: o.id,
@@ -117,6 +134,12 @@ export function standingMenu<S extends CareerBase>(o: {
       const st = rank(g, s)
       const out: MenuNode[] = [info(`${o.id}.standing`, `${o.standingLabel} ${s.standing} of 100, peak ${s.peak}.`)]
       if (st) out.push(info(`${o.id}.rank`, `Rank ${st.rank} of ${st.of}.`))
+      // Charts (R1-C14): only once there are two ranked years to draw, or a peer field to rank in.
+      if (s.rows.length >= 2) out.push(...chartInfo(`${o.id}.chart`, '\u{1F4C8}', chartText, (gg) => standingSpec('Your rank by year', o.store.view(gg).rows)))
+      if (st) out.push(...chartInfo(`${o.id}.peers.chart`, '\u{1F3C6}', chartText, (gg) => {
+        const now = rank(gg, o.store.view(gg))
+        return now ? peerLadder(now) : null
+      }))
       out.push({ type: 'heading', id: `${o.id}.years`, label: 'Last 5 years' })
       const recent = s.rows.slice(-CARD_YEARS).reverse()
       if (recent.length === 0) out.push(info(`${o.id}.none`, 'No years booked yet.'))
