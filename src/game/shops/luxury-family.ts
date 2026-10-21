@@ -19,6 +19,7 @@ import { addEntitlement, allowanceNorm, entitlement, gratitude, isAbroad, isDesc
 import { isEstranged } from '../events/will-core'
 import { hasTech } from '../history/timeline'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
@@ -392,7 +393,7 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
     syncValue(a)
     p.relationship = Math.min(100, p.relationship + 1)
     log(g, `The insurer covered the repairs after ${name} crashed my ${a.name}.`)
-    notice(g, 'Claim Approved', `The insurer paid for the repairs on your ${a.name} after the ${formatMoney(deduct)} deductible. ${name} is relieved, and has promised to be more careful (${pick(g, ['again', 'probably', 'for a bit'])}).`, { emoji: '🛡️', tone: 'good' })
+    notice(g, 'Claim Approved', `The insurer paid for the repairs on your ${a.name} after the ${formatMoney(deduct)} deductible. ${name} is relieved, and has promised to be more careful (${pickLine(g, ['again', 'probably', 'for a bit'])}).`, { emoji: '🛡️', tone: 'good' })
     return
   }
   if (choice === 'split') {
@@ -479,7 +480,7 @@ function pawnPopup(g: GameState, a: Asset, p: Person): void {
   fuBad(p, g)
   const back = Math.round(marketValue(a) * 0.55)
   log(g, `${p.firstName} pawned my ${a.name}.`, 'bad')
-  scriptChoice(g, PAWN, 'Where Did It Go?', `You went to get your ${a.name} and it was not there. After a long silence ${p.firstName} admitted ${pronouns(p.gender).he} pawned it for a fraction of its worth. ${pick(g, ['"It was only for a week."', '"I was going to buy it back."', '"I had a thing."'])}`, [
+  scriptChoice(g, PAWN, 'Where Did It Go?', `You went to get your ${a.name} and it was not there. After a long silence ${p.firstName} admitted ${pronouns(p.gender).he} pawned it for a fraction of its worth. ${pickLine(g, ['"It was only for a week."', '"I was going to buy it back."', '"I had a thing."'])}`, [
     { id: 'back', label: `Buy it back (${formatMoney(back)})`, emoji: '🏷️' },
     { id: 'forgive', label: 'Let it go and forgive', emoji: '🕊️' },
     { id: 'tell', label: `Tell ${p.firstName} exactly what you think`, emoji: '😠' },
@@ -609,7 +610,7 @@ export function yearlyFamilyUse(g: GameState): void {
       } else {
         warmth(p, young ? 4 : 3)
         const where = chauffeured ? `was driven to school in your ${cur.name} by the chauffeur` : pick(g, ['took your', 'drove your', 'cruised in your']) + ' ' + cur.name
-        calm.push(`${p.firstName} ${chauffeured ? where : `${where} to ${pick(g, p.age < 18 ? ['school', 'a friend\'s house', 'the beach'] : ['the club', 'a friend\'s house', 'the beach', 'a weekend away'])}`} and everybody saw. ${pick(g, ['The valet is now a fan.', 'Someone asked who owned it.', 'The neighbors definitely noticed.'])}`)
+        calm.push(`${p.firstName} ${chauffeured ? where : `${where} to ${pick(g, p.age < 18 ? ['school', 'a friend\'s house', 'the beach'] : ['the club', 'a friend\'s house', 'the beach', 'a weekend away'])}`} and everybody saw. ${pickLine(g, ['The valet is now a fan.', 'Someone asked who owned it.', 'The neighbors definitely noticed.'])}`)
       }
       spoilBy(g, p, cur, spoil)
     } else if (use === 'sail') {
@@ -655,7 +656,7 @@ export function yearlyFamilyUse(g: GameState): void {
     log(g, 'My family enjoyed (and sometimes abused) my things this year.')
     notice(g, 'Family Life', shown.join('\n\n'), { emoji: '👪' })
   } else if (calm.length) {
-    log(g, pick(g, ['My family enjoyed my things this year.', 'My family made good use of my things this year.']), 'good')
+    log(g, pickLine(g, ['My family enjoyed my things this year.', 'My family made good use of my things this year.']), 'good')
   }
   if (decision) decision()
 }

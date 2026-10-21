@@ -3,6 +3,7 @@
 import { addHidden, addRelationship, addStat, count, log, relationLabel, remember, scriptChoice, useYearAction } from '../core'
 import { createPerson, notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, HiddenKey, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { killCharacter } from '../death'
@@ -465,7 +466,7 @@ function takeWalk(g: GameState, w: WalkType): void {
   const kind = w.id === 'hike' ? 'hike' : w.id === 'stroll' ? 'stroll' : `${w.id} walk`
   log(g, prison ? 'I walked laps around the prison yard.' : `I went for a ${kind}.`, 'good')
   if (walkEvent(g, w)) return
-  result(g, prison ? 'Yard Time' : 'Walk', prison ? pick(g, ['You walked laps around the yard. A guard counted them with you, out loud, to annoy you.', 'You walked the yard and soaked up the only sunlight you get all day.']) : eraPick(g, w.lines), w.emoji, 'good')
+  result(g, prison ? 'Yard Time' : 'Walk', prison ? pickLine(g, ['You walked laps around the yard. A guard counted them with you, out loud, to annoy you.', 'You walked the yard and soaked up the only sunlight you get all day.']) : eraPick(g, w.lines), w.emoji, 'good')
 }
 
 function walkWith(g: GameState, p: Person): void {
@@ -553,7 +554,7 @@ const AWARENESS: { key: HiddenKey; label: string }[] = [
 
 function meditate(g: GameState): void {
   if (!useYearAction(g, 'act.meditate', MEDITATE_MAX)) {
-    result(g, 'Restless', pick(g, [
+    result(g, 'Restless', pickLine(g, [
       "You tried to meditate but your mind kept wandering to what you'll eat for dinner. You're all meditated out this year.",
       "You've reached peak inner peace for the year. Any more and you'll float away.",
     ]), '\u{1F9D8}')
@@ -629,7 +630,7 @@ const TOPICS = [
 function library(g: GameState): void {
   const used = g.yearActions['act.library'] ?? 0
   if (!useYearAction(g, 'act.library', LIBRARY_MAX)) {
-    result(g, 'Library', pick(g, [
+    result(g, 'Library', pickLine(g, [
       "The librarian is starting to recognize you. You've spent enough time here this year.",
       "You've already read everything interesting in the library this year.",
     ]), '\u{1F4DA}')
@@ -647,11 +648,11 @@ function library(g: GameState): void {
   const topic = pick(g, eraLines(g, TOPICS))
   if (gain > 0) {
     log(g, `I went to the ${c.prison ? 'prison ' : ''}library and read about ${topic}.`, 'good')
-    result(g, 'Library', pick(g, [
+    result(g, 'Library', pickSite(g, [
       `You spent the afternoon at the ${c.prison ? 'prison ' : ''}library reading about ${topic}.`,
       `You lost track of time reading about ${topic}. You feel smarter already.`,
       `You found a great book about ${topic} and read the whole thing in one sitting.`,
-    ]), '\u{1F4DA}', 'good')
+    ], 0x6404f91d), '\u{1F4DA}', 'good')
   } else {
     log(g, 'I went to the library, but I didn’t learn anything new.', 'neutral')
     result(g, 'Library', `You flipped through a book about ${topic}, but nothing stuck. You didn't learn anything new.`, '\u{1F4DA}')
@@ -693,7 +694,7 @@ function canGarden(g: GameState): string | null {
 
 function garden(g: GameState): void {
   if (!useYearAction(g, 'act.garden', 3)) {
-    result(g, 'Gardening', pick(g, [
+    result(g, 'Gardening', pickLine(g, [
       'Your plants need time to grow. Come back next year.',
       "There's nothing left to weed. You've gardened enough for one year.",
     ]), '\u{1F331}')
@@ -703,7 +704,7 @@ function garden(g: GameState): void {
   const relax = randInt(g, 40, 100)
   addStat(g, 'happiness', relax >= 80 ? 8 : relax >= 60 ? 6 : 4)
   addStat(g, 'health', randInt(g, 0, 2))
-  const task = pick(g, GARDEN_TASKS)
+  const task = pickLine(g, GARDEN_TASKS)
   log(g, `I ${task}.`, 'good')
   result(g, 'Gardening', `You ${task}. It was ${relax >= 80 ? 'incredibly relaxing' : relax >= 60 ? 'pretty relaxing' : 'mildly relaxing, apart from the bees'}.\n\nRelaxation: ${relax}%`, '\u{1F33B}', 'good')
 }
@@ -850,12 +851,12 @@ function instrumentLesson(g: GameState, name: string): void {
     return
   }
   log(g, `I took a ${name.toLowerCase()} lesson.`, 'good')
-  result(g, `${name} Lesson`, `${pick(g, [
+  result(g, `${name} Lesson`, `${pickSite(g, [
     `You practiced scales on the ${name.toLowerCase()} for an hour.`,
     `Your ${name.toLowerCase()} teacher said you're improving. Your neighbors disagree.`,
     `You learned a new song on the ${name.toLowerCase()}.`,
     `You played the ${name.toLowerCase()} until your teacher winced only occasionally.`,
-  ])}\n\nSkill: ${after}%`, '\u{1F3B6}', 'good')
+  ], 0xa2c4326b)}\n\nSkill: ${after}%`, '\u{1F3B6}', 'good')
 }
 
 export const instrumentsMenu: MenuGroup = {
@@ -945,7 +946,7 @@ export function skillLevel(g: GameState, id: string): number {
 
 function takeLesson(g: GameState, l: LessonDef): void {
   if ((g.yearActions[`act.lesson.${l.id}`] ?? 0) >= 3) {
-    result(g, l.label, pick(g, [
+    result(g, l.label, pickLine(g, [
       'Your coach says you need a break. Come back next year.',
       "You've taken enough lessons this year. Your coach is out of new exercises.",
     ]), l.emoji)
@@ -1019,7 +1020,7 @@ function spaceCamp(g: GameState): void {
     return
   }
   log(g, 'I went to space camp!', 'good')
-  result(g, 'Space Camp', pick(g, [
+  result(g, 'Space Camp', pickLine(g, [
     'You spent a week at space camp, built a model rocket and floated in a zero-gravity simulator. Future astronaut!',
     'At space camp you learned how astronauts eat, sleep and go to the bathroom in space. Mostly the last one.',
     'You commanded a simulated shuttle mission and only crashed it once.',

@@ -2,6 +2,7 @@
 // spats, chores, talent shows, daredevil friends and other kid stuff.
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import {
   aParent,
@@ -425,7 +426,7 @@ export const KID_EVENTS = defineEvents([
       apologize: (g, x) => say(g, x, 'Peacemaker', `You apologized to ${x.p?.firstName ?? 'your sibling'}. They accepted, smugly.`, `I apologized to ${x.p?.firstName ?? 'my sibling'} after we argued about ${x.s('topic')}.`, { rel: 8, karma: 2 }, 'good'),
       agree: (g, x) => say(g, x, 'Truce', 'You agreed to disagree. The cold war continues at a lower temperature.', `My sibling and I agreed to disagree about ${x.s('topic')}.`, { rel: 2 }),
       complain: (g, x) => say(g, x, 'Tattletale', 'You ran to your parents. They told you both to knock it off.', `I complained to my parents about my sibling.`, { rel: -6 }),
-      insult: (g, x) => say(g, x, 'Low blow', `You called ${x.p?.firstName ?? 'your sibling'} a ${pick(g, ['troll', 'goblin', 'walking diaper', 'dweeb', 'potato head'])}. They stormed off.`, `I insulted my sibling, ${x.p?.firstName ?? ''}, during an argument.`, { rel: -12, count: 'insults' }, 'bad'),
+      insult: (g, x) => say(g, x, 'Low blow', `You called ${x.p?.firstName ?? 'your sibling'} a ${pickLine(g, ['troll', 'goblin', 'walking diaper', 'dweeb', 'potato head'])}. They stormed off.`, `I insulted my sibling, ${x.p?.firstName ?? ''}, during an argument.`, { rel: -12, count: 'insults' }, 'bad'),
       assault: (g, x) => {
         const won = chance(g, 0.5 + (g.character.age - (x.p?.age ?? g.character.age)) * 0.05)
         say(g, x, won ? 'Sibling rivalry' : 'Humbled', won ? `You tackled ${x.p?.firstName ?? 'your sibling'} and won the fight. Both of you were grounded.` : `You lunged at ${x.p?.firstName ?? 'your sibling'} and got put in a headlock. Humiliating.`, `I got into a fight with my sibling, ${x.p?.firstName ?? ''}.`, { rel: -18, health: won ? -2 : -6, happiness: won ? 2 : -6, count: 'fights', rels: parentMad(g, -4) }, 'bad', '👊')
@@ -443,7 +444,7 @@ export const KID_EVENTS = defineEvents([
     setup: (g) => {
       const p = aParent(g)
       if (!p) return null
-      const chore = pick(g, ['clean your room', 'take out the trash', 'wash the dishes', 'mow the lawn', 'fold the laundry', 'clean the bathroom'])
+      const chore = pickLine(g, ['clean your room', 'take out the trash', 'wash the dishes', 'mow the lawn', 'fold the laundry', 'clean the bathroom'])
       return {
         text: `${yourParent(p)} asked you to ${chore}. What will you do?`,
         choices: [ch('do', 'Do it right away'), ch('pay', 'Ask to be paid'), ch('badly', 'Do it badly so they never ask again'), ch('refuse', 'Refuse')],

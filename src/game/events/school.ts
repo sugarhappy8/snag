@@ -4,6 +4,7 @@ import { preferredGender } from '../core'
 import { applyEffects } from '../effects'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import { locale } from '../data/locales'
 import {
@@ -140,7 +141,7 @@ export const SCHOOL_EVENTS = defineEvents([
       const b = classmate(g)
       const older = siblings(g).find((s) => s.age > g.character.age && s.age < 30)
       return {
-        text: `A bully named ${b.first} ${b.last} ${pick(g, BULLY_ACTIONS)}. What will you do?`,
+        text: `A bully named ${b.first} ${b.last} ${pickLine(g, BULLY_ACTIONS)}. What will you do?`,
         choices: [ch('assault', `Assault ${b.gender === 'male' ? 'him' : 'her'}`), ch('report', 'Report them to the principal'), ch('talk', 'Have a talk with them'), ...(older ? [ch('sibling', `Tell my ${older.gender === 'male' ? 'brother' : 'sister'}, ${older.firstName}`)] : []), ch('nothing', 'Do nothing about it')],
         person: b.p,
         other: older,
@@ -270,7 +271,7 @@ export const SCHOOL_EVENTS = defineEvents([
     when: (g) => inGradeSchool(g) || inUniversity(g),
     setup: (g) => {
       const c = classmate(g)
-      const subject = pick(g, ['algebra', 'chemistry', 'world history', 'biology', 'economics'])
+      const subject = pickLine(g, ['algebra', 'chemistry', 'world history', 'biology', 'economics'])
       return {
         text: `You're nervous about a difficult ${subject} exam. You know your classmate ${c.first} has stolen the answer key. What will you do?`,
         choices: [ch('ask', 'Ask them for the answer key'), ch('report', 'Report them'), ch('study', 'Study and do my best')],
@@ -798,7 +799,7 @@ export const SCHOOL_EVENTS = defineEvents([
     when: inUniversity,
     setup: (g) => {
       const s = strangerName(g)
-      const habit = pick(g, ['plays the tuba at 3 AM', 'never washes their dishes', 'keeps eating your food', 'has a pet snake that keeps escaping', 'talks loudly in their sleep about tax law', 'keeps borrowing your clothes'])
+      const habit = pickLine(g, ['plays the tuba at 3 AM', 'never washes their dishes', 'keeps eating your food', 'has a pet snake that keeps escaping', 'talks loudly in their sleep about tax law', 'keeps borrowing your clothes'])
       return {
         text: `Your roommate ${s.first} ${habit}. What will you do?`,
         choices: [ch('talk', 'Have a talk with them'), ch('revenge', 'Get revenge'), ch('ra', 'Complain to the housing office'), ch('accept', 'Learn to live with it')],

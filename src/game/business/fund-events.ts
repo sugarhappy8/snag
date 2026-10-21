@@ -5,6 +5,7 @@ import { addHidden, addStat, count, log, notice, remember, scriptChoice, spend }
 import { arrestPlayer } from '../crime'
 import { marketInstinct } from '../invest/instinct'
 import { chance, pick, randFloat, weightedPick } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
@@ -312,7 +313,7 @@ const EVENTS: FundEvent[] = [
     // Only a firm that runs a fund can "load the fund up" (a brokerage's own book never trades it).
     weight: (_g, _b, f) => (f.type === 'asset' || f.type === 'hedge') && !f.probe ? .7 : 0,
     present: (g, a) => {
-      const co = pick(g, COMPANIES), who = pick(g, TIPSTERS)
+      const co = pick(g, COMPANIES), who = pickLine(g, TIPSTERS)
       ask(g, a, 'tip', '🤫 A Hot Tip', `${who[0].toUpperCase()}${who.slice(1)} who works at ${co} whispers that ${co} is about to be bought at a big premium. Nobody else knows yet.`,
         [choice('trade', 'Load the fund up on it', '💹', talentHint(g, 'Business', 'Easy money, and a real chance regulators notice')), choice('report', 'Report the tip to compliance', '📞'), choice('ignore', 'Pretend you never heard it', '🙉')],
         { company: co }, '🤫')

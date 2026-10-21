@@ -3,6 +3,7 @@
 import { peopleBy, spouse } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import {
   country,
@@ -101,7 +102,7 @@ export const FAMILY_EVENTS = defineEvents([
     setup: (g: GameState) => {
       const p = anyOf(g, peopleBy(g, ['parent']).filter((q) => q.age >= 55))
       if (!p) return null
-      const what = pick(g, ['a minor heart attack', 'a bad fall', 'pneumonia', 'a kidney stone the size of a marble', 'a scary dizzy spell'])
+      const what = pickLine(g, ['a minor heart attack', 'a bad fall', 'pneumonia', 'a kidney stone the size of a marble', 'a scary dizzy spell'])
       return {
         text: `${uc(yourRel(p))}, was rushed to the hospital after ${what}. ${pr(p).He} is stable for now. What will you do?`,
         choices: [ch('visit', 'Rush to the hospital'), ch('flowers', 'Send flowers'), ch('call', landline(g) ? 'Give them a call' : 'Write them a letter'), ch('nothing', 'Do nothing')],

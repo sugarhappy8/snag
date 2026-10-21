@@ -12,6 +12,7 @@ import { addHidden, addMoney, addRelationship, addStat, count, currentPartner, l
 import { notePerson } from '../people'
 import { pickBrand } from '../shops/everyday-brands'
 import { chance, pick, randInt, weightedPick } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { COUNTRIES, countryLabel, getCountry } from '../world'
 import { localeOf } from '../data/locales'
@@ -369,7 +370,7 @@ function travelPartner(g: GameState): Person | undefined {
 
 function noTripsLeft(g: GameState): boolean {
   if ((g.yearActions['act.vacation'] ?? 0) < TRIPS_PER_YEAR) return false
-  result(g, 'No Vacation Days', pick(g, [
+  result(g, 'No Vacation Days', pickLine(g, [
     "You've used up all your vacation days this year.",
     "You've traveled enough this year. Your suitcase has filed for divorce.",
   ]), '\u{1F9F3}')

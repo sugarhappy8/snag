@@ -5,6 +5,7 @@
 // Every game, team and tournament here is original.
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { bell, chance, pick, rand, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
 import { hasMainCharacter, hasTalent, talentHint, talentMult } from '../talents'
@@ -536,7 +537,7 @@ const finalScript = defineScript('sports.es.final', (g, choice, data) => {
   else prob += ((p.attrs['Game Sense'] ?? 50) - 55) / 200 + 0.04
   const won = chance(g, Math.max(0.05, Math.min(0.95, prob)))
   bookEs(g, job, ev, f.name, won ? 1 : 2, false)
-  const lead = won ? `${pick(g, ['You hit an impossible clutch and the arena exploded.', 'Your call won the final fight and the trophy.', 'You popped off. The caster lost his voice screaming your name.'])}` : `${pick(g, ['You whiffed the clutch play. The clip will haunt you forever.', `${f.opp} out-played you in the deciding map.`, 'Your team collapsed in the last fight.'])}`
+  const lead = won ? `${pickLine(g, ['You hit an impossible clutch and the arena exploded.', 'Your call won the final fight and the trophy.', 'You popped off. The caster lost his voice screaming your name.'])}` : `${pickSite(g, ['You whiffed the clutch play. The clip will haunt you forever.', `${f.opp} out-played you in the deciding map.`, 'Your team collapsed in the last fight.'], 0x5bb12c0e)}`
   log(g, won ? `We won ${theName(f.name)}!` : `We lost the grand final of ${theName(f.name)}.`, won ? 'good' : 'neutral')
   say(g, won ? 'CHAMPIONS!' : 'Grand Final', `${lead} ${won ? `You won ${theName(f.name)}!` : `Runners-up at ${theName(f.name)}.`}`, won ? '\u{1F3C6}' : gm.emoji, won ? 'good' : 'neutral')
 })
@@ -589,7 +590,7 @@ const scrimScript = defineScript('sports.es.scrim', (g, choice) => {
   p.attrs[choice] = Math.min(100, (p.attrs[choice] ?? 0) + trainGain(g, p.attrs[choice] ?? 0, 3, 6, (g.character.age < 23 ? 1.2 : 0.9) * talentMult(g, 'Gaming', 1.5)))
   addStat(g, 'health', -1)
   log(g, `I practiced ${choice.toLowerCase()} in scrims.`)
-  say(g, 'Scrims', `${pick(g, ['Twelve hours of scrims and one cold energy drink.', 'Your coach made you rewatch your worst games in slow motion.', 'You ran the same drill 400 times. Your wrist hates you.'])} ${choice}: ${p.attrs[choice]}%.`, '\u{1F5A5}\u{FE0F}', 'good')
+  say(g, 'Scrims', `${pickLine(g, ['Twelve hours of scrims and one cold energy drink.', 'Your coach made you rewatch your worst games in slow motion.', 'You ran the same drill 400 times. Your wrist hates you.'])} ${choice}: ${p.attrs[choice]}%.`, '\u{1F5A5}\u{FE0F}', 'good')
 })
 
 export function esportsJobNodes(g: GameState): MenuNode[] {

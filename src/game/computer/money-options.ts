@@ -14,7 +14,8 @@ import { PRESENT_YEAR } from '../history/timeline'
 import { marketInstinct, type Instinct } from '../invest/instinct'
 import { indexShockFactor } from '../invest/shocks'
 import { liftSkill } from '../mastery'
-import { chance, pick, randInt, uid } from '../rng'
+import { chance, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { isRealBrandName } from '../shops/everyday-brands'
 import { HINT_EMOJI, talentHint } from '../talents'
@@ -291,7 +292,7 @@ export function maybeTradingAddiction(g: GameState, stake: number, moneyBefore: 
   notice(
     g,
     'Hooked',
-    pick(g, [
+    pickLine(g, [
       'You check option prices in the shower. You check them at funerals. You have developed a gambling addiction; the casino just happens to be your brokerage app.',
       'You told yourself it was "investing." Your heart rate says otherwise. You have developed a gambling addiction.',
       'You now refer to your savings as "dry powder." You have developed a gambling addiction.',
@@ -549,13 +550,13 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
   notice(
     g,
     'Position Opened',
-    `You bought ${formatMoney(premium)} of ${f.strike === 'lotto' ? 'lottery-ticket ' : f.strike === 'otm' ? 'out-of-the-money ' : ''}${dirWord(f.dir)} on the ${inf.ex.index}${where} (about ${lev >= 10 ? Math.round(lev) : lev.toFixed(1)}x leverage). They settle when the year ends. ${pick(g, ['Now you just have to refresh the chart 400 times a day.', 'You whispered "to the moon" at your screen. Your screen did not respond.', 'Your stomach is already doing its own price action.'])}${f.mode === 'parent' ? ' You cleared the browser history, just in case.' : ''}`,
+    `You bought ${formatMoney(premium)} of ${f.strike === 'lotto' ? 'lottery-ticket ' : f.strike === 'otm' ? 'out-of-the-money ' : ''}${dirWord(f.dir)} on the ${inf.ex.index}${where} (about ${lev >= 10 ? Math.round(lev) : lev.toFixed(1)}x leverage). They settle when the year ends. ${pickLine(g, ['Now you just have to refresh the chart 400 times a day.', 'You whispered "to the moon" at your screen. Your screen did not respond.', 'Your stomach is already doing its own price action.'])}${f.mode === 'parent' ? ' You cleared the browser history, just in case.' : ''}`,
     { emoji: f.dir === 'call' ? '\u{1F4C8}' : '\u{1F4C9}' },
   )
 })
 
 function tooMuch(g: GameState): void {
-  notice(g, 'Market Closed', pick(g, ["You've traded enough this year. Your broker's app now opens with a meditation prompt.", 'Your eyes are twitching from staring at candlestick charts. Take a break until next year.', "You've hit your trading limit for the year. The market will still be there next year. Probably."]), { emoji: '\u{1F6D1}' })
+  notice(g, 'Market Closed', pickLine(g, ["You've traded enough this year. Your broker's app now opens with a meditation prompt.", 'Your eyes are twitching from staring at candlestick charts. Take a break until next year.', "You've hit your trading limit for the year. The market will still be there next year. Probably."]), { emoji: '\u{1F6D1}' })
 }
 
 // ---------------------------------------------------------------------------
@@ -652,13 +653,13 @@ defineScript(YOLO_SIZE_SCRIPT, (g, value, data) => {
   let text: string
   if (payout <= 0) {
     title = 'Expired Worthless'
-    text = `${day} Your ${formatMoney(premium)} of 0DTE ${dirWord(f.dir)} expired worthless${paper}. ${pick(g, ['You stared at the screen until it went dark. So did your soul.', 'You posted a screenshot of the loss for internet points. You got three.', 'The market maker who sold them to you is having a lovely evening.'])}`
+    text = `${day} Your ${formatMoney(premium)} of 0DTE ${dirWord(f.dir)} expired worthless${paper}. ${pickLine(g, ['You stared at the screen until it went dark. So did your soul.', 'You posted a screenshot of the loss for internet points. You got three.', 'The market maker who sold them to you is having a lovely evening.'])}`
   } else if (net < 0) {
     title = 'Bled Out'
     text = `${day} Your ${dirWord(f.dir)} clawed back ${formatMoney(payout)} of your ${formatMoney(premium)}${paper}. A loss, but a dignified one.`
   } else if (mult >= 3) {
     title = 'Printed!'
-    text = `${day} Your ${formatMoney(premium)} of ${dirWord(f.dir)} turned into ${formatMoney(payout)}${paper}! You did a lap around the house. ${pick(g, ['You are now insufferable at parties.', 'You briefly considered quitting everything to do this full time. Briefly.', 'Somewhere, a market maker sighed.'])}`
+    text = `${day} Your ${formatMoney(premium)} of ${dirWord(f.dir)} turned into ${formatMoney(payout)}${paper}! You did a lap around the house. ${pickLine(g, ['You are now insufferable at parties.', 'You briefly considered quitting everything to do this full time. Briefly.', 'Somewhere, a market maker sighed.'])}`
   } else {
     title = 'Green Day'
     text = `${day} Your ${dirWord(f.dir)} paid ${formatMoney(payout)} on ${formatMoney(premium)}${paper}. A win's a win.`
@@ -817,7 +818,7 @@ export function compulsiveTrading(g: GameState, st: MoneyState): void {
   addMoney(g, -lost)
   st.pnl = Math.round(st.pnl - lost)
   st.lossCarry = dollars(st.lossCarry + lost)
-  log(g, pick(g, [`I lost ${formatMoney(lost)} revenge-trading options at 3 a.m.`, `I promised myself I'd stop trading. Then I lost ${formatMoney(lost)} on "one last play."`, `My trading habit ate ${formatMoney(lost)} this year.`]), 'bad')
+  log(g, pickSite(g, [`I lost ${formatMoney(lost)} revenge-trading options at 3 a.m.`, `I promised myself I'd stop trading. Then I lost ${formatMoney(lost)} on "one last play."`, `My trading habit ate ${formatMoney(lost)} this year.`], 0xe5cf0cb1), 'bad')
 }
 
 // ---------------------------------------------------------------------------

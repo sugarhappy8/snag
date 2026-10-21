@@ -10,6 +10,7 @@ import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, spe
 import { addCvEntry } from '../cv'
 import { localeOf } from '../data/locales'
 import { chance, pick, rand, randInt, uid } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Condition, CvEntry, GameState, Gender, Job, Json, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, flagEmoji, getCountry, randomFirstName, randomLastName } from '../world'
@@ -635,7 +636,7 @@ export function endorsementsMenu(): MenuGroup {
           if (!useYearAction(gg, 'sports.pitch', 1)) return tell(gg, 'Endorsements', 'Your agent already called every brand in the phone book this year.', '\u{1F4DE}')
           const job = playingJob(gg)
           const ok = sponsorCall(gg, job?.title ?? 'sports', 0.7, gg.character.hidden.fame >= 12 || viewSports(gg).buzz >= 10)
-          if (!ok) tell(gg, 'Endorsements', pick(gg, ["Your agent made forty calls. The best offer was a coupon for a free smoothie.", 'Brands want winners, or at least someone famous. Keep working.']), '\u{1F4DE}')
+          if (!ok) tell(gg, 'Endorsements', pickLine(gg, ["Your agent made forty calls. The best offer was a coupon for a free smoothie.", 'Brands want winners, or at least someone famous. Keep working.']), '\u{1F4DE}')
         },
       })
       return nodes

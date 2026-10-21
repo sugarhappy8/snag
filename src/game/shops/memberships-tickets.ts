@@ -26,6 +26,7 @@ import {
 import { isIndustryLegal, localMarket } from '../data/markets'
 import { createPerson, notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
@@ -1179,7 +1180,7 @@ function fillMoment(g: GameState, ev: TicketEvent, m: string, companion: Person 
         addRelationship(companion, randInt(g, 2, 5))
         return `The kiss cam landed on you and ${companion.firstName}. You went for it. The stadium cheered.`
       }
-      return pick(g, ['You ended up on the big screen mid-bite. You waved with a mouth full of nachos.', 'The camera found you dancing on the big screen. You did not stop. Legend.'])
+      return pickLine(g, ['You ended up on the big screen mid-bite. You waved with a mouth full of nachos.', 'The camera found you dancing on the big screen. You did not stop. Legend.'])
     case 'CATCH_SIX':
       return `A huge six sailed into your stand and you caught it one-handed. The crowd gave you a standing ovation${hasTech(g, 'tv') ? ' and the TV replayed it three times' : ' and the papers mentioned you the next morning'}.`
     case 'HAKA':
@@ -1204,7 +1205,7 @@ function fillMoment(g: GameState, ev: TicketEvent, m: string, companion: Person 
       }
       return 'You crowd-surfed for the first time and were carried all the way to the stage.'
     case 'ROAST':
-      return pick(g, ['You sat in the front row, so the comedian roasted your outfit for five full minutes. You laughed. Mostly.', 'The comedian asked what you do for a living. You told the truth. Big mistake.'])
+      return pickLine(g, ['You sat in the front row, so the comedian roasted your outfit for five full minutes. You laughed. Mostly.', 'The comedian asked what you do for a living. You told the truth. Big mistake.'])
     case 'MUD':
       return 'It rained all weekend and the field turned into a swamp. You lost a shoe. You found a different shoe. You wore it home.'
     case 'TOO_SHORT':
@@ -1256,16 +1257,16 @@ export function goToEvent(g: GameState, ev: TicketEvent, tierIndex: number, comp
     if (roll < draws * 100) parts.push(`${ev.home} and ${ev.away} played to a ${pick(g, ['0-0', '1-1', '2-2'])} draw.`)
     else if (roll < 50 + draws * 50) {
       addStat(g, 'happiness', 2)
-      parts.push(`${ev.home} won at home! ${pick(g, ['The stadium shook.', 'Strangers high-fived you all the way to the exit.', 'You celebrated like you had personally scored.'])}`)
-    } else parts.push(`${ev.away} won. ${pick(g, ['The home crowd went silent.', 'You booed the referee with real passion.', 'The ride home was very quiet.'])}`)
+      parts.push(`${ev.home} won at home! ${pickLine(g, ['The stadium shook.', 'Strangers high-fived you all the way to the exit.', 'You celebrated like you had personally scored.'])}`)
+    } else parts.push(`${ev.away} won. ${pickLine(g, ['The home crowd went silent.', 'You booed the referee with real passion.', 'The ride home was very quiet.'])}`)
   } else if (ev.kind === 'concert') {
-    parts.push(pick(g, [`${ev.artist} put on an incredible show.`, `${ev.artist} played for two and a half hours.`, `${ev.artist} opened with your favorite song.`]))
+    parts.push(pickSite(g, [`${ev.artist} put on an incredible show.`, `${ev.artist} played for two and a half hours.`, `${ev.artist} opened with your favorite song.`], 0x2b6a77ba))
   } else if (ev.kind === 'theater') {
-    parts.push(pick(g, [`You saw ${ev.title}.`, `${ev.title} was spectacular.`, `The cast of ${ev.title} was outstanding.`]))
+    parts.push(pickSite(g, [`You saw ${ev.title}.`, `${ev.title} was spectacular.`, `The cast of ${ev.title} was outstanding.`], 0x88aca883))
   } else if (ev.kind === 'comedy') {
     parts.push('The show was hilarious.')
   } else if (ev.kind === 'festival') {
-    parts.push(pick(g, [`You spent the day at ${ev.title}.`, `${ev.title} was everything you hoped for.`]))
+    parts.push(pickSite(g, [`You spent the day at ${ev.title}.`, `${ev.title} was everything you hoped for.`], 0x735cc563))
   } else {
     parts.push(`You spent the day at ${ev.title}.`)
   }

@@ -20,6 +20,7 @@
 // and never consume g's RNG here.
 import { addRelationship, addStat, getPerson, log, notice, peopleBy, remember, scriptChoice } from './core'
 import { chance, pick, randInt } from './rng'
+import { pickLine } from './text/pick'
 import { defineScript } from './scripts'
 import { hasMainCharacter } from './talents'
 import type { GameState, Json } from './types'
@@ -392,7 +393,7 @@ const SPOTLIGHT = defineScript('mcs.spotlight', (g, choice, data) => {
 export function yearlyMainCharacter(g: GameState): void {
   const c = g.character
   if (!hasMainCharacter(g) || !c.alive || c.age < 5) return
-  if (chance(g, 0.3)) log(g, pick(g, FLAVOR_QUIET), 'good')
+  if (chance(g, 0.3)) log(g, pickLine(g, FLAVOR_QUIET), 'good')
   if (c.age < 10 || c.prison) return
   const rec = recordOf(g, true)!
   const last = typeof rec.momentAge === 'number' ? rec.momentAge : -9
@@ -404,7 +405,7 @@ export function yearlyMainCharacter(g: GameState): void {
     rec.momentAge = c.age
     addRelationship(f, -randInt(g, 1, 3))
     addStat(g, 'happiness', 1)
-    log(g, `${pick(g, FLAVOR_EYES)} (${f.firstName} still loves me. Mostly.)`, 'neutral')
+    log(g, `${pickLine(g, FLAVOR_EYES)} (${f.firstName} still loves me. Mostly.)`, 'neutral')
   } else if (c.age >= 12 && chance(g, 0.06)) {
     const f = pick(g, friends)
     rec.momentAge = c.age

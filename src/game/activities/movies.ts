@@ -8,6 +8,7 @@ import { addRelationship, addStat, count, log, relationLabel } from '../core'
 import { notePerson } from '../people'
 import { steadyBrand } from '../shops/everyday-brands'
 import { chance, pick, randInt, weightedPick } from '../rng'
+import { pickLine } from '../text/pick'
 import { randomFirstName, randomLastName } from '../world'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, companionCandidates, gate, localPrice, money, payFor, result, usesLeft } from './common'
@@ -211,7 +212,7 @@ function watchMovie(g: GameState, genre: GenreDef, companionId: string | null): 
   const companion = companionId ? g.people.find((p) => p.id === companionId && p.alive) : undefined
   if (companionId && !companion) return
   if ((g.yearActions['act.movie'] ?? 0) >= MOVIES_PER_YEAR) {
-    result(g, 'Movie Theater', pick(g, [
+    result(g, 'Movie Theater', pickLine(g, [
       "You've already seen everything worth watching this year.",
       'The ticket clerk knows you by name. Maybe take a break from the movies until next year.',
     ]), '\u{1F37F}')

@@ -7,6 +7,7 @@
 import { addHidden, addStat, aThing, count, log, remember, useYearAction } from '../core'
 import { masterFirstTime } from '../mastery'
 import { chance, pick, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { hasMainCharacter } from '../talents'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addCondition, brokeNotice, flagRecord, gate, localPrice, money, payFor, pushFlagString, recNumber, result, usesLeft } from './common'
@@ -104,11 +105,11 @@ function takeClass(g: GameState, style: Style): void {
   const maxBelt = style.belts.length - 1
   const perStyleKey = `act.martial.${style.id}`
   if ((g.yearActions[perStyleKey] ?? 0) >= PER_STYLE_PER_YEAR || (g.yearActions['act.martial'] ?? 0) >= TOTAL_PER_YEAR) {
-    result(g, 'Exhausted', pick(g, [
+    result(g, 'Exhausted', pickSite(g, [
       `Your ${style.name} instructor told you to rest. You've trained enough this year.`,
       "You're too sore to train again this year. Even your eyebrows hurt.",
       "You're too exhausted for another class this year.",
-    ]), '\u{1F62B}')
+    ], 0x29e36a96), '\u{1F62B}')
     return
   }
   const cost = c.age < 18 ? localPrice(g, 25) : localPrice(g, 40)
@@ -164,14 +165,14 @@ function takeClass(g: GameState, style: Style): void {
   if (belt >= maxBelt) {
     if (style.ranks) {
       log(g, `I trained ${style.name} as the gym's champion.`, 'neutral')
-      result(g, style.name, pick(g, ['You mostly helped the trainer coach the new kids. They call you "champ" now.', 'You sparred with the best in the gym. Nobody landed a clean punch on you all day.']), style.emoji, 'good')
+      result(g, style.name, pickLine(g, ['You mostly helped the trainer coach the new kids. They call you "champ" now.', 'You sparred with the best in the gym. Nobody landed a clean punch on you all day.']), style.emoji, 'good')
       return
     }
     log(g, `I trained ${style.name} as a black belt.`, 'neutral')
-    result(g, style.name, pick(g, [
+    result(g, style.name, pickSite(g, [
       `As ${aThing(beltName(style, belt))}, you mostly helped teach the beginners. They call you "sensei" now.`,
       `You trained with the other black belts. Nobody landed a hit on you all day.`,
-    ]), style.emoji, 'good')
+    ], 0xb2562b8a), style.emoji, 'good')
     return
   }
 

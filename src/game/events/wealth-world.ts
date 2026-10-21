@@ -4,6 +4,7 @@
 // returns (wealth-core donationKarma / donationFame).
 import { addHidden, addStat, attractedTo, count, currentPartner, log, notice, preferredGender, remember, removePerson, spend, useYearAction } from '../core'
 import { pick, randInt } from '../rng'
+import { pickSite } from '../text/pick'
 import { randomFirstName } from '../world'
 import { eraPick, eraPickPlain, landline } from './era'
 import { channel, folks, mayAsk, scaled, type Ask, type AskDef } from './wealth-ask'
@@ -244,7 +245,7 @@ export const WORLD_ASKS: AskDef[] = [
         emoji: '\u{1F46E}',
         run: (g) => {
           addHidden(g, 'karma', 2)
-          notice(g, 'Opportunity Knocks', pick(g, ['You reported it. The officer sighed: you are the ninth this week. They took a statement anyway.', `You reported it, and the police traced it to a man in a rented office with ${landline(g) ? 'forty phones' : 'a printing press and a stack of fake share certificates'}. You saved some people a lot of money.`]), { emoji: '\u{1F46E}', tone: 'good' })
+          notice(g, 'Opportunity Knocks', pickSite(g, ['You reported it. The officer sighed: you are the ninth this week. They took a statement anyway.', `You reported it, and the police traced it to a man in a rented office with ${landline(g) ? 'forty phones' : 'a printing press and a stack of fake share certificates'}. You saved some people a lot of money.`], 0xe76109b8), { emoji: '\u{1F46E}', tone: 'good' })
         },
       },
       {

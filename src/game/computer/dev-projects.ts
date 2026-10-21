@@ -5,6 +5,7 @@
 import { addHidden, addStat, count, earnIncome, formatMoney, log, notice, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
 import { pick, rand, randFloat, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { stableChoice } from '../special/common'
 import { hasTalent, talentHint } from '../talents'
@@ -126,11 +127,11 @@ export function buildProject(g: GameState, kind: ProjectKind): void {
   const verdict = hit
     ? `It was a hit! ${kind.great}`
     : q >= 80
-      ? pick(g, [`It's genuinely great. ${online(g) ? 'The internet' : 'The world'} hasn't noticed yet.`, 'It is the best thing you have ever made. Twelve people agree.'])
+      ? pickSite(g, [`It's genuinely great. ${online(g) ? 'The internet' : 'The world'} hasn't noticed yet.`, 'It is the best thing you have ever made. Twelve people agree.'], 0xaa0a41a3)
       : q >= 65
-        ? pick(g, ['It turned out really well.', 'People actually like it. Strangers, even.'])
+        ? pickLine(g, ['It turned out really well.', 'People actually like it. Strangers, even.'])
         : q >= 45
-          ? pick(g, ['Not bad! Not great. Solidly not bad.', 'It works, which is more than most first drafts can say.'])
+          ? pickLine(g, ['Not bad! Not great. Solidly not bad.', 'It works, which is more than most first drafts can say.'])
           : 'It turned out... fine. Fine counts.'
   const earn = income > 0 ? ` It should bring in about ${formatMoney(income)} a year in ${kind.id === 'listing' ? 'magazine fees and reprints' : kind.id === 'shareware' ? 'registration checks' : kind.income === 'sales' ? 'sales' : kind.income === 'premium' ? 'premium upgrades' : kind.income === 'donations' ? 'donations' : 'ad revenue'}, at least until people move on.` : ''
   const how = lang ? ` Written in ${lang.label}.` : ''

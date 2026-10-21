@@ -1,6 +1,7 @@
 // Workplace events for anyone with a job: overtime, team building, rumors, pranks,
 // lunch thieves, credit stealers, holiday parties, rude customers and sick days.
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import { employerRef } from '../shops/everyday-brands'
 import { anyOf, ch, defineEvents, dollars, money, say, strangerName, v, type Ctx } from './helpers'
@@ -85,7 +86,7 @@ export const WORK_EVENTS = defineEvents([
         say(g, x, ['Time = Money', 'Afraid not', 'Nothing in life is free'], ok ? `You explained that unpaid overtime isn't compatible with a healthy work-life balance. ${nameOf(x)} reluctantly agreed.` : `You explained your position. ${nameOf(x)} nodded and wrote something in a little notebook.`, 'I turned down unpaid overtime.', ok ? { happiness: 2 } : { perf: -5, rel: -4 })
       },
       insult: (g, x) => {
-        const insult = pick(g, ['a slave driver', 'a cheapskate', 'a corporate goblin', 'a walking spreadsheet'])
+        const insult = pickLine(g, ['a slave driver', 'a cheapskate', 'a corporate goblin', 'a walking spreadsheet'])
         const fired = chance(g, 0.2)
         say(g, x, ['Should I lick the floors too?', "Don't ask me again"], `You laughed in ${nameOf(x)}'s face and called them ${insult}.${fired ? ' They were not amused, and your performance review was brutal.' : ''}`, `I laughed in my supervisor's face and called them ${insult}.`, { perf: fired ? -25 : -12, happiness: 4, rel: -20, count: 'insults' }, 'bad')
       },
@@ -385,7 +386,7 @@ export const WORK_EVENTS = defineEvents([
     when: fullTime,
     setup: (g) => {
       const b = boss(g)
-      const outing = pick(g, ['play golf', 'go to a jazz club', 'grab dinner at a steakhouse', 'go to a hockey game'])
+      const outing = pickLine(g, ['play golf', 'go to a jazz club', 'grab dinner at a steakhouse', 'go to a hockey game'])
       return {
         text: `Your supervisor, ${b.first}, has taken a liking to you and asked you to ${outing} with them. You're worried your coworkers will be jealous. What will you do?`,
         choices: [ch('go', 'Do it'), ch('decline', 'Politely decline')],
@@ -407,7 +408,7 @@ export const WORK_EVENTS = defineEvents([
     when: hasWorkJob,
     setup: (g) => {
       const c = coworker(g)
-      const reason = pick(g, ['birthday', 'retirement', 'new baby', 'farewell'])
+      const reason = pickLine(g, ['birthday', 'retirement', 'new baby', 'farewell'])
       return {
         text: `Someone is passing around an envelope to collect money for ${c.first}'s ${reason} gift. What will you do?`,
         choices: [ch('generous', `Put in ${money(20)}`), ch('small', `Put in ${money(2)}`), ch('sign', 'Just sign the card'), ch('skip', 'Pretend I didn\'t see it')],

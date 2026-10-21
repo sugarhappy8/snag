@@ -7,6 +7,7 @@ import { addHidden, addStat, count, log, scriptChoice, useYearAction } from '../
 import { enrollmentClubs } from '../cv'
 import { hasTech } from '../history/timeline'
 import { bell, chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { bodyCeiling, masterFirstTime } from '../mastery'
 import { hasMainCharacter, hasTalent, talentMult } from '../talents'
@@ -259,7 +260,7 @@ function juniorEvent(g: GameState): void {
     addStat(g, 'happiness', 8)
     if (national) honor(g, `Won the ${evName}.`, `${country} youth ${(indSport(p.sport)?.name ?? p.sport).toLowerCase()} champion`, y.club, 5)
     log(g, `${p.kind === 'team' ? 'My team won' : 'I won'} the ${evName}!`, 'good')
-    return say(g, 'Champion!', `${p.kind === 'team' ? 'Your team won' : 'You won'} the ${evName}! ${pick(g, ['Your parents screamed louder than anyone.', 'You held the trophy over your head and nearly dropped it.', 'A scout was in the stands taking notes.'])}`, '\u{1F3C6}', 'good')
+    return say(g, 'Champion!', `${p.kind === 'team' ? 'Your team won' : 'You won'} the ${evName}! ${pickLine(g, ['Your parents screamed louder than anyone.', 'You held the trophy over your head and nearly dropped it.', 'A scout was in the stands taking notes.'])}`, '\u{1F3C6}', 'good')
   }
   const text = p.kind === 'team' ? `Your team finished ${ordinal(Math.ceil(place / 2))} at the ${evName}.` : `You finished ${ordinal(place)} at the ${evName}.`
   log(g, text.replace(/^Your team/, 'My team').replace(/^You/, 'I'))

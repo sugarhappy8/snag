@@ -10,6 +10,7 @@
 import { hasTech } from '../history/timeline'
 import { addHidden, addStat, aThing, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { chance, pick, rand, randInt, bell } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { bodyCeiling, experienceCap, masterFirstTime } from '../mastery'
 import { hasMainCharacter, hasTalent, talentMult } from '../talents'
@@ -356,7 +357,7 @@ function playEvent(g: GameState, sport: IndSport, job: Job, rec: IndRecord, ev: 
     return { outcome: bracketResult(ev, chance(g, p) ? 0 : 1), note }
   }
   const race = sport.format === 'race'
-  if (race && chance(g, 0.06)) return { outcome: fieldResult(sport, ev, 0), note: pick(g, ['Your engine let go in a cloud of smoke. ', 'Someone punted you into the gravel on lap one. ', 'A hydraulics failure ended your race early. ']) }
+  if (race && chance(g, 0.06)) return { outcome: fieldResult(sport, ev, 0), note: pickLine(g, ['Your engine let go in a cloud of smoke. ', 'Someone punted you into the gravel on lap one. ', 'A hydraulics failure ended your race early. ']) }
   const place = placeFor(g, perf, level, ev.field, race)
   if (manual && place <= 3) {
     const opp = worldAthlete(g, g.character.gender)
@@ -603,7 +604,7 @@ const practiceScript = defineScript('sports.ind.practice', (g, choice, data) => 
   if (!rec.practiced.includes(choice)) rec.practiced.push(choice)
   addHidden(g, 'discipline', 1)
   log(g, `I worked on my ${choice.toLowerCase()} in ${sport.name.toLowerCase()}.`)
-  say(g, 'Practice', `${pick(g, ['Your coach made you repeat it until you did it in your sleep.', 'Hours of drills. Blisters in places you forgot you had.', 'It finally clicked halfway through the session.'])} ${choice}: ${rec.attrs[choice]}%.`, sport.emoji, 'good')
+  say(g, 'Practice', `${pickLine(g, ['Your coach made you repeat it until you did it in your sleep.', 'Hours of drills. Blisters in places you forgot you had.', 'It finally clicked halfway through the session.'])} ${choice}: ${rec.attrs[choice]}%.`, sport.emoji, 'good')
 })
 
 function practiceAction(sport: IndSport, id: string, minAge: number): MenuAction {
@@ -830,7 +831,7 @@ const fitnessAction: MenuAction = {
     addStat(g, 'health', 2)
     addHidden(g, 'athleticism', 1)
     log(g, 'I did a brutal strength and conditioning block.')
-    say(g, 'Conditioning', `${pick(g, ['Hill sprints at dawn. Your trainer called it "fun".', 'You lifted, ran, stretched and cried, in that order.', 'Ice baths, sled pushes and a lot of oatmeal.'])} Fitness: ${rec.fitness}%.`, '\u{1F4AA}', 'good')
+    say(g, 'Conditioning', `${pickLine(g, ['Hill sprints at dawn. Your trainer called it "fun".', 'You lifted, ran, stretched and cried, in that order.', 'Ice baths, sled pushes and a lot of oatmeal.'])} Fitness: ${rec.fitness}%.`, '\u{1F4AA}', 'good')
   },
 }
 
@@ -879,7 +880,7 @@ const dopeAction: MenuAction = {
     addHidden(g, 'karma', -5)
     addStat(g, 'health', -3)
     log(g, 'I started taking performance enhancers.', 'bad')
-    say(g, 'Performance Enhancers', pick(g, [`A "sports nutritionist" with no ${hasTech(g, 'internet') ? 'website' : 'credentials'} sold you a case full of tiny bottles. You feel incredible.`, 'You started a "recovery protocol" your federation would not approve of.']), '\u{1F489}', 'bad')
+    say(g, 'Performance Enhancers', pickSite(g, [`A "sports nutritionist" with no ${hasTech(g, 'internet') ? 'website' : 'credentials'} sold you a case full of tiny bottles. You feel incredible.`, 'You started a "recovery protocol" your federation would not approve of.'], 0xe02d4cf3), '\u{1F489}', 'bad')
   },
 }
 

@@ -29,6 +29,7 @@ import { companyKey, exchangeInfo } from '../invest/engine'
 import { addMarketShock, indexShockFactor, type ShockCause } from '../invest/shocks'
 import { freshShare, investmentHoldings, revalueHoldings } from '../investments'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -782,28 +783,28 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
         delta: d,
         text:
           d >= 3
-            ? pick(g, [`You dismantled ${opp} on live TV. Fact-checkers had nothing to say.`, `You delivered a zinger so good it became a campaign T-shirt by morning.`, `${opp} froze when you asked a simple follow-up question.`])
+            ? pickSite(g, [`You dismantled ${opp} on live TV. Fact-checkers had nothing to say.`, `You delivered a zinger so good it became a campaign T-shirt by morning.`, `${opp} froze when you asked a simple follow-up question.`], 0x7b1705a0)
             : d <= -3
-              ? pick(g, [`You confused two countries during the debate. ${opp} pounced.`, 'Your microphone was on while you muttered something rude about the moderator.', `${opp} made you look completely unprepared.`])
-              : pick(g, ['The debate was a snoozer. Both of you said "my plan" forty times.', 'Pundits called the debate a draw. Nobody watched the whole thing.']),
+              ? pickSite(g, [`You confused two countries during the debate. ${opp} pounced.`, 'Your microphone was on while you muttered something rude about the moderator.', `${opp} made you look completely unprepared.`], 0x5346073c)
+              : pickLine(g, ['The debate was a snoozer. Both of you said "my plan" forty times.', 'Pundits called the debate a draw. Nobody watched the whole thing.']),
       }
     }
     case 'rally': {
       const d = randInt(g, -2, 6)
-      return { delta: d, text: d >= 3 ? pick(g, ['The rally was packed. Someone crowd-surfed. It may have been you.', 'Your supporters chanted your name until the fire marshal shut it down.']) : pick(g, ['Turnout at the rally was... intimate. Eleven people and a confused pigeon.', 'It rained on your rally. Your hair did not survive.']) }
+      return { delta: d, text: d >= 3 ? pickLine(g, ['The rally was packed. Someone crowd-surfed. It may have been you.', 'Your supporters chanted your name until the fire marshal shut it down.']) : pickLine(g, ['Turnout at the rally was... intimate. Eleven people and a confused pigeon.', 'It rained on your rally. Your hair did not survive.']) }
     }
     case 'babies': {
       const d = randInt(g, -3, 5)
-      return { delta: d, text: d >= 1 ? pick(g, ['You kissed a baby and it giggled on camera. Polls love a giggling baby.', 'You held a baby like a pro. Parents swooned.']) : pick(g, [hasTech(g, 'internet') ? 'The baby screamed the moment you picked it up. The photo went viral for all the wrong reasons.' : 'The baby screamed the moment you picked it up. The photo made the front page for all the wrong reasons.', 'A baby sneezed directly into your mouth. You smiled through it.']) }
+      return { delta: d, text: d >= 1 ? pickLine(g, ['You kissed a baby and it giggled on camera. Polls love a giggling baby.', 'You held a baby like a pro. Parents swooned.']) : pick(g, [hasTech(g, 'internet') ? 'The baby screamed the moment you picked it up. The photo went viral for all the wrong reasons.' : 'The baby screamed the moment you picked it up. The photo made the front page for all the wrong reasons.', 'A baby sneezed directly into your mouth. You smiled through it.']) }
     }
     case 'attack': {
       addHidden(g, 'karma', -2)
       const d = randInt(g, -6, 8)
-      return { delta: d, text: d >= 2 ? pick(g, [`Your ad dug up ${opp}'s college band. Voters were horrified by the lyrics.`, `Your ads painted ${opp} as a person who reclines their seat on airplanes. It worked.`]) : pick(g, ['Your attack ads backfired. Voters thought they were mean-spirited.', `${opp} turned your attack ad into a fundraising bonanza.`]) }
+      return { delta: d, text: d >= 2 ? pickSite(g, [`Your ad dug up ${opp}'s college band. Voters were horrified by the lyrics.`, `Your ads painted ${opp} as a person who reclines their seat on airplanes. It worked.`], 0xbf7e30aa) : pickSite(g, ['Your attack ads backfired. Voters thought they were mean-spirited.', `${opp} turned your attack ad into a fundraising bonanza.`], 0xc1a5e420) }
     }
     case 'doors': {
       const d = randInt(g, 0, 4)
-      return { delta: d, text: pick(g, ['You knocked on hundreds of doors. Most people pretended not to be home, but some listened.', 'You went door-to-door and only got chased by one dog. A good day.', 'You learned a lot about your neighbors by knocking on their doors. Some of it you wish you could forget.']) }
+      return { delta: d, text: pickLine(g, ['You knocked on hundreds of doors. Most people pretended not to be home, but some listened.', 'You went door-to-door and only got chased by one dog. A good day.', 'You learned a lot about your neighbors by knocking on their doors. Some of it you wish you could forget.']) }
     }
     case 'tv': {
       if (!hasTech(g, 'tv')) {
@@ -811,7 +812,7 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
         return { delta: d, text: d >= 2 ? 'Your newspaper interview won over readers. The editor printed your best line.' : 'The newspaper printed your least convincing answer in enormous letters.' }
       }
       const d = Math.round((c.stats.looks - 50) / 8 + randInt(g, -5, 5))
-      return { delta: d, text: d >= 2 ? pick(g, ['You looked confident and camera-ready. The anchor practically endorsed you.', 'Your TV interview was charming. Your approval among grandmas skyrocketed.']) : pick(g, ['You had spinach in your teeth for the entire interview.', 'The interviewer asked about your platform and you blanked on what it was.']) }
+      return { delta: d, text: d >= 2 ? pickLine(g, ['You looked confident and camera-ready. The anchor practically endorsed you.', 'Your TV interview was charming. Your approval among grandmas skyrocketed.']) : pickLine(g, ['You had spinach in your teeth for the entire interview.', 'The interviewer asked about your platform and you blanked on what it was.']) }
     }
     case 'social': {
       if (!hasTech(g, 'socialMedia')) {
@@ -820,19 +821,19 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
       }
       const followers = hasTech(g, 'socialMedia') ? realFollowers(c.social) : 0
       const d = randInt(g, -3, 4) + (followers > 100_000 ? 3 : followers > 5_000 ? 1 : 0)
-      return { delta: d, text: d >= 2 ? pick(g, ['Your campaign video went viral. Even teenagers shared it, ironically.', 'Your meme game was strong. The youth vote noticed.']) : pick(g, ['You posted an old meme and got roasted in the replies.', 'An intern tweeted from your account by mistake. "lol who even votes"']) }
+      return { delta: d, text: d >= 2 ? pickLine(g, ['Your campaign video went viral. Even teenagers shared it, ironically.', 'Your meme game was strong. The youth vote noticed.']) : pickLine(g, ['You posted an old meme and got roasted in the replies.', 'An intern tweeted from your account by mistake. "lol who even votes"']) }
     }
     case 'fair': {
       const d = randInt(g, -4, 6)
       if (c.countryId !== 'us') {
         const food = localPick(g, 'food') || 'street food'
-        return { delta: d, text: d >= 1 ? pick(g, [`You ate ${food} like a true local. A photo of it ran on every front page.`, 'You haggled with every stall owner and bought one of everything. Brilliant.']) : pick(g, [`You ate ${food} with a knife and fork. Voters were disgusted.`, 'You got sauce on your shirt and then stepped in something at the livestock market.']) }
+        return { delta: d, text: d >= 1 ? pickSite(g, [`You ate ${food} like a true local. A photo of it ran on every front page.`, 'You haggled with every stall owner and bought one of everything. Brilliant.'], 0xe9473d9a) : pickSite(g, [`You ate ${food} with a knife and fork. Voters were disgusted.`, 'You got sauce on your shirt and then stepped in something at the livestock market.'], 0x84567d92) }
       }
-      return { delta: d, text: d >= 1 ? pick(g, ['You ate a corn dog like a true local. A photo of it ran on every front page.', 'You judged the pie contest and gave everyone first place. Brilliant.']) : pick(g, ['You ate the corn dog with a knife and fork. Voters were disgusted.', 'You got mustard on your shirt and then stepped in something at the livestock barn.']) }
+      return { delta: d, text: d >= 1 ? pickLine(g, ['You ate a corn dog like a true local. A photo of it ran on every front page.', 'You judged the pie contest and gave everyone first place. Brilliant.']) : pickLine(g, ['You ate the corn dog with a knife and fork. Voters were disgusted.', 'You got mustard on your shirt and then stepped in something at the livestock barn.']) }
     }
     case 'townhall': {
       const d = Math.round((c.stats.smarts - 50) / 10 + randInt(g, -4, 5))
-      return { delta: d, text: d >= 2 ? pick(g, ['You answered every question at the town hall with genuine empathy.', 'You won over a hostile crowd at your town hall.']) : pick(g, ['A retired teacher grilled you at the town hall and you had no answers.', 'The town hall turned into a twenty-minute argument about parking.']) }
+      return { delta: d, text: d >= 2 ? pickLine(g, ['You answered every question at the town hall with genuine empathy.', 'You won over a hostile crowd at your town hall.']) : pickLine(g, ['A retired teacher grilled you at the town hall and you had no answers.', 'The town hall turned into a twenty-minute argument about parking.']) }
     }
     case 'endorse': {
       const celeb = pick(g, CELEBS)
@@ -843,9 +844,9 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
       const d = randInt(g, -1, 4)
       if (c.countryId !== 'us') {
         const drink = localSoftDrink(g)
-        return { delta: d, text: pick(g, [`You shook hands with everyone in the café and paid for their ${drink}.`, `You charmed the regulars, then accidentally drank someone else's ${drink}.`, 'The café owner loved you. The cook asked for a photo together.']) }
+        return { delta: d, text: pickSite(g, [`You shook hands with everyone in the café and paid for their ${drink}.`, `You charmed the regulars, then accidentally drank someone else's ${drink}.`, 'The café owner loved you. The cook asked for a photo together.'], 0xb0bd4d90) }
       }
-      return { delta: d, text: pick(g, ['You shook hands with everyone in the diner and paid for their coffee.', 'You charmed the diner regulars, then accidentally ate someone else’s pancakes.', 'The diner staff loved you. The cook asked for a photo together.']) }
+      return { delta: d, text: pickLine(g, ['You shook hands with everyone in the diner and paid for their coffee.', 'You charmed the diner regulars, then accidentally ate someone else’s pancakes.', 'The diner staff loved you. The cook asked for a photo together.']) }
     }
   }
 }
@@ -930,7 +931,7 @@ function election(g: GameState, camp: Campaign, lastText: string): void {
     say(
       g,
       'Election Night',
-      `${lastText}\n\nThe votes are in: you won with ${finalShare}% of the vote! ${pick(g, [`${camp.opponent} called to concede, sounding like they'd been crying.`, `Confetti fell. Someone popped champagne. ${camp.opponent} left through the back door.`, 'Your victory speech ran long, but nobody cared.'])} You are the new ${styled(g, o.id)}. The job pays ${money(salary)} a year.${quitText}`,
+      `${lastText}\n\nThe votes are in: you won with ${finalShare}% of the vote! ${pickSite(g, [`${camp.opponent} called to concede, sounding like they'd been crying.`, `Confetti fell. Someone popped champagne. ${camp.opponent} left through the back door.`, 'Your victory speech ran long, but nobody cared.'], 0xb25409aa)} You are the new ${styled(g, o.id)}. The job pays ${money(salary)} a year.${quitText}`,
       '\u{1F389}',
       'good',
     )
@@ -940,7 +941,7 @@ function election(g: GameState, camp: Campaign, lastText: string): void {
   count(g, 'electionsLost')
   addStat(g, 'happiness', -10)
   log(g, `I lost the election for ${title}.`, 'bad')
-  const loseText = `${lastText}\n\nThe votes are in: you lost to ${camp.opponent} with ${finalShare}% of the vote. ${pick(g, ['Your concession speech was gracious. Mostly.', 'You blamed the weather, the media and your campaign manager, in that order.', 'Your supporters cried. Your campaign manager updated their résumé.'])}`
+  const loseText = `${lastText}\n\nThe votes are in: you lost to ${camp.opponent} with ${finalShare}% of the vote. ${pickLine(g, ['Your concession speech was gracious. Mostly.', 'You blamed the weather, the media and your campaign manager, in that order.', 'Your supporters cried. Your campaign manager updated their résumé.'])}`
   if (current) {
     const d = pdata(current)
     const was = current.title
@@ -1052,12 +1053,12 @@ const newspaperAction: MenuAction = {
     const a = d.approval
     const headline =
       a >= 75
-        ? pick(g, [`"${job.title} Can Do No Wrong," Says Everyone`, `Approval Soars for ${g.character.lastName}`])
+        ? pickSite(g, [`"${job.title} Can Do No Wrong," Says Everyone`, `Approval Soars for ${g.character.lastName}`], 0xe1c65818)
         : a >= 50
-          ? pick(g, [`${job.title} ${g.character.lastName} Holds Steady`, `Local Voters Mostly Shrug at ${g.character.lastName}`])
+          ? pickSite(g, [`${job.title} ${g.character.lastName} Holds Steady`, `Local Voters Mostly Shrug at ${g.character.lastName}`], 0x7bf25479)
           : a >= 30
-            ? pick(g, [`Frustration Grows with ${g.character.lastName}`, `Is ${g.character.lastName} Asleep at the Wheel?`])
-            : pick(g, [`Calls Mount for ${g.character.lastName} to Resign`, `${g.character.lastName}: Worst ${job.title} Ever?`])
+            ? pickSite(g, [`Frustration Grows with ${g.character.lastName}`, `Is ${g.character.lastName} Asleep at the Wheel?`], 0x324b8647)
+            : pickSite(g, [`Calls Mount for ${g.character.lastName} to Resign`, `${g.character.lastName}: Worst ${job.title} Ever?`], 0x56917abd)
     say(
       g,
       'The Newspaper',
@@ -1085,8 +1086,8 @@ defineScript(SPEECH_SCRIPT, (g, choice) => {
     g,
     'Broadcast Speech',
     hot
-      ? `${pick(g, [`Your speech on ${issue.label.toLowerCase()} struck a nerve. People are talking about it everywhere.`, `You spoke passionately about ${issue.label.toLowerCase()} and the public ate it up.`, `Your address on ${issue.label.toLowerCase()} was quoted on every news channel.`])} Approval: ${d.approval}% (+${delta}).`
-      : `${pick(g, [`Nobody seems to care about ${issue.label.toLowerCase()} right now. Viewers switched to a cooking show.`, `Your speech on ${issue.label.toLowerCase()} fell flat. Maybe read the newspaper first?`, `Pundits called your speech on ${issue.label.toLowerCase()} "tone-deaf".`])} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
+      ? `${pickSite(g, [`Your speech on ${issue.label.toLowerCase()} struck a nerve. People are talking about it everywhere.`, `You spoke passionately about ${issue.label.toLowerCase()} and the public ate it up.`, `Your address on ${issue.label.toLowerCase()} was quoted on every news channel.`], 0x7cd36c40)} Approval: ${d.approval}% (+${delta}).`
+      : `${pickSite(g, [`Nobody seems to care about ${issue.label.toLowerCase()} right now. Viewers switched to a cooking show.`, `Your speech on ${issue.label.toLowerCase()} fell flat. Maybe read the newspaper first?`, `Pundits called your speech on ${issue.label.toLowerCase()} "tone-deaf".`], 0x1998a046)} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
     '\u{1F399}\u{FE0F}',
     hot ? 'good' : 'neutral',
   )
@@ -1152,14 +1153,14 @@ const rallyAction: MenuAction = {
     if (roll < (hasTalent(g, 'Leadership') ? 0.1 : 0.15)) {
       addApproval(job, -3)
       log(g, 'Protesters crashed my rally.', 'bad')
-      return say(g, 'Rally', `${pick(g, ['Protesters drowned out your speech with kazoos.', 'Someone threw a tomato at you. They had good aim.', 'Your teleprompter died and you rambled for forty minutes.'])} Approval: ${pdata(job).approval}% (-3).`, '\u{1F345}', 'bad')
+      return say(g, 'Rally', `${pickLine(g, ['Protesters drowned out your speech with kazoos.', 'Someone threw a tomato at you. They had good aim.', 'Your teleprompter died and you rambled for forty minutes.'])} Approval: ${pdata(job).approval}% (-3).`, '\u{1F345}', 'bad')
     }
     const delta = randInt(g, 2, 7) + (hasTalent(g, 'Leadership') ? 1 : 0)
     addApproval(job, delta)
     addFame(g, 1)
     addStat(g, 'happiness', 4)
     log(g, 'I held a political rally.', 'good')
-    say(g, 'Rally', `${pick(g, ['Thousands of supporters chanted your name.', 'Your rally was electric. A marching band showed up uninvited and it worked.', 'You fired up the crowd and signed a cast for a kid with a broken arm.'])} Approval: ${pdata(job).approval}% (+${delta}).`, '\u{1F4E3}', 'good')
+    say(g, 'Rally', `${pickLine(g, ['Thousands of supporters chanted your name.', 'Your rally was electric. A marching band showed up uninvited and it worked.', 'You fired up the crowd and signed a cast for a kid with a broken arm.'])} Approval: ${pdata(job).approval}% (+${delta}).`, '\u{1F4E3}', 'good')
   },
 }
 
@@ -1243,7 +1244,7 @@ defineScript(BILL_SCRIPT, (g, choice, data) => {
     return say(
       g,
       w.passTitle,
-      `${w.passed(bill.name)} ${s >= 60 ? pick(g, ['The public cheered.', 'It was wildly popular.']) : s >= 40 ? 'Reactions were mixed.' : pick(g, ['People were furious.', 'Angry letters piled up on your desk.'])}${extra} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
+      `${w.passed(bill.name)} ${s >= 60 ? pickLine(g, ['The public cheered.', 'It was wildly popular.']) : s >= 40 ? 'Reactions were mixed.' : pickLine(g, ['People were furious.', 'Angry letters piled up on your desk.'])}${extra} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
       bill.emoji,
       delta >= 0 ? 'good' : 'bad',
     )
@@ -1257,7 +1258,7 @@ defineScript(BILL_SCRIPT, (g, choice, data) => {
   say(
     g,
     w.blockTitle,
-    `${w.blocked(bill.name)} ${s >= 60 ? pick(g, ['Supporters of the bill marched outside your office.', 'The bill was popular, and now you are slightly less so.']) : pick(g, ['Most people were relieved.', 'Nobody wanted that bill anyway. Good call.'])} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
+    `${w.blocked(bill.name)} ${s >= 60 ? pickLine(g, ['Supporters of the bill marched outside your office.', 'The bill was popular, and now you are slightly less so.']) : pickLine(g, ['Most people were relieved.', 'Nobody wanted that bill anyway. Good call.'])} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
     '\u{1F6AB}',
     delta >= 0 ? 'good' : 'bad',
   )
@@ -1326,7 +1327,7 @@ const fundraiseAction: MenuAction = {
     say(
       g,
       'Fundraiser',
-      `${pick(g, [`You hosted a ${money(500)}-a-plate dinner. The food was cold but the checks cleared.`, 'You held a gala fundraiser and laughed at a lot of donor jokes.', 'You spent the evening shaking hands with very rich people who want very specific things.'])} You raised ${money(raised)} for your next campaign. War chest: ${money(d.warChest)}.`,
+      `${pickSite(g, [`You hosted a ${money(500)}-a-plate dinner. The food was cold but the checks cleared.`, 'You held a gala fundraiser and laughed at a lot of donor jokes.', 'You spent the evening shaking hands with very rich people who want very specific things.'], 0xb163a8b8)} You raised ${money(raised)} for your next campaign. War chest: ${money(d.warChest)}.`,
       '\u{1F942}',
       'good',
     )
@@ -1354,7 +1355,7 @@ defineScript(HOLIDAY_SCRIPT, (g, choice) => {
     text = 'You declared National Nap Day. Productivity plummeted. Happiness soared.'
   } else if (choice === 'pets') {
     delta = randInt(g, 2, 4)
-    text = `You adopted a scruffy rescue dog named ${pick(g, ['Senator Biscuit', 'Filibuster', 'Veto', 'Sir Barksalot'])}. It has a higher approval rating than you.`
+    text = `You adopted a scruffy rescue dog named ${pickLine(g, ['Senator Biscuit', 'Filibuster', 'Veto', 'Sir Barksalot'])}. It has a higher approval rating than you.`
   } else if (choice === 'pardon') {
     delta = randInt(g, 1, 3)
     text = 'You pardoned a turkey in a televised ceremony. It bit you. Ratings were huge.'
@@ -1403,7 +1404,7 @@ const resignAction: MenuAction = {
     leave(g, 'quit')
     addFame(g, -3)
     log(g, `I resigned as ${title}.`)
-    say(g, 'Resignation', `${pick(g, ['You resigned "to spend more time with family". Your family was not consulted.', 'You held a tearful press conference and resigned.', 'You resigned and immediately signed a book deal.'])} You are no longer ${title}.`, '\u{1F6AA}')
+    say(g, 'Resignation', `${pickLine(g, ['You resigned "to spend more time with family". Your family was not consulted.', 'You held a tearful press conference and resigned.', 'You resigned and immediately signed a book deal.'])} You are no longer ${title}.`, '\u{1F6AA}')
   },
 }
 
@@ -2135,7 +2136,7 @@ defineScript(CRONY_SIZE_SCRIPT, (g, value, data) => {
   say(
     g,
     'A Quiet Word',
-    `${pick(g, [`Over a round of golf, you told ${name} that ${bet.name} might be in for an "interesting" year.`, `You met ${name} in a parking garage, which is a perfectly normal place to meet.`, `You sent ${name} a text that just said "${bet.symbol}?" followed by a winking emoji. Then you deleted it.`])} ${name} took your ${money(stake)} in cash and bought ${bet.asset === 'coin' ? (bet.kind === 'short' ? 'a 2x short' : 'a long bet') : `${bet.kind}s`} on ${bet.symbol} in ${name.split(' ')[0]}'s own name. It settles when the year ends.`,
+    `${pickSite(g, [`Over a round of golf, you told ${name} that ${bet.name} might be in for an "interesting" year.`, `You met ${name} in a parking garage, which is a perfectly normal place to meet.`, `You sent ${name} a text that just said "${bet.symbol}?" followed by a winking emoji. Then you deleted it.`], 0x1fd731d6)} ${name} took your ${money(stake)} in cash and bought ${bet.asset === 'coin' ? (bet.kind === 'short' ? 'a 2x short' : 'a long bet') : `${bet.kind}s`} on ${bet.symbol} in ${name.split(' ')[0]}'s own name. It settles when the year ends.`,
     '\u{1F91D}',
   )
 })
@@ -2408,7 +2409,7 @@ defineScript(INSIDER_SCRIPT, (g, choice, data) => {
     lines.push(`Approval: ${pdata(still).approval}% (-${drop}).`)
     if (pdata(still).approval < 30) {
       addStat(g, 'happiness', -6)
-      lines.push(pick(g, [`Thousands of protesters marched on ${pdata(still).office === 'mayor' ? 'City Hall' : 'the capital'} waving cardboard stock charts.`, 'Protesters camped outside your office chanting "Lock! Them! Up!"', 'Crowds filled the streets banging pots and pans. It was loud and, frankly, rhythmic.']))
+      lines.push(pickSite(g, [`Thousands of protesters marched on ${pdata(still).office === 'mayor' ? 'City Hall' : 'the capital'} waving cardboard stock charts.`, 'Protesters camped outside your office chanting "Lock! Them! Up!"', 'Crowds filled the streets banging pots and pans. It was loud and, frankly, rhythmic.'], 0xbcc166e9))
     }
   }
   addStat(g, 'happiness', -randInt(g, 4, 9))
@@ -2554,7 +2555,7 @@ defineScript(FAVOR_SCRIPT, (g, choice, data) => {
     writeMe(g, me)
     count(g, 'bribesTaken')
     log(g, `I accepted a political favor from ${who.toLowerCase()}.`, 'bad')
-    say(g, 'Political Favor', `You quietly accepted ${money(amount)} from ${who.toLowerCase()}. ${pick(g, ['They promised nobody would ever know.', 'The envelope was surprisingly heavy.', 'They winked. You winked back. It was weird.'])} It is dirty money: it sits in your slush fund until you launder it.`, '\u{1F4B0}')
+    say(g, 'Political Favor', `You quietly accepted ${money(amount)} from ${who.toLowerCase()}. ${pickLine(g, ['They promised nobody would ever know.', 'The envelope was surprisingly heavy.', 'They winked. You winked back. It was weird.'])} It is dirty money: it sits in your slush fund until you launder it.`, '\u{1F4B0}')
     return
   }
   if (choice === 'report') {
@@ -2579,7 +2580,7 @@ defineScript(SCANDAL_SCRIPT, (g, choice, data) => {
   let text: string
   if (choice === 'apologize') {
     delta = -randInt(g, 1, 6)
-    text = pick(g, ['Your heartfelt apology was surprisingly well received.', 'You apologized on live TV. A few people even believed you.'])
+    text = pickLine(g, ['Your heartfelt apology was surprisingly well received.', 'You apologized on live TV. A few people even believed you.'])
   } else if (choice === 'deny') {
     if (chance(g, 0.5)) {
       delta = randInt(g, -1, 2)
@@ -2627,7 +2628,7 @@ defineScript(IMPEACH_SCRIPT, (g, choice) => {
     leave(g, 'quit')
     addFame(g, -5)
     log(g, `I resigned as ${title} before I could be removed.`, 'bad')
-    return say(g, 'Resigned', `You resigned in disgrace before the vote. ${pick(g, ['Your farewell speech was mostly excuses.', 'Reporters chased you to your car.'])}`, '\u{1F6AA}', 'bad')
+    return say(g, 'Resigned', `You resigned in disgrace before the vote. ${pickLine(g, ['Your farewell speech was mostly excuses.', 'Reporters chased you to your car.'])}`, '\u{1F6AA}', 'bad')
   }
   const d = pdata(job)
   const survive = Math.min(0.85, 0.2 + d.approval / 40 + (g.character.stats.smarts - 50) / 200)
@@ -2635,7 +2636,7 @@ defineScript(IMPEACH_SCRIPT, (g, choice) => {
     addApproval(job, randInt(g, 3, 8))
     const w = removalWords(g, d.office)
     log(g, `I survived ${w.survived} as ${title}.`, 'good')
-    return say(g, w.title, `You fought back and survived the vote by a hair. ${pick(g, ['Your allies held the line.', 'Two lawmakers missed the vote because of a flat tire. Lucky you.'])} Approval: ${d.approval}%.`, '\u{1F605}', 'good')
+    return say(g, w.title, `You fought back and survived the vote by a hair. ${pickLine(g, ['Your allies held the line.', 'Two lawmakers missed the vote because of a flat tire. Lucky you.'])} Approval: ${d.approval}%.`, '\u{1F605}', 'good')
   }
   p.impeached += 1
   count(g, 'impeached')
@@ -2677,7 +2678,7 @@ defineScript(TERM_SCRIPT, (g, choice) => {
   leave(g, 'retired')
   log(g, `I retired from politics after serving as ${title}.`, 'good')
   remember(g, `Retired from politics as ${title}.`)
-  say(g, 'Retired', `You left office as ${title} with a ${d.approval}% approval rating. ${pick(g, ['Your portrait now hangs in a hallway nobody walks down.', 'You celebrated by sleeping in for the first time in years.', 'Publishers are already calling about your memoir.'])}`, '\u{1F3D6}\u{FE0F}', 'good')
+  say(g, 'Retired', `You left office as ${title} with a ${d.approval}% approval rating. ${pickLine(g, ['Your portrait now hangs in a hallway nobody walks down.', 'You celebrated by sleeping in for the first time in years.', 'Publishers are already calling about your memoir.'])}`, '\u{1F3D6}\u{FE0F}', 'good')
 })
 
 /**
@@ -2727,7 +2728,7 @@ function reelection(g: GameState, job: Job): void {
   leave(g, 'other')
   addStat(g, 'happiness', -12)
   log(g, `I lost my re-election bid for ${title}.`, 'bad')
-  say(g, 'Defeated', `Voters threw you out. ${opp} won with ${100 - share}% of the vote.${exposed} ${pick(g, ['You moved out of your office with a single sad box.', 'You gave a concession speech and then ate an entire cake.'])}`, '\u{1F5F3}\u{FE0F}', 'bad')
+  say(g, 'Defeated', `Voters threw you out. ${opp} won with ${100 - share}% of the vote.${exposed} ${pickLine(g, ['You moved out of your office with a single sad box.', 'You gave a concession speech and then ate an entire cake.'])}`, '\u{1F5F3}\u{FE0F}', 'bad')
 }
 
 function ordinalWord(n: number): string {
@@ -2872,7 +2873,7 @@ export function yearlyPolitics(g: GameState): void {
   }
 
   if (!modal && chance(g, 0.22)) {
-    const who = pick(g, FAVOR_GIVERS)
+    const who = pickLine(g, FAVOR_GIVERS)
     const amount = Math.round((salaryFor(g, o) * (0.3 + rand(g) * 1.2)) / 1000) * 1000
     scriptChoice(
       g,

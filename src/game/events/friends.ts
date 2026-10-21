@@ -3,6 +3,7 @@
 import { removePerson } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import { anyOf, canDrink, ch, defineEvents, dollars, friends, money, muslimMajority, say, strangerName, v, type Ctx } from './helpers'
 import { bragged, cars, common, landline, prohibition, texting } from './era'
@@ -37,7 +38,7 @@ export const FRIEND_EVENTS = defineEvents([
     cooldown: 3,
     setup: (g) => {
       const s = strangerName(g)
-      const where = g.character.age < 18 ? pick(g, ['at school', 'at the park', 'at summer camp', 'at the library']) : v(g, ['at the gym', 'at a coffee shop', '@1985 at the dog park', 'in your building', 'at a concert', '@-1960 at a dance hall'])
+      const where = g.character.age < 18 ? pickLine(g, ['at school', 'at the park', 'at summer camp', 'at the library']) : v(g, ['at the gym', 'at a coffee shop', '@1985 at the dog park', 'in your building', 'at a concert', '@-1960 at a dance hall'])
       return {
         text: `A person named ${s.first} ${s.last} you met ${where} wants to become your friend. What will you do?`,
         choices: [ch('yes', 'Become friends with them'), ch('no', 'Reject them')],
@@ -210,7 +211,7 @@ export const FRIEND_EVENTS = defineEvents([
         }
       },
       excuse: (g, x) => {
-        const plan = pick(g, ['go bowling', 'visit my grandmother', 'walk my neighbor\'s dog', 'reorganize my sock drawer'])
+        const plan = pickLine(g, ['go bowling', 'visit my grandmother', 'walk my neighbor\'s dog', 'reorganize my sock drawer'])
         say(g, x, 'Prior engagement', `You told ${nm(x)} you already had plans to ${plan}. They bought it.`, `I lied and told my friend I already had plans to ${plan}.`, { rel: -2 })
       },
       no: (g, x) => say(g, x, 'Just say no', `You told ${nm(x)} no way. They shrugged and said "more for me."`, 'I turned down drugs from a friend.', { health: 2, rel: -4 }, 'good'),

@@ -33,6 +33,7 @@ import {
 import { locale, localPick, localTerm } from './data/locales'
 import { createPerson, notePerson, pickDistinct, randomOccupation, randomWealth, TRAITS } from './people'
 import { bell, chance, pick, randFloat, randInt, uid } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { hasTalent, talentHint } from './talents'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
@@ -453,7 +454,7 @@ export function askOut(g: GameState, p: Person): void {
   if (chance(g, odds)) {
     startDating(g, p, `asked out (was ${article2(labelOf(p))})`)
     addStat(g, 'happiness', randInt(g, 5, 10))
-    notice(g, 'Ask Out', `You asked ${p.firstName} out. ${fillPronouns(pick(g, ASK_OUT_YES), p.gender)}\n\nYou are now dating ${fullName(p)}!`, {
+    notice(g, 'Ask Out', `You asked ${p.firstName} out. ${fillPronouns(pickLine(g, ASK_OUT_YES), p.gender)}\n\nYou are now dating ${fullName(p)}!`, {
       emoji: '\u{1F496}',
       tone: 'good',
     })
@@ -531,7 +532,7 @@ defineScript('love.date.pick', (g, choice, data) => {
   if (chance(g, attractionOdds(g, k))) {
     const p = startDating(g, k, 'met on a date')
     addStat(g, 'happiness', randInt(g, 6, 12))
-    notice(g, 'Date', `You asked ${k.firstName} out and ${fillPronouns(pick(g, ['{he} said yes!', '{he} happily agreed!', '{he} said {he} thought you would never ask.']), k.gender)}\n\nYou're now dating ${fullName(p)}.`, {
+    notice(g, 'Date', `You asked ${k.firstName} out and ${fillPronouns(pickLine(g, ['{he} said yes!', '{he} happily agreed!', '{he} said {he} thought you would never ask.']), k.gender)}\n\nYou're now dating ${fullName(p)}.`, {
       emoji: '\u{1F496}',
       tone: 'good',
     })
@@ -741,7 +742,7 @@ defineScript('love.app.match', (g, choice, data) => {
     notice(g, svc.name, `You went on a date with ${k.firstName} and hit it off! You're now dating ${fullName(p)}.`, { emoji: '\u{1F496}', tone: 'good' })
   } else {
     addStat(g, 'happiness', -randInt(g, 2, 5))
-    notice(g, svc.name, `You went on a date with ${k.firstName}, but ${pronouns(k.gender).he} wasn't feeling it. ${pick(g, ['The conversation died before the appetizers did.', 'You talked about your ex for forty minutes. Mistake.', `${pronouns(k.gender).He} said you were "a lot".`])}`, { emoji: '\u{1F494}', tone: 'bad' })
+    notice(g, svc.name, `You went on a date with ${k.firstName}, but ${pronouns(k.gender).he} wasn't feeling it. ${pickSite(g, ['The conversation died before the appetizers did.', 'You talked about your ex for forty minutes. Mistake.', `${pronouns(k.gender).He} said you were "a lot".`], 0xde44bb07)}`, { emoji: '\u{1F494}', tone: 'bad' })
   }
 })
 
@@ -1112,7 +1113,7 @@ defineScript('love.propose.ring', (g, choice, data) => {
     notice(
       g,
       'Engaged!',
-      `You got down on one knee and proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} noticed the ring was fake, but said yes anyway.` : ''}\n\n${pick(g, [`${He} said yes!`, `${He} screamed "YES!" loud enough to scare a nearby pigeon.`, `${He} cried, laughed, and said yes.`])} You're engaged! \u{1F48D}`,
+      `You got down on one knee and proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} noticed the ring was fake, but said yes anyway.` : ''}\n\n${pickSite(g, [`${He} said yes!`, `${He} screamed "YES!" loud enough to scare a nearby pigeon.`, `${He} cried, laughed, and said yes.`], 0x0688659a)} You're engaged! \u{1F48D}`,
       { emoji: '\u{1F48D}', tone: 'good' },
     )
   } else {
@@ -1121,7 +1122,7 @@ defineScript('love.propose.ring', (g, choice, data) => {
     log(g, `I proposed to ${fullName(p)}, but ${he} said no.`, 'bad')
     const refund = ring.price > 0 ? Math.round(ring.price * 0.5) : 0
     if (refund) addMoney(g, refund)
-    let text = `You proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} immediately noticed the ring was fake.` : ''}\n\n${pick(g, [`${He} said no.`, `${He} said ${he} isn't ready.`, `${He} laughed, then realized you were serious, then said no.`, `${He} said "Can we talk about this later?" which means no.`])}`
+    let text = `You proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} immediately noticed the ring was fake.` : ''}\n\n${pickSite(g, [`${He} said no.`, `${He} said ${he} isn't ready.`, `${He} laughed, then realized you were serious, then said no.`, `${He} said "Can we talk about this later?" which means no.`], 0x33215d6e)}`
     if (refund) text += `\n\nYou returned the ring for a ${money(refund)} partial refund.`
     notice(g, 'Rejected', text, { emoji: '\u{1F494}', tone: 'bad' })
     if (p.relationship < 25 && chance(g, 0.35)) breakUp(g, p, 'them', 'felt pressured by the proposal')
@@ -1396,7 +1397,7 @@ defineScript('love.wedding.prenup', (g, choice, data) => {
     g,
     'love.wedding.prenupRefused',
     'Prenup',
-    `${p.firstName} refused to sign the prenup. "${pick(g, ['So you think this is going to fail?', "I'm not marrying a contract.", 'Wow. Just wow.', 'My lawyer says absolutely not. I do not have a lawyer.'])}"`,
+    `${p.firstName} refused to sign the prenup. "${pickLine(g, ['So you think this is going to fail?', "I'm not marrying a contract.", 'Wow. Just wow.', 'My lawyer says absolutely not. I do not have a lawyer.'])}"`,
     [
       { id: 'marry', label: 'Marry without a prenup', emoji: '\u{1F492}' },
       { id: 'cancel', label: 'Call off the wedding', emoji: '\u{1F6AB}' },
@@ -1545,7 +1546,7 @@ defineScript('love.wedding.surname', (g, choice, data) => {
       notice(g, 'Surname', `${p.firstName} agreed to take your last name. Welcome to the ${original} family!`, { emoji: '\u{1F91D}', tone: 'good' })
     } else {
       addRelationship(p, -randInt(g, 2, 6))
-      notice(g, 'Surname', `${p.firstName} refused. "${pick(g, ["I've had this name for my whole life.", 'Absolutely not. Have you met your family?', 'How about you take mine instead?'])}"`, { emoji: '\u{1F645}' })
+      notice(g, 'Surname', `${p.firstName} refused. "${pickLine(g, ["I've had this name for my whole life.", 'Absolutely not. Have you met your family?', 'How about you take mine instead?'])}"`, { emoji: '\u{1F645}' })
     }
   }
 })
@@ -1566,7 +1567,7 @@ export function elope(g: GameState, p: Person): void {
     log(g, eraPickPlain(g, ['We eloped!', '@socialMedia We eloped! Our families found out from social media.', `We ran off to ${where} and told nobody until it was done.`, 'We eloped. My mother is still not over it.']))
   } else {
     addRelationship(p, -randInt(g, 5, 12))
-    notice(g, 'Elope', `${p.firstName} refused to elope. "${pick(g, ['My mother would never forgive me.', 'I want a real wedding with a cake taller than me.', 'Are you trying to avoid paying for a wedding?'])}"`, { emoji: '\u{1F645}' })
+    notice(g, 'Elope', `${p.firstName} refused to elope. "${pickLine(g, ['My mother would never forgive me.', 'I want a real wedding with a cake taller than me.', 'Are you trying to avoid paying for a wedding?'])}"`, { emoji: '\u{1F645}' })
   }
 }
 
@@ -1585,7 +1586,7 @@ export function renewVows(g: GameState, p: Person): void {
     addRelationship(p, randInt(g, 12, 20))
     addStat(g, 'happiness', randInt(g, 8, 12))
     log(g, `${fullName(p)} and I renewed our wedding vows.`, 'good')
-    notice(g, 'Renew Vows', `You and ${p.firstName} renewed your vows in front of family and friends.${cost ? ` It cost ${money(cost)}.` : ''} ${pick(g, ['There was not a dry eye in the house.', 'You still got the words wrong.', 'Your kids rolled their eyes the whole time.'])}`, {
+    notice(g, 'Renew Vows', `You and ${p.firstName} renewed your vows in front of family and friends.${cost ? ` It cost ${money(cost)}.` : ''} ${pickLine(g, ['There was not a dry eye in the house.', 'You still got the words wrong.', 'Your kids rolled their eyes the whole time.'])}`, {
       emoji: '\u{1F492}',
       tone: 'good',
     })
@@ -1618,7 +1619,7 @@ export function couplesCounseling(g: GameState, p: Person): void {
   addRelationship(p, gain)
   addStat(g, 'happiness', randInt(g, 2, 6))
   log(g, `${fullName(p)} and I went to couples counseling.`)
-  notice(g, 'Counseling', `You and ${p.firstName} went to the counseling office${fee ? ` (${money(fee)})` : ''}. ${pick(g, ['The therapist made you hold hands and say three nice things. It worked.', 'You both cried. You both felt better.', 'You learned about "love languages". Yours is apparently snacks.', 'The counselor took a lot of notes. A worrying amount of notes.'])}`, { emoji: '\u{1F6CB}\u{FE0F}', tone: 'good' })
+  notice(g, 'Counseling', `You and ${p.firstName} went to the counseling office${fee ? ` (${money(fee)})` : ''}. ${pickLine(g, ['The therapist made you hold hands and say three nice things. It worked.', 'You both cried. You both felt better.', 'You learned about "love languages". Yours is apparently snacks.', 'The counselor took a lot of notes. A worrying amount of notes.'])}`, { emoji: '\u{1F6CB}\u{FE0F}', tone: 'good' })
 }
 
 /** Divorce your spouse, splitting assets unless there's a prenup. */
@@ -1631,7 +1632,7 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
   const fondness = p.relationship
   const prenup = p.data.prenup === true
   const lines: string[] = []
-  lines.push(by === 'player' ? `You divorced ${p.firstName}.` : `${p.firstName} filed for divorce. "${pick(g, BREAKUP_THEM)}"`)
+  lines.push(by === 'player' ? `You divorced ${p.firstName}.` : `${p.firstName} filed for divorce. "${pickLine(g, BREAKUP_THEM)}"`)
 
   // Settlement
   let owed = 0
@@ -1864,7 +1865,7 @@ export function makeLove(g: GameState, p: Person): void {
   const notInMood = p.relationship < 30 ? 0.5 : 0.12
   if (chance(g, notInMood)) {
     addRelationship(p, -1)
-    notice(g, 'Make Love', `${p.firstName} ${pick(g, ["wasn't in the mood.", 'said they have a headache.', 'fell asleep on the couch before you could ask.', 'said "Not tonight, I just washed my hair."'])}`, { emoji: '\u{1F634}' })
+    notice(g, 'Make Love', `${p.firstName} ${pickLine(g, ["wasn't in the mood.", 'said they have a headache.', 'fell asleep on the couch before you could ask.', 'said "Not tonight, I just washed my hair."'])}`, { emoji: '\u{1F634}' })
     return
   }
   addRelationship(p, randInt(g, 3, 8))
@@ -1922,7 +1923,7 @@ export function tryForBaby(g: GameState, p: Person): void {
   const willing = (p.relation === 'spouse' ? 0.98 : p.relation === 'fiance' ? 0.7 : 0.45) + (p.relationship - 50) / 250
   if (!agreed && !chance(g, clamp(willing, 0.1, 0.99))) {
     addRelationship(p, -randInt(g, 1, 4))
-    notice(g, 'Try for a Baby', `${p.firstName} said ${pronouns(p.gender).he}'s not ready to have kids. ${pick(g, ['"Maybe in a few years."', '"We can barely keep a houseplant alive."', '"Ask me again after the honeymoon phase."'])}`, { emoji: '\u{1F645}' })
+    notice(g, 'Try for a Baby', `${p.firstName} said ${pronouns(p.gender).he}'s not ready to have kids. ${pickLine(g, ['"Maybe in a few years."', '"We can barely keep a houseplant alive."', '"Ask me again after the honeymoon phase."'])}`, { emoji: '\u{1F645}' })
     return
   }
   p.data.familyPlanWith = c.id
@@ -2078,7 +2079,7 @@ function deliver(g: GameState, other: Person | null, babies: number, carrier: 't
       logLine = `My surrogate gave birth to my ${kin}, {name}.`
     } else {
       const label = other ? cap(yourRel(other)) : 'Your partner'
-      text = pick(g, BABY_LINES_THEM).replace('{label}', label).replace('{kid}', kidW)
+      text = pickLine(g, BABY_LINES_THEM).replace('{label}', label).replace('{kid}', kidW)
       logLine = `${other ? cap(myRel(other)) : 'My partner'} gave birth to my ${kin}, {name}.`
       if (!livesWithPlayer && !inPrison(g)) text += ` The baby will live with ${other ? other.firstName : 'the mother'}.`
     }
@@ -2313,7 +2314,7 @@ function fertilityNodes(): MenuNode[] {
       addMoney(g, pay)
       count(g, 'spermDonations')
       log(g, `I donated sperm and earned ${money(pay)}.`)
-      notice(g, 'Sperm Donation', `You made a donation to the fertility lab and got paid ${money(pay)}. ${pick(g, ['Somewhere, a family is grateful.', 'The magazine selection was disappointing.', 'The nurse did not make eye contact.'])}`, { emoji: '\u{1F9EA}' })
+      notice(g, 'Sperm Donation', `You made a donation to the fertility lab and got paid ${money(pay)}. ${pickLine(g, ['Somewhere, a family is grateful.', 'The magazine selection was disappointing.', 'The nurse did not make eye contact.'])}`, { emoji: '\u{1F9EA}' })
     },
   }
   const surrogate: MenuAction = {
@@ -3033,7 +3034,7 @@ defineScript('love.pet.pick', (g, choice, data) => {
     if (hasTrait(parent, 'generous', 'kind')) odds += 0.1
     if (hasTrait(parent, 'stingy', 'grumpy')) odds -= 0.15
     if (!chance(g, clamp(odds, 0.05, 0.9))) {
-      notice(g, label, `${cap(yourRel(parent))} said no. "${pick(g, ["Who's going to walk it? Me. That's who.", 'Maybe when you can take care of a houseplant.', "We can't afford another mouth to feed.", 'Absolutely not. Remember the goldfish?'])}"`, { emoji: '\u{1F645}' })
+      notice(g, label, `${cap(yourRel(parent))} said no. "${pickLine(g, ["Who's going to walk it? Me. That's who.", 'Maybe when you can take care of a houseplant.', "We can't afford another mouth to feed.", 'Absolutely not. Remember the goldfish?'])}"`, { emoji: '\u{1F645}' })
       return
     }
     parent.money = Math.max(0, parent.money - o.price)

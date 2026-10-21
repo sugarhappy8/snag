@@ -6,6 +6,7 @@ import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice } fro
 import { arrestPlayer } from '../crime'
 import { marketOf } from '../data/markets'
 import { chance, pick, rand, randInt, weightedPick } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
@@ -137,7 +138,7 @@ const INSPECTION = defineScript('business.ev.inspection', (g, choice, data) => {
   tell(
     g,
     'Inspection Failed',
-    `The inspector found ${pick(g, ['a mouse living a full and happy life behind the fridge', 'chicken stored above the salad', 'a "best before" date from two presidents ago', 'a cockroach that appeared to be on the payroll'])}. ${a.name} was fined ${formatMoney(fine)} and the bad grade is posted on the door for everyone to see.${choice === 'stall' ? ' Stalling made them angry, so you were shut for a week too.' : ''}`,
+    `The inspector found ${pickLine(g, ['a mouse living a full and happy life behind the fridge', 'chicken stored above the salad', 'a "best before" date from two presidents ago', 'a cockroach that appeared to be on the payroll'])}. ${a.name} was fined ${formatMoney(fine)} and the bad grade is posted on the door for everyone to see.${choice === 'stall' ? ' Stalling made them angry, so you were shut for a week too.' : ''}`,
     '\u{1F6A8}',
     'bad',
   )
@@ -237,7 +238,7 @@ const AUDIT = defineScript('business.ev.audit', (g, choice, data) => {
   }
   const penalty = pay(b, auditPenalty(b, choice, rand(g)))
   log(g, `A tax audit cost ${a.name} ${money(penalty)} in back taxes and penalties.`, 'bad')
-  tell(g, 'Audit Penalty', `The auditors decided ${a.name} misread a rule about ${pick(g, ['deductible lunches', 'depreciation schedules', `${m.salesTaxName} on delivery fees`, 'staff benefits', 'a form nobody has ever heard of'])}. Back taxes and penalties: ${formatMoney(penalty)}.${lawyer ? ` Your lawyer (${formatMoney(lawyer)}) got it cut in half.` : ''}`, '\u{1F9FE}', 'bad')
+  tell(g, 'Audit Penalty', `The auditors decided ${a.name} misread a rule about ${pickSite(g, ['deductible lunches', 'depreciation schedules', `${m.salesTaxName} on delivery fees`, 'staff benefits', 'a form nobody has ever heard of'], 0xb93f7b41)}. Back taxes and penalties: ${formatMoney(penalty)}.${lawyer ? ` Your lawyer (${formatMoney(lawyer)}) got it cut in half.` : ''}`, '\u{1F9FE}', 'bad')
 })
 
 function presentAudit(g: GameState, a: Asset, b: BizState): void {
@@ -424,8 +425,8 @@ function presentViral(g: GameState, a: Asset, b: BizState): void {
   const def = industryDef(b.industry)
   const w = reviewWords(g, b)
   const text = good
-    ? w.good(a.name, `${pick(g, ['Best', 'Most underrated', 'Most life-changing'])} ${def.unitOne} in ${b.city}`)
-    : w.bad(a.name, pick(g, ['Worst experience of my life', 'Rude staff and a smell I cannot describe', 'I want my money AND my time back', 'Zero stars if I could']))
+    ? w.good(a.name, `${pickLine(g, ['Best', 'Most underrated', 'Most life-changing'])} ${def.unitOne} in ${b.city}`)
+    : w.bad(a.name, pickLine(g, ['Worst experience of my life', 'Rude staff and a smell I cannot describe', 'I want my money AND my time back', 'Zero stars if I could']))
   const choices: ChoiceOption[] = good
     ? [
         { id: 'ride', label: 'Pour money into ads while it’s hot', emoji: '\u{1F4E3}' },
@@ -607,7 +608,7 @@ const CELEB = defineScript('business.ev.celebrity', (g, choice, data) => {
   if (!x) return
   const { a, b } = x
   if (choice !== 'sign') {
-    tell(g, 'Passed', `You passed on ${str(x.d.celeb)}. ${pick(g, ['Probably for the best.', 'Their agent called you "small-time". You will live.'])}`, '\u{1F645}')
+    tell(g, 'Passed', `You passed on ${str(x.d.celeb)}. ${pickLine(g, ['Probably for the best.', 'Their agent called you "small-time". You will live.'])}`, '\u{1F645}')
     return
   }
   const cost = pay(b, num(x.d.fee))
@@ -627,7 +628,7 @@ const CELEB = defineScript('business.ev.celebrity', (g, choice, data) => {
 function presentCelebrity(g: GameState, a: Asset, b: BizState): void {
   const gender = chance(g, 0.5) ? 'male' : 'female'
   const celeb = `${randomFirstName(g, b.countryId, gender)} ${randomLastName(g, b.countryId)}`
-  const what = pick(g, ['the pop star', 'the reality-TV star', 'the soap actor', `the national ${pick(g, ['football', 'tennis', 'boxing', 'chess'])} champion`, 'the cooking-show host'])
+  const what = pickSite(g, ['the pop star', 'the reality-TV star', 'the soap actor', `the national ${pick(g, ['football', 'tennis', 'boxing', 'chess'])} champion`, 'the cooking-show host'], 0x7e3a0da5)
   const fee = scaled(b, 25_000)
   const choices: ChoiceOption[] = [
     { id: 'sign', label: `Sign the deal (${money(fee)})`, emoji: '\u{270D}\u{FE0F}' },
@@ -887,7 +888,7 @@ function presentDisaster(g: GameState, a: Asset, b: BizState): void {
       ? `An earthquake cracked the walls of ${site}.`
       : STORM.has(b.countryId) && chance(g, 0.5)
         ? `A hurricane tore the roof off ${site}.`
-        : pick(g, [`A kitchen fire gutted the back of ${site}.`, `A burst water main flooded ${site}.`, `Lightning fried the electrics at ${site}.`, `A runaway delivery truck crashed into ${site}.`])
+        : pickSite(g, [`A kitchen fire gutted the back of ${site}.`, `A burst water main flooded ${site}.`, `Lightning fried the electrics at ${site}.`, `A runaway delivery truck crashed into ${site}.`], 0xe671fa2d)
   const damage = Math.round(equipmentValue(b) * (0.12 + rand(g) * 0.25) / Math.max(1, Math.sqrt(totalOutlets(b))))
   const loss = Math.round((0.25 + rand(g) * 0.3) / Math.max(1, Math.sqrt(totalOutlets(b))) * 100) / 100
   const choices: ChoiceOption[] = [

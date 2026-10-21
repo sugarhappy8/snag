@@ -12,6 +12,7 @@ import { killCharacter } from '../death'
 import { conscriptionAt, getWar, serviceOddsAt, studentsDeferredAt, warDraftAt, warFronts, warsAt, womenConscriptedAt, type WarDef } from '../history/events-wars'
 import { isHistorical } from '../history/timeline'
 import { chance, pick, rand, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -225,11 +226,11 @@ function enlist(g: GameState, b: Branch, track: Track, conscript = false): void 
   addHidden(g, 'discipline', randInt(g, 4, 10))
   addHidden(g, 'athleticism', randInt(g, 3, 8))
   addStat(g, 'health', randInt(g, -3, 6))
-  const training = pick(g, [
+  const training = pickSite(g, [
     `Basic training was brutal. ${co.firstName} ${co.lastName}, your drill instructor, screamed at you until you could make a bed with your eyes closed.`,
     `You survived basic training, although you'll never look at push-ups the same way again.`,
     `During basic training you learned to march, shoot, and eat an entire meal in ninety seconds.`,
-  ])
+  ], 0x285f1a36)
   const what = conscript ? `You reported for mandatory service in the ${company}.` : track === 'officer' ? `You were commissioned as a ${rankList[0]} in the ${company}.` : `You enlisted in the ${company} as a ${rankList[0]}.`
   log(g, conscript ? `I was drafted into the ${company}.` : track === 'officer' ? `I became an officer in the ${company}.` : `I enlisted in the ${company}.`, 'event')
   remember(g, conscript ? `Drafted into the ${company}.` : `Joined the ${company} (${track}).`)
@@ -668,7 +669,7 @@ function historicalServiceDue(g: GameState): boolean {
     setOwnFlag(g, 'ballot', picked)
     if (!picked) {
       setOwnFlag(g, 'drafted', true)
-      log(g, pick(g, ["My number didn't come up in the national service ballot.", 'I was not selected for national service. My mother cried with relief.']))
+      log(g, pickLine(g, ["My number didn't come up in the national service ballot.", 'I was not selected for national service. My mother cried with relief.']))
       return false
     }
   }
@@ -927,11 +928,11 @@ const workHarder: MenuAction = {
     const md = data(job)
     const ladder = ranks(branchOf(md.branch), md.track)
     const nextRank = ladder[job.level + 1]
-    log(g, pick(g, ['I volunteered for extra drills.', 'I worked harder on base.', 'I polished my boots until I could see my future in them.']))
+    log(g, pickLine(g, ['I volunteered for extra drills.', 'I worked harder on base.', 'I polished my boots until I could see my future in them.']))
     say(
       g,
       'Work Harder',
-      `${pick(g, ['You volunteered for every extra drill on the schedule.', 'You spent your weekends studying field manuals.', 'You were the first one up and the last one to bed all year.'])}${nextRank && !md.conscript ? ` Keep it up and you might make ${nextRank}.` : ''}`,
+      `${pickLine(g, ['You volunteered for every extra drill on the schedule.', 'You spent your weekends studying field manuals.', 'You were the first one up and the last one to bed all year.'])}${nextRank && !md.conscript ? ` Keep it up and you might make ${nextRank}.` : ''}`,
       '\u{1F4AA}',
       'good',
     )
@@ -961,7 +962,7 @@ const requestDischarge: MenuAction = {
     } else {
       const boss = getPerson(g, job.bossId)
       if (boss) addRelationship(boss, -5)
-      say(g, 'Discharge', pick(g, ['Your request was denied. Get back to work, soldier.', 'Your commanding officer laughed, tore up your request, and handed you a mop.']), '\u{1F4DD}', 'bad')
+      say(g, 'Discharge', pickLine(g, ['Your request was denied. Get back to work, soldier.', 'Your commanding officer laughed, tore up your request, and handed you a mop.']), '\u{1F4DD}', 'bad')
     }
   },
 }

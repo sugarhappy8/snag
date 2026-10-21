@@ -4,7 +4,8 @@
 import { arrestPlayer } from '../crime'
 import { addStat, count, endJob, log, notice, scriptChoice } from '../core'
 import { borderControl, strictness, type InvestKind } from '../data/immigration'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import { getCountry } from '../world'
@@ -178,7 +179,7 @@ function deny(g: GameState, r: RouteEval): void {
         ? `Your sponsor's paperwork for the ${r.sponsor.title} job didn't make it through the visa office.`
         : r.id === 'student'
           ? 'The universities you applied to said no, and so did the visa office.'
-          : pick(g, DENIALS).replace('{country}', cap(place(country)))
+          : pickLine(g, DENIALS).replace('{country}', cap(place(country)))
   offerSneak(g, r.dest, 'Application Denied', reason)
 }
 
@@ -284,7 +285,7 @@ export function sneakIn(g: GameState, dest: string): void {
     result(g, 'Refused Entry', `The border officer in ${place(country)} didn't believe your "two-week vacation" with four suitcases. You were put on the next flight back and banned for five years.`, '\u{1F6EC}', 'bad')
   } else {
     log(g, `I was caught sneaking into ${place(country)} and deported.`, 'bad')
-    result(g, 'Deported', `You made it as far as ${pick(g, ['the first village', 'a bus stop', 'a roadside café', "a farmer's field"])} past the border before you were caught and sent back. You're banned from ${place(country)} for five years.`, '\u{1F6EC}', 'bad')
+    result(g, 'Deported', `You made it as far as ${pickLine(g, ['the first village', 'a bus stop', 'a roadside café', "a farmer's field"])} past the border before you were caught and sent back. You're banned from ${place(country)} for five years.`, '\u{1F6EC}', 'bad')
   }
 }
 

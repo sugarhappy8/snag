@@ -18,6 +18,7 @@ import {
   useYearAction,
 } from '../core'
 import { chance, pick, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, gate, localPrice, money, result, usesLeft } from './common'
 import { common, eraLines } from '../events/era'
@@ -76,10 +77,10 @@ function surrender(g: GameState): void {
     arrestPlayer(g, c.countryId === 'us' ? 'Felony Escape' : 'Prison Escape', 3, {
       evidence: 1,
       noResist: true,
-      context: pick(g, [
+      context: pickSite(g, [
         `You walked into ${station} and announced that you escaped from ${from}. The officer on duty spilled their coffee.`,
         `Tired of looking over your shoulder, you turned yourself in at ${station}.`,
-      ]),
+      ], 0x890bbc35),
     })
     return
   }
@@ -92,11 +93,11 @@ function surrender(g: GameState): void {
     evidence: 0.9,
     noResist: true,
     recordIndex: idx >= 0 ? idx : undefined,
-    context: pick(g, [
+    context: pickSite(g, [
       `You walked into ${station} and confessed to ${crime.toLowerCase()}. The officer had to find a pen that worked.`,
       `You couldn't take the guilt anymore. You turned yourself in at ${station} for ${crime.toLowerCase()}.`,
       `You walked up to a patrol car, knocked on the window and said "It was me." They arrested you for ${crime.toLowerCase()}.`,
-    ]),
+    ], 0xbcc8d50b),
   })
 }
 
@@ -166,7 +167,7 @@ const NOTHING = [
 function pray(g: GameState, p: Prayer): void {
   const c = g.character
   if (!useYearAction(g, PRAY_KEY, PRAY_MAX)) {
-    result(g, 'Pray', pick(g, ["You've prayed a lot this year. Give the heavens a little time to catch up.", 'Your prayer inbox is full for the year. Try again next year.']), '\u{1F64F}')
+    result(g, 'Pray', pickLine(g, ["You've prayed a lot this year. Give the heavens a little time to catch up.", 'Your prayer inbox is full for the year. Try again next year.']), '\u{1F64F}')
     return
   }
   count(g, 'prayers')
@@ -176,7 +177,7 @@ function pray(g: GameState, p: Prayer): void {
   const blessed = chance(g, 0.25 + c.hidden.karma / 400)
   log(g, `I prayed for ${topic}.`, 'neutral')
   if (!blessed) {
-    result(g, 'Pray', pick(g, NOTHING).replace('{topic}', topic), p.emoji)
+    result(g, 'Pray', pickLine(g, NOTHING).replace('{topic}', topic), p.emoji)
     return
   }
   switch (p.id) {
@@ -232,7 +233,7 @@ function curse(g: GameState): void {
     return
   }
   addStat(g, 'happiness', randInt(g, 1, 4))
-  result(g, 'Curse', pick(g, [
+  result(g, 'Curse', pickLine(g, [
     'You shook your fist at the sky and yelled for a solid minute. Weirdly therapeutic.',
     'You cursed the heavens. A cloud drifted in front of the sun. Petty, but fair.',
   ]), '\u{26C8}\u{FE0F}')
@@ -331,7 +332,7 @@ function enterSweepstakes(g: GameState): void {
       result(g, 'Sweepstakes', `You won a ${money(card)} ${voucher}! Not life-changing, but definitely lunch-changing.`, '\u{1F381}', 'good')
       return
     }
-    const dud = pick(g, DUD_PRIZES)
+    const dud = pickLine(g, DUD_PRIZES)
     addStat(g, 'happiness', 2)
     log(g, `I won ${dud} in a sweepstakes.`, 'neutral')
     result(g, 'Sweepstakes', `Congratulations! You won ${dud}. You did not read the fine print.`, '\u{1F381}')

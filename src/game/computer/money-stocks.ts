@@ -13,7 +13,8 @@ import { coinDef, companyDef, cryptoYear, eraIdentity, exchangeByKey, exchangeIn
 import { gutLikes, listPicks, marketInstinct } from '../invest/instinct'
 import { orderFlowFactor, shockFactor } from '../invest/shocks'
 import { seeded, type SRng } from '../assets'
-import { chance, pick, uid } from '../rng'
+import { chance, uid } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -640,7 +641,7 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
   notice(
     g,
     'Bet Placed',
-    `You put ${formatMoney(bet.premium)} into ${what} (${bet.symbol}${bet.asset === 'stock' ? `, about ${lev >= 10 ? Math.round(lev) : lev.toFixed(1)}x leverage` : ''}). It settles when the year ends. ${pick(g, ['Your heart rate is now a technical indicator.', 'You set a price alert, then twelve more.', 'You told nobody. Wise.'])}`,
+    `You put ${formatMoney(bet.premium)} into ${what} (${bet.symbol}${bet.asset === 'stock' ? `, about ${lev >= 10 ? Math.round(lev) : lev.toFixed(1)}x leverage` : ''}). It settles when the year ends. ${pickLine(g, ['Your heart rate is now a technical indicator.', 'You set a price alert, then twelve more.', 'You told nobody. Wise.'])}`,
     { emoji: kind === 'put' || kind === 'short' ? '\u{1F4C9}' : '\u{1F4C8}' },
   )
 })

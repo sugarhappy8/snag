@@ -9,6 +9,7 @@ import { hasMarketData, marketOf } from './data/markets'
 import { historicalInflation, historicalMortgageRate, inHistory, investingBlocked } from './history/markets'
 import { hasTech } from './history/timeline'
 import { chance, pick, randInt, uid } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
 import { getCountry, randomFirstName } from './world'
 import { businessGone } from './assetHooks'
@@ -500,7 +501,7 @@ export function relocateAfterLosingHome(g: GameState, excludeAssetId?: string): 
   const parent = welcomingParent(g)
   if (parent) {
     c.residence = { status: 'parents' }
-    return `Your ${relationLabel(parent).toLowerCase()} ${parent.firstName} let you move back home. ${pick(g, ['Rent is free. The lectures are not.', 'Your childhood bedroom still has the posters up.', 'Curfew is at 10.'])}`
+    return `Your ${relationLabel(parent).toLowerCase()} ${parent.firstName} let you move back home. ${pickLine(g, ['Rent is free. The lectures are not.', 'Your childhood bedroom still has the posters up.', 'Curfew is at 10.'])}`
   }
   c.residence = { status: 'homeless' }
   g.flags.homelessSince = c.age
@@ -773,7 +774,7 @@ function yearlyLoans(g: GameState): void {
       delete misses[loan.id]
       const what = loanLabel(loan.kind).toLowerCase()
       log(g, `I paid off my ${what}!`, 'good')
-      notice(g, 'Debt Free!', pick(g, [`You made the final payment on your ${what}. ${employerRef(loan.lender, 'Your lender')} will have to find someone else to bother.`, `Your ${what} is officially paid off! You celebrated by not opening a single envelope from ${loan.lender}.`]), { emoji: '🎉', tone: 'good' })
+      notice(g, 'Debt Free!', pickSite(g, [`You made the final payment on your ${what}. ${employerRef(loan.lender, 'Your lender')} will have to find someone else to bother.`, `Your ${what} is officially paid off! You celebrated by not opening a single envelope from ${loan.lender}.`], 0xbe75ea60), { emoji: '🎉', tone: 'good' })
       addStat(g, 'happiness', 6)
       remember(g, `Paid off my ${what}.`)
     }

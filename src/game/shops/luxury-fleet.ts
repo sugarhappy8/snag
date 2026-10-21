@@ -8,6 +8,7 @@ import { conditionLabel, nicePrice, seeded, yearKey } from '../assets'
 import { addHidden, addMoney, addStat, count, earnIncome, formatMoney, hasLicense, log, notice, remember, scriptChoice, scriptInput, shortMoney, spend, useYearAction } from '../core'
 import { taxAdditionalIncome } from '../finance'
 import { chance, pick, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brandsFor } from '../data/brands'
@@ -637,13 +638,13 @@ function yachtPartyAction(a: Asset): MenuAction {
         addHidden(g, 'fame', 1)
         cur.condition = Math.max(0, cur.condition - randInt(g, 2, 6))
         log(g, `My party on ${name} turned into a tabloid story.`, 'bad')
-        notice(g, 'Party Foul', pick(g, [`A guest drove the tender into the dock at 3 AM and the coast guard ended the party. You were on the evening news in a captain's hat.`, `Someone set off a flare inside the main salon. The sprinklers ruined the carpet, the DJ and the ice sculpture of your face.`, `Your party on ${name} got so loud that a neighboring yacht filed a noise complaint with three different countries.`]), { emoji: '🚨', tone: 'bad' })
+        notice(g, 'Party Foul', pickSite(g, [`A guest drove the tender into the dock at 3 AM and the coast guard ended the party. You were on the evening news in a captain's hat.`, `Someone set off a flare inside the main salon. The sprinklers ruined the carpet, the DJ and the ice sculpture of your face.`, `Your party on ${name} got so loud that a neighboring yacht filed a noise complaint with three different countries.`], 0xb03fa420), { emoji: '🚨', tone: 'bad' })
         return
       }
       addStat(g, 'happiness', randInt(g, 6, 12))
       addHidden(g, 'fame', randInt(g, 1, club ? 5 : 3))
       log(g, `I threw a huge party on my yacht, ${name}.`, 'good')
-      const text = pick(g, [`The party on ${name} went until sunrise.${club ? ' The dance floor rose out of the deck right on cue.' : ''} Fireworks, a jazz band and one guest who swore he was a prince.`, `Every influencer in the marina tried to get on ${name}. Only the ones who brought gifts made it past your crew.`, `Champagne towers, a seafood buffet the size of a whale and a conga line that went around the helipad twice.`])
+      const text = pickSite(g, [`The party on ${name} went until sunrise.${club ? ' The dance floor rose out of the deck right on cue.' : ''} Fireworks, a jazz band and one guest who swore he was a prince.`, `Every influencer in the marina tried to get on ${name}. Only the ones who brought gifts made it past your crew.`, `Champagne towers, a seafood buffet the size of a whale and a conga line that went around the helipad twice.`], 0x430b0ab8)
       if (roll >= 75) {
         meetCeleb(g, rollCeleb(g, undefined, chance(g, 0.5)), `a party on ${name}`, text)
         return
@@ -696,7 +697,7 @@ function flightAction(a: Asset): MenuAction {
       const island = luxuryAssets(g, 'island').find((x) => strFeatures(x).includes('airstrip') || str(cur.details.jetClass) === 'amphib')
       const toIsland = !!island && chance(g, 0.4)
       const islandName = island ? str(island.details.islandName, 'your island') : ''
-      const spot = pick(g, FLIGHT_SPOTS)
+      const spot = pickLine(g, FLIGHT_SPOTS)
       const where = toIsland ? `your island, ${islandName}` : spot
       const city = toIsland ? islandName : spot.split(' for ')[0].split(' to ')[0]
       const selfFly = hasLicense(g, 'pilot')
@@ -704,7 +705,7 @@ function flightAction(a: Asset): MenuAction {
       addStat(g, 'happiness', randInt(g, 5, 10))
       if (interior === 'spa' || interior === 'gym' || interior === 'suite') addStat(g, 'health', randInt(g, 1, 3))
       log(g, toIsland ? `I flew my jet, ${name}, to my island, ${islandName}.` : `I flew my jet, ${name}, to ${spot}.`, 'good')
-      const how = selfFly ? `You flew ${name} yourself, made your own announcements and gave yourself a round of applause on landing.` : `Your crew flew ${name} while you ${pick(g, ['napped in a real bed', 'ate caviar off a gold spoon', 'watched three movies', 'took a call you could have taken from home'])}.`
+      const how = selfFly ? `You flew ${name} yourself, made your own announcements and gave yourself a round of applause on landing.` : `Your crew flew ${name} while you ${pickLine(g, ['napped in a real bed', 'ate caviar off a gold spoon', 'watched three movies', 'took a call you could have taken from home'])}.`
       if (interior === 'boardroom' && chance(g, 0.3)) {
         const deal = nicePrice(randInt(g, 50_000, 600_000))
         const tax = earnTaxedNow(g, deal)

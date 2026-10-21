@@ -1,7 +1,8 @@
 // Key staff: interviews, hiring, raises, team-building, yelling and firing. General staff are
 // hired to match the production plan automatically; you control their pay policy and morale.
 import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
-import { bell, chance, pick, rand, randInt, uid, weightedPick } from '../rng'
+import { bell, chance, rand, randInt, uid, weightedPick } from '../rng'
+import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -328,7 +329,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
       staffAction(a, id, 'compliment', 'Compliment', '\u{1F44F}', 'Tell them they are doing great', (g, _b, x) => {
         if (!useYearAction(g, `biz.compliment.${id}`, 1)) return tooBusy(g, `complimented ${x.firstName}`)
         x.morale = clampN(x.morale + randInt(g, 6, 14), 0, 100)
-        notice(g, 'Compliment', pick(g, [`You told ${x.firstName} the whole company runs on their work. ${x.firstName} pretended not to care and then told everyone.`, `You praised ${x.firstName} in front of the team. ${x.firstName} is glowing.`]), { emoji: '\u{1F44F}', tone: 'good' })
+        notice(g, 'Compliment', pickSite(g, [`You told ${x.firstName} the whole company runs on their work. ${x.firstName} pretended not to care and then told everyone.`, `You praised ${x.firstName} in front of the team. ${x.firstName} is glowing.`], 0xeb2c789a), { emoji: '\u{1F44F}', tone: 'good' })
       }),
       staffAction(a, id, 'raise', 'Give a Raise', '\u{1F4B5}', `10% more (${formatMoney(Math.round(s.salary * 0.1))}/yr)`, (g, _b, x) => {
         if (!useYearAction(g, `biz.raise.${id}`, 1)) return tooBusy(g, `given ${x.firstName} a raise`)
@@ -371,7 +372,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
           notice(g, 'Quit', `${x.firstName} threw ${x.gender === 'female' ? 'her' : 'his'} badge on your desk and walked out. Rumor has it a competitor hired ${x.gender === 'female' ? 'her' : 'him'} by lunch.`, { emoji: '\u{1F6AA}', tone: 'bad' })
           return
         }
-        notice(g, 'You Yelled', pick(g, [`You yelled at ${x.firstName} about missed targets. The whole floor went silent. Morale took a hit.`, `You lost it at ${x.firstName} in the break room. ${x.firstName} spat out ${x.gender === 'female' ? 'her' : 'his'} coffee. Nobody won.`]), { emoji: '\u{1F92C}', tone: 'bad' })
+        notice(g, 'You Yelled', pickSite(g, [`You yelled at ${x.firstName} about missed targets. The whole floor went silent. Morale took a hit.`, `You lost it at ${x.firstName} in the break room. ${x.firstName} spat out ${x.gender === 'female' ? 'her' : 'his'} coffee. Nobody won.`], 0xa7e8a66c), { emoji: '\u{1F92C}', tone: 'bad' })
       }),
       {
         ...staffAction(

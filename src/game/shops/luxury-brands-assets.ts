@@ -6,6 +6,7 @@ import { noteCashGift } from '../events/wealth-core'
 import { addMoney, addStat, formatMoney, fullName, getPerson, hasLicense, inPrison, log, notice, relationLabel, shortMoney, useYearAction } from '../core'
 import { brandById, brandsFor } from '../data/brands'
 import { chance, pick, randInt } from '../rng'
+import { pickSite } from '../text/pick'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
@@ -168,7 +169,7 @@ function enjoyAction(a: Asset): MenuAction {
       if (joyful) addStat(g, 'happiness', randInt(g, 2, 6))
       const fame = WEARABLE.includes(cat(cur)) || veh ? showOffFame(g) : 0
       log(g, `I enjoyed my ${cur.name}.`)
-      notice(g, enjoyVerb(cur), `${pick(g, [`You and your ${cur.name} had a lovely day out.`, `Heads turned. You pretended not to notice.`, `Someone asked what it was. You told them. Slowly.`])}${fame ? ' A few people will remember who you are.' : ''}`, { emoji: cur.emoji, tone: 'good' })
+      notice(g, enjoyVerb(cur), `${pickSite(g, [`You and your ${cur.name} had a lovely day out.`, `Heads turned. You pretended not to notice.`, `Someone asked what it was. You told them. Slowly.`], 0x54cd925f)}${fame ? ' A few people will remember who you are.' : ''}`, { emoji: cur.emoji, tone: 'good' })
     },
   }
 }

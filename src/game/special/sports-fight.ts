@@ -12,6 +12,7 @@ import { addHidden, addStat, aThing, count, earnIncome, log, scriptChoice, useYe
 import { killCharacter } from '../death'
 import { common } from '../events/era'
 import { bell, chance, pick, rand, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
 import { hasMainCharacter, hasTalent, talentMult } from '../talents'
@@ -880,19 +881,19 @@ function moveLine(g: GameState, m: Move, gained: number, d: Discipline): string 
   const good = gained > 8
   switch (m) {
     case 'strike':
-      return good ? pick(g, ['You found your range and landed clean combinations.', 'Your jab kept snapping their head back.', 'You beat them to the punch all round.']) : pick(g, ['You threw a lot but they slipped most of it.', 'Your strikes kept hitting gloves and elbows.'])
+      return good ? pickLine(g, ['You found your range and landed clean combinations.', 'Your jab kept snapping their head back.', 'You beat them to the punch all round.']) : pickLine(g, ['You threw a lot but they slipped most of it.', 'Your strikes kept hitting gloves and elbows.'])
     case 'power':
-      return good ? pick(g, ['You loaded up and something heavy landed.', 'Every power shot made the crowd gasp.']) : pick(g, ['You swung for the fences and mostly hit air.', 'You loaded up and they saw it coming from the parking lot.'])
+      return good ? pickLine(g, ['You loaded up and something heavy landed.', 'Every power shot made the crowd gasp.']) : pickLine(g, ['You swung for the fences and mostly hit air.', 'You loaded up and they saw it coming from the parking lot.'])
     case 'body':
       return good ? (d.id === 'kickboxing' ? 'Your leg kicks turned their thigh purple.' : d.id === 'muaythai' ? 'You dragged them into the clinch and drove knees into their ribs.' : 'You dug to the body and heard them wheeze.') : 'They blocked most of your body work.'
     case 'grapple':
-      return good ? pick(g, ['You took them down and rained ground-and-pound from the top.', 'You hit a slick takedown and controlled them against the cage.']) : pick(g, ['They stuffed your takedown attempts.', 'You shot in and ate a knee for your trouble.'])
+      return good ? pickLine(g, ['You took them down and rained ground-and-pound from the top.', 'You hit a slick takedown and controlled them against the cage.']) : pickLine(g, ['They stuffed your takedown attempts.', 'You shot in and ate a knee for your trouble.'])
     case 'sub':
-      return good ? pick(g, ['You hunted chokes and nearly got one.', 'You locked up an armbar and they barely escaped.']) : pick(g, ['You pulled guard and immediately regretted it.', 'Your submission attempt went nowhere and they ended up on top.'])
+      return good ? pickLine(g, ['You hunted chokes and nearly got one.', 'You locked up an armbar and they barely escaped.']) : pickLine(g, ['You pulled guard and immediately regretted it.', 'Your submission attempt went nowhere and they ended up on top.'])
     case 'defend':
       return good ? 'You stayed patient, made them miss and countered.' : 'You covered up and caught your breath.'
     case 'taunt':
-      return pick(g, ['You stuck your chin out and waved them in. The crowd lost its mind.', 'You did a little dance mid-round. The commentators were apoplectic.', 'You talked trash the whole round. The referee told you to shut up.'])
+      return pickLine(g, ['You stuck your chin out and waved them in. The crowd lost its mind.', 'You did a little dance mid-round. The commentators were apoplectic.', 'You talked trash the whole round. The referee told you to shut up.'])
   }
 }
 
@@ -952,7 +953,7 @@ const roundScript = defineScript('sports.fight.round', (g, choice, data) => {
   for (const [who, ex] of order) {
     if (ex.finish > 0 && ex.kind && chance(g, ex.finish)) {
       const method = ex.kind === 'SUB' ? 'SUB' : ex.kind === 'TKO' || (who === 'you' ? st.them.hp : st.you.hp) > 45 ? (chance(g, 0.5) ? 'TKO' : 'KO') : 'KO'
-      const detail = method === 'SUB' ? pick(g, SUBS) : pick(g, KO_SHOTS[d.id])
+      const detail = method === 'SUB' ? pickLine(g, SUBS) : pick(g, KO_SHOTS[d.id])
       return endFight(g, st, who === 'you' ? 'win' : 'loss', method, detail, `${label}: ${lines}`)
     }
   }
@@ -1445,7 +1446,7 @@ const presserScript = defineScript('sports.fight.presser', (g, choice, data) => 
   if (choice === 'trash') {
     p.hype = Math.min(100, p.hype + 12)
     addRival(p, o, pre.disc, 15)
-    text = pick(g, [`You told ${o.name} their fighting style is "a cry for help". The clip did a million views.`, `You read ${o.name}'s record out loud like a grocery list. The room exploded.`, `You called ${o.name} a "participation trophy with legs". Even their coach laughed.`])
+    text = pickSite(g, [`You told ${o.name} their fighting style is "a cry for help". The clip did a million views.`, `You read ${o.name}'s record out loud like a grocery list. The room exploded.`, `You called ${o.name} a "participation trophy with legs". Even their coach laughed.`], 0xe2be9d9f)
   } else if (choice === 'shove') {
     p.hype = Math.min(100, p.hype + 20)
     addRival(p, o, pre.disc, 25)

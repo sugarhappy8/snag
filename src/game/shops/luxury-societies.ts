@@ -9,7 +9,8 @@ import { nicePrice } from '../assets'
 import { addHidden, addStat, count, earnIncome, formatMoney, inPrison, log, netWorth, notice, remember, scriptChoice, shortMoney, spend, useYearAction } from '../core'
 import { localMarket } from '../data/markets'
 import { taxAdditionalIncome } from '../finance'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, StatKey } from '../types'
 import { cantAfford, luxuryBlock, luxuryReason, num, obj, str, strList, takePopup, type PopupBudget } from './luxury-common'
@@ -400,7 +401,7 @@ export function leaveSociety(g: GameState): boolean {
   delete g.flags[MEMBER_KEY]
   addStat(g, 'happiness', -2)
   log(g, `I left ${s.name}.`)
-  notice(g, 'You Left', pick(g, [`You handed back your robe and ring. ${s.name} thanked you for your service. A black car followed you home for a week, just to be sure.`, `You resigned from ${s.name}. Someone slid a note under your door: "We'll be watching. Respectfully."`, `You quit ${s.name}. Your former brothers and sisters now pretend not to know you at galas, which is honestly a relief.`]), { emoji: '🚪' })
+  notice(g, 'You Left', pickSite(g, [`You handed back your robe and ring. ${s.name} thanked you for your service. A black car followed you home for a week, just to be sure.`, `You resigned from ${s.name}. Someone slid a note under your door: "We'll be watching. Respectfully."`, `You quit ${s.name}. Your former brothers and sisters now pretend not to know you at galas, which is honestly a relief.`], 0x01fc7b9d), { emoji: '🚪' })
   return true
 }
 
@@ -432,7 +433,7 @@ function meetingAction(): MenuAction {
         notice(g, 'Secret Meeting', 'The next meeting is next year. The location will be sent by carrier pigeon.', { emoji: '🕊️' })
         return
       }
-      const scene = pick(g, [
+      const scene = pickLine(g, [
         'You chanted in Latin, voted on the price of gold and ate tiny sandwiches.',
         'The members debated whether to cancel a small country\'s weekend. It was tabled until next year.',
         'You sat in a circle of candles while an Elder read the minutes from 1743.',
@@ -633,13 +634,13 @@ export function yearlySocieties(g: GameState, budget: PopupBudget): void {
       return
     }
     if (takePopup(budget)) {
-      notice(g, 'Exposed!', `${pick(g, ['An investigative journalist', 'A tabloid', 'A podcast with 40 million listeners'])} revealed that you are a member of ${s.name}, complete with a blurry photo of you in a hooded robe. Your publicist is "handling it." The Elders are "reviewing your position," which means you're still in. For now.`, { emoji: '📰', tone: 'bad' })
+      notice(g, 'Exposed!', `${pickLine(g, ['An investigative journalist', 'A tabloid', 'A podcast with 40 million listeners'])} revealed that you are a member of ${s.name}, complete with a blurry photo of you in a hooded robe. Your publicist is "handling it." The Elders are "reviewing your position," which means you're still in. For now.`, { emoji: '📰', tone: 'bad' })
     }
     return
   }
 
   if (chance(g, 0.18) && takePopup(budget)) {
-    scriptChoice(g, SUMMONS, `${s.emoji} A Summons`, `A wax-sealed letter from the Elders of ${s.name} arrived. You must ${pick(g, SUMMONS_TASKS)}. No reason given.`, [
+    scriptChoice(g, SUMMONS, `${s.emoji} A Summons`, `A wax-sealed letter from the Elders of ${s.name} arrived. You must ${pickLine(g, SUMMONS_TASKS)}. No reason given.`, [
       { id: 'comply', label: 'Do it. No questions.', emoji: '🫡' },
       { id: 'question', label: 'Ask why', emoji: '❓' },
       { id: 'ignore', label: 'Ignore it', emoji: '🗑️' },

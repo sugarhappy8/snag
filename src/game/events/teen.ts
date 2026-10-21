@@ -4,6 +4,7 @@
 import { preferredGender } from '../core'
 import { applyEffects } from '../effects'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import {
   aParent,
   anyOf,
@@ -95,7 +96,7 @@ export const TEEN_EVENTS = defineEvents([
         }
       },
       excuse: (g, x) => {
-        const plan = pick(g, ['go to my grandma\'s', 'walk my dog', 'study for a test', 'go to the dentist'])
+        const plan = pickLine(g, ['go to my grandma\'s', 'walk my dog', 'study for a test', 'go to the dentist'])
         say(g, x, 'Smooth exit', `You told ${x.s('name')} you had to ${plan}. They shrugged.`, `I lied and told them I had to ${plan} instead.`, { rel: -2 })
       },
       no: (g, x) => say(g, x, ['Just say no', 'Strong will'], `You said no. ${x.s('name')} called you ${g.year < 1960 ? 'a square' : 'lame'}, but you feel great about it.`, x.n('smokes') ? 'I turned down a cigarette behind the school gym.' : 'I turned down weed when it was offered to me.', { health: 2, karma: 2, rel: -5 }, 'good'),
@@ -164,7 +165,7 @@ export const TEEN_EVENTS = defineEvents([
     when: (g) => livesWithParents(g) && !!aParent(g),
     setup: (g) => {
       const p = aParent(g)
-      const time = pick(g, ['8 PM', '9 PM', '9:30 PM', '10 PM'])
+      const time = pickLine(g, ['8 PM', '9 PM', '9:30 PM', '10 PM'])
       return {
         text: `Your ${p?.gender === 'male' ? 'father' : 'mother'} just announced a strict ${time} curfew. What will you do?`,
         choices: [ch('accept', 'Accept it'), ch('negotiate', 'Negotiate'), ch('argue', 'Argue'), ch('ignore', 'Ignore it')],

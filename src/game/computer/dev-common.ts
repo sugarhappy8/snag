@@ -3,7 +3,8 @@
 import { canUseComputer, computerLocked, ownsComputer } from '../computer'
 import { addMoney, addStat, clamp, earnIncome, formatMoney, log, notice, parents, spend } from '../core'
 import { taxAdditionalIncome } from '../finance'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import { addScreenTime, SCREEN_LIMIT } from './skills'
 
@@ -59,7 +60,7 @@ export function useComputer(g: GameState, sessions = 1): number {
   if (chance(g, 0.25)) addStat(g, 'health', -1)
   if (chance(g, 0.2)) addStat(g, 'happiness', -1)
   if (before <= SCREEN_LIMIT) {
-    log(g, pick(g, ['I have been staring at a screen so long my eyes feel like raisins.', 'I forgot what the sun looks like. It was on my screensaver.', 'My chair has a permanent dent in the shape of me.']), 'bad')
+    log(g, pickLine(g, ['I have been staring at a screen so long my eyes feel like raisins.', 'I forgot what the sun looks like. It was on my screensaver.', 'My chair has a permanent dent in the shape of me.']), 'bad')
   }
   return total
 }

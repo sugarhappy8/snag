@@ -28,6 +28,7 @@ import { fillLocal, localeOf, localTerm } from './data/locales'
 import { industryDemand, marketOf } from './data/markets'
 import { economyOf, industryConditions } from './economy'
 import { chance, nextRandom, pick, randInt, uid } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { masterFirstTime } from './mastery'
 import { realFollowers } from './followers'
 import { formatDef } from './special/author-data'
@@ -1249,8 +1250,8 @@ function bestEntry(g: GameState, app: ScreeningApp): CvEntry | undefined {
 export function screeningReason(g: GameState, app: ScreeningApp, invite: boolean): string {
   const best = bestEntry(g, app)
   if (invite) {
-    if (best) return pick(g, [`Your "${best.title}" caught their eye.`, `They liked what they saw — especially "${best.title}".`, `Someone circled "${best.title}" on your CV in red pen. In a good way.`])
-    return pick(g, ['Your CV was short, but your cover letter was charming.', 'They had a slot to fill and your name sounded nice.'])
+    if (best) return pickSite(g, [`Your "${best.title}" caught their eye.`, `They liked what they saw — especially "${best.title}".`, `Someone circled "${best.title}" on your CV in red pen. In a good way.`], 0x5ba1e4c5)
+    return pickLine(g, ['Your CV was short, but your cover letter was charming.', 'They had a slot to fill and your name sounded nice.'])
   }
   if (app.kind === 'job') {
     const market = app.market ?? ''
@@ -1258,12 +1259,12 @@ export function screeningReason(g: GameState, app: ScreeningApp, invite: boolean
     const n = crowded ? Number(crowded[1].replace(/,/g, '')) : 0
     if (n >= 60 && chance(g, 0.6)) return `With ~${n.toLocaleString('en-US')} applicants per opening, your CV didn't make the shortlist.`
     if (app.fit < 30) return pick(g, ["Your CV didn't show enough relevant experience.", hasTech(g, 'internet') ? 'Their applicant-tracking robot rejected you in 0.4 seconds.' : 'The clerk put your application at the bottom of the pile.', 'Your CV was mostly white space and optimism.'])
-    return pick(g, ['They went with someone with more relevant experience.', 'A stronger candidate applied about five minutes before you did.', 'They "decided to move forward with other candidates." Ouch.'])
+    return pickLine(g, ['They went with someone with more relevant experience.', 'A stronger candidate applied about five minutes before you did.', 'They "decided to move forward with other candidates." Ouch.'])
   }
-  if (app.fit < 30) return pick(g, ['The committee wanted to see more clubs, leadership, volunteering or projects.', 'Your grades were fine, but your CV said "spent four years on the couch."'])
+  if (app.fit < 30) return pickLine(g, ['The committee wanted to see more clubs, leadership, volunteering or projects.', 'Your grades were fine, but your CV said "spent four years on the couch."'])
   const selective = app.tier === 'Elite' || app.tier === 'Top'
   if (selective) return `Your application was solid, but ${app.org} turns away the vast majority of applicants.`
-  return pick(g, ["The committee didn't think you were the right fit this year.", 'Your essay about your goldfish did not land.'])
+  return pickLine(g, ["The committee didn't think you were the right fit this year.", 'Your essay about your goldfish did not land.'])
 }
 
 /** The offline screener: roll the app's chance and explain. */
@@ -1791,7 +1792,7 @@ function takeCourse(g: GameState, def: CourseDef): void {
   if (!chance(g, p)) {
     addStat(g, 'happiness', -randInt(g, 1, 4))
     log(g, `I failed the ${def.label} course.`, 'bad')
-    notice(g, 'Course Failed', `${pick(g, COURSE_FAILS)}${paidLine(who, def.cost)}`, { emoji: def.emoji, tone: 'bad' })
+    notice(g, 'Course Failed', `${pickLine(g, COURSE_FAILS)}${paidLine(who, def.cost)}`, { emoji: def.emoji, tone: 'bad' })
     return
   }
   const strength = between(1 + Math.round(def.difficulty / 15) + (chance(g, 0.3) ? 1 : 0), 2, 6)
@@ -2030,7 +2031,7 @@ function clubLeadership(g: GameState, clubId: string): void {
   const p = between((club.perf * 0.45 + pop * 0.3 + Math.min(club.years, 3) * 8 + c.hidden.willpower * 0.15 - 40) / 60, 0.08, 0.85)
   if (!chance(g, p)) {
     addStat(g, 'happiness', -randInt(g, 2, 5))
-    const rival = pick(g, ['a kid whose parents bought everyone pizza', 'someone who promised longer lunch breaks', 'a senior with a very good haircut', 'the coach\'s nephew'])
+    const rival = pickLine(g, ['a kid whose parents bought everyone pizza', 'someone who promised longer lunch breaks', 'a senior with a very good haircut', 'the coach\'s nephew'])
     log(g, `I lost the race for ${role} of the ${club.name}.`, 'bad')
     notice(g, 'Lost the Vote', `You ran for ${role} of the ${club.name} and lost to ${rival}.`, { emoji: '\u{1F5F3}\u{FE0F}', tone: 'bad' })
     return

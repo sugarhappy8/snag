@@ -5,6 +5,7 @@
 import { notePerson } from '../people'
 import { addRelationship, log, notice, pronouns, scriptInput } from '../core'
 import { chance, pick, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { localPick, localTerm } from '../data/locales'
 import { hasTech } from '../history/timeline'
@@ -323,7 +324,7 @@ export const KID_ASKS: AskDef[] = [
       const lavish = tier >= 3 && chance(g, 0.5)
       const item = eraPickPlain(g, lavish ? LAVISH_TOYS : TOYS)
       const amt = lavish ? priced(g, randInt(g, 6, 30) * 1_000 * goodsScale(g, personCountry(g, p)), 0.02) : round(randInt(g, 80, 400) * goodsScale(g, personCountry(g, p)) * (1 + entitlement(p) / 100))
-      return { k: 'kid.toy', pid: p.id, title: 'Gimme', emoji: '\u{1F9F8}', text: `${channel(g, p)}${who(p)} wants ${item} (${money(amt)}). ${pick(g, [`${cap(pr(p).he)} asked forty times today.`, `${cap(pr(p).he)} drew you a picture of it. And of you, sad, without it.`, `${cap(pr(p).he)} says it's "for school."`])}${spoiledLine(p)}`, amt, what: item, buy: true, small: !lavish }
+      return { k: 'kid.toy', pid: p.id, title: 'Gimme', emoji: '\u{1F9F8}', text: `${channel(g, p)}${who(p)} wants ${item} (${money(amt)}). ${pickSite(g, [`${cap(pr(p).he)} asked forty times today.`, `${cap(pr(p).he)} drew you a picture of it. And of you, sad, without it.`, `${cap(pr(p).he)} says it's "for school."`], 0x8b5e3d94)}${spoiledLine(p)}`, amt, what: item, buy: true, small: !lavish }
     },
     spoil: 4,
     thanks: 5,
@@ -357,7 +358,7 @@ export const KID_ASKS: AskDef[] = [
       if (!p || !item) return null
       const amt = round(item.usd * electronicsScale(g, personCountry(g, p)))
       const label = item.label.replace('their', pr(p).his)
-      return { k: 'kid.phone', pid: p.id, title: 'A New Phone', emoji: '\u{1F4F1}', text: `${channel(g, p)}${who(p)} wants ${label} (${money(amt)}). ${pick(g, [`${cap(pr(p).his)} current one is "basically a brick."`, `${cap(pr(p).he)} says it's a safety thing. Mostly a games thing.`, `${cap(pr(p).he)} promised to call you more. ${cap(pr(p).he)} won't.`])}${spoiledLine(p)}`, amt, what: item.label.replace(' of their own', ''), buy: true, small: true }
+      return { k: 'kid.phone', pid: p.id, title: 'A New Phone', emoji: '\u{1F4F1}', text: `${channel(g, p)}${who(p)} wants ${label} (${money(amt)}). ${pickSite(g, [`${cap(pr(p).his)} current one is "basically a brick."`, `${cap(pr(p).he)} says it's a safety thing. Mostly a games thing.`, `${cap(pr(p).he)} promised to call you more. ${cap(pr(p).he)} won't.`], 0xe925a2af)}${spoiledLine(p)}`, amt, what: item.label.replace(' of their own', ''), buy: true, small: true }
     },
     spoil: 5,
     thanks: 7,
@@ -482,8 +483,8 @@ export const KID_ASKS: AskDef[] = [
       const lead = p.age === drivingAge(g, p) ? `${who(p)} just got ${x.his} license and wants a car` : `${who(p)} wants a car`
       // From prison the ask comes by letter, so no brochures on pillows or walks past dealerships.
       const nudge = g.character.prison
-        ? pick(g, [`${x.He} taped the brochure to the letter.`, `${x.He} promises to pick you up the day you get out. In style.`])
-        : pick(g, [`${x.He} left the brochure on your pillow.`, `${x.He} has been "accidentally" walking you past the dealership for weeks.`, `${x.He} promises to drive you places. You've seen ${x.him} parallel park.`])
+        ? pickSite(g, [`${x.He} taped the brochure to the letter.`, `${x.He} promises to pick you up the day you get out. In style.`], 0x5e9ecc49)
+        : pickSite(g, [`${x.He} left the brochure on your pillow.`, `${x.He} has been "accidentally" walking you past the dealership for weeks.`, `${x.He} promises to drive you places. You've seen ${x.him} parallel park.`], 0x8c58d526)
       return {
         k: 'kid.car',
         pid: p.id,
@@ -555,7 +556,7 @@ export const KID_ASKS: AskDef[] = [
       const gap = p.age >= 18 && p.age <= 20 && g.year >= 1970 && flights(g) && chance(g, 0.3)
       const what = gap ? 'a gap year traveling the world' : us ? 'spring break at the beach with friends' : flights(g) ? 'a summer trip abroad with friends' : `a summer trip to ${localPick(g, 'getaway', personCountry(g, p)) || 'the coast'} with friends`
       const amt = scaled(g, gap ? 15_000 : 2_500, tier, p, 0.01)
-      return { k: 'kid.vacation', pid: p.id, title: 'Vacation Money', emoji: '\u{1F3D6}\u{FE0F}', text: `${channel(g, p)}${who(p)} wants money for ${what} (${money(amt)}). ${pick(g, ['The itinerary is mostly "vibes."', 'You were not invited. You were invoiced.', 'It will be "educational."'])}${spoiledLine(p)}`, amt, what, less: true }
+      return { k: 'kid.vacation', pid: p.id, title: 'Vacation Money', emoji: '\u{1F3D6}\u{FE0F}', text: `${channel(g, p)}${who(p)} wants money for ${what} (${money(amt)}). ${pickLine(g, ['The itinerary is mostly "vibes."', 'You were not invited. You were invoiced.', 'It will be "educational."'])}${spoiledLine(p)}`, amt, what, less: true }
     },
     spoil: 6,
     thanks: 7,
@@ -625,7 +626,7 @@ export const KID_ASKS: AskDef[] = [
     build: (g, tier, p) => {
       if (!p) return null
       const amt = scaled(g, 9_000 * housingScale(g, personCountry(g, p)), Math.min(tier, 2), p, 0.01)
-      const why = pick(g, ['a deposit on an apartment', 'rent until the new job starts', 'rent, because the roommate "moved to find himself"', 'the first and last month on a new place'])
+      const why = pickLine(g, ['a deposit on an apartment', 'rent until the new job starts', 'rent, because the roommate "moved to find himself"', 'the first and last month on a new place'])
       return { k: 'kid.rent', pid: p.id, title: 'Rent', emoji: '\u{1F3E0}', text: `${channel(g, p)}${who(p)} asked for help with ${why} (${money(amt)}).${spoiledLine(p)}`, amt, what: 'help with rent', less: true, lend: true }
     },
     spoil: 3,

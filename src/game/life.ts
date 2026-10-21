@@ -41,6 +41,7 @@ import { WARS, type WarDef } from './history/events-wars'
 import { hasTech, HISTORY_START, isHistorical, PRESENT_YEAR, techOdds } from './history/timeline'
 import { createPerson, eraName, notePerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { planEstate, settleReading } from './events/will-estate'
 import { personalTax } from './nation/effects'
@@ -825,7 +826,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
     b.data.adoptive = true
     a.data.spouseId = b.id
     b.data.spouseId = a.id
-    lines.push(pick(g, ['I was adopted as a newborn.', 'I was adopted at birth. My birth mother was too young to raise me.', 'I was adopted shortly after I was born.']))
+    lines.push(pickLine(g, ['I was adopted as a newborn.', 'I was adopted at birth. My birth mother was too young to raise me.', 'I was adopted shortly after I was born.']))
     lines.push(`My ${g1 === 'male' ? 'father' : 'mother'} is ${describe(a)}.`)
     lines.push(`My ${sameSex ? 'other ' : ''}${g2 === 'male' ? 'father' : 'mother'} is ${describe(b)}.`)
     if (g1 === 'female') mother = a
@@ -887,9 +888,9 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
     if (family === 'singleMother') lines.push(localLine(g, pick(g, eraLines(g, SINGLE_MOTHER_CONCEPTION)), country.id))
     else if (chance(g, 0.75)) lines.push(localLine(g, pick(g, eraLines(g, CONCEPTION)), country.id))
     if (mother) lines.push(`My mother is ${describe(mother)}.`)
-    else lines.push(pick(g, ["My mother isn't in the picture.", 'My mother left shortly after I was born.', "I don't know much about my mother."]))
+    else lines.push(pickLine(g, ["My mother isn't in the picture.", 'My mother left shortly after I was born.', "I don't know much about my mother."]))
     if (father) lines.push(`My father is ${describe(father)}.`)
-    else lines.push(pick(g, ["I don't know who my father is.", 'My father skipped town before I was born.', 'My father is not in the picture.']))
+    else lines.push(pickLine(g, ["I don't know who my father is.", 'My father skipped town before I was born.', 'My father is not in the picture.']))
     if ((family === 'divorced' || family === 'blended') && custodial) {
       lines.push(`My parents are divorced. I live with my ${custodial.gender === 'male' ? 'father' : 'mother'}.`)
     }
@@ -1826,17 +1827,17 @@ function sexualityMilestone(g: GameState): void {
   if (c.age < 16 && !chance(g, 0.35)) return
   g.flags.sexualityRealized = true
   if (c.sexuality === 'straight') {
-    log(g, pick(g, [`I've started noticing ${attractedWord(c)}.`, `I've developed my first crush on one of the ${attractedWord(c)} at school.`, `I think ${attractedWord(c)} are suddenly a lot less gross.`]))
+    log(g, pickSite(g, [`I've started noticing ${attractedWord(c)}.`, `I've developed my first crush on one of the ${attractedWord(c)} at school.`, `I think ${attractedWord(c)} are suddenly a lot less gross.`], 0xc9a27b26))
     return
   }
   scriptChoice(
     g,
     SEXUALITY,
     'Feelings',
-    pick(g, [
+    pickSite(g, [
       `You've realized you're attracted to ${attractedWord(c)}. What will you do?`,
       `Lately you can't stop thinking about ${attractedWord(c)}. You're pretty sure you know what that means. What will you do?`,
-    ]),
+    ], 0xe08112fb),
     [
       { id: 'out', label: 'Come out to my family', emoji: '\u{1F3F3}\u{FE0F}\u{200D}\u{1F308}' },
       { id: 'private', label: 'Keep it to myself', emoji: '\u{1F910}' },
@@ -1878,11 +1879,11 @@ const SEXUALITY = defineScript('life.sexuality', (g, choice) => {
     const who = p.relation === 'stepparent' ? (p.gender === 'male' ? 'stepfather' : 'stepmother') : p.gender === 'male' ? 'father' : 'mother'
     if (supportive) {
       p.relationship = clampStat(p.relationship + randInt(g, 3, 10))
-      reactions.push(pick(g, [`Your ${who} hugged you and said they're proud of you.`, `Your ${who} said, "We know, sweetie. We've known for years."`, `Your ${who} cried happy tears and offered to make a celebratory cake.`]))
+      reactions.push(pickSite(g, [`Your ${who} hugged you and said they're proud of you.`, `Your ${who} said, "We know, sweetie. We've known for years."`, `Your ${who} cried happy tears and offered to make a celebratory cake.`], 0xbfbad3cf))
     } else {
       rejected++
       p.relationship = clampStat(p.relationship - randInt(g, 10, 25))
-      reactions.push(pick(g, [`Your ${who} went quiet and left the room.`, `Your ${who} said they "need some time to process this."`]))
+      reactions.push(pickSite(g, [`Your ${who} went quiet and left the room.`, `Your ${who} said they "need some time to process this."`], 0x9fc22c0f))
     }
   }
   addStat(g, 'happiness', rejected === 0 ? randInt(g, 8, 15) : randInt(g, -5, 5))
@@ -1909,10 +1910,10 @@ function midlifeCrisis(g: GameState): void {
     g,
     MIDLIFE,
     'Mid-Life Crisis',
-    pick(g, [
+    pickSite(g, [
       "You've been staring at your reflection a lot lately and wondering where the time went. What will you do?",
       `You just realized you are closer to retirement than to ${schoolDanceMemory(g)}. Panic is setting in. What will you do?`,
-    ]),
+    ], 0x8372a42b),
     [
       { id: 'splurge', label: 'Blow money on a wild trip', emoji: '\u{1F334}' },
       { id: 'makeover', label: 'Get a dramatic makeover', emoji: '\u{1F487}' },
@@ -2005,8 +2006,8 @@ export function yearlyMilestones(g: GameState): void {
   // The yearly world-news line doesn't count as something happening to me.
   const quiet = currentLogYear(g).entries.every((e) => isNewsLine(e.text))
 
-  if (c.age === 1 && quiet) log(g, pick(g, FIRST_STEPS))
-  else if (c.age === 2 && quiet) log(g, pick(g, TODDLER))
+  if (c.age === 1 && quiet) log(g, pickLine(g, FIRST_STEPS))
+  else if (c.age === 2 && quiet) log(g, pickLine(g, TODDLER))
 
   talentMilestones(g)
   yearlyMainCharacter(g)

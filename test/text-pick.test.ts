@@ -1,7 +1,8 @@
 // Text kit, part 1 (R1-T1, E.T1): pickLine, the pick that remembers. It draws exactly once from g.rng, like
 // pick(), and with an empty memory returns what pick() returns. Small pools are shuffle-bags, big pools
-// exclude their last picks. Nothing in src/ calls it yet (the codemod is E.T3, in R2), which is what keeps
-// the one new draw harmless in R1: test 11 below.
+// exclude their last picks. In R1 nothing in src/ called it, which kept the one new draw harmless. R2-A3 (E.T3) ran the
+// codemod, so test 11 below now says the other half: hpick and defineLines are still unused, and whoever calls pickLine
+// or pickSite gets it from the kit.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -381,9 +382,9 @@ describe('no production caller', () => {
    * Calls of the kit's names. A file that declares one of the names itself (business/nepo-asks.ts has its own
    * local pickLine, a hash pick that long predates the kit) is calling its own helper, not the kit.
    */
-  function strays(file: string, src: string): string[] {
+  function strays(file: string, src: string, names: readonly string[] = NAMES): string[] {
     const text = code(src)
-    const foreign = NAMES.filter((n) => !new RegExp(`\\b(?:const|let|var|function)\\s+${n}\\b`).test(text))
+    const foreign = names.filter((n) => !new RegExp(`\\b(?:const|let|var|function)\\s+${n}\\b`).test(text))
     const call = new RegExp(`\\b(?:${foreign.join('|')})\\s*\\(`)
     const out: string[] = []
     if (!foreign.length) return out
@@ -401,12 +402,46 @@ describe('no production caller', () => {
     })
   }
 
-  it('11: nothing in src/ outside src/game/text/ calls pickLine, hpick or defineLines', () => {
+  /** The import specifiers of `name` in a file: `import { a, name, b } from './x'` gives ['./x']. */
+  function importedFrom(src: string, name: string): string[] {
+    const out: string[] = []
+    for (const m of code(src).matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)) {
+      if (m[1].split(',').some((part) => part.trim().split(/\s+as\s+/)[0] === name)) out.push(m[2])
+    }
+    return out
+  }
+
+  /** Files that call pickLine or pickSite without importing it from the kit (a specifier ending in text/pick or /text). */
+  function wrongSource(file: string, src: string): string[] {
+    const own = strays(file, src, ['pickLine', 'pickSite'])
+    if (!own.length) return []
+    const text = code(src)
+    return ['pickLine', 'pickSite']
+      .filter((n) => new RegExp(`\\b${n}\\s*[(<]`).test(text) && !new RegExp(`\\b(?:const|let|var|function)\\s+${n}\\b`).test(text))
+      .filter((n) => !importedFrom(src, n).some((spec) => /(?:^|\/)text\/pick$|\/text$/.test(spec)))
+      .map((n) => `${file}: ${n} is not imported from the text kit`)
+  }
+
+  it('11: nothing in src/ outside src/game/text/ calls hpick or defineLines, and pickLine and pickSite come from the kit', () => {
     const files = walk(SRC).map((f) => relative(SRC, f).split(sep).join('/')).filter((f) => !f.startsWith('game/text/'))
     expect(files.length).toBeGreaterThan(100)
-    const found = files.flatMap((f) => strays(f, readFileSync(join(SRC, f), 'utf8')))
-    // R1-T2 uses only ringRead and ringWrite. E.T3 (R2) deletes this test when the codemod starts.
-    expect(found).toEqual([])
+    const read = (f: string): string => readFileSync(join(SRC, f), 'utf8')
+    // R1-T2 uses only ringRead and ringWrite; the registry helpers stay unused outside the kit.
+    expect(files.flatMap((f) => strays(f, read(f), ['hpick', 'defineLines']))).toEqual([])
+    // R2-A3: the codemod made pickLine and pickSite common. Each caller imports them from the kit; business/nepo-asks.ts
+    // declares its own pickLine (a hash helper) and is not a caller. The ratchet (r2-pickline-ratchet) covers which pools convert.
+    expect(files.flatMap((f) => wrongSource(f, read(f)))).toEqual([])
+    expect(files.filter((f) => /\bpickLine\s*\(/.test(read(f)) && !/\bconst pickLine\b/.test(read(f))).length).toBeGreaterThan(50)
+  })
+
+  it('11c: the import check names a caller that takes pickLine from somewhere else, and passes the kit and its own helper', () => {
+    expect(wrongSource('a.ts', "import { pickLine } from './text/pick'\npickLine(g, L)")).toEqual([])
+    expect(wrongSource('a.ts', "import { pickSite, pickLine } from '../text'\npickSite(g, L, 1)")).toEqual([])
+    expect(wrongSource('a.ts', "import {\n  pickLine,\n} from '../text/pick'\nx = pickLine(g, L)")).toEqual([])
+    expect(wrongSource('a.ts', "import { pickLine } from './elsewhere'\npickLine(g, L)")).toEqual(['a.ts: pickLine is not imported from the text kit'])
+    expect(wrongSource('a.ts', 'pickSite(g, L, 1)')).toEqual(['a.ts: pickSite is not imported from the text kit'])
+    expect(wrongSource('a.ts', 'const pickLine = (xs: string[]) => xs[0]\nreturn pickLine(L)')).toEqual([])
+    expect(wrongSource('a.ts', "// pickLine(g, L) in a comment\nconst x = 1")).toEqual([])
   })
 
   it('11b: the scan flags a call and passes comments and look-alike names', () => {

@@ -6,6 +6,7 @@ import { conditionLabel, MORTGAGE_PLANS, mortgageDecision, nicePrice, seeded, ye
 import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, shortMoney, spend, useYearAction } from '../core'
 import { creditLabel, creditScore } from '../finance'
 import { chance, pick, randInt, weightedPick } from '../rng'
+import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, Mortgage } from '../types'
 import { getCountry, type Continent } from '../world'
@@ -555,13 +556,13 @@ function islandPartyAction(a: Asset): MenuAction {
         addHidden(g, 'notoriety', randInt(g, 2, 5))
         addHidden(g, 'fame', randInt(g, 1, 3))
         log(g, `My party on ${name} made the tabloids for the wrong reasons.`, 'bad')
-        notice(g, 'Party Disaster', pick(g, [`The last water taxi left at midnight and stranded 80 guests on ${name}. Someone started a "Lord of the Flies" livestream. It trended.`, `The fireworks barge drifted into the guest marina. Nobody was hurt, but three speedboats are now modern art.`, `A guest tried to ride one of the goats into the lagoon. The video has six million views and you are tagged in all of them.`]), { emoji: '\u{1F525}', tone: 'bad' })
+        notice(g, 'Party Disaster', pickSite(g, [`The last water taxi left at midnight and stranded 80 guests on ${name}. Someone started a "Lord of the Flies" livestream. It trended.`, `The fireworks barge drifted into the guest marina. Nobody was hurt, but three speedboats are now modern art.`, `A guest tried to ride one of the goats into the lagoon. The video has six million views and you are tagged in all of them.`], 0x577d4988), { emoji: '\u{1F525}', tone: 'bad' })
         return
       }
       addStat(g, 'happiness', randInt(g, 6, 12))
       addHidden(g, 'fame', randInt(g, 2, 5))
       log(g, `I threw a legendary party on my island, ${name}.`, 'good')
-      const text = pick(g, [`Your party on ${name} was the talk of every yacht for a hundred miles. A DJ played on the beach until sunrise.`, `Seaplanes kept landing all night. Someone proposed on your dock. Someone else got rejected on your dock.`, `Your island bash had a lobster tower, a fire dancer and a pop-up tattoo parlor. You regret one of those.`])
+      const text = pickSite(g, [`Your party on ${name} was the talk of every yacht for a hundred miles. A DJ played on the beach until sunrise.`, `Seaplanes kept landing all night. Someone proposed on your dock. Someone else got rejected on your dock.`, `Your island bash had a lobster tower, a fire dancer and a pop-up tattoo parlor. You regret one of those.`], 0x963d7fbc)
       if (roll >= 70) {
         meetCeleb(g, rollCeleb(g, undefined, chance(g, 0.5)), `a party on ${name}`, `${text}`)
         return

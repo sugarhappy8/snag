@@ -6,6 +6,7 @@ import { addHidden, addMoney, addStat, aThing, count, earnIncome, log, remember,
 import { arrestPlayer } from '../crime'
 import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { bodyCeiling, crowdedField, masterFirstTime, masteryCap } from '../mastery'
@@ -449,11 +450,11 @@ const tryoutScript = defineScript('special.athlete.tryout', (g, choice, data) =>
     return say(
       g,
       'Tryout',
-      pick(g, [
+      pickSite(g, [
         `The ${t.team} coaches watched you for ten minutes and said "thanks, we'll call you". They won't.`,
         `You pulled a hamstring during the ${t.team} tryout warm-up.`,
         `The ${t.team} said you have "potential", which is coach-speak for "no".`,
-      ]),
+      ], 0x296f9398),
       sport.emoji,
       'bad',
     )
@@ -586,7 +587,7 @@ const trainScript = defineScript('special.athlete.train', (g, choice) => {
   addStat(g, 'health', 2)
   addHidden(g, 'athleticism', 1)
   log(g, `I did ${choice.toLowerCase()} training.`)
-  say(g, 'Training', `${pick(g, ['Your trainer pushed you to the limit.', 'You left the gym drenched in sweat.', 'You beat your personal best.'])} Fitness: ${p.fitness}%.`, '\u{1F4AA}', 'good')
+  say(g, 'Training', `${pickLine(g, ['Your trainer pushed you to the limit.', 'You left the gym drenched in sweat.', 'You beat your personal best.'])} Fitness: ${p.fitness}%.`, '\u{1F4AA}', 'good')
 })
 
 const fanScript = defineScript('special.athlete.fans', (g, choice) => {
@@ -646,7 +647,7 @@ const dopeAction: MenuAction = {
     addStat(g, 'health', -3)
     count(g, 'doping')
     log(g, 'I started taking performance enhancers.', 'bad')
-    say(g, 'Performance Enhancer', pick(g, ['A guy named "Doc" sold you a cooler of unlabeled syringes. You feel... powerful.', 'You started a "vitamin regimen" that definitely is not vitamins.']), '\u{1F489}', 'bad')
+    say(g, 'Performance Enhancer', pickLine(g, ['A guy named "Doc" sold you a cooler of unlabeled syringes. You feel... powerful.', 'You started a "vitamin regimen" that definitely is not vitamins.']), '\u{1F489}', 'bad')
   },
 }
 

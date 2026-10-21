@@ -7,6 +7,7 @@ import { addHidden, addMoney, addStat, count, formatMoney, hasLicense, log, noti
 import { brandName } from '../data/brands'
 import { hasTech } from '../history/timeline'
 import { chance, pick, randInt, uid } from '../rng'
+import { pickSite } from '../text/pick'
 import type { Asset, GameState, Json } from '../types'
 import { getCountry } from '../world'
 import { alcoholBlock, inProduction, isAlcohol, lineOnSale, lineTitle, localMult, quoteNew, tierReason } from './luxury-brands-catalog'
@@ -546,7 +547,7 @@ export function openBottle(g: GameState, a: Asset): void {
   addStat(g, 'health', cat === 'spirit' ? -1 : 0)
   const peak = (cat === 'wine' || cat === 'spirit') && num(a.details.vintage) > 0 ? g.year - num(a.details.vintage) : 0
   log(g, `I opened ${a.name}.`, 'good')
-  notice(g, 'A Special Occasion', pick(g, [`You opened ${a.name} with friends. Someone said "hints of cedar". Someone else said "it's wine".`, `You poured ${a.name} for a quiet evening. Every sip was ${formatMoney(Math.round(share / 6))} of regret and joy.`, `${capitalize(a.name)} was ${peak > 20 ? 'older than your career' : 'worth the wait'}.`]), { emoji: '🍷', tone: 'good' })
+  notice(g, 'A Special Occasion', pickSite(g, [`You opened ${a.name} with friends. Someone said "hints of cedar". Someone else said "it's wine".`, `You poured ${a.name} for a quiet evening. Every sip was ${formatMoney(Math.round(share / 6))} of regret and joy.`, `${capitalize(a.name)} was ${peak > 20 ? 'older than your career' : 'worth the wait'}.`], 0x3315e5aa), { emoji: '🍷', tone: 'good' })
 }
 
 // ---------------------------------------------------------------------------

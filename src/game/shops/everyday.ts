@@ -31,6 +31,7 @@ import { createPerson, notePerson } from '../people'
 import { gadgetName, steadyBrand } from './everyday-brands'
 import { ITEM_MAKERS, makerFirstWords } from './everyday-makers'
 import { chance, pick, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
@@ -489,7 +490,7 @@ function completePurchase(g: GameState, l: EverydayListing, d: ItemDef, paidBy: 
     log(g, `My ${relationLabel(paidBy).toLowerCase()} bought me ${withArticle(l.name)}.`, 'good')
     notice(g, 'Yes!', `You begged and begged, and your ${relationLabel(paidBy).toLowerCase()} ${paidBy.firstName} finally bought you ${withArticle(l.name)} (${formatMoney(l.price)}). ${quip}`, { emoji: l.emoji, tone: 'good' })
   } else {
-    log(g, pick(g, [`I bought ${withArticle(l.name)}.`, `I treated myself to ${withArticle(l.name)}.`]), 'good')
+    log(g, pickSite(g, [`I bought ${withArticle(l.name)}.`, `I treated myself to ${withArticle(l.name)}.`], 0x026014d7), 'good')
     const tax = taxLine(g, l.price)
     const upkeep = l.upkeep > 0 ? ` Running it costs about ${formatMoney(l.upkeep)} a year.` : ''
     notice(g, 'Purchased!', `You bought ${withArticle(l.name)} for ${formatMoney(l.price)}. ${quip}${upkeep}${tax ? ` ${tax}` : ''}`, { emoji: l.emoji, tone: 'good' })
@@ -516,7 +517,7 @@ function begParent(g: GameState, l: EverydayListing): Person | null | 'none' {
     return parent
   }
   addStat(g, 'happiness', -1)
-  notice(g, 'Denied', `You asked your ${relationLabel(parent).toLowerCase()} ${parent.firstName} to buy you ${withArticle(l.name)} (${formatMoney(l.price)}). ${parent.firstName}: ${pick(g, BEG_NO)}`, { emoji: '🙅' })
+  notice(g, 'Denied', `You asked your ${relationLabel(parent).toLowerCase()} ${parent.firstName} to buy you ${withArticle(l.name)} (${formatMoney(l.price)}). ${parent.firstName}: ${pickLine(g, BEG_NO)}`, { emoji: '🙅' })
   return null
 }
 
@@ -590,7 +591,7 @@ export function buyForChild(g: GameState, l: EverydayListing, childId: string): 
   addStat(g, 'happiness', randInt(g, 2, 4))
   notePerson(kid, `Got ${withArticle(l.name)} from the player at age ${kid.age}.`)
   log(g, `I bought my ${relationLabel(kid).toLowerCase()} ${kid.firstName} ${withArticle(l.name)}.`, 'good')
-  const reaction = pick(g, [`${kid.firstName} screamed so loud the neighbors checked on you.`, `${kid.firstName} hugged you and then ignored you for the rest of the day to play with it.`, `${kid.firstName} said it was "the best present in the history of presents."`, `${kid.firstName} was thrilled. The box was a hit too.`])
+  const reaction = pickSite(g, [`${kid.firstName} screamed so loud the neighbors checked on you.`, `${kid.firstName} hugged you and then ignored you for the rest of the day to play with it.`, `${kid.firstName} said it was "the best present in the history of presents."`, `${kid.firstName} was thrilled. The box was a hit too.`], 0x0cb72b17)
   const tax = taxLine(g, l.price)
   notice(g, 'Gift for the Kids', `You bought ${withArticle(l.name)} for ${kid.firstName} (${formatMoney(l.price)}). ${reaction}${tax ? ` ${tax}` : ''}`, { emoji: l.emoji, tone: 'good' })
   return true
@@ -1067,11 +1068,11 @@ function specialLine(g: GameState, a: Asset): string | null {
   const c = g.character
   switch (key) {
     case 'unicycle':
-      return pick(g, ['You rode your unicycle through the park. A child pointed and asked if you were a clown. You said yes.', 'You made it a full block on your unicycle. Pedestrians applauded. One threw a coin.'])
+      return pickLine(g, ['You rode your unicycle through the park. A child pointed and asked if you were a clown. You said yes.', 'You made it a full block on your unicycle. Pedestrians applauded. One threw a coin.'])
     case 'escooter':
     case 'ebike':
     case 'emtb':
-      return pick(g, ['You zipped past everyone stuck in traffic and felt like a superhero.', `The motor did most of the work. You still told everyone you "biked across ${c.city || 'town'}."`])
+      return pickSite(g, ['You zipped past everyone stuck in traffic and felt like a superhero.', `The motor did most of the work. You still told everyone you "biked across ${c.city || 'town'}."`], 0xe0a7fb86)
     case 'mamachari':
       return 'You rode your mamachari to the supermarket with a bag of leeks poking out of the basket. Peak efficiency.'
     case 'dutch':
@@ -1079,7 +1080,7 @@ function specialLine(g: GameState, a: Asset): string | null {
     case 'roadster':
       return 'You rode your trusty roadster through traffic, ringing the bell at everything that moved.'
     case 'cargo':
-      return pick(g, ['You hauled a week of groceries home in your cargo bike. Cars are overrated.', 'You gave the neighborhood kids a ride in the cargo bike. You are now the most popular adult on the street.'])
+      return pickLine(g, ['You hauled a week of groceries home in your cargo bike. Cars are overrated.', 'You gave the neighborhood kids a ride in the cargo bike. You are now the most popular adult on the street.'])
     case 'kotatsu':
       return 'You crawled under the kotatsu with a bowl of mandarins and did not emerge for six hours.'
     case 'majlis':
@@ -1087,7 +1088,7 @@ function specialLine(g: GameState, a: Asset): string | null {
     case 'hammock':
       return 'You swung in your hammock all afternoon. Time stopped being a concept.'
     case 'sauna':
-      return pick(g, ['You sat in the sauna until you saw the meaning of life, then jumped into cold water and forgot it.', 'You had a long sauna session. Silence, steam and absolute calm.'])
+      return pickLine(g, ['You sat in the sauna until you saw the meaning of life, then jumped into cold water and forgot it.', 'You had a long sauna session. Silence, steam and absolute calm.'])
     case 'smarthome':
       return 'You told your smart speaker to dim the lights. It played polka music instead. Relaxing, in its way.'
     case 'castle':
@@ -1100,7 +1101,7 @@ function specialLine(g: GameState, a: Asset): string | null {
       return 'You painted in one eye of your daruma doll and made a wish. The other eye waits.'
     case 'console':
     case 'handheld':
-      return pick(g, ['You played video games until 3 a.m. "Just one more level."', 'You finally beat the final boss. You screamed so loud the neighbors called.'])
+      return pickLine(g, ['You played video games until 3 a.m. "Just one more level."', 'You finally beat the final boss. You screamed so loud the neighbors called.'])
     case 'yukata':
       return 'You wore your yukata to a summer festival, ate grilled squid on a stick and watched the fireworks.'
     case 'kimono':
@@ -1209,7 +1210,7 @@ export function useEverydayItem(g: GameState, assetId: string): void {
     addStat(g, 'health', -randInt(g, 3, 8))
     addStat(g, 'happiness', -randInt(g, 1, 4))
     log(g, `I got a ${injury.toLowerCase()} ${use === USES.ride ? 'falling off' : 'using'} my ${lower(plainName(a))}.`, 'bad')
-    notice(g, 'Ouch!', `${pick(g, ['It was going great until it wasn\'t.', 'You were showing off. Gravity noticed.', 'One wrong move and down you went.'])} You got a ${injury.toLowerCase()}.${feeNote}`, { emoji: '🩹', tone: 'bad' })
+    notice(g, 'Ouch!', `${pickLine(g, ['It was going great until it wasn\'t.', 'You were showing off. Gravity noticed.', 'One wrong move and down you went.'])} You got a ${injury.toLowerCase()}.${feeNote}`, { emoji: '🩹', tone: 'bad' })
     return
   }
 
@@ -1577,7 +1578,7 @@ export function yearlyEveryday(g: GameState): void {
     g.assets = g.assets.filter((x) => x.id !== bike.id)
     addStat(g, 'happiness', -randInt(g, 2, 5))
     log(g, `Someone stole my ${lower(bike.name)}.`, 'bad')
-    notice(g, 'Bike Stolen', pick(g, [`Your ${lower(bike.name)} was stolen. The lock was not. Thieves left it behind, neatly cut.`, `You came outside and your ${lower(bike.name)} was gone. Just the front wheel was left, still locked to the rack.`, `Your ${lower(bike.name)} vanished overnight. You checked every rack in ${c.city || 'town'} for weeks.`]), { emoji: '🚲', tone: 'bad' })
+    notice(g, 'Bike Stolen', pickSite(g, [`Your ${lower(bike.name)} was stolen. The lock was not. Thieves left it behind, neatly cut.`, `You came outside and your ${lower(bike.name)} was gone. Just the front wheel was left, still locked to the rack.`, `Your ${lower(bike.name)} vanished overnight. You checked every rack in ${c.city || 'town'} for weeks.`], 0xed226890), { emoji: '🚲', tone: 'bad' })
   }
 
   // A fresh wardrobe gives a small, fading boost once a year.
@@ -1586,7 +1587,7 @@ export function yearlyEveryday(g: GameState): void {
     const boost = fresh >= 3 ? 2 : 1
     addStat(g, 'looks', boost)
     addStat(g, 'happiness', 1)
-    if (chance(g, 0.4)) log(g, pick(g, ['People kept complimenting my clothes this year.', 'My wardrobe was on point this year.', 'I felt good in my clothes this year.']), 'good')
+    if (chance(g, 0.4)) log(g, pickLine(g, ['People kept complimenting my clothes this year.', 'My wardrobe was on point this year.', 'I felt good in my clothes this year.']), 'good')
   }
 
   // A home you've made your own.

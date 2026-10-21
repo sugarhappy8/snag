@@ -46,6 +46,7 @@ import { createPerson, notePerson } from './people'
 import type { BrandTier } from './data/brands'
 import { employerRef, streamBrand } from './shops/everyday-brands'
 import { chance, nextRandom, pick, rand, randInt, shuffle, uid } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { masterFirstTime } from './mastery'
 import { hasMainCharacter, hasTalent, talentHint, type TalentId } from './talents'
@@ -523,11 +524,11 @@ export function presentInterview(g: GameState, job: InterviewJob, q: InterviewQu
   const safe = sanitizeQuestion(q) ?? fallbackInterviewQuestion(g, job)
   const gender = chance(g, 0.5) ? 'male' : 'female'
   const interviewer = `${randomFirstName(g, c.countryId, gender)} ${randomLastName(g, c.countryId)}`
-  const intro = pick(g, [
+  const intro = pickSite(g, [
     `You sat down with ${interviewer}, the hiring manager at ${job.company}, to interview for the ${job.title} position.`,
     `${interviewer} from ${job.company} shook your hand a little too firmly and started your interview for ${job.title}.`,
     `You showed up to ${job.company} ten minutes early for your ${job.title} interview. ${interviewer} called you in.`,
-  ])
+  ], 0xfd4bd8f2)
   // Comedy talent: you can read a room. The answer that will land best gets a purple hint.
   const top = Math.max(...safe.answers.map((a) => a.score))
   const read = safe.answers.filter((a) => a.score === top).length === 1 ? talentHint(g, 'Comedy', 'You can read the room: this one will land.') : ''
@@ -682,11 +683,11 @@ const INTERVIEW = defineScript('career.interview', (g, choice, data) => {
     notice(
       g,
       'Hired!',
-      pick(g, [
+      pickSite(g, [
         `${interviewer} was impressed! You got the job as ${j.title} at ${j.company}. Your salary will be ${formatMoney(j.salary)} a year.`,
         `Welcome aboard! ${j.company} hired you as ${article(j.title)} ${j.title}, starting at ${formatMoney(j.salary)} a year.`,
         `${interviewer} called that afternoon: you're the new ${j.title} at ${j.company}! Pay: ${formatMoney(j.salary)} a year.`,
-      ]),
+      ], 0x47a6ce90),
       { emoji: '\u{1F389}', tone: 'good' },
     )
     return
@@ -697,12 +698,12 @@ const INTERVIEW = defineScript('career.interview', (g, choice, data) => {
   notice(
     g,
     'Rejected',
-    pick(g, [
+    pickSite(g, [
       `${job.company} decided to go with another candidate for the ${job.title} position.`,
       `${interviewer} thanked you for your time, which is corporate for "absolutely not."`,
       `You didn't get the ${job.title} job. ${interviewer} said you weren't "the right culture fit."`,
       `${job.company} rejected you. They'll "keep your resume on file," right next to the shredder.`,
-    ]),
+    ], 0x2d7abc40),
     { emoji: '\u{1F4E8}', tone: 'bad' },
   )
 })
@@ -1073,10 +1074,10 @@ function pitchMatch(g: GameState, key: string): void {
     notice(
       g,
       'Job Recruiter',
-      pick(g, [
+      pickSite(g, [
         `${name} called the hiring manager at ${m.company} directly: "You need to meet this one." You have an interview for ${m.title} (${formatMoney(m.salary)} a year).`,
         `${name} took one look at your CV and said, "Oh, this is an easy one." You're booked for an interview as ${article(m.title)} ${m.title} at ${m.company}, paying ${formatMoney(m.salary)} a year.`,
-      ]),
+      ], 0xa0232af1),
       { emoji: '\u{1F575}\u{FE0F}', tone: 'good' },
     )
     // The usual background check still runs: a referral doesn't make made-up CV lines true.
@@ -1263,7 +1264,7 @@ const FIRED = defineScript('career.fired', (g, choice, data) => {
     }
     addStat(g, 'happiness', -3)
     log(g, 'I begged for my job back. It did not work.', 'bad')
-    notice(g, 'Begging', pick(g, BEG_FAILS), { emoji: '\u{1F6AA}', tone: 'bad' })
+    notice(g, 'Begging', pickLine(g, BEG_FAILS), { emoji: '\u{1F6AA}', tone: 'bad' })
     return
   }
   if (choice === 'tell') {
@@ -1322,11 +1323,11 @@ function promote(g: GameState, job: Job, def: JobDef): void {
   notice(
     g,
     'Promotion!',
-    pick(g, [
+    pickSite(g, [
       `Your hard work paid off! You've been promoted from ${oldTitle} to ${rung.title} at ${job.company}. Your new salary is ${formatMoney(job.salary)} a year.`,
       `Congratulations! ${job.company} promoted you to ${rung.title}. That comes with a bigger salary (${formatMoney(job.salary)}) and a slightly bigger chair.`,
       `You've been promoted to ${rung.title}! Your new salary is ${formatMoney(job.salary)}. Your coworkers are "so happy for you."`,
-    ]),
+    ], 0xfbef089e),
     { emoji: '\u{1F389}', tone: 'good' },
   )
 }
@@ -1382,7 +1383,7 @@ function yearForJob(g: GameState, slot: Slot): void {
     if (weekly >= 50) {
       addStat(g, 'happiness', -Math.round((weekly - 45) / 5))
       if (chance(g, (weekly - 45) / 40)) addStat(g, 'health', -randInt(g, 1, 3))
-      if (weekly >= 60 && chance(g, 0.3)) log(g, pick(g, ['I basically lived at the office this year.', 'I forgot what my own bed looked like.', 'My coworkers started forwarding my mail to my desk.']), 'neutral')
+      if (weekly >= 60 && chance(g, 0.3)) log(g, pickLine(g, ['I basically lived at the office this year.', 'I forgot what my own bed looked like.', 'My coworkers started forwarding my mail to my desk.']), 'neutral')
     } else if (weekly < STANDARD_HOURS) {
       addStat(g, 'happiness', 1)
     }
@@ -1416,7 +1417,7 @@ function yearForJob(g: GameState, slot: Slot): void {
     return
   }
   if (job.performance < 35 && chance(g, 0.4)) {
-    notice(g, 'Warning', pick(g, [`${bossName(g, job)} pulled you aside and said your work as ${job.title} needs to improve. Fast.`, `You got a written warning at ${job.company}. Maybe try working harder?`]), { emoji: '\u{26A0}\u{FE0F}', tone: 'bad' })
+    notice(g, 'Warning', pickSite(g, [`${bossName(g, job)} pulled you aside and said your work as ${job.title} needs to improve. Fast.`, `You got a written warning at ${job.company}. Maybe try working harder?`], 0x816ac212), { emoji: '\u{26A0}\u{FE0F}', tone: 'bad' })
   }
 
   // Jobs that history made obsolete (the last switchboard in town gets automated).
@@ -1658,21 +1659,21 @@ function workHarder(g: GameState, slot: Slot): void {
   const job = g.character[slot]
   if (!job) return
   if (!useYearAction(g, `workHarder:${slot}`, 3)) {
-    notice(g, 'Work Harder', pick(g, ["You're already working as hard as humanly possible. Any harder and you'll burst a blood vessel.", `You tried to work even harder but mostly just stared at ${g.year >= 1985 ? 'your screen' : 'the clock'}. Try again next year.`]), { emoji: '\u{1F4A6}' })
+    notice(g, 'Work Harder', pickSite(g, ["You're already working as hard as humanly possible. Any harder and you'll burst a blood vessel.", `You tried to work even harder but mostly just stared at ${g.year >= 1985 ? 'your screen' : 'the clock'}. Try again next year.`], 0x5e550890), { emoji: '\u{1F4A6}' })
     return
   }
   job.performance = Math.round(clamp(job.performance + randInt(g, 3, 7) * (suitsTalent(g, job.defId) ? 1.4 : 1)))
   job.data.workedHarder = num(job.data.workedHarder, 0) + 1
   addStat(g, 'happiness', -1)
-  log(g, pick(g, ['I worked harder at my job.', 'I put in some extra effort at work.', 'I stayed late at the office.', 'I was the first one in and the last one out at work.']), 'neutral')
+  log(g, pickLine(g, ['I worked harder at my job.', 'I put in some extra effort at work.', 'I stayed late at the office.', 'I was the first one in and the last one out at work.']), 'neutral')
   notice(
     g,
     'Work Harder',
-    pick(g, [
+    pickSite(g, [
       `You worked harder at ${job.company}. Performance: ${job.performance}%.`,
       `You put your nose to the grindstone as ${job.title}. Performance: ${job.performance}%.`,
       `You skipped lunch and crushed your to-do list. Performance: ${job.performance}%.`,
-    ]),
+    ], 0x02665166),
     { emoji: '\u{1F4AA}', tone: 'good' },
   )
 }
@@ -1699,7 +1700,7 @@ function askRaise(g: GameState, slot: Slot): void {
     }
     addStat(g, 'happiness', 5)
     log(g, `I asked for a raise and got it.`, 'good')
-    notice(g, 'Raise!', pick(g, [`${boss} agreed to give you a raise! Your new salary is ${formatMoney(job.salary)} a year.`, `You made your case and ${boss === 'Your boss' ? 'your boss' : boss} caved. New salary: ${formatMoney(job.salary)}.`]), { emoji: '\u{1F4B0}', tone: 'good' })
+    notice(g, 'Raise!', pickSite(g, [`${boss} agreed to give you a raise! Your new salary is ${formatMoney(job.salary)} a year.`, `You made your case and ${boss === 'Your boss' ? 'your boss' : boss} caved. New salary: ${formatMoney(job.salary)}.`], 0xa2e61bf4), { emoji: '\u{1F4B0}', tone: 'good' })
     return
   }
   job.performance = Math.round(clamp(job.performance - randInt(g, 2, 5)))
@@ -1709,7 +1710,7 @@ function askRaise(g: GameState, slot: Slot): void {
     return
   }
   log(g, 'I asked for a raise and was turned down.', 'bad')
-  notice(g, 'Ask for a Raise', pick(g, [`${boss} laughed and said "Maybe next year." It was not a nice laugh.`, `${boss} said the budget is "really tight right now," then left for a golf weekend.`, `${boss} told you raises are for people who earn them.`]), { emoji: '\u{1F62C}', tone: 'bad' })
+  notice(g, 'Ask for a Raise', pickSite(g, [`${boss} laughed and said "Maybe next year." It was not a nice laugh.`, `${boss} said the budget is "really tight right now," then left for a golf weekend.`, `${boss} told you raises are for people who earn them.`], 0x653d276d), { emoji: '\u{1F62C}', tone: 'bad' })
 }
 
 /** Odds that asking for a promotion works (pure: safe for menus and hints). */
@@ -1742,7 +1743,7 @@ function askPromotion(g: GameState): void {
   }
   job.performance = Math.round(clamp(job.performance - randInt(g, 1, 4)))
   log(g, 'I asked for a promotion and was turned down.', 'bad')
-  notice(g, 'Promotion', pick(g, [`${boss} said you're "not quite ready" for ${def.ladder[job.level + 1].title}.`, `${boss} told you to keep doing what you're doing. Which apparently isn't enough.`, `${boss} gave the promotion to someone's nephew.`]), { emoji: '\u{1F615}', tone: 'bad' })
+  notice(g, 'Promotion', pickSite(g, [`${boss} said you're "not quite ready" for ${def.ladder[job.level + 1].title}.`, `${boss} told you to keep doing what you're doing. Which apparently isn't enough.`, `${boss} gave the promotion to someone's nephew.`], 0x3e26665c), { emoji: '\u{1F615}', tone: 'bad' })
 }
 
 function quitJob(g: GameState, slot: Slot): void {
@@ -1751,7 +1752,7 @@ function quitJob(g: GameState, slot: Slot): void {
   endJob(g, slot, 'quit')
   addStat(g, 'happiness', randInt(g, -2, 6))
   log(g, `I quit my job as ${job.title} at ${job.company}.`, 'neutral')
-  notice(g, 'Quit', pick(g, [`You quit your job as ${job.title} at ${job.company}.`, `You handed in your resignation at ${job.company}. Your stapler is coming with you.`, `You walked out of ${job.company} for the last time as ${job.title}. Freedom smells like a parking lot.`]), { emoji: '\u{1F6AA}' })
+  notice(g, 'Quit', pickSite(g, [`You quit your job as ${job.title} at ${job.company}.`, `You handed in your resignation at ${job.company}. Your stapler is coming with you.`, `You walked out of ${job.company} for the last time as ${job.title}. Freedom smells like a parking lot.`], 0x33003a2a), { emoji: '\u{1F6AA}' })
 }
 
 // Schedule ---------------------------------------------------------------------
@@ -1789,10 +1790,10 @@ function setHours(g: GameState, input?: string): void {
     notice(
       g,
       'Hours',
-      pick(g, [
+      pickSite(g, [
         `You're now working ${hours} hours a week at ${job.company}. Your boss is impressed; your friends have filed a missing person report.`,
         `You bumped your schedule up to ${hours} hours a week. Sleep is for people without ambition, apparently.`,
-      ]),
+      ], 0xe721149a),
       { emoji: '\u{23F0}' },
     )
   } else {
@@ -1800,10 +1801,10 @@ function setHours(g: GameState, input?: string): void {
     notice(
       g,
       'Hours',
-      pick(g, [
+      pickSite(g, [
         `You cut back to ${hours} hours a week at ${job.company}. Work-life balance: achieved. Promotion odds: shrinking.`,
         `You're down to ${hours} hours a week. Your boss pretended not to notice. Your boss noticed.`,
-      ]),
+      ], 0xd8aa4c7e),
       { emoji: '\u{23F0}' },
     )
   }
@@ -1861,7 +1862,7 @@ function reportToHR(g: GameState, personId: string): void {
   const roll = rand(g)
   if (roll < 0.35) {
     log(g, `I reported ${name} to HR. Nothing happened.`, 'neutral')
-    notice(g, 'Human Resources', pick(g, [`You reported ${name} for ${gripe}. HR thanked you for your feedback and filed it directly into the shredder.`, `You reported ${name} for ${gripe}. HR said they'd "look into it." They did not look into it.`]), { emoji: '\u{1F4C1}' })
+    notice(g, 'Human Resources', pickSite(g, [`You reported ${name} for ${gripe}. HR thanked you for your feedback and filed it directly into the shredder.`, `You reported ${name} for ${gripe}. HR said they'd "look into it." They did not look into it.`], 0x44827f67), { emoji: '\u{1F4C1}' })
     if (chance(g, 0.4)) addRelationship(target, -10)
     return
   }
@@ -2120,7 +2121,7 @@ function doGig(g: GameState, gig: GigDef, input?: string): void {
   if (gig.id === 'tutor') p += (c.stats.smarts - 50) / 200
   if (gig.id === 'handyman') p += (c.hidden.athleticism - 50) / 300
   if (!chance(g, clamp(p, 0.05, 0.95))) {
-    notice(g, 'No Response', pick(g, [`Nobody responded to your ${gig.noun} ad at ${formatMoney(rate)} an hour. Maybe lower your rate?`, `Your ${gig.noun} flyers at ${formatMoney(rate)}/hour got zero calls. The only response was a pizza menu.`]), { emoji: gig.emoji })
+    notice(g, 'No Response', pickSite(g, [`Nobody responded to your ${gig.noun} ad at ${formatMoney(rate)} an hour. Maybe lower your rate?`, `Your ${gig.noun} flyers at ${formatMoney(rate)}/hour got zero calls. The only response was a pizza menu.`], 0xc4deaa0d), { emoji: gig.emoji })
     return
   }
   useYearAction(g, 'gigs', 10)

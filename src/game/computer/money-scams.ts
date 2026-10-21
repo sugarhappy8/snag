@@ -5,8 +5,9 @@
 // corruption is low) can knock at any time. Parents who catch a kid at it take the computer.
 import { arrestPlayer } from '../crime'
 import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember, useYearAction } from '../core'
-import { eraPick, eraPickPlain } from '../events/era'
+import { eraPick } from '../events/era'
 import { chance, pick, rand, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { totalFollowers } from '../special/social'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addScreenTime, codingSkill } from './skills'
@@ -257,7 +258,7 @@ function runScam(g: GameState, def: ScamDef): void {
   const c = g.character
   if (!canAct(g) || c.age < def.minAge || !eraOpen(g, def.era)) return
   if (!useYearAction(g, 'computer.scam', 3)) {
-    notice(g, 'Lie Low', pick(g, ["You've run enough scams this year. Your inbox is 90% angry people. Lie low until next year.", 'Every platform you use has flagged you this year. Wait it out.', 'Even scammers need a vacation. Try again next year.']), { emoji: '\u{1FAE3}' })
+    notice(g, 'Lie Low', pickLine(g, ["You've run enough scams this year. Your inbox is 90% angry people. Lie low until next year.", 'Every platform you use has flagged you this year. Wait it out.', 'Even scammers need a vacation. Try again next year.']), { emoji: '\u{1FAE3}' })
     return
   }
   const st = moneyState(g)
@@ -268,7 +269,7 @@ function runScam(g: GameState, def: ScamDef): void {
   st.scams += 1
   st.scamKinds[def.id] = (st.scamKinds[def.id] ?? 0) + 1
   count(g, 'scams')
-  const did = eraPickPlain(g, def.did)
+  const did = eraPick(g, def.did)
 
   if (!chance(g, scamSuccessChance(g, def, st.heat))) {
     addHidden(g, 'karma', -2)
@@ -303,8 +304,8 @@ function runScam(g: GameState, def: ScamDef): void {
   const share = formatMoney(Math.max(1, Math.round(take / randInt(g, 2, 6))))
   const conscience =
     c.hidden.karma >= 40
-      ? pick(g, ['You feel a little sick about it.', "You couldn't sleep that night.", 'You bought yourself something nice with it. It did not feel nice.'])
-      : pick(g, ["You didn't feel a thing. That's the scary part.", 'You slept like a baby. A very guilty baby.'])
+      ? pickLine(g, ['You feel a little sick about it.', "You couldn't sleep that night.", 'You bought yourself something nice with it. It did not feel nice.'])
+      : pickLine(g, ["You didn't feel a thing. That's the scary part.", 'You slept like a baby. A very guilty baby.'])
   const parts = [`${did} You made ${formatMoney(take)}.`, `${pick(g, def.victims)(victim, share)} ${conscience}`]
   let kept = take
 

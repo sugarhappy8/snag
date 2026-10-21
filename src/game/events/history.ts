@@ -12,7 +12,8 @@ import { PANDEMIC_COVID, PANDEMIC_FLU, medicalYear } from '../history/events-med
 import { homeFrontAt, warDraftAt, warsAt, warStartFor, type WarDef } from '../history/events-wars'
 import { hasTech, techOdds } from '../history/timeline'
 import { notePerson } from '../people'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import { employerRef, isRealBrandName } from '../shops/everyday-brands'
@@ -112,7 +113,7 @@ function quietMoments(g: GameState): void {
   if (winner === id && c.age >= 5 && !isDone(g, `worldcup.${g.year}`)) {
     markDone(g, `worldcup.${g.year}`)
     addStat(g, 'happiness', randInt(g, 3, 6))
-    log(g, c.prison ? 'We won the World Cup! The whole cell block went wild.' : pick(g, ['We won the World Cup! I celebrated in the streets until dawn.', 'We won the World Cup! Strangers hugged me in the street.']), 'good')
+    log(g, c.prison ? 'We won the World Cup! The whole cell block went wild.' : pickLine(g, ['We won the World Cup! I celebrated in the streets until dawn.', 'We won the World Cup! Strangers hugged me in the street.']), 'good')
   }
 
   // The polio vaccine reached each country in its own year.

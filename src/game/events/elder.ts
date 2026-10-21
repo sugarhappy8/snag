@@ -3,6 +3,7 @@
 import { addRelationship, preferredGender } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import {
   anyOf,
@@ -91,7 +92,7 @@ export const ELDER_EVENTS = defineEvents([
       const gk = anyOf(g, grandkids(g, 14))
       const who = gk ? gk.firstName : 'your grandson'
       const amt = Math.round(dollars(g, 900, 4500) / 100) * 100
-      const place = g.character.countryId === 'us' ? pick(g, SCAM_PLACES) : fillLocal(g, pick(g, LOCAL_SCAM_PLACES))
+      const place = g.character.countryId === 'us' ? pickLine(g, SCAM_PLACES) : fillLocal(g, pickLine(g, LOCAL_SCAM_PLACES))
       const way = scamWay(g)
       return {
         text: `Your phone rings. A muffled voice says, "${gk ? `Hi, it's ${who}` : "Grandma? Grandpa? It's me"}! I'm stuck in ${place} and I need ${money(amt)} ${way.pay} for bail. Please don't tell Mom!" What will you do?`,
@@ -251,7 +252,7 @@ export const ELDER_EVENTS = defineEvents([
     maxAge: 120,
     cooldown: 8,
     setup: (g) => {
-      const symptom = pick(g, ['a sharp pain in your chest', 'your left arm going numb', 'a crushing headache', 'blurry vision in one eye', 'shortness of breath climbing the stairs'])
+      const symptom = pickLine(g, ['a sharp pain in your chest', 'your left arm going numb', 'a crushing headache', 'blurry vision in one eye', 'shortness of breath climbing the stairs'])
       return {
         text: `You woke up with ${symptom}. What will you do?`,
         choices: [ch('er', 'Go to the emergency room', '🏥'), ch('wait', 'Wait and see', '⏳'), ch('google', common(g, 'internet') ? 'Look up my symptoms online' : 'Look it up in the medical encyclopedia', '🔍')],
@@ -285,7 +286,7 @@ export const ELDER_EVENTS = defineEvents([
     setup: (g) => {
       const p = anyOf(g, kids(g, 30))
       if (!p) return null
-      const place = pick(g, ['Sunny Pines', 'Golden Meadows', 'Shady Acres', 'Willow Creek Senior Living', 'The Evergreen'])
+      const place = pickLine(g, ['Sunny Pines', 'Golden Meadows', 'Shady Acres', 'Willow Creek Senior Living', 'The Evergreen'])
       return {
         text: `Your ${relWord(p)}, ${p.firstName}, gently suggests it might be time to look at ${place}, a retirement community "with a lovely bingo hall." What will you do?`,
         choices: [ch('tour', 'Agree to a tour', '🚶'), ch('refuse', "I'm not going anywhere!", '😤'), ch('guilt', 'Guilt-trip them', '😢')],

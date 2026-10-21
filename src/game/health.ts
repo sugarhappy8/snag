@@ -27,6 +27,7 @@ import { economyOf } from './economy'
 import { killCharacter } from './death'
 import { hasTalent } from './talents'
 import { chance, pick, randFloat, randInt, uid, weightedPick } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { getCountry, NAME_POOLS } from './world'
 import type { ChoiceOption, Condition, ConditionKind, GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person } from './types'
@@ -357,11 +358,11 @@ function tooBroke(g: GameState, what: string, cost: number): void {
   notice(
     g,
     "Can't Afford It",
-    pick(g, [
+    pickSite(g, [
       `You can't afford ${what}. It costs ${formatMoney(cost)} and your bank account just laughed at you.`,
       `${cap(what)} costs ${formatMoney(cost)}. You don't have that kind of money.`,
       `You're ${formatMoney(cost - g.character.money)} short for ${what}.`,
-    ]),
+    ], 0x820b8e41),
     { emoji: '\u{1F4B8}', tone: 'bad' },
   )
 }
@@ -735,11 +736,11 @@ function relapseCheck(g: GameState): void {
     g,
     RELAPSE,
     'Old Habits',
-    pick(g, [
+    pickSite(g, [
       `You ran into some old friends from your ${subject} days. They offered to "catch up like old times." What will you do?`,
       `It's been a rough year and the old craving for ${subject} came roaring back. What will you do?`,
       `You found an old stash of ${subject} while cleaning out a drawer. What will you do?`,
-    ]),
+    ], 0xab2c176a),
     [
       { id: 'strong', label: 'Stay strong', emoji: '\u{1F4AA}' },
       { id: 'giveIn', label: 'Just this once', emoji: '\u{1F648}' },
@@ -764,8 +765,8 @@ function giveInEffects(g: GameState, cond: Condition): string {
   switch (kind) {
     case 'alcohol':
       addStat(g, 'health', -randInt(g, 3, 8))
-      log(g, pick(g, ['I gave in to my cravings and went on a bender.', 'I drank until I forgot why I was trying to quit.']), 'bad')
-      return pick(g, ['You went on a bender and woke up on a stranger\'s lawn wearing one shoe.', 'One drink became twelve. Your liver has filed a formal complaint.'])
+      log(g, pickLine(g, ['I gave in to my cravings and went on a bender.', 'I drank until I forgot why I was trying to quit.']), 'bad')
+      return pickLine(g, ['You went on a bender and woke up on a stranger\'s lawn wearing one shoe.', 'One drink became twelve. Your liver has filed a formal complaint.'])
     case 'gambling': {
       const cash = Math.max(0, g.character.money)
       const loss = Math.min(cash, Math.round(cash * randFloat(g, 0.05, 0.2) + randInt(g, 100, 1500)))
@@ -781,7 +782,7 @@ function giveInEffects(g: GameState, cond: Condition): string {
       count(g, 'drugs')
       addStat(g, 'health', -randInt(g, 5, 12))
       log(g, freshLine(g, 'relapse', [`I relapsed and used ${subject} again.`, `I fell off the wagon with ${subject}.`, `I swore it was the last time I'd use ${subject}. It wasn't.`]), 'bad')
-      return pick(g, [`You used ${subject} again. It felt great for about an hour.`, `You gave in to ${subject}. Your body is not thanking you.`])
+      return pickSite(g, [`You used ${subject} again. It felt great for about an hour.`, `You gave in to ${subject}. Your body is not thanking you.`], 0x1b6e78fa)
     default:
       log(g, `I gave in to my ${subject} habit again.`, 'bad')
       return `You gave in to your ${subject} habit. Again.`
@@ -805,11 +806,11 @@ const SYMPTOMS = defineScript('health.symptoms', (g, choice, data) => {
       notice(
         g,
         'Home Diagnosis',
-        pick(g, [
+        pickSite(g, [
           `According to a dusty medical encyclopedia, you either have ${listJoin(unique)}. Very reassuring.`,
           `After an evening with the family medical book, you've concluded you have ${listJoin(unique)}. Possibly all at once.`,
           `The medical book says it's either ${listJoin(unique)}. Your grandmother suggests a mustard plaster.`,
-        ]),
+        ], 0x26a3386d),
         { emoji: '\u{1F4D6}' },
       )
       log(g, freshLine(g, 'readSymptoms', ['I looked up my symptoms in a medical book and scared myself half to death.', 'I diagnosed myself with the family medical encyclopedia. It did not go well.', 'I asked the whole family about my symptoms and got five different diagnoses.']))
@@ -818,11 +819,11 @@ const SYMPTOMS = defineScript('health.symptoms', (g, choice, data) => {
     notice(
       g,
       'Internet Diagnosis',
-      pick(g, [
+      pickSite(g, [
         `According to a sketchy medical forum, you either have ${listJoin(unique)}. Very reassuring.`,
         `After three hours of searching symptoms online, you've concluded you have ${listJoin(unique)}. Possibly all at once.`,
         `The internet says it's either ${listJoin(unique)}. A commenter also suggested essential oils.`,
-      ]),
+      ], 0xba9ba92b),
       { emoji: '\u{1F4BB}' },
     )
     log(g, freshLine(g, 'searchedSymptoms', ['I searched my symptoms online and scared myself half to death.', 'I diagnosed myself on the internet. It did not go well.', 'I spent a night reading medical forums and regretted it.']))
@@ -862,11 +863,11 @@ const CRAVING = defineScript('health.addiction.craving', (g, choice, data) => {
       g,
       group ? 'Support Group' : 'Willpower',
       group
-        ? pick(g, [
+        ? pickSite(g, [
             `You went to a support group meeting and shared your story. The free coffee was terrible, but the cravings eased.`,
             `A room full of strangers clapped for you. You feel a little stronger against ${subject}.`,
-          ])
-        : pick(g, [`You white-knuckled it and the craving passed. You're winning, one day at a time.`, `You went for a long walk instead. The urge for ${subject} faded.`]),
+          ], 0x35fc6576)
+        : pickSite(g, [`You white-knuckled it and the craving passed. You're winning, one day at a time.`, `You went for a long walk instead. The urge for ${subject} faded.`], 0xc7becbab),
       { emoji: '\u{1F4AA}', tone: 'good' },
     )
     log(g, group ? freshLine(g, 'groupLine', [`I went to a support group meeting for my ${subject} problem.`, `I shared my story about ${subject} at a support group.`, 'I picked up another sobriety chip at my support group.']) : freshLine(g, 'resistLine', [`I resisted the urge to give in to ${subject}.`, `I fought off a craving for ${subject}.`, `I stayed strong against ${subject} this year.`]), 'good')
@@ -877,10 +878,10 @@ const CRAVING = defineScript('health.addiction.craving', (g, choice, data) => {
   notice(
     g,
     'Cravings',
-    pick(g, [
+    pickSite(g, [
       `You held out for almost a week before caving. ${giveInEffects(g, cond)}`,
       `${group ? 'You sat through the meeting, then went straight back to your old habits.' : 'You tried to resist, but the craving won.'} ${giveInEffects(g, cond)}`,
-    ]),
+    ], 0xa5eeb95a),
     { emoji: '\u{1F61E}', tone: 'bad' },
   )
 })
@@ -1064,7 +1065,7 @@ function babyCare(g: GameState): void {
       log(
         g,
         c.age < 4
-          ? pick(g, [`My ${who} took me to the doctor, where I was treated for ${label}.`, `My ${who} rushed me to the pediatrician and I was cured of ${label}.`])
+          ? pickSite(g, [`My ${who} took me to the doctor, where I was treated for ${label}.`, `My ${who} rushed me to the pediatrician and I was cured of ${label}.`], 0x559ef245)
           : `My ${who} noticed how sick I was and dragged me to the doctor. I was treated for ${label}.`,
         'good',
       )
@@ -1323,10 +1324,10 @@ function visitDoctor(g: GameState, doc: DoctorInfo): void {
     notice(
       g,
       'Doctor',
-      pick(g, [
+      pickSite(g, [
         `${cap(doc.title)}'s receptionist says you've been in so often this year they're naming a chair after you. Come back next year.`,
         "You've already seen the doctor plenty this year. Try again after your next birthday.",
-      ]),
+      ], 0xa893141f),
       { emoji: '\u{1FA7A}' },
     )
     return
@@ -1355,12 +1356,12 @@ function visitDoctor(g: GameState, doc: DoctorInfo): void {
   const addictions = c.conditions.filter((x) => x.kind === 'addiction')
 
   if (treatable.length === 0) {
-    let text = intro + fill(pick(g, CLEAN_BILL), { doc: cap(doc.title) })
+    let text = intro + fill(pickLine(g, CLEAN_BILL), { doc: cap(doc.title) })
     if (mental.length > 0) text = `${intro}${cap(doc.title)} says your ${listJoin(mental.map((m) => conditionLabel(m.name)))} is outside their expertise and suggests you see a psychiatrist.`
     if (addictions.length > 0) text += ` ${cap(doc.title)} also strongly suggests rehab for your ${listJoin(addictions.map((a) => addictionSubject(a.name)))} problem.`
     if (mental.length === 0) addStat(g, 'health', randInt(g, 1, 3))
     notice(g, cap(doc.title), text, { emoji: '\u{1FA7A}', tone: 'good' })
-    log(g, pick(g, [`I went to see ${doc.title} for a checkup.`, `I visited ${doc.title}, who said I was fine.`]))
+    log(g, pickSite(g, [`I went to see ${doc.title} for a checkup.`, `I visited ${doc.title}, who said I was fine.`], 0x4f9d5cdf))
     return
   }
 
@@ -1415,8 +1416,8 @@ function attemptCure(g: GameState, cond: Condition, p: number, who: string, emoj
     addStat(g, 'happiness', randInt(g, 6, 14))
     addStat(g, 'health', randInt(g, 4, 12))
     if (def.looks) addStat(g, 'looks', randInt(g, 1, 4))
-    notice(g, 'Cured', fill(pick(g, CURED_LINES), { name: label, doc: cap(who) }), { emoji: '\u{1F389}', tone: 'good' })
-    log(g, pick(g, [`I was cured of ${label}.`, `${cap(who)} cured my ${label}.`]), 'good')
+    notice(g, 'Cured', fill(pickLine(g, CURED_LINES), { name: label, doc: cap(who) }), { emoji: '\u{1F389}', tone: 'good' })
+    log(g, pickSite(g, [`I was cured of ${label}.`, `${cap(who)} cured my ${label}.`], 0x19d01b21), 'good')
     if (def.deadly) remember(g, `Survived ${label}.`)
     return true
   }
@@ -1428,7 +1429,7 @@ function attemptCure(g: GameState, cond: Condition, p: number, who: string, emoj
   notice(
     g,
     'Treatment Failed',
-    fill(pick(g, FAILED_LINES), { name: label, doc: cap(who) }) + (def.deadly ? ' It did seem to slow things down, at least.' : ''),
+    fill(pickLine(g, FAILED_LINES), { name: label, doc: cap(who) }) + (def.deadly ? ' It did seem to slow things down, at least.' : ''),
     { emoji: '\u{1F61E}', tone: 'bad' },
   )
   log(g, `The treatment for my ${label} didn't work.`, 'bad')
@@ -1440,7 +1441,7 @@ const TREAT = defineScript('health.doctor.treat', (g, choice, data) => {
   const doc = d.doctor ?? 'the doctor'
   if (!g.character.alive) return
   if (choice === 'leave') {
-    log(g, pick(g, ["I left the doctor's office without getting treated.", 'I decided not to get treated. Yet.']))
+    log(g, pickLine(g, ["I left the doctor's office without getting treated.", 'I decided not to get treated. Yet.']))
     return
   }
   const cond = g.character.conditions.find((x) => x.id === choice)
@@ -1476,12 +1477,12 @@ function emergencyRoom(g: GameState): void {
   const dial = localTerm(g, 'emergencyNumber')
   parts.push(
     parent
-      ? pick(g, [`Your ${parentWord(parent)} rushed you to the emergency room.`, `Your ${parentWord(parent)} panicked, called ${dial}, and an ambulance raced you to the emergency room.`])
-      : pick(g, [
+      ? pickSite(g, [`Your ${parentWord(parent)} rushed you to the emergency room.`, `Your ${parentWord(parent)} panicked, called ${dial}, and an ambulance raced you to the emergency room.`], 0xfd974fbf)
+      : pickSite(g, [
           'You waited four hours in the emergency room next to a guy with a fork in his hand.',
           'You checked into the emergency room and were seen surprisingly quickly.',
           `You called ${dial} and an ambulance took you to the emergency room. The paramedics seemed underwhelmed.`,
-        ]),
+        ], 0x60c9c8d4),
   )
   const newly = c.conditions.filter((x) => x.kind !== 'addiction' && !x.diagnosed)
   for (const x of newly) x.diagnosed = true
@@ -1548,10 +1549,10 @@ function visitAlt(g: GameState, alt: AltDef): void {
   addStat(g, 'happiness', randInt(g, 1, 4))
   const target = altTarget(g, alt)
   const session = {
-    acupuncture: pick(g, ['The acupuncturist turned you into a human pincushion.', 'You lay very still while a stranger stuck needles in your face.']),
-    chiropractic: pick(g, ['The chiropractor cracked your back so loudly the waiting room flinched.', 'You heard sounds come out of your spine that you will never forget.']),
-    colon: pick(g, ["The colon hydrotherapy session was... an experience. Let's leave it at that.", "You'll never look at a garden hose the same way again."]),
-    homeopathy: pick(g, ['The homeopath gave you a tiny bottle of very expensive water.', 'You were prescribed sugar pills diluted in hope.']),
+    acupuncture: pickLine(g, ['The acupuncturist turned you into a human pincushion.', 'You lay very still while a stranger stuck needles in your face.']),
+    chiropractic: pickLine(g, ['The chiropractor cracked your back so loudly the waiting room flinched.', 'You heard sounds come out of your spine that you will never forget.']),
+    colon: pickLine(g, ["The colon hydrotherapy session was... an experience. Let's leave it at that.", "You'll never look at a garden hose the same way again."]),
+    homeopathy: pickLine(g, ['The homeopath gave you a tiny bottle of very expensive water.', 'You were prescribed sugar pills diluted in hope.']),
   }[alt.id]
   if (target) {
     target.diagnosed = true
@@ -1587,7 +1588,7 @@ function counseling(g: GameState): void {
   addStat(g, 'happiness', randInt(g, 4, 12))
   const mental = c.conditions.filter((x) => x.kind === 'mental').sort((a, b) => b.severity - a.severity)
   for (const x of mental) x.diagnosed = true
-  const opener = pick(g, [
+  const opener = pickLine(g, [
     'You lay on a leather couch and talked about your childhood for an hour.',
     'Your psychiatrist nodded thoughtfully and asked how that made you feel. Several times.',
     'You talked through your problems with a very calm professional.',
@@ -1680,11 +1681,11 @@ function witchDoctor(g: GameState): void {
   spend(g, cost)
   count(g, 'doctorVisits')
   const remedy = pick(g, REMEDIES)
-  const intro = pick(g, [
+  const intro = pickSite(g, [
     `The witch doctor chanted over you and made you swallow ${remedy}.`,
     `The witch doctor prescribed ${remedy}. You choked it down.`,
     `After shaking a rattle in your face for twenty minutes, the witch doctor gave you ${remedy}.`,
-  ])
+  ], 0x24d7d7cf)
   let deathChance = 0.015 + yearActionsUsed(g, 'witchDoctor') * 0.01 + (c.stats.health < 25 ? 0.05 : 0) + (DANGEROUS.has(remedy) ? 0.03 : 0)
   if (c.conditions.length > 0) deathChance += 0.01
   if (chance(g, deathChance)) {
@@ -1729,7 +1730,7 @@ function optometrist(g: GameState): void {
   if (g.flags.eyesight !== 'poor') {
     addStat(g, 'happiness', 4)
     const perfect = g.character.countryId === 'us' ? 'Your vision is a perfect 20/20.' : 'Your vision is perfect.'
-    notice(g, 'Optometrist', pick(g, [`${perfect} The optometrist tried to sell you designer frames anyway.`, 'You read the bottom line of the chart with ease. Eagle eyes!']), { emoji: '\u{1F441}\u{FE0F}', tone: 'good' })
+    notice(g, 'Optometrist', pickSite(g, [`${perfect} The optometrist tried to sell you designer frames anyway.`, 'You read the bottom line of the chart with ease. Eagle eyes!'], 0xbfdbdea3), { emoji: '\u{1F441}\u{FE0F}', tone: 'good' })
     log(g, 'I aced my eye exam.', 'good')
     return
   }
@@ -1778,11 +1779,11 @@ function donateBlood(g: GameState): void {
   notice(
     g,
     'Blood Donation',
-    pick(g, [
+    pickSite(g, [
       `You donated ${PINT_COUNTRIES.has(c.countryId) ? 'a pint' : 'half a liter'} of blood. They gave you a cookie and a sticker that says "Be nice to me, I gave blood today."`,
       'You donated blood and potentially saved a life. The free orange juice was a nice bonus.',
       'You donated blood. You felt woozy for a minute but heroic for the rest of the day.',
-    ]),
+    ], 0x93afcb5b),
     { emoji: '\u{1FA78}', tone: 'good' },
   )
   log(g, 'I donated blood.', 'good')
@@ -1807,7 +1808,7 @@ function donatePlasma(g: GameState): void {
     notice(
       g,
       'Plasma Donation',
-      pick(g, [
+      pickLine(g, [
         "You donated plasma. Nobody gets paid for it here, so all you walked away with was a juice box and a warm, slightly lightheaded feeling.",
         'You hoped to sell your plasma, but here donations are strictly voluntary. You donated anyway. Look at you, being a good person.',
       ]),
@@ -1821,7 +1822,7 @@ function donatePlasma(g: GameState): void {
   count(g, 'plasmaDonations')
   addHidden(g, 'karma', randInt(g, 1, 3))
   addStat(g, 'health', -randInt(g, 1, 3))
-  notice(g, 'Plasma Donation', pick(g, [`You donated plasma and walked out ${formatMoney(pay)} richer and slightly lightheaded.`, `You sold a bag of your plasma for ${formatMoney(pay)}. Your body is a renewable resource.`]), {
+  notice(g, 'Plasma Donation', pickSite(g, [`You donated plasma and walked out ${formatMoney(pay)} richer and slightly lightheaded.`, `You sold a bag of your plasma for ${formatMoney(pay)}. Your body is a renewable resource.`], 0x35316687), {
     emoji: '\u{1F489}',
     tone: 'good',
   })

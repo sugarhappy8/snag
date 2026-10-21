@@ -10,7 +10,8 @@ import { addStat, count, formatMoney, log, notice, spend } from '../core'
 import { eraPrice, wealthOf } from '../events/era-late-kit'
 import { hasTech, techOdds } from '../history/timeline'
 import { createPerson, notePerson } from '../people'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, MenuGroup, MenuNode } from '../types'
 import { ageBlock, computerBlock, firstReason, useComputer } from './dev-common'
 
@@ -105,7 +106,7 @@ function earlyWeb(g: GameState): void {
     // Reading the early web teaches something the first few times; later sessions add less.
     if ((g.yearActions['computer.web'] ?? 0) <= 3) addStat(g, 'smarts', randInt(g, 1, 2))
     addStat(g, 'happiness', randInt(g, 1, 3))
-    notice(g, 'The Web', `Each page took a minute to load, line by line. You looked up ${pick(g, ['how volcanoes work', 'the lyrics to a song', 'a recipe for flapjacks', 'the capital of Burkina Faso', 'a cheat code'])} and learned more than you did at school that day.`, { emoji: '\u{1F310}' })
+    notice(g, 'The Web', `Each page took a minute to load, line by line. You looked up ${pickLine(g, ['how volcanoes work', 'the lyrics to a song', 'a recipe for flapjacks', 'the capital of Burkina Faso', 'a cheat code'])} and learned more than you did at school that day.`, { emoji: '\u{1F310}' })
   } else if (roll <= 90) {
     addStat(g, 'happiness', randInt(g, 1, 4))
     notice(g, 'The Web', 'You followed link after link through a haze of animated icons, guestbooks and pages "under construction." Three hours vanished.', { emoji: '\u{1F310}' })
@@ -143,7 +144,7 @@ function appStore(g: GameState): void {
     notice(g, 'App Store', 'You downloaded a language-learning app and kept the streak alive for nine days. A record.', { emoji: '\u{1F4F2}' })
   } else if (roll <= 85) {
     addStat(g, 'happiness', randInt(g, 2, 4))
-    notice(g, 'App Store', `You downloaded ${pick(g, ['a puzzle game', 'a photo filter', 'a flashlight', 'a game about birds', 'a weather app'])} and used it for exactly one weekend.`, { emoji: '\u{1F4F2}' })
+    notice(g, 'App Store', `You downloaded ${pickLine(g, ['a puzzle game', 'a photo filter', 'a flashlight', 'a game about birds', 'a weather app'])} and used it for exactly one weekend.`, { emoji: '\u{1F4F2}' })
   } else {
     const extra = eraPrice(g, 15)
     spend(g, Math.min(extra, Math.max(0, g.character.money)))

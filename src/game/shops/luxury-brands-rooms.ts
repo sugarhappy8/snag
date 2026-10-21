@@ -8,7 +8,8 @@ import { addStat, children, count, currentPartner, formatMoney, log, notice, rem
 import { brandById, brandsFor, brandName } from '../data/brands'
 import { addEntitlement, gratitude } from '../events/wealth-core'
 import { PRESENT_YEAR } from '../history/timeline'
-import { chance, pick, randInt, uid } from '../rng'
+import { chance, randInt, uid } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { namePoolOf } from '../world'
@@ -308,7 +309,7 @@ function afterTrip(g: GameState, what: string, place: string, cost: number, peop
   const who = people.length ? ` with ${people.map((p) => p.firstName).join(', ')}` : ''
   remember(g, `${what} at ${place}${who}.`)
   log(g, `I ${kind === 'stay' ? 'stayed' : 'traveled'}: ${what}${who}.`, 'good')
-  notice(g, kind === 'stay' ? 'A Stay to Remember' : 'Traveling in Style', `${what}${who}. It cost ${formatMoney(cost)}. ${pick(g, ['The staff knew your name by the second evening.', 'You ordered breakfast just to see the trolley arrive.', 'Someone asked if you were somebody. You said "a guest".', 'Even the soap had a story.'])}${fame ? ' A few people heard about it and are talking.' : ''}`, { emoji: kind === 'stay' ? '🏨' : '✈️', tone: 'good' })
+  notice(g, kind === 'stay' ? 'A Stay to Remember' : 'Traveling in Style', `${what}${who}. It cost ${formatMoney(cost)}. ${pickLine(g, ['The staff knew your name by the second evening.', 'You ordered breakfast just to see the trolley arrive.', 'Someone asked if you were somebody. You said "a guest".', 'Even the soap had a story.'])}${fame ? ' A few people heard about it and are talking.' : ''}`, { emoji: kind === 'stay' ? '🏨' : '✈️', tone: 'good' })
   if (chance(g, 0.12)) {
     const spec = rollCeleb(g)
     meetCeleb(g, spec, place, `At ${place}, the lobby was busy with famous faces.`)

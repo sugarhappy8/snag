@@ -71,6 +71,7 @@ import {
 } from './data/locales'
 import { createPerson, notePerson } from './people'
 import { bell, chance, pick, randInt, shuffle, uid } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { masterFirstTime } from './mastery'
 import { hasMainCharacter, hasTalent, talentHint, talentMult, type TalentId } from './talents'
@@ -967,7 +968,7 @@ function enrollIn(g: GameState, level: SchoolLevel, opts: EnrollOpts = {}): Enro
   }
   if (!opts.quiet) {
     const what = level === 'university' && cur.major ? `${cur.school} to study ${cur.major}` : cur.school
-    log(g, pick(g, [`I started attending ${what}.`, `I enrolled at ${what}.`, `My first day at ${what} began.`]), 'neutral')
+    log(g, pickSite(g, [`I started attending ${what}.`, `I enrolled at ${what}.`, `My first day at ${what} began.`], 0x80aafcce), 'neutral')
   }
   return cur
 }
@@ -1501,7 +1502,7 @@ function catchUpEnrollment(g: GameState, sys: SchoolSystem): void {
   if (!slot) return
   const cur = enrollIn(g, slot.spec.level, { year: slot.year, totalYears: slot.spec.years, quiet: true })
   if (slot.spec.level === 'elementary' && slot.year === 1) {
-    log(g, pick(g, [`I started ${cur.school}. Backpack: on. Fear: maximum.`, `I started my first day at ${cur.school}.`, `It was my first day of school at ${cur.school}.`]), 'good')
+    log(g, pickSite(g, [`I started ${cur.school}. Backpack: on. Fear: maximum.`, `I started my first day at ${cur.school}.`, `It was my first day of school at ${cur.school}.`], 0xeb07534f), 'good')
   } else {
     log(g, `I started attending ${cur.school} (${gradeLevelLabel(g, cur)}).`, 'neutral')
   }
@@ -1792,7 +1793,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     leaveSchool(g, 'graduated')
     const first = sys.levels[0]
     const next = enrollIn(g, first.level, { totalYears: first.years, quiet: true })
-    log(g, pick(g, [`I graduated from preschool and started ${next.school}.`, `Goodbye nap time, hello ${next.school}.`]), 'good')
+    log(g, pickSite(g, [`I graduated from preschool and started ${next.school}.`, `Goodbye nap time, hello ${next.school}.`], 0xcdeed923), 'good')
     return
   }
 
@@ -1834,7 +1835,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
         : grades < 60
           ? ' Somehow. Your diploma might as well say "barely".'
           : ''
-    notice(g, 'Graduation', `${pick(g, [`You graduated from ${school}!`, `Caps in the air! You've graduated from ${school}.`, `You walked across the stage and collected your diploma from ${school}.`])}${extra}`, {
+    notice(g, 'Graduation', `${pickSite(g, [`You graduated from ${school}!`, `Caps in the air! You've graduated from ${school}.`, `You walked across the stage and collected your diploma from ${school}.`], 0x2a4e4546)}${extra}`, {
       emoji: '\u{1F393}',
       tone: 'good',
     })
@@ -1885,7 +1886,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     remember(g, `Earned a bachelor's degree in ${major} from ${school}${honors ? ' with honors' : ''}.`)
     log(g, `I graduated from ${school} with a degree in ${major}${honors ? (VALEDICTORIAN_COUNTRIES.has(c.countryId) ? ' (summa cum laude)' : ' (with distinction)') : ''}.`, 'good')
     const greekLine = greek ? ` Your ${greek} brothers and sisters threw a party you will never remember.` : ''
-    notice(g, 'Graduation', `${pick(g, [`You graduated from ${school} with a bachelor's degree in ${major}!`, `Congratulations! You earned your bachelor's degree in ${major} from ${school}.`])}${honors ? ' You graduated with honors!' : ''}${greekLine}`, {
+    notice(g, 'Graduation', `${pickSite(g, [`You graduated from ${school} with a bachelor's degree in ${major}!`, `Congratulations! You earned your bachelor's degree in ${major} from ${school}.`], 0x5d14e70a)}${honors ? ' You graduated with honors!' : ''}${greekLine}`, {
       emoji: '\u{1F393}',
       tone: 'good',
     })
@@ -1941,12 +1942,12 @@ function sitFinalExam(g: GameState, cur: Enrollment): void {
   }
   const line =
     score >= 85
-      ? pick(g, [`I aced ${exam}. My parents told every relative we have.`, `I aced ${exam}.`])
+      ? pickSite(g, [`I aced ${exam}. My parents told every relative we have.`, `I aced ${exam}.`], 0xf2cadd9e)
       : score >= 65
         ? `I did well on ${exam}.`
         : score >= 45
-          ? pick(g, [`I scraped through ${exam}.`, `I passed ${exam}. Barely, but a pass is a pass.`])
-          : pick(g, [`I bombed ${exam}.`, `I froze during ${exam} and bombed it.`])
+          ? pickSite(g, [`I scraped through ${exam}.`, `I passed ${exam}. Barely, but a pass is a pass.`], 0x735c4792)
+          : pickSite(g, [`I bombed ${exam}.`, `I froze during ${exam} and bombed it.`], 0x0330a596)
   log(g, line, tone)
 }
 
@@ -2080,7 +2081,7 @@ const SELECTIVE_EXAM = defineScript('school.selectiveExam', (g, choice, data) =>
   if (score < bar) {
     addStat(g, 'happiness', -randInt(g, 3, 7))
     log(g, `I didn't pass ${exam}.`, 'bad')
-    notice(g, 'Not This Time', pick(g, [`You didn't make the cut for ${school}. ${cur.school} is fine. Probably.`, `You froze on the logic puzzles in ${exam}. ${school} will have to manage without you.`]), { emoji: '\u{1F4DD}', tone: 'bad' })
+    notice(g, 'Not This Time', pickSite(g, [`You didn't make the cut for ${school}. ${cur.school} is fine. Probably.`, `You froze on the logic puzzles in ${exam}. ${school} will have to manage without you.`], 0x62d79ba4), { emoji: '\u{1F4DD}', tone: 'bad' })
     return
   }
   const { level, year, totalYears, grades } = cur
@@ -2130,7 +2131,7 @@ function enrollCommunityCollege(g: GameState): void {
   }
   quitJobForSchool(g)
   const cur = enrollIn(g, 'community', { funding: 'free' })
-  notice(g, cc.label, pick(g, [`You enrolled at ${cur.school}. It's free, and the parking lot is huge.`, `${cur.school} accepted you, because ${cur.school} accepts everybody. Welcome!`]), {
+  notice(g, cc.label, pickSite(g, [`You enrolled at ${cur.school}. It's free, and the parking lot is huge.`, `${cur.school} accepted you, because ${cur.school} accepts everybody. Welcome!`], 0xd8e9f4c2), {
     emoji: '\u{1F3EB}',
     tone: 'good',
   })
@@ -2345,16 +2346,16 @@ export function applyToUniversity(g: GameState, major: string, opts: { athletic?
 }
 
 function offlineRejection(g: GameState, app: ScreeningApp): string {
-  if (app.fit < 30 && chance(g, 0.6)) return pick(g, ['The committee wanted to see more clubs, leadership, volunteering or projects on your CV.', 'Your grades were fine, but your CV said "spent four years on the couch."'])
-  if (app.kind === 'university') return pick(g, [`They admit about ${percent(TIER_ADMIT_RATE[(app.tier as SchoolTier) ?? 'Good'] ?? 0.5)} of applicants, and this year you weren't one of them.`, `Maybe try ${college(g).term} first and apply again later.`, 'Your essay about your goldfish did not land.'])
-  return pick(g, ['They said they had "an unusually competitive applicant pool this year." Translation: no.', 'Hitting the books (and filling out your CV) might help next time.'])
+  if (app.fit < 30 && chance(g, 0.6)) return pickLine(g, ['The committee wanted to see more clubs, leadership, volunteering or projects on your CV.', 'Your grades were fine, but your CV said "spent four years on the couch."'])
+  if (app.kind === 'university') return pickSite(g, [`They admit about ${percent(TIER_ADMIT_RATE[(app.tier as SchoolTier) ?? 'Good'] ?? 0.5)} of applicants, and this year you weren't one of them.`, `Maybe try ${college(g).term} first and apply again later.`, 'Your essay about your goldfish did not land.'], 0x79227aca)
+  return pickLine(g, ['They said they had "an unusually competitive applicant pool this year." Translation: no.', 'Hitting the books (and filling out your CV) might help next time.'])
 }
 
 /** A rejection letter (with the screener's reason when there is one). */
 export function rejectAdmission(g: GameState, app: ScreeningApp, reason: string): void {
   addStat(g, 'happiness', -8)
   log(g, `I was rejected by ${app.org}.`, 'bad')
-  const opener = pick(g, [`${app.org} rejected your application.`, `"We regret to inform you..." ${app.org} has rejected your application.`, `${app.org} turned you down. Their letter was very polite about it, which somehow made it worse.`])
+  const opener = pickSite(g, [`${app.org} rejected your application.`, `"We regret to inform you..." ${app.org} has rejected your application.`, `${app.org} turned you down. Their letter was very polite about it, which somehow made it worse.`], 0x222ac8d2)
   notice(g, 'Rejected', `${opener}${reason ? ` ${reason}` : ''}`, { emoji: '\u{1F4E8}', tone: 'bad' })
 }
 
@@ -2465,11 +2466,11 @@ export function presentAdmissionsInterview(g: GameState, app: ScreeningApp, q?: 
   if (!c.alive || c.prison) return
   const safe = cleanQuestion(q) ?? fallbackAdmissionsQuestion(g, app)
   const who = `${pick(g, ['Professor', 'Dr.', 'Dean'])} ${randomLastName(g, c.countryId)}`
-  const intro = pick(g, [
+  const intro = pickSite(g, [
     `${app.org} liked your application and invited you to an admissions interview. ${who} peered at you over a pair of reading glasses.`,
     `You made the shortlist at ${app.org}! ${who} from the admissions committee shook your hand and got straight to it.`,
     `Your CV got you an interview at ${app.org}. ${who} opened your file, read for a long, terrifying moment, and looked up.`,
-  ])
+  ], 0xf990e5fa)
   scriptChoice(
     g,
     ADMISSIONS_INTERVIEW,
@@ -2727,7 +2728,7 @@ const TUITION = defineScript('school.tuition', (g, choice, data) => {
         billParents(g, a.tuition)
         finishEnrollment(g, a, 'parents')
         addRelationship(parent, 3)
-        notice(g, 'Tuition', pick(g, [`Your ${word} agreed to pay your tuition at ${a.school}! They also reminded you about it at dinner. Twice.`, `Your parents are paying for ${a.school}. They're proud of you, and also quietly crying over their savings account.`]), {
+        notice(g, 'Tuition', pickSite(g, [`Your ${word} agreed to pay your tuition at ${a.school}! They also reminded you about it at dinner. Twice.`, `Your parents are paying for ${a.school}. They're proud of you, and also quietly crying over their savings account.`], 0x01eaa961), {
           emoji: '\u{1F46A}',
           tone: 'good',
         })
@@ -2750,7 +2751,7 @@ const TUITION = defineScript('school.tuition', (g, choice, data) => {
         remember(g, `Won a full scholarship to ${a.school}.`)
         return
       }
-      notice(g, 'Scholarship', pick(g, [`Your scholarship application was denied. The committee wanted someone with better grades.`, `You didn't get the scholarship. It went to a kid who cured a disease in their garage.`]), { emoji: '\u{1F4C4}', tone: 'bad' })
+      notice(g, 'Scholarship', pickLine(g, [`Your scholarship application was denied. The committee wanted someone with better grades.`, `You didn't get the scholarship. It went to a kid who cured a disease in their garage.`]), { emoji: '\u{1F4C4}', tone: 'bad' })
       askTuition(g, { ...a, tried: [...a.tried, 'scholarship'] })
       return
     }
@@ -2818,7 +2819,7 @@ const AFTER_HIGH_SCHOOL = defineScript('school.afterHighSchool', (g, choice, dat
       return
     default:
       addStat(g, 'happiness', 5)
-      log(g, pick(g, ['I decided to take a gap year to find myself.', 'I took a gap year. Mostly I found the couch.']), 'neutral')
+      log(g, pickLine(g, ['I decided to take a gap year to find myself.', 'I took a gap year. Mostly I found the couch.']), 'neutral')
   }
 })
 
@@ -2927,7 +2928,7 @@ function studyHarder(g: GameState): void {
   const cur = current(g)
   if (!cur) return
   if (!useYearAction(g, 'study', 3)) {
-    notice(g, 'Study Harder', pick(g, ["You're burnt out from studying. Your brain needs the rest of the year off.", 'You tried to study again but fell asleep on your textbook. Give it a rest until next year.']), { emoji: '\u{1F634}' })
+    notice(g, 'Study Harder', pickLine(g, ["You're burnt out from studying. Your brain needs the rest of the year off.", 'You tried to study again but fell asleep on your textbook. Give it a rest until next year.']), { emoji: '\u{1F634}' })
     return
   }
   // Academics talent: an hour of your studying is worth an afternoon of anyone else's.
@@ -2940,25 +2941,25 @@ function studyHarder(g: GameState): void {
   if (cur.level === 'high' && cur.year >= cur.totalYears - 1) {
     cur.data.examPrep = num(cur.data.examPrep, 0) + 1
     const exam = finalExam(g)
-    log(g, pick(g, [`I crammed for ${exam}.`, `I spent the weekend doing practice tests for ${exam}.`, `I studied for ${exam} until my eyes crossed.`]), 'neutral')
+    log(g, pickSite(g, [`I crammed for ${exam}.`, `I spent the weekend doing practice tests for ${exam}.`, `I studied for ${exam} until my eyes crossed.`], 0xc2a521ed), 'neutral')
     notice(
       g,
       'Study Harder',
-      pick(g, [`You crammed for ${exam} and buried your nose in your textbooks. Your grades are now a ${gradeLetter(cur.grades)}.`, `You did practice tests for ${exam} until you dreamed in multiple choice. Current grade: ${gradeLetter(cur.grades)}.`]),
+      pickSite(g, [`You crammed for ${exam} and buried your nose in your textbooks. Your grades are now a ${gradeLetter(cur.grades)}.`, `You did practice tests for ${exam} until you dreamed in multiple choice. Current grade: ${gradeLetter(cur.grades)}.`], 0x08829125),
       { emoji: '\u{1F4DA}', tone: 'good' },
     )
     return
   }
-  log(g, pick(g, ['I studied harder at school.', 'I hit the books hard.', 'I spent the weekend studying.', 'I pulled an all-nighter studying.']), 'neutral')
+  log(g, pickLine(g, ['I studied harder at school.', 'I hit the books hard.', 'I spent the weekend studying.', 'I pulled an all-nighter studying.']), 'neutral')
   notice(
     g,
     'Study Harder',
-    pick(g, [
+    pickSite(g, [
       `You studied harder at ${cur.school}. Your grades are now a ${gradeLetter(cur.grades)}.`,
       `You buried your nose in your textbooks and came up for air with a ${gradeLetter(cur.grades)} average.`,
       `You made flashcards for your flashcards. Your grades rose to a ${gradeLetter(cur.grades)}.`,
       `You studied until your eyes crossed. Current grade: ${gradeLetter(cur.grades)}.`,
-    ]),
+    ], 0xf64f4840),
     { emoji: '\u{1F4DA}', tone: 'good' },
   )
 }
@@ -3003,7 +3004,7 @@ function skipSchool(g: GameState): void {
   }
   addStat(g, 'happiness', randInt(g, 3, 7))
   log(g, `I skipped ${what} and ${activity}.`, 'neutral')
-  notice(g, `Skip ${what === 'class' ? 'Class' : 'School'}`, pick(g, [`You skipped ${what} and ${activity}. Nobody noticed!`, `You ditched ${what} and ${activity}. Totally worth it.`, `You played hooky and ${activity}. Your grades, however, noticed.`]), {
+  notice(g, `Skip ${what === 'class' ? 'Class' : 'School'}`, pickSite(g, [`You skipped ${what} and ${activity}. Nobody noticed!`, `You ditched ${what} and ${activity}. Totally worth it.`, `You played hooky and ${activity}. Your grades, however, noticed.`], 0xd03ebf6d), {
     emoji: '\u{1F3D6}\u{FE0F}',
   })
 }
@@ -3059,7 +3060,7 @@ function tryJoinClub(g: GameState, def: ClubDef): void {
     return
   }
   if (!useYearAction(g, `club:${def.id}`, 2)) {
-    notice(g, def.name, pick(g, [`The ${def.kind === 'sport' ? 'coach' : 'sponsor'} told you to get lost.`, `The ${def.kind === 'sport' ? 'coach' : 'sponsor'} already said no. Twice. Take the hint.`]), { emoji: def.emoji, tone: 'bad' })
+    notice(g, def.name, pickSite(g, [`The ${def.kind === 'sport' ? 'coach' : 'sponsor'} told you to get lost.`, `The ${def.kind === 'sport' ? 'coach' : 'sponsor'} already said no. Twice. Take the hint.`], 0x6ce333a3), { emoji: def.emoji, tone: 'bad' })
     return
   }
   // Leadership talent: you can win a school election without being the most popular kid.
@@ -3085,11 +3086,11 @@ function tryJoinClub(g: GameState, def: ClubDef): void {
       notice(
         g,
         def.name,
-        pick(g, [
+        pickSite(g, [
           `You tried out for the ${def.name} but didn't make the cut.`,
           `You gave the ${def.name} tryouts everything you had. It wasn't enough.`,
           `The ${def.name} tryout list went up. Your name was not on it.`,
-        ]),
+        ], 0x8733d9c0),
         { emoji: def.emoji, tone: 'bad' },
       )
       return
@@ -3153,12 +3154,12 @@ function tryJoinClique(g: GameState, def: CliqueDef): void {
     notice(
       g,
       def.name,
-      pick(g, [
+      pickSite(g, [
         `The leader of the ${def.name} looked you up and down and said "Ew, no."`,
         `${leader} from the ${def.name} said there's no room for you. There was clearly room.`,
         `The ${def.name} told you that you're not ${def.name.toLowerCase()} material.`,
         `You asked to join the ${def.name}. They laughed until they realized you were serious, then laughed harder.`,
-      ]),
+      ], 0x9252631e),
       { emoji: def.emoji, tone: 'bad' },
     )
     return
@@ -3218,7 +3219,7 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       if (chance(g, 0.3)) addStat(g, 'smarts', 1)
       notePerson(t, 'Asked for extra help in class.')
       log(g, `I asked ${name} for extra help.`, 'good')
-      notice(g, name, pick(g, [`${name} stayed after class to help you. It actually made sense this time!`, `${name} explained it three different ways until it finally clicked.`]), {
+      notice(g, name, pickSite(g, [`${name} stayed after class to help you. It actually made sense this time!`, `${name} explained it three different ways until it finally clicked.`], 0x185e04a8), {
         emoji: '\u{1F4A1}',
         tone: 'good',
       })
@@ -3227,7 +3228,7 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
     case 'compliment': {
       addRelationship(t, randInt(g, 3, 8))
       log(g, `I complimented ${name}.`, 'neutral')
-      notice(g, name, pick(g, [`You told ${name} that ${pr.his} class is your favorite. ${pr.He} pretended not to be flattered.`, `You complimented ${name}'s tie. ${pr.He} has worn it every day since.`, `You told ${name} ${pr.he} is a great teacher. ${pr.He} blushed and gave the class a pop quiz anyway.`]), {
+      notice(g, name, pickSite(g, [`You told ${name} that ${pr.his} class is your favorite. ${pr.He} pretended not to be flattered.`, `You complimented ${name}'s tie. ${pr.He} has worn it every day since.`, `You told ${name} ${pr.he} is a great teacher. ${pr.He} blushed and gave the class a pop quiz anyway.`], 0x83eb43eb), {
         emoji: '\u{1F60A}',
       })
       return
@@ -3235,7 +3236,7 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
     case 'gift': {
       // An apple for the teacher is an American thing; elsewhere it's chocolates, flowers or a card.
       const apple = isUS(g) && isK12(cur.level)
-      const gift = apple ? 'an apple' : pick(g, ['a box of chocolates', 'a bunch of flowers', 'a handmade card'])
+      const gift = apple ? 'an apple' : pickLine(g, ['a box of chocolates', 'a bunch of flowers', 'a handmade card'])
       if (chance(g, 0.15)) {
         addRelationship(t, -5)
         notice(g, name, `You left ${gift} on ${name}'s desk. ${pr.He} returned it, explaining that ${pr.he} can't accept gifts from students.`, { emoji: apple ? '\u{1F34E}' : '\u{1F381}' })
@@ -3253,7 +3254,7 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       addHidden(g, 'karma', -2)
       count(g, 'insults')
       log(g, `I insulted ${name}.`, 'bad')
-      notice(g, name, pick(g, [`You told ${name} that ${pr.his} lectures are a cure for insomnia.`, `You called ${name} a dinosaur in front of the whole class.`, `You told ${name} you'd learn more from ${isUS(g) ? 'a fortune cookie' : 'a horoscope'}.`]), { emoji: '\u{1F620}', tone: 'bad' })
+      notice(g, name, pickSite(g, [`You told ${name} that ${pr.his} lectures are a cure for insomnia.`, `You called ${name} a dinosaur in front of the whole class.`, `You told ${name} you'd learn more from ${isUS(g) ? 'a fortune cookie' : 'a horoscope'}.`], 0x49e086b9), { emoji: '\u{1F620}', tone: 'bad' })
       if (chance(g, 0.4 + num(cur.data.strictness, 50) / 200)) schoolWarning(g, 'disrespecting a teacher')
       return
     }
@@ -3323,7 +3324,7 @@ function visitNurse(g: GameState): void {
   if (c.stats.health < 50 || c.conditions.length > 0) {
     addStat(g, 'health', randInt(g, 1, 4))
     log(g, 'I visited the school nurse.', 'neutral')
-    notice(g, 'School Nurse', pick(g, ['The school nurse gave you an ice pack and a juice box. You feel a bit better.', 'The nurse took your temperature and sent you home to rest.']), { emoji: '\u{1FA7A}', tone: 'good' })
+    notice(g, 'School Nurse', pickLine(g, ['The school nurse gave you an ice pack and a juice box. You feel a bit better.', 'The nurse took your temperature and sent you home to rest.']), { emoji: '\u{1FA7A}', tone: 'good' })
     return
   }
   if (chance(g, 0.5)) {
@@ -3387,7 +3388,7 @@ const PROM = defineScript('school.prom', (g, choice) => {
         addRelationship(p, -5)
         addStat(g, 'happiness', -8)
         log(g, `${fullName(p)} turned down my invitation to ${dance.the}.`, 'bad')
-        notice(g, dance.title, pick(g, [`${p.firstName} said no. Ouch. You went to ${dance.the} by yourself.`, `${p.firstName} already had a date. You went alone and danced like nobody was watching (nobody was).`]), { emoji: '\u{1F494}', tone: 'bad' })
+        notice(g, dance.title, pickSite(g, [`${p.firstName} said no. Ouch. You went to ${dance.the} by yourself.`, `${p.firstName} already had a date. You went alone and danced like nobody was watching (nobody was).`], 0xa64753f3), { emoji: '\u{1F494}', tone: 'bad' })
       }
     }
   }
@@ -3404,9 +3405,9 @@ const PROM = defineScript('school.prom', (g, choice) => {
     log(g, `I was crowned ${title}!`, 'good')
     notice(g, title, `You were crowned ${title} at ${cur.school}! The plastic crown is going straight on your mantel.`, { emoji: '\u{1F451}', tone: 'good' })
   } else if (date) {
-    notice(g, dance.title, pick(g, [`You went to ${dance.the} with ${date.firstName} and danced the night away.`, `You and ${date.firstName} took awkward photos, ate tiny sandwiches and had a great night.`]), { emoji: '\u{1FA69}', tone: 'good' })
+    notice(g, dance.title, pickSite(g, [`You went to ${dance.the} with ${date.firstName} and danced the night away.`, `You and ${date.firstName} took awkward photos, ate tiny sandwiches and had a great night.`], 0x992781b4), { emoji: '\u{1FA69}', tone: 'good' })
   } else if (choice === 'solo') {
-    notice(g, dance.title, pick(g, [`You went to ${dance.the} by yourself and had more fun than most of the couples.`, `You went to ${dance.the} solo and owned the dance floor.`]), { emoji: '\u{1F57A}' })
+    notice(g, dance.title, pickSite(g, [`You went to ${dance.the} by yourself and had more fun than most of the couples.`, `You went to ${dance.the} solo and owned the dance floor.`], 0xf3e4e343), { emoji: '\u{1F57A}' })
   }
 })
 
@@ -3446,7 +3447,7 @@ function rushGreek(g: GameState): void {
   if (!chance(g, p)) {
     addStat(g, 'happiness', -randInt(g, 10, 18))
     log(g, `I tried to rush ${house} but they told me to get lost.`, 'bad')
-    notice(g, house, pick(g, [`You tried to rush ${house}, but the members told you to get lost.`, `The ${house} members took one look at you and closed the door.`]), { emoji: '\u{1F6AA}', tone: 'bad' })
+    notice(g, house, pickSite(g, [`You tried to rush ${house}, but the members told you to get lost.`, `The ${house} members took one look at you and closed the door.`], 0xd98b57ef), { emoji: '\u{1F6AA}', tone: 'bad' })
     return
   }
   const quiz = pick(g, GREEK_QUIZ)
@@ -3502,11 +3503,11 @@ function takeGed(g: GameState): void {
     addStat(g, 'happiness', 8)
     remember(g, `Earned a ${eq.short}.`)
     log(g, `I passed ${eq.exam}!`, 'good')
-    notice(g, eq.title, pick(g, [`You passed ${eq.exam}! Doors that were closed just opened a crack.`, `You aced ${eq.exam}. Take that, school!`]), { emoji: '\u{1F4DC}', tone: 'good' })
+    notice(g, eq.title, pickSite(g, [`You passed ${eq.exam}! Doors that were closed just opened a crack.`, `You aced ${eq.exam}. Take that, school!`], 0xfc9c95a7), { emoji: '\u{1F4DC}', tone: 'good' })
   } else {
     addStat(g, 'happiness', -6)
     log(g, `I failed ${eq.exam}.`, 'bad')
-    notice(g, eq.title, pick(g, [`You failed ${eq.exam}. Hit the books and try again next year.`, `You froze during the math section and failed ${eq.exam}.`]), { emoji: '\u{1F4DD}', tone: 'bad' })
+    notice(g, eq.title, pickSite(g, [`You failed ${eq.exam}. Hit the books and try again next year.`, `You froze during the math section and failed ${eq.exam}.`], 0x45126585), { emoji: '\u{1F4DD}', tone: 'bad' })
   }
 }
 

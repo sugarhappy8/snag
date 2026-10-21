@@ -9,7 +9,8 @@
 //       through the real store;
 //   (d) Quiet Mode toggles through the real store;
 //   (e) the v4.0.2 fixture loads with an empty inbox and an empty text memory;
-//   (f) a seeded life played headless never routes (routing is store-only) and its text memory holds only the flavor ring.
+//   (f) a seeded life played headless never routes (routing is store-only) and its text memory holds the flavor ring and the
+//       pools of the converted sites (R2-A3; before the codemod it held only the flavor ring).
 // Every case runs inside withFlags with both flags on, so it passes now, while the defaults are still dark, and after
 // the release commit. Nothing here flips a flag or edits src/game/flags.ts.
 import { readFileSync } from 'node:fs'
@@ -784,7 +785,7 @@ describe('(f) a seeded 25-year life through ageUp', () => {
   const SEED = 21
   const BIRTH = 2000
 
-  sweep('never routes: no inbox, no quietMode change, and the text memory holds only the flavor ring', () => {
+  sweep('never routes: no inbox, no quietMode change, and the text memory holds the flavor ring and the pools the kit wrote', () => {
     store.updateSettings({ quietMode: true })
     const { g, years } = playLife({ seed: SEED, birthYear: BIRTH, untilAge: 25 })
     expect(g.character.age).toBe(25)
@@ -799,11 +800,13 @@ describe('(f) a seeded 25-year life through ageUp', () => {
     // Minor notices reached the player as popups, as they always did.
     const popups = years.flatMap((y) => y.popups)
     expect(popups.some((p) => p.kind === 'notice' && p.weight === 'minor')).toBe(true)
-    // The text memory is the flavor ring and nothing else.
+    // The text memory is the flavor ring and the pools of the converted sites (R2-A3: before the codemod nothing but flavor used
+    // the kit, so this said "the ring and nothing else"). No pool is named, so no family is noted (pickSite never notes one).
     const mem = g.flags.textMem as unknown as TextMem
     expect(mem).toBeDefined()
     expect(textMemProblems(mem)).toEqual([])
-    expect(mem.p).toEqual({})
+    expect(Object.keys(mem.p).length).toBeGreaterThan(0)
+    expect(Object.keys(mem.p).length).toBeLessThanOrEqual(TEXT_MEM_LIMITS.pools)
     expect(mem.f).toEqual({})
     expect(Object.keys(mem.r)).toEqual(['flavor'])
     expect(mem.r.flavor.length).toBeGreaterThan(0)

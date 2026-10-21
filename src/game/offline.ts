@@ -10,7 +10,7 @@ import { applyScreening, fallbackInterviewQuestion, presentInterview } from './c
 import { notice, useYearAction } from './core'
 import { offlineScreen } from './cv'
 import { fallbackChoiceOutcome, fallbackCustomAction, fallbackObituary, queueFallbackYearEvents } from './events'
-import { pick } from './rng'
+import { pickLine } from './text/pick'
 import type { AiTask, GameState } from './types'
 
 /** How many "Do Anything" actions a character can take per year. */
@@ -40,7 +40,7 @@ export function applyFallback(g: GameState, task: AiTask): void {
     case 'customAction':
       if (!g.character.alive) return
       if (!useYearAction(g, CUSTOM_ACTION_KEY, MAX_CUSTOM_ACTIONS_PER_YEAR)) {
-        notice(g, 'Exhausted', pick(g, TOO_TIRED), { emoji: '\u{1F634}' })
+        notice(g, 'Exhausted', pickLine(g, TOO_TIRED), { emoji: '\u{1F634}' })
         return
       }
       fallbackCustomAction(g, task.text)

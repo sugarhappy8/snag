@@ -8,6 +8,7 @@ import { typicalIncome } from '../events/wealth-core'
 import { warsAt, homeFrontAt } from '../history/events-wars'
 import { PRESENT_YEAR } from '../history/timeline'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { businessAssets, readBiz, bizOf } from '../business/state'
 import type { GameState, Json, Person } from '../types'
@@ -47,9 +48,9 @@ function pickCrisis(g: GameState, v: OfficeView): { id: CrisisId; text: string; 
   if (e.growth < -.01 && (v.leader || v.portfolio === 'finance') && (me.cool.recession ?? -99) < year - 2) return { id: 'recession', text: `The economy shrank ${Math.abs(e.growth * 100).toFixed(1)}% and unemployment is ${(e.unemployment * 100).toFixed(1)}%. Everyone wants you to do something.`, data: {} }
   const p = policyOf(g, c)
   const strikeOdds = (p.labor < 1 ? .06 : .02) + (p.national.minWage < 10 ? .03 : 0) + Math.max(0, e.unemployment - .08) * .5 + Math.max(0, e.inflation - .05)
-  if ((v.leader || v.portfolio === 'interior') && chance(g, strikeOdds)) return { id: 'strike', text: `${pick(g, ['Dockworkers', 'Train drivers', 'Nurses', 'Miners', 'Teachers', 'Factory workers'])} have walked out nationwide, demanding better pay and conditions.`, data: {} }
+  if ((v.leader || v.portfolio === 'interior') && chance(g, strikeOdds)) return { id: 'strike', text: `${pickLine(g, ['Dockworkers', 'Train drivers', 'Nurses', 'Miners', 'Teachers', 'Factory workers'])} have walked out nationwide, demanding better pay and conditions.`, data: {} }
   if ((v.leader || v.regionalHead) && chance(g, .06)) {
-    const what = DISASTER[c] ?? pick(g, ['a flood', 'a storm', 'wildfires'])
+    const what = DISASTER[c] ?? pickLine(g, ['a flood', 'a storm', 'wildfires'])
     return { id: 'disaster', text: `${what[0].toUpperCase()}${what.slice(1)} ${what === 'wildfires' ? 'have' : 'has'} devastated part of the ${v.regionalHead ? 'region' : 'country'}.`, data: { regional: v.regionalHead } }
   }
   return null

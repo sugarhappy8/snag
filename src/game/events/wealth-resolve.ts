@@ -5,7 +5,8 @@
 // boundaries stop the asking for a while at a smaller cost. Some kids respect a no.
 import { addHidden, addStat, count, getPerson, log, notice, scriptChoice, scriptInput, spend } from '../core'
 import { touch } from '../love'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import { common } from './era'
@@ -195,13 +196,13 @@ function respects(g: GameState, p: Person): boolean {
 function reactionLine(g: GameState, p: Person, full: boolean): string {
   const e = entitlement(p)
   const x = p.gender === 'male' ? { he: 'he', He: 'He', his: 'his' } : { he: 'she', He: 'She', his: 'her' }
-  if (e >= 70) return pick(g, [`${x.He} asked why it took you so long.`, `${x.He} said "thanks, I guess" without looking up.`, `${x.He} is already asking about next time.`])
-  if (!full && e >= 45) return pick(g, [`${x.He} looked at it like it was a parking ticket.`, `"That's it?" ${x.he} asked.`])
+  if (e >= 70) return pickSite(g, [`${x.He} asked why it took you so long.`, `${x.He} said "thanks, I guess" without looking up.`, `${x.He} is already asking about next time.`], 0xfa271119)
+  if (!full && e >= 45) return pickSite(g, [`${x.He} looked at it like it was a parking ticket.`, `"That's it?" ${x.he} asked.`], 0x82078c70)
   // From prison the thanks come by mail or on visiting day.
-  if (g.character.prison) return pick(g, [`${x.He} wrote back a thank-you letter, with drawings.`, `${x.He} came on visiting day just to say thank you.`, `${x.He} sent a card that said "you're the best (even in there)."`])
+  if (g.character.prison) return pickSite(g, [`${x.He} wrote back a thank-you letter, with drawings.`, `${x.He} came on visiting day just to say thank you.`, `${x.He} sent a card that said "you're the best (even in there)."`], 0xd39f22fc)
   // Family abroad can't hug you either.
-  if (isAbroad(g, p)) return pick(g, [`${x.He} wrote to say thank you, at length.`, `${x.He} sent a photo of what it bought and a very long thank-you.`])
-  return pick(g, [`${x.He} hugged you so hard your back cracked.`, `${x.He} was genuinely touched.`, `${x.He} said you're the best, and for a moment you believed it.`, `${x.He} got a little teary.`])
+  if (isAbroad(g, p)) return pickSite(g, [`${x.He} wrote to say thank you, at length.`, `${x.He} sent a photo of what it bought and a very long thank-you.`], 0x4cf06bce)
+  return pickSite(g, [`${x.He} hugged you so hard your back cracked.`, `${x.He} was genuinely touched.`, `${x.He} said you're the best, and for a moment you believed it.`, `${x.He} got a little teary.`], 0x3fc695e9)
 }
 
 type GiveKind = 'full' | 'alt' | 'less'
@@ -264,7 +265,7 @@ function lend(g: GameState, a: Ask): void {
   bumpRelationship(p, gratitude(p, (def.thanks ?? 8) * 0.6))
   count(g, 'wealthLoans')
   log(g, `I lent ${myOf(p)} ${money(a.amt)} for ${a.what}.`)
-  const promise = pick(g, ['by the end of the year', 'as soon as things pick up', 'with interest, probably', '"soon"'])
+  const promise = pickLine(g, ['by the end of the year', 'as soon as things pick up', 'with interest, probably', '"soon"'])
   notice(g, a.title, `You lent ${p.firstName} ${money(a.amt)}. ${p.gender === 'male' ? 'He' : 'She'} promised to pay you back ${promise}. You'll find it under Relationships if you ever want to ask for it.`, { emoji: '\u{1F91D}' })
 }
 
@@ -308,13 +309,13 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
       parts.push(`You told ${p.firstName} no.`)
       parts.push(
         entitlement(p) >= 60
-          ? pick(g, [`${p.firstName} called it "abuse" and slammed every door in the house.`, `${p.firstName} told everyone you're "basically broke," which is not how that works.`])
-          : pick(g, [`${p.firstName} said "fine." It was not fine.`, `${p.firstName} pointed out how much you have. Several times.`, `Dinner was very quiet.`]),
+          ? pickSite(g, [`${p.firstName} called it "abuse" and slammed every door in the house.`, `${p.firstName} told everyone you're "basically broke," which is not how that works.`], 0x286ac511)
+          : pickSite(g, [`${p.firstName} said "fine." It was not fine.`, `${p.firstName} pointed out how much you have. Several times.`, `Dinner was very quiet.`], 0x91ba553b),
       )
       log(g, `I said no when ${myOf(p)} asked me for ${askedFor(a)}.`, 'bad')
     }
   } else {
-    parts.push(pick(g, ['You said no.', 'You politely declined.', 'You passed.']))
+    parts.push(pickLine(g, ['You said no.', 'You politely declined.', 'You passed.']))
   }
   if (def.need && answer !== 'bound' && perceivedWealth(g) > a.amt * 50) {
     addHidden(g, 'karma', -2)
@@ -476,5 +477,5 @@ defineScript(ADULT_SCRIPT, (g, choice, data) => {
     addEntitlement(p, -6)
   }
   log(g, `I stopped paying ${names} an allowance now that they're adults.`)
-  notice(g, 'All Grown Up', `You told ${names} the allowance stops now: welcome to adulthood. ${pick(g, ['There was a lot of sighing.', 'Someone said "but rent is SO expensive."', 'It was the first time anyone in your family read a job listing.'])}`, { emoji: '\u{1F393}' })
+  notice(g, 'All Grown Up', `You told ${names} the allowance stops now: welcome to adulthood. ${pickLine(g, ['There was a lot of sighing.', 'Someone said "but rent is SO expensive."', 'It was the first time anyone in your family read a job listing.'])}`, { emoji: '\u{1F393}' })
 })

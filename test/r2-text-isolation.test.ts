@@ -15,7 +15,7 @@
 // R2-B2 appends the extra-draw block to this file.
 import { describe, expect, it } from 'vitest'
 import { withPickMode } from '../src/game/text/pick'
-import { PARITY_LIVES, PARITY_SLICES, bisectOffenders, compareTraces, traceLife, type Divergence, type ParityLife, type ParityTrace, type PoolOffender } from './r2-parity-kit'
+import { PARITY_LIVES, PARITY_SLICES, bisectOffenders, traceLife, traceMoves, type Divergence, type ParityLife, type ParityTrace, type PoolOffender } from './r2-parity-kit'
 
 const ATTRIBUTE = process.env.R2_PARITY_ATTRIBUTE === '1'
 const FULL = process.env.R2_PARITY_FULL === '1'
@@ -57,9 +57,9 @@ describe(`r2 text isolation: plain, rotate and memory agree on g.rng and every n
           life.id,
           plain.years.some((row, t) => row[TEXT] !== memory.years[t]?.[TEXT]),
         )
-        const rot = compareTraces([plain], [rotate])
+        const rot = traceMoves(plain, rotate)
         if (rot.length > 0) throw new Error(failure(life, 'rotate against plain', rot))
-        const mem = compareTraces([plain], [memory])
+        const mem = traceMoves(plain, memory)
         if (mem.length > 0) throw new Error(failure(life, 'memory against plain', mem))
         expect(rot).toEqual([])
         expect(mem).toEqual([])

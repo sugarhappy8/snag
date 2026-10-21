@@ -4,7 +4,8 @@
 // in the UI and its result string is settled here.
 import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, inPrison, log, minigame, notice, relationLabel, remember, spouse, useYearAction, yearActionsUsed } from './core'
 import { hasLuckyCharm, seeded, yearKey } from './assets'
-import { chance, pick, rand, randInt, uid } from './rng'
+import { chance, rand, randInt, uid } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from './types'
 import { getCountry } from './world'
@@ -75,7 +76,7 @@ function readBet(g: GameState, input: string | undefined, extraCost = 0): number
     return null
   }
   if (bet + extraCost > g.character.money) {
-    notice(g, 'Insufficient Funds', pick(g, [`You don't have that much money. You have ${formatMoney(Math.max(0, g.character.money))}.`, `The cashier ran your card and shook their head. You only have ${formatMoney(Math.max(0, g.character.money))}.`]), { emoji: '💸', tone: 'bad' })
+    notice(g, 'Insufficient Funds', pickSite(g, [`You don't have that much money. You have ${formatMoney(Math.max(0, g.character.money))}.`, `The cashier ran your card and shook their head. You only have ${formatMoney(Math.max(0, g.character.money))}.`], 0xceff66e8), { emoji: '💸', tone: 'bad' })
     return null
   }
   return bet
@@ -93,8 +94,8 @@ function tooMuchGambling(g: GameState, where: 'casino' | 'track'): void {
     g,
     where === 'casino' ? 'Cut Off' : 'Track Closed',
     where === 'casino'
-      ? pick(g, ['The pit boss has been watching you all year. Security politely suggests you come back next year.', "You've gambled enough this year. Even the slot machines are worried about you.", 'The casino comped you a free buffet on the condition that you go home. Come back next year.'])
-      : pick(g, ["You've spent enough time at the track this year. The horses need a break from you.", 'The racing season is over for you. Come back next year.']),
+      ? pickLine(g, ['The pit boss has been watching you all year. Security politely suggests you come back next year.', "You've gambled enough this year. Even the slot machines are worried about you.", 'The casino comped you a free buffet on the condition that you go home. Come back next year.'])
+      : pickLine(g, ["You've spent enough time at the track this year. The horses need a break from you.", 'The racing season is over for you. Come back next year.']),
     { emoji: '🛑' },
   )
 }
@@ -125,7 +126,7 @@ export function maybeGamblingAddiction(g: GameState, stake: number, moneyBefore:
   addHidden(g, 'willpower', -5)
   log(g, 'I developed a gambling addiction.', 'bad')
   remember(g, 'Developed a gambling addiction.')
-  notice(g, 'Gambling Addiction', pick(g, ['You can\'t stop thinking about your next bet. You have developed a gambling addiction.', 'The thrill of winning has its hooks in you. You now have a gambling addiction.', 'You caught yourself calculating odds at the grocery store. You have developed a gambling addiction.']), { emoji: '🎰', tone: 'bad' })
+  notice(g, 'Gambling Addiction', pickLine(g, ['You can\'t stop thinking about your next bet. You have developed a gambling addiction.', 'The thrill of winning has its hooks in you. You now have a gambling addiction.', 'You caught yourself calculating odds at the grocery store. You have developed a gambling addiction.']), { emoji: '🎰', tone: 'bad' })
 }
 
 /** Spouses notice when you lose big. */
@@ -133,7 +134,7 @@ function spouseReaction(g: GameState, lost: number, moneyBefore: number): void {
   const s = spouse(g)
   if (!s || lost < 1_000 || lost < moneyBefore * 0.2 || !chance(g, 0.35)) return
   addRelationship(s, -randInt(g, 6, 14))
-  notice(g, 'Busted', `Your ${relationLabel(s).toLowerCase()} ${s.firstName} found out you lost ${formatMoney(lost)} gambling. ${pick(g, [`${s.firstName} isn't speaking to you.`, `${s.firstName} changed the password to the bank account.`, `${s.firstName} said "we'll talk about this later" in a voice that made your blood run cold.`])}`, { emoji: '😠', tone: 'bad' })
+  notice(g, 'Busted', `Your ${relationLabel(s).toLowerCase()} ${s.firstName} found out you lost ${formatMoney(lost)} gambling. ${pickSite(g, [`${s.firstName} isn't speaking to you.`, `${s.firstName} changed the password to the bank account.`, `${s.firstName} said "we'll talk about this later" in a voice that made your blood run cold.`], 0x7a8fcaf5)}`, { emoji: '😠', tone: 'bad' })
 }
 
 /** Record a gambling result: counters, money, mood. `net` is the change in money. */
@@ -218,7 +219,7 @@ export function settleBlackjack(g: GameState, result: string, data: Json | undef
   switch (r.outcome) {
     case 'blackjack':
       log(g, `I hit blackjack and won ${amt} at ${casino}.`, 'good')
-      notice(g, 'Blackjack!', pick(g, [`An ace and a face card! You hit blackjack and won ${amt}.`, `Blackjack! The table erupted as you collected ${amt}.`, `Twenty-one on the deal. The dealer slid ${amt} across the felt with a sigh.`]), { emoji: '🃏', tone: 'good' })
+      notice(g, 'Blackjack!', pickSite(g, [`An ace and a face card! You hit blackjack and won ${amt}.`, `Blackjack! The table erupted as you collected ${amt}.`, `Twenty-one on the deal. The dealer slid ${amt} across the felt with a sigh.`], 0x81ec318f), { emoji: '🃏', tone: 'good' })
       return
     case 'win':
       log(g, `I won ${amt} playing blackjack at ${casino}.`, 'good')
@@ -227,13 +228,13 @@ export function settleBlackjack(g: GameState, result: string, data: Json | undef
         'Winner!',
         r.charlie
           ? `Five Card Charlie! You drew five cards without busting and won ${amt}.`
-          : pick(g, [`You beat the dealer and won ${amt}!`, `You walked away from the blackjack table ${amt} richer.`, `Lady Luck was on your side. You won ${amt}${r.doubled ? ' after doubling down' : ''}!`]),
+          : pickSite(g, [`You beat the dealer and won ${amt}!`, `You walked away from the blackjack table ${amt} richer.`, `Lady Luck was on your side. You won ${amt}${r.doubled ? ' after doubling down' : ''}!`], 0x739a767b),
         { emoji: '🤑', tone: 'good' },
       )
       return
     case 'push':
       log(g, 'I tied the dealer at blackjack.')
-      notice(g, 'Push', pick(g, [`You tied the dealer and got your ${formatMoney(stake)} back.`, `A push. Nobody wins, nobody loses. The most boring outcome in gambling.`]), { emoji: '🤝' })
+      notice(g, 'Push', pickSite(g, [`You tied the dealer and got your ${formatMoney(stake)} back.`, `A push. Nobody wins, nobody loses. The most boring outcome in gambling.`], 0xf2330425), { emoji: '🤝' })
       return
     case 'lose':
       log(g, `I lost ${amt} playing blackjack at ${casino}.`, 'bad')
@@ -241,8 +242,8 @@ export function settleBlackjack(g: GameState, result: string, data: Json | undef
         g,
         'Dealer Wins',
         r.bust
-          ? pick(g, [`You busted and lost ${amt}.`, `You went over 21. The dealer raked in your ${amt} without even looking up.`])
-          : pick(g, [`The dealer beat your hand. You lost ${amt}.`, `The house always wins. You lost ${amt}${r.doubled ? ' after doubling down' : ''}.`, `You lost ${amt} at blackjack. You blamed the guy who sat down at your table.`]),
+          ? pickSite(g, [`You busted and lost ${amt}.`, `You went over 21. The dealer raked in your ${amt} without even looking up.`], 0xba1e7d9e)
+          : pickSite(g, [`The dealer beat your hand. You lost ${amt}.`, `The house always wins. You lost ${amt}${r.doubled ? ' after doubling down' : ''}.`, `You lost ${amt} at blackjack. You blamed the guy who sat down at your table.`], 0x81784e03),
         { emoji: '😩', tone: 'bad' },
       )
       return
@@ -357,7 +358,7 @@ export function settleSlots(g: GameState, data: Json | undefined): void {
     notice(g, 'Break Even', `${emojis}\nYou got your ${formatMoney(bet)} back. The machine is toying with you.`, { emoji: '🎰' })
   } else {
     log(g, `I lost ${formatMoney(-net)} on the slots at ${casino}.`, 'bad')
-    notice(g, 'No Luck', `${emojis}\n${pick(g, [`Nothing. The machine swallowed your ${formatMoney(-net)}.`, `So close! (Not really.) You lost ${formatMoney(-net)}.`, `You lost ${formatMoney(-net)}. The old lady at the next machine just won. Of course.`])}`, { emoji: '🎰', tone: 'bad' })
+    notice(g, 'No Luck', `${emojis}\n${pickSite(g, [`Nothing. The machine swallowed your ${formatMoney(-net)}.`, `So close! (Not really.) You lost ${formatMoney(-net)}.`, `You lost ${formatMoney(-net)}. The old lady at the next machine just won. Of course.`], 0x4031d854)}`, { emoji: '🎰', tone: 'bad' })
   }
 }
 
@@ -531,7 +532,7 @@ export function settleRace(g: GameState, data: Json | undefined): void {
   if (pickIdx < 0 || bet <= 0) {
     addStat(g, 'happiness', randInt(g, 1, 4))
     log(g, `I watched the horse races at ${track}. ${winName} won.`)
-    notice(g, 'Off to the Races', pick(g, [`You watched the races at ${track}. ${winName} won by a nose.`, `${winName} won the race while you ate an overpriced hot dog. Good times.`]), { emoji: '🏇' })
+    notice(g, 'Off to the Races', pickSite(g, [`You watched the races at ${track}. ${winName} won by a nose.`, `${winName} won the race while you ate an overpriced hot dog. Good times.`], 0xedcf4327), { emoji: '🏇' })
     return
   }
   const mine = horses[pickIdx]
@@ -548,11 +549,11 @@ export function settleRace(g: GameState, data: Json | undefined): void {
   recordGamble(g, bet, net, before)
   if (net > 0) {
     log(g, `I won ${formatMoney(net)} at the horse races by betting on ${myName}!`, 'good')
-    notice(g, 'You Won!', pick(g, [`${myName} crossed the finish line first! Your ${formatMoney(bet)} bet at ${str(mine?.odds)} paid ${formatMoney(net)}.`, `${myName} won! You screamed so loud the people next to you moved. You won ${formatMoney(net)}.`]), { emoji: '🏆', tone: 'good' })
+    notice(g, 'You Won!', pickSite(g, [`${myName} crossed the finish line first! Your ${formatMoney(bet)} bet at ${str(mine?.odds)} paid ${formatMoney(net)}.`, `${myName} won! You screamed so loud the people next to you moved. You won ${formatMoney(net)}.`], 0x2dc19a6d), { emoji: '🏆', tone: 'good' })
   } else {
     const fell = Math.floor(num(d.dnf, -1)) === pickIdx
     log(g, `${winName} won the race. I lost ${formatMoney(-net)} betting on a losing horse!`, 'bad')
-    notice(g, 'You Lost', fell ? `${myName} stumbled and fell and did not finish. You lost your ${formatMoney(-net)} bet. (The horse is fine. Your wallet is not.)` : `${winName} won the race. ${myName} ${pick(g, ['was still thinking about it at the starting gate.', 'stopped to eat some grass.', 'gave it their all, which was not much.'])} You lost ${formatMoney(-net)}.`, { emoji: '🐴', tone: 'bad' })
+    notice(g, 'You Lost', fell ? `${myName} stumbled and fell and did not finish. You lost your ${formatMoney(-net)} bet. (The horse is fine. Your wallet is not.)` : `${winName} won the race. ${myName} ${pickLine(g, ['was still thinking about it at the starting gate.', 'stopped to eat some grass.', 'gave it their all, which was not much.'])} You lost ${formatMoney(-net)}.`, { emoji: '🐴', tone: 'bad' })
   }
 }
 
@@ -816,7 +817,7 @@ export function buyLottery(g: GameState, gameId: string, n: number): LotteryOutc
     return null
   }
   if (!useYearAction(g, 'lottery', 15)) {
-    notice(g, 'Lottery', pick(g, ['The gas station clerk refused to sell you any more tickets this year. "Go home, buddy."', "You've bought enough tickets this year. Your recycling bin is full of losing scratchers."]), { emoji: '🎟️' })
+    notice(g, 'Lottery', pickLine(g, ['The gas station clerk refused to sell you any more tickets this year. "Go home, buddy."', "You've bought enough tickets this year. Your recycling bin is full of losing scratchers."]), { emoji: '🎟️' })
     return null
   }
   const before = c.money
@@ -867,7 +868,7 @@ export function buyLottery(g: GameState, gameId: string, n: number): LotteryOutc
   } else {
     addStat(g, 'happiness', -1)
     log(g, `I bought ${what} and won nothing.`)
-    notice(g, 'No Luck', pick(g, [`You bought ${what} for ${formatMoney(cost)} and won absolutely nothing.`, `${capitalize(what)}. ${formatMoney(cost)}. Zero winners. The odds were never in your favor.`, `You scratched and checked and squinted. Nothing. ${formatMoney(cost)} gone.`]), { emoji: '🗑️' })
+    notice(g, 'No Luck', pickSite(g, [`You bought ${what} for ${formatMoney(cost)} and won absolutely nothing.`, `${capitalize(what)}. ${formatMoney(cost)}. Zero winners. The odds were never in your favor.`, `You scratched and checked and squinted. Nothing. ${formatMoney(cost)} gone.`], 0x0bf5e831), { emoji: '🗑️' })
   }
   if (cost >= 20) maybeGamblingAddiction(g, cost, before, true)
   return { spent: cost, won, biggest, biggestLabel, jackpot: hitJackpot }

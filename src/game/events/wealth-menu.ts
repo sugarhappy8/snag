@@ -5,7 +5,8 @@
 import { addHidden, addMoney, addRelationship, count, getPerson, inPrison, log, notice, scriptChoice, spend, useYearAction } from '../core'
 import { touch } from '../love'
 import { notePerson } from '../people'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import { getCountry } from '../world'
@@ -488,7 +489,7 @@ defineScript(TRIP_SCRIPT, (g, choice, data) => {
   p.stats.happiness = Math.min(100, p.stats.happiness + randInt(g, 5, 12))
   if (isDescendant(p) && p.age < 30) addEntitlement(p, opt.id === 'luxury' ? 6 : opt.id === 'abroad' ? 2 : 0)
   log(g, `I paid for ${myOf(p)}'s vacation (${money(opt.price)}).`, 'good')
-  notice(g, 'Pay for a Vacation', `You sent ${p.firstName} on ${opt.label.toLowerCase()} for ${money(opt.price)}. ${cap(pr(p).he)} came back with a tan and a souvenir for you: ${pick(g, ['a fridge magnet', 'a keychain', 'a snow globe', 'a T-shirt that says someone went somewhere'])}.`, { emoji: '\u{1F3D6}\u{FE0F}', tone: 'good' })
+  notice(g, 'Pay for a Vacation', `You sent ${p.firstName} on ${opt.label.toLowerCase()} for ${money(opt.price)}. ${cap(pr(p).he)} came back with a tan and a souvenir for you: ${pickLine(g, ['a fridge magnet', 'a keychain', 'a snow globe', 'a T-shirt that says someone went somewhere'])}.`, { emoji: '\u{1F3D6}\u{FE0F}', tone: 'good' })
 })
 
 function housePrices(g: GameState, p: Person): { house: number; deposit: number } {

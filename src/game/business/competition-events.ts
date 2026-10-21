@@ -5,6 +5,7 @@
 import { seeded } from '../assets'
 import { addHidden, count, formatMoney, log, notice, scriptChoice } from '../core'
 import { chance, pick, rand } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
@@ -381,7 +382,7 @@ function presentScandal(g: GameState, a: Asset, b: BizState): void {
   const r = pick(g, pool)
   // Customers flee the rival whatever you do.
   modRival(b, r.id, 0.7, g.year + 1)
-  const what = pick(g, SCANDALS)
+  const what = pickLine(g, SCANDALS)
   const choices: ChoiceOption[] = [
     { id: 'pounce', label: `Pounce on their customers (~${money(pounceCost(b))})`, emoji: '\u{1F406}' },
     { id: 'poach', label: `Hire their best people (~${money(poachCost(b))})`, emoji: '\u{1F6A3}' },

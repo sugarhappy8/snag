@@ -12,6 +12,7 @@ import { severanceMonths } from '../business/flavor'
 import { addHidden, addRelationship, addStat, count, currentPartner, earnIncome, log, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { industryDemand, localMarket } from '../data/markets'
 import { chance, pick, randFloat, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -249,7 +250,7 @@ const INTERVIEW = defineScript('gamedev.job.interview', (g, choice, data) => {
   const bar = l.level === 0 ? 34 : 50
   if (score < bar) {
     log(g, `I interviewed at ${l.studio} for ${l.title} and didn't get it.`, 'bad')
-    say(g, 'Not This Time', `${answer.reply}\n\n${l.studio} went with another candidate. ${pick(g, ['They promised to "keep your CV on file," which is a large file nobody opens.', `The rejection ${g.year >= 1997 && hasTech(g, 'internet') ? 'email' : 'letter'} had your name spelled wrong.`, 'They said you were "a strong candidate," which is what they say to everyone.'])}`, '\u{1F4E7}', 'bad')
+    say(g, 'Not This Time', `${answer.reply}\n\n${l.studio} went with another candidate. ${pickSite(g, ['They promised to "keep your CV on file," which is a large file nobody opens.', `The rejection ${g.year >= 1997 && hasTech(g, 'internet') ? 'email' : 'letter'} had your name spelled wrong.`, 'They said you were "a strong candidate," which is what they say to everyone.'], 0x3f602d5c)}`, '\u{1F4E7}', 'bad')
     return
   }
   takeJob(g, l, answer.reply)
@@ -454,7 +455,7 @@ function queueCrunch(g: GameState, d: GdJobData): void {
     g,
     CRUNCH,
     'Crunch Time',
-    `"${proj?.title ?? 'The game'}" ships soon and it is ${pick(g, ['nowhere near done', 'held together with tape', 'mostly bugs in a trench coat'])}. Management "strongly encourages" 80-hour weeks until launch. Free dinners provided.`,
+    `"${proj?.title ?? 'The game'}" ships soon and it is ${pickLine(g, ['nowhere near done', 'held together with tape', 'mostly bugs in a trench coat'])}. Management "strongly encourages" 80-hour weeks until launch. Free dinners provided.`,
     [
       { id: 'crunch', label: 'Crunch with the team', emoji: '\u{1F35C}' },
       { id: 'normal', label: 'Keep normal hours', emoji: '\u{1F305}' },
@@ -691,7 +692,7 @@ export function yearlyGameJob(g: GameState, budget: number): number {
     remember(g, `Laid off from ${studio}${mood === 'downturn' ? ' in an industry-wide layoff wave' : ''}.`)
     if (used < budget) {
       used++
-      say(g, 'Laid Off', `${mood === 'downturn' ? 'The whole industry is shedding jobs, and' : 'After a rough year,'} ${studio} laid off ${pick(g, ['a fifth of the staff', '200 people', 'the entire team you were on', 'everyone whose name starts with a vowel, apparently'])}, including you. ${sev > 0 ? `Severance: ${money(sev)}.` : 'No severance.'} The CEO ${hasTech(g, 'socialMedia') ? 'posted' : 'sent a memo'} about "difficult decisions" from a yacht.`, '\u{1F4E6}', 'bad')
+      say(g, 'Laid Off', `${mood === 'downturn' ? 'The whole industry is shedding jobs, and' : 'After a rough year,'} ${studio} laid off ${pickLine(g, ['a fifth of the staff', '200 people', 'the entire team you were on', 'everyone whose name starts with a vowel, apparently'])}, including you. ${sev > 0 ? `Severance: ${money(sev)}.` : 'No severance.'} The CEO ${hasTech(g, 'socialMedia') ? 'posted' : 'sent a memo'} about "difficult decisions" from a yacht.`, '\u{1F4E6}', 'bad')
     }
     return used
   }
@@ -738,7 +739,7 @@ export function yearlyGameJob(g: GameState, budget: number): number {
   } else if (p.burnout >= 60) {
     addStat(g, 'health', -1)
     addStat(g, 'happiness', -2)
-    log(g, pick(g, ['I dreamed in bug reports again.', 'I found myself trying to quicksave real life.', 'My chair knows me better than my friends do.']), 'bad')
+    log(g, pickLine(g, ['I dreamed in bug reports again.', 'I found myself trying to quicksave real life.', 'My chair knows me better than my friends do.']), 'bad')
   }
   return used
 }
@@ -762,12 +763,12 @@ function workHard(g: GameState): void {
   writeJobData(job, d)
   const line =
     d.track === 'qa'
-      ? pick(g, ['You found a bug where the horse climbs ladders. Then twelve more.', 'You walked into every wall in the castle level. Three of them let you through.'])
+      ? pickLine(g, ['You found a bug where the horse climbs ladders. Then twelve more.', 'You walked into every wall in the castle level. Three of them let you through.'])
       : d.track === 'code'
-        ? pick(g, ['You fixed the crash that only happens on Tuesdays.', 'You got the frame rate up by 20%. The art team bought you a donut.'])
+        ? pickLine(g, ['You fixed the crash that only happens on Tuesdays.', 'You got the frame rate up by 20%. The art team bought you a donut.'])
         : d.track === 'art'
-          ? pick(g, ['You finished the boss design two days early. It has seven teeth too many and everyone loves it.', 'You repainted the sky. The whole level suddenly feels expensive.'])
-          : pick(g, ['You rebalanced the economy so players stop hoarding cheese.', 'You rewrote the tutorial. Playtesters stopped crying.'])
+          ? pickLine(g, ['You finished the boss design two days early. It has seven teeth too many and everyone loves it.', 'You repainted the sky. The whole level suddenly feels expensive.'])
+          : pickLine(g, ['You rebalanced the economy so players stop hoarding cheese.', 'You rewrote the tutorial. Playtesters stopped crying.'])
   say(g, 'Extra Hours', `${line} Performance: ${job.performance}%.`, '\u{1F4BB}', 'good')
 }
 
@@ -797,7 +798,7 @@ function askRaise(g: GameState): void {
   }
   if (job.performance < 40) job.performance = Math.round(clampN(job.performance - 4, 0, 100))
   writeJobData(job, d)
-  say(g, 'Raise Denied', `${pick(g, ['"Budgets are tight this year." They just bought a second espresso machine.', '"We pay in passion here."', '"After the launch," they said, for the third launch in a row.'])}`, '\u{1F4B8}', 'bad')
+  say(g, 'Raise Denied', `${pickLine(g, ['"Budgets are tight this year." They just bought a second espresso machine.', '"We pay in passion here."', '"After the launch," they said, for the third launch in a row.'])}`, '\u{1F4B8}', 'bad')
 }
 
 function pitchIdea(g: GameState): void {
@@ -824,7 +825,7 @@ function pitchIdea(g: GameState): void {
     return
   }
   trainDesign(g, p, 1)
-  say(g, 'Pitch Meeting', `You pitched ${articleNoun(genre.noun)} about ${pick(g, ['a lighthouse keeper who is secretly a ghost', 'competitive cheese rolling', 'a dragon with tax problems', 'a heist planned entirely by pigeons'])}. ${pick(g, ['They said "interesting" the way people say it about mushrooms.', 'Marketing asked if it could be a battle royale.', 'They loved it. They will never make it.'])}`, '\u{1F4A1}')
+  say(g, 'Pitch Meeting', `You pitched ${articleNoun(genre.noun)} about ${pickLine(g, ['a lighthouse keeper who is secretly a ghost', 'competitive cheese rolling', 'a dragon with tax problems', 'a heist planned entirely by pigeons'])}. ${pickLine(g, ['They said "interesting" the way people say it about mushrooms.', 'Marketing asked if it could be a battle royale.', 'They loved it. They will never make it.'])}`, '\u{1F4A1}')
 }
 
 function quitJob(g: GameState): void {

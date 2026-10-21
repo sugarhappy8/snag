@@ -15,6 +15,7 @@ import { addHidden, addStat, count, formatMoney, log, notice, remember, scriptCh
 import { economyOf } from '../economy'
 import { economicReportSummary } from './economic-report'
 import { chance, pick, randFloat, randInt, shuffle, uid } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hire } from '../special/common'
 import { salaryFor } from '../special/gamedev-career'
@@ -1310,7 +1311,7 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
           id === 'patch' ? 'Best move: the fix pays for itself in sales' : id === 'statement' ? 'Best move: a hotfix would cost more than it wins back' : undefined,
         )
       }
-      scriptChoice(g, EVENT, 'Review Bomb', `"${x.title}" is getting review-bombed because ${pick(g, ['a hat costs real money now', 'one character got a new haircut', 'the new patch moved the jump button', 'a developer said they prefer cats'])}. ${randInt(g, 2, 40)},000 one-star reviews in a weekend.`, choices, { emoji: '\u{1F4A3}', data: base })
+      scriptChoice(g, EVENT, 'Review Bomb', `"${x.title}" is getting review-bombed because ${pickLine(g, ['a hat costs real money now', 'one character got a new haircut', 'the new patch moved the jump button', 'a developer said they prefer cats'])}. ${randInt(g, 2, 40)},000 one-star reviews in a weekend.`, choices, { emoji: '\u{1F4A3}', data: base })
       return true
     }
     case 'expose': {
@@ -1326,7 +1327,7 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
           id === 'change' ? 'Best move: a rested team ships better games' : undefined,
         )
       }
-      scriptChoice(g, EVENT, 'Crunch Exposé', `A games journalist published "Inside ${a.name}'s Crunch Culture", with anonymous quotes about 90-hour weeks and a ${pick(g, ['nap pod nobody is allowed to use', 'mandatory weekend "fun day"', 'pizza budget bigger than the QA budget'])}.`, choices, { emoji: '\u{1F4F0}', data: base })
+      scriptChoice(g, EVENT, 'Crunch Exposé', `A games journalist published "Inside ${a.name}'s Crunch Culture", with anonymous quotes about 90-hour weeks and a ${pickLine(g, ['nap pod nobody is allowed to use', 'mandatory weekend "fun day"', 'pizza budget bigger than the QA budget'])}.`, choices, { emoji: '\u{1F4F0}', data: base })
       return true
     }
     case 'streamer': {
@@ -1341,7 +1342,7 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
           id === 'sponsor' ? 'Best move: the extra buyers are worth more than the sponsorship' : 'Best move: the free buzz is enough',
         )
       }
-      const quote = pick(g, ['the best game nobody is talking about', 'my new obsession', 'the reason I have not slept'])
+      const quote = pickLine(g, ['the best game nobody is talking about', 'my new obsession', 'the reason I have not slept'])
       if (bizHas(g, b.countryId, 'streaming')) scriptChoice(g, EVENT, 'Streamer Spotlight', `A huge streamer played "${x.title}" for nine hours straight and called it "${quote}". Clips are everywhere.`, choices, { emoji: '\u{1F3A5}', data: base })
       else scriptChoice(g, EVENT, 'Magazine Cover', `The biggest gaming magazine put "${x.title}" on its cover and called it "${quote}". Kids are photocopying the review.`, choices.map((c) => (c.id === 'sponsor' ? { ...c, label: 'Buy more ad pages', emoji: '\u{1F4F0}' } : c)), { emoji: '\u{1F4F0}', data: base })
       return true
@@ -1744,7 +1745,7 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
             bb.yearCosts += cost
             y.hype = clampN(y.hype + randInt(gg, 15, 25) * (0.8 + bb.brand / 200), 0, 100)
             saveStudio(aa, st)
-            notice(gg, 'Trailer Drop', `"${y.title}" got a trailer and a slot in a big online showcase (${formatMoney(cost)}). ${pick(gg, ['The comments say "TAKE MY MONEY".', 'It trended for six hours.', 'A famous streamer reacted with a single tear.'])} Hype ${Math.round(y.hype)}/100.`, { emoji: '\u{1F3AC}', tone: 'good' })
+            notice(gg, 'Trailer Drop', `"${y.title}" got a trailer and a slot in a big online showcase (${formatMoney(cost)}). ${pickLine(gg, ['The comments say "TAKE MY MONEY".', 'It trended for six hours.', 'A famous streamer reacted with a single tear.'])} Hype ${Math.round(y.hype)}/100.`, { emoji: '\u{1F3AC}', tone: 'good' })
           },
         }),
       ]
@@ -1962,7 +1963,7 @@ function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
             y.players = Math.round(clampN(y.players + randInt(gg, 0, 3), 0, 99))
             saveStudio(aa, st)
             log(gg, `${aa.name} released DLC for "${y.title}".`, 'good')
-            notice(gg, 'DLC Out', `"${y.title}: ${pick(gg, ['The Frozen North', 'Blood & Brine', 'The Lost Archive', 'Cosmic Edition', 'Heart of the Swamp'])}" is out (${formatMoney(cost)}). Reviews: "${playerLabel(q)}".`, { emoji: '\u{1F381}', tone: 'good' })
+            notice(gg, 'DLC Out', `"${y.title}: ${pickLine(gg, ['The Frozen North', 'Blood & Brine', 'The Lost Archive', 'Cosmic Edition', 'Heart of the Swamp'])}" is out (${formatMoney(cost)}). Reviews: "${playerLabel(q)}".`, { emoji: '\u{1F381}', tone: 'good' })
           },
         }),
         studioAct(a, `patch.${gid}`, 'Ship a Big Patch', '\u{1FA79}', {

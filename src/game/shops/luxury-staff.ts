@@ -6,6 +6,7 @@ import { nicePrice } from '../assets'
 import { addHidden, addMoney, addStat, count, formatMoney, inPrison, log, notice, pronouns, remember, scriptChoice, spend } from '../core'
 import { localMarket } from '../data/markets'
 import { chance, pick, randInt } from '../rng'
+import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, Gender, MenuAction, MenuGroup, MenuNode, StatKey } from '../types'
 import { randomFirstName, randomLastName } from '../world'
@@ -365,7 +366,7 @@ export function yearlyStaff(g: GameState, budget: PopupBudget): void {
     if (role.id === 'concierge') count(g, 'conciergeYears')
     if (role.id === 'bodyguard' && c.hidden.fame >= 30 && chance(g, 0.12)) {
       addStat(g, 'happiness', 2)
-      log(g, pick(g, [`My bodyguard, ${member.name}, stopped an overexcited fan from climbing my gate.`, `${member.name} body-blocked a paparazzo who jumped out of a hedge at me.`, `My bodyguard spotted a stalker following my car and made them disappear (politely).`]), 'good')
+      log(g, pickSite(g, [`My bodyguard, ${member.name}, stopped an overexcited fan from climbing my gate.`, `${member.name} body-blocked a paparazzo who jumped out of a hedge at me.`, `My bodyguard spotted a stalker following my car and made them disappear (politely).`], 0x84bedbec), 'good')
     }
   }
   if (paid > 0) {

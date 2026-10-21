@@ -10,6 +10,7 @@ import { addMoney, count, currentPartner, peopleBy } from '../core'
 import { locale, localPick, localTerm, type LocaleToken } from '../data/locales'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { Asset, GameState, Json, Person } from '../types'
 import { citizensJudge, getCountry } from '../world'
 import {
@@ -235,7 +236,7 @@ function homeWeapon(g: GameState): string {
   if (isUS(g) || sports.includes('baseball')) return 'a baseball bat'
   if (sports.includes('cricket')) return 'a cricket bat'
   if (sports.includes('hockey')) return 'a hockey stick'
-  return pick(g, ['a broom', 'a frying pan', 'an umbrella'])
+  return pickLine(g, ['a broom', 'a frying pan', 'an umbrella'])
 }
 
 /** The neighborhood get-together: a backyard barbecue in the US, an asado, a braai, a feast... */
@@ -1328,7 +1329,7 @@ export const ADULT_EVENTS = defineEvents([
       emoji: common(g, 'tv') ? '📺' : '📻',
       text: common(g, 'tv')
         ? `You've been randomly selected to be a contestant on the TV game show "${pick(g, ['Spin That Wheel!', 'Know-It-All', 'Price Is Close Enough', country(g).currency === '$' ? 'Million Dollar Toss' : 'The Million Toss'])}". What will you do?`
-        : `You've been picked from the studio audience to compete on the radio quiz show "${pick(g, ['Know-It-All', 'Brains Trust', 'Double or Nothing'])}". What will you do?`,
+        : `You've been picked from the studio audience to compete on the radio quiz show "${pickLine(g, ['Know-It-All', 'Brains Trust', 'Double or Nothing'])}". What will you do?`,
       choices: [ch('go', "Let's play!"), ch('no', 'I get stage fright')],
     }),
     resolve: {

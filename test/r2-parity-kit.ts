@@ -233,6 +233,18 @@ export function compareTraces(a: readonly ParityTrace[], b: readonly ParityTrace
   return out
 }
 
+/**
+ * compareTraces for two plays of one life that may have ended at different ages: the shared years are compared, and a different
+ * number of years is itself a move (the character died sooner or later), reported at the first year only one of them has, on the
+ * 'character' slice. compareTraces itself throws on lists of a different shape, which is right for a recorded fixture.
+ */
+export function traceMoves(a: ParityTrace, b: ParityTrace): Divergence[] {
+  const n = Math.min(a.years.length, b.years.length)
+  const out = compareTraces([{ id: a.id, years: a.years.slice(0, n) }], [{ id: b.id, years: b.years.slice(0, n) }])
+  if (a.years.length !== b.years.length) out.push({ life: a.id, year: n, slices: ['character'] })
+  return out
+}
+
 export interface ParityFixture {
   v: 1
   /** Where the digests were recorded, e.g. 'base a65349a: v4.1.1, before the pickline codemod'. */
@@ -295,7 +307,7 @@ export function bisectOffenders(life: ParityLife): PoolOffender[] {
   })
   const moves = (keys: readonly string[]): boolean => {
     const rotated = new Set(keys)
-    return compareTraces([plain], [traceWith(life, (key) => (rotated.has(key) ? 'rotate' : 'plain'))]).length > 0
+    return traceMoves(plain, traceWith(life, (key) => (rotated.has(key) ? 'rotate' : 'plain'))).length > 0
   }
   let rest = [...where.keys()]
   const out: PoolOffender[] = []

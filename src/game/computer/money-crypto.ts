@@ -7,6 +7,7 @@ import { addHidden, addMoney, addRelationship, addStat, canAfford, count, format
 import { localPick } from '../data/locales'
 import { cryptoYear } from '../invest/engine'
 import { chance, pick, rand, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { totalFollowers } from '../special/social'
 import type { GameState, Json, MenuGroup, MenuNode } from '../types'
@@ -285,7 +286,7 @@ defineScript(HYPE_SCRIPT, (g, choice, data) => {
     run.hype += oops ? randInt(g, 10, 15) : randInt(g, 20, 30)
     text = oops
       ? `${celeb} took your money and posted about $${run.ticker}... with the wrong ticker. Thousands of fans bought a completely different coin. Some of them found yours anyway.`
-      : `${celeb} posted "${pick(g, ['not financial advice but', 'my accountant hates this one', 'just bought a bag of'])} $${run.ticker} \u{1F680}" to millions of fans. Your phone hasn't stopped buzzing since.`
+      : `${celeb} posted "${pickLine(g, ['not financial advice but', 'my accountant hates this one', 'just bought a bag of'])} $${run.ticker} \u{1F680}" to millions of fans. Your phone hasn't stopped buzzing since.`
   } else {
     run.hype += followersTerm(g) * 0.4 + randInt(g, 4, 9)
     text =
@@ -358,7 +359,7 @@ defineScript(PUMP_SCRIPT, (g, choice, data) => {
     run.pool = dollars(Math.min(run.pool * growth, local(g, 25_000_000)))
     run.mult = Math.round(run.mult * growth * 10) / 10
     run.step += 1
-    showPump(g, run, pick(g, [`You held. $${run.ticker} kept climbing as strangers bought in.`, `Diamond hands! A new wave of buyers pushed $${run.ticker} even higher.`, `$${run.ticker} hit a new all-time high. Someone made fan art of the mascot.`]))
+    showPump(g, run, pickSite(g, [`You held. $${run.ticker} kept climbing as strangers bought in.`, `Diamond hands! A new wave of buyers pushed $${run.ticker} even higher.`, `$${run.ticker} hit a new all-time high. Someone made fan art of the mascot.`], 0x4e36d98f))
     return
   }
   if (choice === 'rug') {
@@ -371,12 +372,12 @@ defineScript(PUMP_SCRIPT, (g, choice, data) => {
 function victimLine(g: GameState, ticker: string): string {
   const v = stranger(g, 19, 78)
   const job = pick(g, VICTIM_JOBS)
-  return pick(g, [
+  return pickSite(g, [
     `${v.full}, a ${v.age}-year-old ${job}, put ${v.his} vacation fund into $${ticker} at the very top. ${cap(v.he)} is now on a permanent staycation.`,
     `${v.full}, ${v.age}, had told ${v.his} family that $${ticker} would pay for a new roof. It's raining in ${v.his} living room tonight.`,
     `${v.full}, a ${job}, posted a video crying in ${v.his} car about $${ticker}. It got more views than your coin ever had holders.`,
     `${v.full}, ${v.age}, bought $${ticker} because your post said "not financial advice" and ${v.he} took that as a sign.`,
-  ])
+  ], 0xec4448c3)
 }
 
 /** Record a crime the player committed (uncaught for now); returns its record index. */
@@ -439,7 +440,7 @@ function finishCoin(g: GameState, run: CoinRun, outcome: CoinRecord['outcome'], 
     addHidden(g, 'notoriety', randInt(g, 4, 8))
     addHidden(g, 'fame', 2)
     addStat(g, 'happiness', -randInt(g, 3, 8))
-    parts.push(`An online sleuth traced the coin's wallets back to you and posted a 40-part thread about it. ${pick(g, EXCHANGES)} delisted $${run.ticker}, and your name is now a verb on crypto forums.`)
+    parts.push(`An online sleuth traced the coin's wallets back to you and posted a 40-part thread about it. ${pickLine(g, EXCHANGES)} delisted $${run.ticker}, and your name is now a verb on crypto forums.`)
   }
 
   // Angry holders sue (adults with real money at stake).

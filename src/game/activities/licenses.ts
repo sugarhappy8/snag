@@ -4,6 +4,7 @@
 import { count, hasLicense, log, notice, remember, scriptChoice } from '../core'
 import { masterFirstTime } from '../mastery'
 import { chance, pick, randInt, shuffle, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasMainCharacter } from '../talents'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
@@ -227,7 +228,7 @@ function passTest(g: GameState, kind: LicenseKind): void {
   remember(g, `Got a ${NAMES[kind]}.`)
   log(g, `I got my ${NAMES[kind]}!`, 'good')
   const passLines: Record<LicenseKind, string> = {
-    driver: pick(g, ['You passed your driving test! The open road is yours.', `You passed! The examiner even cracked a smile. Your license photo from ${localTerm(g, 'licenseOffice')}, however, is a crime.`]),
+    driver: pickSite(g, ['You passed your driving test! The open road is yours.', `You passed! The examiner even cracked a smile. Your license photo from ${localTerm(g, 'licenseOffice')}, however, is a crime.`], 0x86fa54f5),
     boating: 'You passed your boating test! You are now legally allowed to captain a boat. Ahoy!',
     pilot: "You passed your pilot's test! You are now a licensed pilot. The sky is no longer the limit.",
     firearm: 'You passed the safety test and your background check came back clean. Your firearm license arrived in the mail.',
@@ -360,7 +361,7 @@ function flightLesson(g: GameState, hours: number, usd: number): void {
   count(g, 'flightSchool')
   if (hasMainCharacter(g)) masterFirstTime(g, 'drive.pilot', 'driving', 'flight lesson')
   log(g, `I logged ${hours} hours at flight school.`, 'good')
-  const line = pick(g, [
+  const line = pickLine(g, [
     'You practiced takeoffs and landings until you could do them in your sleep. Please do not do them in your sleep.',
     'Your instructor only grabbed the controls from you twice. Progress!',
     'You flew over the city at sunset and nearly forgot you were being graded.',

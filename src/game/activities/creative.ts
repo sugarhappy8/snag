@@ -9,6 +9,7 @@ import { addHidden, addRelationship, addStat, count, earnIncome, log, peopleBy, 
 import { localeOf } from '../data/locales'
 import { realFollowers } from '../followers'
 import { chance, pick, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { stableChoice, withHint } from '../special/common'
 import { liftSkill } from '../mastery'
@@ -114,7 +115,7 @@ function trendingForm(g: GameState): FormDef['id'] {
 /** What happened to a winning piece: "won the Springfield Young Writers Prize", "was published in...". */
 function successWhere(g: GameState, form: FormDef): string {
   if (g.character.age < 18) return `won the ${g.character.city} Young Writers Prize`
-  return form.id === 'essay' ? `won an essay prize from ${pick(g, MAGAZINES)}` : `was published in ${pick(g, MAGAZINES)}`
+  return form.id === 'essay' ? `won an essay prize from ${pickLine(g, MAGAZINES)}` : `was published in ${pickLine(g, MAGAZINES)}`
 }
 
 const WRITE_SCRIPT = defineScript('act.creative.write', (g, choice) => {
@@ -158,7 +159,7 @@ const WRITE_SCRIPT = defineScript('act.creative.write', (g, choice) => {
       return result(
         g,
         bestseller ? 'Bestseller!' : 'Book Deal',
-        `${pick(g, ['A literary agent read your manuscript in one sitting and called you at midnight.', 'Three publishers fought over your novel. You let them.', 'Your manuscript landed on the right desk on the right day.'])} The advance was ${money(advance)}.${bestseller ? ` Then it hit the bestseller lists and earned another ${money(royalties)} in royalties. Book clubs are arguing about chapter 9.` : ' It hits bookstores next spring.'}\n\n${skill}`,
+        `${pickLine(g, ['A literary agent read your manuscript in one sitting and called you at midnight.', 'Three publishers fought over your novel. You let them.', 'Your manuscript landed on the right desk on the right day.'])} The advance was ${money(advance)}.${bestseller ? ` Then it hit the bestseller lists and earned another ${money(royalties)} in royalties. Book clubs are arguing about chapter 9.` : ' It hits bookstores next spring.'}\n\n${skill}`,
         '\u{1F4DA}',
         'good',
       )
@@ -178,7 +179,7 @@ const WRITE_SCRIPT = defineScript('act.creative.write', (g, choice) => {
     }
     addStat(g, 'happiness', -4)
     log(g, 'Every literary agent rejected my novel.', 'bad')
-    return result(g, 'Rejected', `${pick(g, ['Forty-seven literary agents rejected your novel. One rejection letter was just the word "no" in a very large font.', 'Your novel came back from every publisher in town. One of them returned it unopened.', 'An agent said your novel "reads like a very long grocery list". It was not a compliment.'])}\n\n${skill}`, '\u{1F4DA}', 'bad')
+    return result(g, 'Rejected', `${pickLine(g, ['Forty-seven literary agents rejected your novel. One rejection letter was just the word "no" in a very large font.', 'Your novel came back from every publisher in town. One of them returned it unopened.', 'An agent said your novel "reads like a very long grocery list". It was not a compliment.'])}\n\n${skill}`, '\u{1F4DA}', 'bad')
   }
 
   if (form.id === 'screenplay') {
@@ -207,7 +208,7 @@ const WRITE_SCRIPT = defineScript('act.creative.write', (g, choice) => {
   }
   if (q >= 55) {
     log(g, `I wrote ${form.label.toLowerCase()} I'm proud of.`, 'good')
-    return result(g, form.label.replace(/^(A|An) /, ''), `${pick(g, [`You wrote ${form.label.toLowerCase()} that's genuinely good. You read it out loud to your pet, who seemed moved.`, `Your ${form.noun} came together nicely. A few lines are honestly beautiful.`, `You finished your ${form.noun} and only deleted it twice.`])}\n\n${skill}`, form.emoji, 'good')
+    return result(g, form.label.replace(/^(A|An) /, ''), `${pickSite(g, [`You wrote ${form.label.toLowerCase()} that's genuinely good. You read it out loud to your pet, who seemed moved.`, `Your ${form.noun} came together nicely. A few lines are honestly beautiful.`, `You finished your ${form.noun} and only deleted it twice.`], 0x70ea2d19)}\n\n${skill}`, form.emoji, 'good')
   }
   log(g, `I wrote ${form.label.toLowerCase()}. It was not my best work.`, 'neutral')
   return result(g, form.label.replace(/^(A|An) /, ''), `${pick(g, [`You wrote ${form.label.toLowerCase()}. It rhymed "heart" with "heart" four times.`, g.year >= 1995 ? `Your ${form.noun} was so bad that autocorrect gave up halfway through.` : `Your ${form.noun} was so bad that your pencil snapped halfway through, possibly on purpose.`, `You wrote ${form.label.toLowerCase()}, read it back the next morning and quietly hid it in a drawer.`])}\n\n${skill}`, form.emoji)
@@ -328,7 +329,7 @@ const ART_SCRIPT = defineScript('act.creative.art', (g, choice) => {
   return result(
     g,
     'Art',
-    `${q >= 50 ? pick(g, [`You ${m.past} "${title}". It turned out really well.`, `"${title}" came together beautifully. You signed it with a little flourish.`]) : pick(g, [`You ${m.past} "${title}". Your family said it was "very interesting".`, `"${title}" did not go to plan. You're calling it abstract.`])}${gifted}\n\nQuality ${q}/100 · ${skill}`,
+    `${q >= 50 ? pickSite(g, [`You ${m.past} "${title}". It turned out really well.`, `"${title}" came together beautifully. You signed it with a little flourish.`], 0xd65e8ab7) : pickSite(g, [`You ${m.past} "${title}". Your family said it was "very interesting".`, `"${title}" did not go to plan. You're calling it abstract.`], 0x1230a8ee)}${gifted}\n\nQuality ${q}/100 · ${skill}`,
     m.emoji,
     q >= 50 ? 'good' : undefined,
   )
@@ -617,7 +618,7 @@ const CONTEST_SCRIPT = defineScript('act.creative.contest', (g, choice, data) =>
   }
   addStat(g, 'happiness', -3)
   log(g, `I didn't place at ${contest}.`, 'neutral')
-  return result(g, 'Cooking Contest', `${pick(g, [`The judges took one bite of your ${dish} and wrote for a long, long time.`, `Your ${dish} finished somewhere between "fine" and "brave".`, `A judge asked if your ${dish} was supposed to be crunchy. It was not.`])}\n\n${skill}`, '\u{1F3C6}')
+  return result(g, 'Cooking Contest', `${pickSite(g, [`The judges took one bite of your ${dish} and wrote for a long, long time.`, `Your ${dish} finished somewhere between "fine" and "brave".`, `A judge asked if your ${dish} was supposed to be crunchy. It was not.`], 0x1d60ad7b)}\n\n${skill}`, '\u{1F3C6}')
 })
 
 const contestAction: MenuAction = {
@@ -688,17 +689,17 @@ const STANDUP_SCRIPT = defineScript('act.creative.standup', (g, choice) => {
     if (c.hidden.fame < 80) addHidden(g, 'fame', comic ? 2 : 1)
     addStat(g, 'happiness', 8)
     log(g, `I killed it at ${where.name}.`, 'good')
-    return result(g, 'You Killed!', `${pick(g, ['The crowd laughed so hard someone fell off a bar stool.', 'You got an applause break in the middle of a joke. That never happens.', `A heckler tried to interrupt and you destroyed him so politely he asked for ${common(g, 'smartphone') ? 'a selfie' : 'an autograph'} afterward.`])} You played ${where.name}${pay > 0 ? ` and got paid ${money(pay)}` : ''}.\n\n${skill}`, style.emoji, 'good')
+    return result(g, 'You Killed!', `${pickSite(g, ['The crowd laughed so hard someone fell off a bar stool.', 'You got an applause break in the middle of a joke. That never happens.', `A heckler tried to interrupt and you destroyed him so politely he asked for ${common(g, 'smartphone') ? 'a selfie' : 'an autograph'} afterward.`], 0xf29db1ce)} You played ${where.name}${pay > 0 ? ` and got paid ${money(pay)}` : ''}.\n\n${skill}`, style.emoji, 'good')
   }
   if (perf >= 40) {
     const pay = earn(g, where.pay[1] > 0 ? localPrice(g, randInt(g, Math.max(1, where.pay[0]), where.pay[1]) * fameScale * 0.5) : 0)
     addStat(g, 'happiness', 2)
     log(g, `I did a set at ${where.name}. It went okay.`, 'neutral')
-    return result(g, 'Stand-Up', `${pick(g, ['Some jokes landed, some died quietly in the corner. A solid night.', 'The crowd was warm but distracted. Somebody’s birthday cake upstaged your closer.', 'You got real laughs and one pity laugh from your own mom.'])} You played ${where.name}${pay > 0 ? ` for ${money(pay)}` : ''}.\n\n${skill}`, style.emoji)
+    return result(g, 'Stand-Up', `${pickLine(g, ['Some jokes landed, some died quietly in the corner. A solid night.', 'The crowd was warm but distracted. Somebody’s birthday cake upstaged your closer.', 'You got real laughs and one pity laugh from your own mom.'])} You played ${where.name}${pay > 0 ? ` for ${money(pay)}` : ''}.\n\n${skill}`, style.emoji)
   }
   addStat(g, 'happiness', -6)
   log(g, `I bombed at ${where.name}.`, 'bad')
-  return result(g, 'You Bombed', `${pick(g, ['Silence. Just the hum of the fridge and one man eating soup very loudly.', 'Your opener was met with a cough. Your closer was met with the exit door.', 'A heckler yelled "Get off the stage!" and the crowd applauded him instead of you.'])} Every great comic has nights like this. Probably.\n\n${skill}`, '\u{1F997}', 'bad')
+  return result(g, 'You Bombed', `${pickLine(g, ['Silence. Just the hum of the fridge and one man eating soup very loudly.', 'Your opener was met with a cough. Your closer was met with the exit door.', 'A heckler yelled "Get off the stage!" and the crowd applauded him instead of you.'])} Every great comic has nights like this. Probably.\n\n${skill}`, '\u{1F997}', 'bad')
 })
 
 const standupAction: MenuAction = {

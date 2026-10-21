@@ -3,6 +3,7 @@
 // (if you must) sabotage rival models.
 import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, spend, useYearAction } from '../core'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -183,10 +184,10 @@ const headshotScript = defineScript('special.model.headshot', (g, choice) => {
   log(g, 'I had professional headshots taken.')
   const verdict =
     q >= 75
-      ? pick(g, ['The photos are stunning. You look like a magazine cover.', 'The photographer cried a little. Good tears.'])
+      ? pickLine(g, ['The photos are stunning. You look like a magazine cover.', 'The photographer cried a little. Good tears.'])
       : q >= 45
-        ? pick(g, ['The photos turned out nicely.', 'Solid headshots. One of them even captures your good side.'])
-        : pick(g, ['You blinked in half of them.', 'The lighting made you look like a potato in witness protection.'])
+        ? pickLine(g, ['The photos turned out nicely.', 'Solid headshots. One of them even captures your good side.'])
+        : pickLine(g, ['You blinked in half of them.', 'The lighting made you look like a potato in witness protection.'])
   say(g, 'Headshots', `You paid ${money(ph.cost)} for a photo session. ${verdict} (Headshot quality: ${q}%)`, '\u{1F4F7}', q >= 45 ? 'good' : 'neutral')
 })
 
@@ -250,7 +251,7 @@ const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
   const score = marketability(g) + randInt(g, -15, 15) + (hasTalent(g, 'Modeling') ? 8 : 0)
   if (score < gig.req) {
     log(g, `I didn't book the ${gig.name.toLowerCase()} gig.`, 'bad')
-    return say(g, 'Casting', pick(g, [`The casting director for the ${gig.name.toLowerCase()} said you weren't the look they wanted.`, `You showed up to the ${gig.name.toLowerCase()} casting and were told to "work on your angles".`, `You lost the ${gig.name.toLowerCase()} gig to someone's cousin.`]), gig.emoji, 'bad')
+    return say(g, 'Casting', pickSite(g, [`The casting director for the ${gig.name.toLowerCase()} said you weren't the look they wanted.`, `You showed up to the ${gig.name.toLowerCase()} casting and were told to "work on your angles".`, `You lost the ${gig.name.toLowerCase()} gig to someone's cousin.`], 0xd9a0c827), gig.emoji, 'bad')
   }
   if (!bookFreelance(g, gig.name, gig.pay)) earnIncome(g, gig.pay)
   modelProfile(g).gigs += 1
@@ -258,7 +259,7 @@ const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
   addStat(g, 'happiness', 4)
   if (chance(g, 0.3)) addFame(g, 1)
   log(g, `I booked a freelance modeling gig: ${gig.name.toLowerCase()}.`, 'good')
-  say(g, 'Booked!', `You booked the ${gig.name.toLowerCase()} and earned ${money(gig.pay)}. ${pick(g, ['The photographer said you were a natural.', 'You held a pose for so long your leg fell asleep.', 'The client asked for your number for future work.'])}`, gig.emoji, 'good')
+  say(g, 'Booked!', `You booked the ${gig.name.toLowerCase()} and earned ${money(gig.pay)}. ${pickLine(g, ['The photographer said you were a natural.', 'You held a pose for so long your leg fell asleep.', 'The client asked for your number for future work.'])}`, gig.emoji, 'good')
 })
 
 const freelanceAction: MenuAction = {
@@ -382,13 +383,13 @@ export const bookingScript = defineScript('special.model.booking', (g, choice) =
     addFame(g, b.fame)
     addStat(g, 'happiness', 5)
     log(g, `I modeled for a ${b.label.toLowerCase()}.`, 'good')
-    say(g, b.label, `${pick(g, ['You nailed it.', 'The client was thrilled.', 'You owned every second of it.'])} ${pick(g, ['The photographer called you "the face of the season".', 'The designer hugged you afterwards.', 'You did not trip once. A personal best.'])} You earned ${money(pay)}.`, b.emoji, 'good')
+    say(g, b.label, `${pickLine(g, ['You nailed it.', 'The client was thrilled.', 'You owned every second of it.'])} ${pickLine(g, ['The photographer called you "the face of the season".', 'The designer hugged you afterwards.', 'You did not trip once. A personal best.'])} You earned ${money(pay)}.`, b.emoji, 'good')
   } else {
     earnIncome(g, Math.round(pay / 3))
     bump(job, -randInt(g, 3, 8))
     addStat(g, 'happiness', -4)
     log(g, `My ${b.label.toLowerCase()} didn't go well.`, 'bad')
-    say(g, b.label, `${pick(g, ['You tripped on the runway in front of everyone.', 'The client said you looked "tired".', 'You and the stylist had a screaming match over a scarf.'])} You only got paid ${money(Math.round(pay / 3))}.`, b.emoji, 'bad')
+    say(g, b.label, `${pickLine(g, ['You tripped on the runway in front of everyone.', 'The client said you looked "tired".', 'You and the stylist had a screaming match over a scarf.'])} You only got paid ${money(Math.round(pay / 3))}.`, b.emoji, 'bad')
   }
 })
 
@@ -410,7 +411,7 @@ const practiceScript = defineScript('special.model.practice', (g, choice) => {
   say(
     g,
     'Practice',
-    `${choice === 'walk' ? pick(g, ['You strutted up and down your hallway in heels for three hours.', 'You practiced turning on a dime without falling over.']) : pick(g, ['You practiced fourteen variations of looking mysteriously into the distance.', 'You mastered the art of smiling with your eyes.'])} Modeling skill: ${flagSkill(g, 'modeling')}%.`,
+    `${choice === 'walk' ? pickLine(g, ['You strutted up and down your hallway in heels for three hours.', 'You practiced turning on a dime without falling over.']) : pickLine(g, ['You practiced fourteen variations of looking mysteriously into the distance.', 'You mastered the art of smiling with your eyes.'])} Modeling skill: ${flagSkill(g, 'modeling')}%.`,
     '\u{1F483}',
     'good',
   )
@@ -589,7 +590,7 @@ const fashionWeekScript = defineScript('special.model.fashionWeek', (g, choice, 
     addFame(g, 1)
     bump(job, -5)
     log(g, `I stumbled at ${city} Fashion Week.`, 'bad')
-    say(g, 'Fashion Week', `You walked for ${choice} at ${city} Fashion Week, but ${pick(g, ['your heel snapped halfway down the runway', 'you went the wrong way at the end of the runway', 'you sneezed during the finale'])}. You earned ${money(Math.round(pay / 2))}.`, '\u{1F460}', 'bad')
+    say(g, 'Fashion Week', `You walked for ${choice} at ${city} Fashion Week, but ${pickLine(g, ['your heel snapped halfway down the runway', 'you went the wrong way at the end of the runway', 'you sneezed during the finale'])}. You earned ${money(Math.round(pay / 2))}.`, '\u{1F460}', 'bad')
   }
 })
 
@@ -649,7 +650,7 @@ function maybeScouted(g: GameState): void {
     g,
     scoutScript,
     'Scouted!',
-    `A scout from ${a.name} ${'\u{2B50}'.repeat(a.tier + 1)} stopped you ${pick(g, SCOUT_SPOTS)} and handed you a business card. They want to sign you on the spot: ${money(a.retainer)} a year to start.${c.job ? ` You'd have to quit your job as ${c.job.title}.` : ''}`,
+    `A scout from ${a.name} ${'\u{2B50}'.repeat(a.tier + 1)} stopped you ${pickLine(g, SCOUT_SPOTS)} and handed you a business card. They want to sign you on the spot: ${money(a.retainer)} a year to start.${c.job ? ` You'd have to quit your job as ${c.job.title}.` : ''}`,
     [
       { id: 'accept', label: 'Sign with them', emoji: '\u{270D}\u{FE0F}' },
       { id: 'decline', label: 'Not interested', emoji: '\u{274C}' },

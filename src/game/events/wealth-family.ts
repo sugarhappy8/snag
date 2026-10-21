@@ -5,6 +5,7 @@
 import { addRelationship, notice, pronouns, spouse as spouseOf } from '../core'
 import { notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickSite } from '../text/pick'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { byEra, eraPickPlain, landline } from './era'
 import { channel, folks, mayAsk, scaled, type AskDef } from './wealth-ask'
@@ -92,7 +93,7 @@ export const FAMILY_ASKS: AskDef[] = [
       if (!p) return null
       const trip = eraPickPlain(g, PARTNER_TRIPS)
       const amt = scaled(g, 12_000, tier, p, 0.02)
-      return { k: 'partner.trip', pid: p.id, title: 'Getaway', emoji: '\u{1F3DD}\u{FE0F}', text: `${channel(g, p)}${who(p)} has been "so stressed" and thinks ${trip} would help (${money(amt)}). ${pick(g, [`${cap(pr(p).he)} already packed.`, `There's a brochure taped to the bathroom mirror.`, `${cap(pr(p).he)} says you can come too, if you behave.`])}${postnupLine(g, p)}`, amt, what: trip, less: true }
+      return { k: 'partner.trip', pid: p.id, title: 'Getaway', emoji: '\u{1F3DD}\u{FE0F}', text: `${channel(g, p)}${who(p)} has been "so stressed" and thinks ${trip} would help (${money(amt)}). ${pickSite(g, [`${cap(pr(p).he)} already packed.`, `There's a brochure taped to the bathroom mirror.`, `${cap(pr(p).he)} says you can come too, if you behave.`], 0xce2dce2d)}${postnupLine(g, p)}`, amt, what: trip, less: true }
     },
     onGive: (g, _a, p) => {
       if (!p) return ''
@@ -409,7 +410,7 @@ export const FAMILY_ASKS: AskDef[] = [
     build: (g, tier, p) => {
       if (!p) return null
       const amt = scaled(g, 6_000 * housingScale(g, personCountry(g, p)), Math.min(tier, 2), p, 0.01)
-      return { k: 'sibling.rent', pid: p.id, title: 'Rough Patch', emoji: '\u{1F4C9}', text: `${channel(g, p)}${who(p)} is behind on rent (${money(amt)}). ${pick(g, [`${cap(pr(p).he)} got laid off.`, `${cap(pr(p).he)} "invested" in something.`, `${cap(pr(p).his)} landlord discovered the four cats.`])}`, amt, what: 'help with rent', less: true, lend: true }
+      return { k: 'sibling.rent', pid: p.id, title: 'Rough Patch', emoji: '\u{1F4C9}', text: `${channel(g, p)}${who(p)} is behind on rent (${money(amt)}). ${pickSite(g, [`${cap(pr(p).he)} got laid off.`, `${cap(pr(p).he)} "invested" in something.`, `${cap(pr(p).his)} landlord discovered the four cats.`], 0x5eea8ce1)}`, amt, what: 'help with rent', less: true, lend: true }
     },
     need: true,
     thanks: 8,

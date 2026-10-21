@@ -31,6 +31,7 @@ import {
 import { killCharacter } from './death'
 import { createPerson, notePerson } from './people'
 import { chance, pick, rand, randInt, shuffle } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { fillLocal } from './data/locales'
 import { eraPick, eraPickPlain } from './events/era'
@@ -540,11 +541,11 @@ function partnerReacts(g: GameState, sentence: number): void {
   notice(
     g,
     'Heartbreak Behind Bars',
-    pick(g, [
+    pickSite(g, [
       `${partner.firstName} visited one last time to tell you ${p.he} can't wait around for you. ${p.He} ended your relationship through the visiting-room glass.`,
       `You received a letter from ${partner.firstName}. It was short: ${p.he}'s moving on without you.`,
       `${partner.firstName} decided ${p.he} didn't sign up for a relationship with an inmate. You've been dumped.`,
-    ]),
+    ], 0xa2437a34),
     { emoji: '\u{1F494}', tone: 'bad' },
   )
 }
@@ -740,11 +741,11 @@ export function yearlyPrison(g: GameState): boolean {
     releaseNotice(
       g,
       'Free at Last',
-      pick(g, [
+      pickSite(g, [
         `You've served your time. The gates of ${name} clanged shut behind you as you stepped into the sunlight.`,
         `After ${years(p.yearsServed)} inside, the guards handed back your old clothes and a bus ticket. You're a free ${g.character.gender === 'male' ? 'man' : 'woman'}.`,
         `Your sentence is over. You walked out of ${name} and took a deep breath of air that didn't smell like a cafeteria.`,
-      ]),
+      ], 0xd315551c),
     )
     return true
   }
@@ -871,10 +872,10 @@ const PAROLE_SCRIPT = defineScript('prison.parole', (g, choice, data) => {
     releaseNotice(
       g,
       'Parole Granted',
-      pick(g, [
+      pickSite(g, [
         `The parole board was convinced. You've been released from ${name} early on good behavior. Don't make them regret it.`,
         `After a long pause, the chairman stamped your file: GRANTED. You're walking out of ${name} early.`,
-      ]),
+      ], 0x16f0553e),
     )
     return
   }
@@ -884,11 +885,11 @@ const PAROLE_SCRIPT = defineScript('prison.parole', (g, choice, data) => {
     g,
     'Parole Denied',
     tier === 'bad'
-      ? pick(g, [
+      ? pickLine(g, [
           'The board members exchanged a look, then denied your parole before you finished your sentence. The literal one.',
           'One board member laughed out loud. Parole denied.',
         ])
-      : pick(g, [
+      : pickLine(g, [
           "The board thanked you for your time and denied your parole. Maybe next time.",
           'The board decided you need a little more time to reflect. Parole denied.',
         ]),
@@ -1043,7 +1044,7 @@ function prisonEvent(g: GameState): void {
   }
   if (roll < 0.55) {
     const name = inmateName(g, c.gender)
-    const dessert = pick(g, DESSERTS)
+    const dessert = pickLine(g, DESSERTS)
     scriptChoice(g, EVENT_DESSERT, 'Cafeteria Trouble', `A hulking inmate named ${name} loomed over your tray and demanded your ${dessert}.`, [
       { id: 'give', label: 'Hand it over', emoji: '\u{1F36E}' },
       { id: 'fight', label: 'Tell them to get lost', emoji: '\u{1F44A}' },
@@ -1053,7 +1054,7 @@ function prisonEvent(g: GameState): void {
   }
   if (roll < 0.8 && parentsList.length > 0) {
     const sender = pick(g, parentsList)
-    const item = pick(g, CARE_ITEMS)
+    const item = pickLine(g, CARE_ITEMS)
     scriptChoice(g, EVENT_PACKAGE, 'Care Package', `Your ${relationLabel(sender).toLowerCase()} ${sender.firstName} sent you a care package with ${item}.`, [
       { id: 'keep', label: 'Enjoy it', emoji: '\u{1F381}' },
       { id: 'share', label: 'Share with my cellmates', emoji: '\u{1F91D}' },
@@ -1349,11 +1350,11 @@ const ESCAPE_SCRIPT = defineScript('prison.escape.result', (g, result) => {
     notice(
       g,
       'You Escaped!',
-      pick(g, [
+      pickSite(g, [
         `You slipped past the guards and squeezed through a gap in the fence. You're out of ${name}! Keep your head down: every cop in the country has your mugshot.`,
         `Against all odds, you made it out of ${name}. Freedom smells like rain and diesel. The police are already looking for you.`,
         `You vaulted the last wall and disappeared into the night. ${name} is down one inmate. You're a fugitive now.`,
-      ]),
+      ], 0x84f555ae),
       { emoji: '\u{1F3C3}', tone: 'good' },
     )
     return
@@ -1370,17 +1371,17 @@ const ESCAPE_SCRIPT = defineScript('prison.escape.result', (g, result) => {
     notice(
       g,
       'Caught!',
-      pick(g, [
+      pickSite(g, [
         `A guard tackled you before you reached the exit.${extra}`,
         `The searchlight found you. So did three guards and a very excited dog.${extra}`,
         `You were so close. The guards dragged you back to your cell.${extra}`,
-      ]) + (dmg ? ` (-${dmg} health)` : '') + (moved ? ` You've been transferred to ${moved}.` : ''),
+      ], 0xe0fb0f08) + (dmg ? ` (-${dmg} health)` : '') + (moved ? ` You've been transferred to ${moved}.` : ''),
       { emoji: '\u{1F6A8}', tone: 'bad' },
     )
     return
   }
   log(g, 'I thought about escaping, but lost my nerve.', 'neutral')
-  notice(g, 'Not Today', pick(g, ['You decided the timing was wrong. The guards never knew.', 'You chickened out before taking a single step. Probably for the best.']), {
+  notice(g, 'Not Today', pickLine(g, ['You decided the timing was wrong. The guards never knew.', 'You chickened out before taking a single step. Probably for the best.']), {
     emoji: '\u{1F414}',
   })
 })
@@ -1520,10 +1521,10 @@ function appealAction(firm: AppealFirm): MenuAction {
         releaseNotice(
           g,
           'Appeal Won!',
-          pick(g, [
+          pickSite(g, [
             `${f.name} got your conviction overturned! You walked out of ${name} a free person.`,
             `The appeals court ruled in your favor. Your conviction was tossed out, and so were you, right out the front gate of ${name}.`,
-          ]),
+          ], 0x11046d74),
           gotBack(back),
         )
         return
@@ -1539,7 +1540,7 @@ function appealAction(firm: AppealFirm): MenuAction {
       }
       log(g, 'My appeal was denied.', 'bad')
       addStat(g, 'happiness', -randInt(g, 3, 8))
-      notice(g, 'Appeal Denied', pick(g, [`The appeals court upheld your conviction. ${f.name} kept the money.`, `Denied. The judge didn't even look up from her coffee.`]) + kept, {
+      notice(g, 'Appeal Denied', pickSite(g, [`The appeals court upheld your conviction. ${f.name} kept the money.`, `Denied. The judge didn't even look up from her coffee.`], 0xeb89e9bb) + kept, {
         emoji: '\u{1F6AB}',
         tone: 'bad',
       })
@@ -1681,11 +1682,11 @@ const RIOT_SCRIPT = defineScript('prison.riot', (g, choice) => {
     pl.behavior = clamp(pl.behavior - 30)
     addStat(g, 'happiness', randInt(g, 5, 10))
     lines.push(
-      pick(g, [
+      pickSite(g, [
         `${recruits} inmates joined in. Cell block D descended into glorious chaos for six hours.`,
         `Within minutes, ${recruits} inmates were tearing the place apart. The warden had to call in reinforcements.`,
         `The riot spread like wildfire. ${recruits} inmates took over the yard until the riot squad arrived.`,
-      ]),
+      ], 0x8736fb57),
     )
     log(g, `I started a prison riot with ${recruits} inmates.`, 'event')
     if (recruits >= 20 && p.respect >= 60 && chance(g, 0.12)) {
@@ -1699,7 +1700,7 @@ const RIOT_SCRIPT = defineScript('prison.riot', (g, choice) => {
   } else {
     p.respect = clamp(p.respect - randInt(g, 3, 8))
     pl.behavior = clamp(pl.behavior - 15)
-    lines.push(pick(g, ['Nobody joined in. A guard calmly walked over and wrote you up.', 'Two inmates joined you, then immediately got bored and left.', 'The other inmates just stared at you. Awkward.']))
+    lines.push(pickLine(g, ['Nobody joined in. A guard calmly walked over and wrote you up.', 'Two inmates joined you, then immediately got bored and left.', 'The other inmates just stared at you. Awkward.']))
     log(g, 'I tried to start a prison riot, but nobody joined in.', 'bad')
   }
   if (chance(g, success ? 0.5 : 0.35)) lines.push(`The guards beat you with batons. (-${hurt(g, randInt(g, 5, 20))} health)`)
@@ -1760,16 +1761,16 @@ const workoutAction: MenuAction = {
     addHidden(g, 'athleticism', randInt(g, 1, 4))
     p.respect = clamp(p.respect + randInt(g, 1, 4))
     addStat(g, 'happiness', randInt(g, 1, 3))
-    log(g, pick(g, ['I worked out in the prison yard.', 'I lifted weights in the yard.', 'I did a thousand push-ups in my cell.']), 'good')
+    log(g, pickLine(g, ['I worked out in the prison yard.', 'I lifted weights in the yard.', 'I did a thousand push-ups in my cell.']), 'good')
     notice(
       g,
       'The Yard',
-      pick(g, [
+      pickSite(g, [
         'You spent the afternoon bench-pressing in the yard. A few inmates nodded at you approvingly.',
         'You did pull-ups on the basketball hoop until the guards blew the whistle.',
         `You ran laps around the yard while the ${c.age < 18 ? 'other kids' : 'old-timers'} played dominoes.`,
         'You lifted a weight bar that was mostly duct tape. Still counts.',
-      ]),
+      ], 0x95f395ab),
       { emoji: '\u{1F3CB}\u{FE0F}', tone: 'good' },
     )
   },
@@ -1952,7 +1953,7 @@ function gangNodes(g: GameState): MenuNode[] {
         if (!accept) {
           pp.respect = clamp(pp.respect - 3)
           log(gg, `The ${gang} rejected me.`, 'bad')
-          notice(gg, 'Rejected', pick(gg, [`The ${gang} laughed you out of the yard. Come back when people know your name.`, `The ${gang}'s leader looked you up and down and said "nah."`]), {
+          notice(gg, 'Rejected', pickSite(gg, [`The ${gang} laughed you out of the yard. Come back when people know your name.`, `The ${gang}'s leader looked you up and down and said "nah."`], 0x1ce4bd67), {
             emoji: '\u{1F645}',
             tone: 'bad',
           })
@@ -1995,11 +1996,11 @@ function fightInmate(g: GameState, name: string, desc: string, person: Person | 
   if (win) {
     p.respect = clamp(p.respect + randInt(g, 8, 15))
     lines.push(
-      pick(g, [
+      pickSite(g, [
         `You attacked ${name}, ${desc}. You landed a jab, a hook and an uppercut before ${first} hit the floor.`,
         `You jumped ${name}, ${desc}, in the chow line. It was over in seconds.`,
         `You picked a fight with ${name}, ${desc}, and won decisively. The yard went quiet.`,
-      ]),
+      ], 0x47857e96),
     )
     if (person) {
       addPersonStat(person, 'health', -randInt(g, 10, 30))
@@ -2011,10 +2012,10 @@ function fightInmate(g: GameState, name: string, desc: string, person: Person | 
     const dmg = hurt(g, randInt(g, 8, 22))
     p.respect = clamp(p.respect - randInt(g, 2, 6))
     lines.push(
-      pick(g, [
+      pickSite(g, [
         `You swung at ${name}, ${desc}, and missed. ${first} did not miss. (-${dmg} health)`,
         `${name} dodged your punch and returned the favor several times. (-${dmg} health)`,
-      ]),
+      ], 0xcd8edd6e),
     )
     if (person) {
       addRelationship(person, -randInt(g, 20, 40))
@@ -2159,7 +2160,7 @@ const behaveAction: MenuAction = {
     pl.behavior = clamp(pl.behavior + randInt(g, 8, 15))
     p.respect = clamp(p.respect - randInt(g, 0, 3))
     addHidden(g, 'karma', randInt(g, 1, 3))
-    const what = pick(g, [
+    const what = pickLine(g, [
       'You made your bunk with hospital corners, mopped the cell block, and said "yes sir" to every guard.',
       'You volunteered in the prison kitchen and served the warden an extra-large slice of pie.',
       'You attended every anger-management class and only rolled your eyes twice.',
@@ -2193,8 +2194,8 @@ const cryAction: MenuAction = {
       g,
       'Tears',
       seen
-        ? pick(g, ['You sobbed into your pillow. Your cellmate heard everything and will tell everyone.', 'You cried in the shower. Unfortunately, it was a group shower.'])
-        : pick(g, ['You cried quietly into your scratchy pillow. You feel a little better.', 'You let it all out after lights-out. Nobody heard. Probably.']),
+        ? pickLine(g, ['You sobbed into your pillow. Your cellmate heard everything and will tell everyone.', 'You cried in the shower. Unfortunately, it was a group shower.'])
+        : pickLine(g, ['You cried quietly into your scratchy pillow. You feel a little better.', 'You let it all out after lights-out. Nobody heard. Probably.']),
       { emoji: '\u{1F62D}' },
     )
   },
@@ -2373,7 +2374,7 @@ function letterNodes(g: GameState): MenuNode[] {
           addStat(gg, 'happiness', randInt(gg, 2, 5))
           notePerson(target, 'Wrote to me from prison.')
           log(gg, `I wrote a letter to my ${relationLabel(target).toLowerCase()} ${target.firstName} from prison.`, 'good')
-          notice(gg, 'Letter Home', pick(gg, [`${target.firstName} wrote back! ${p.He} said ${p.he} misses you.`, `${target.firstName} replied with a long letter and a drawing of your old neighborhood.`]), {
+          notice(gg, 'Letter Home', pickSite(gg, [`${target.firstName} wrote back! ${p.He} said ${p.he} misses you.`, `${target.firstName} replied with a long letter and a drawing of your old neighborhood.`], 0x5a80fee2), {
             emoji: '\u{1F48C}',
             tone: 'good',
           })
