@@ -47,7 +47,7 @@ vi.mock('../src/ui/download', async (importOriginal) => {
 })
 
 const { downloadText, saveCopyFilename } = await import('../src/ui/download')
-const { downloadSaveCopy, isDbUnreachable, newLifeWarning, noticeActions, noticeCopy, removeSaveCopy, saveWarningCopy, SaveNoticeList, SaveNotices } =
+const { copySize, downloadSaveCopy, isDbUnreachable, newLifeWarning, noticeActions, noticeCopy, removeSaveCopy, saveWarningCopy, SaveNoticeList, SaveNotices } =
   await import('../src/ui/components/SaveNotices')
 const { HomeScreen } = await import('../src/ui/screens/HomeScreen')
 
@@ -240,6 +240,69 @@ describe('SaveNoticeList', () => {
   })
 })
 
+describe('copySize', () => {
+  it('says how big a copy is in words a player knows', () => {
+    expect(copySize(0)).toBe('empty')
+    expect(copySize(8)).toBe('8 characters')
+    expect(copySize(1)).toBe('1 character')
+    expect(copySize(2400)).toBe('2 KB')
+    expect(copySize(1_260_000)).toBe('1.3 MB')
+  })
+})
+
+describe('the buttons of a list of copies', () => {
+  const props = { notices: [damaged, tooOld] as readonly SaveNotice[], onDownload: vi.fn(), onDelete: vi.fn(), onReload: vi.fn() }
+  const labels = (notices: readonly SaveNotice[], extra: object = {}): string[] => {
+    const out = renderToStaticMarkup(createElement(SaveNoticeList, { ...props, notices, ...extra }))
+    return [...out.matchAll(/<button[^>]*aria-label="([^"]*)"/g)].map((m) => m[1].replaceAll('&#x27;', "'"))
+  }
+
+  it('gives each button a name that tells the copies apart and still starts with what the button says', () => {
+    const names = labels([damaged, tooOld])
+    expect(names).toEqual([
+      "Download copy, Your save didn't load, 8 characters",
+      "Delete copy, Your save didn't load, 8 characters",
+      'Download copy, This save is too old to open, 100 characters',
+      'Delete copy, This save is too old to open, 100 characters',
+    ])
+    expect(new Set(names).size).toBe(names.length)
+    expect(labels([newer])).toEqual(['Reload, This save is from a newer version', 'Download copy, This save is from a newer version, 100 characters'])
+    expect(labels([unreachable])).toEqual(['Reload, Your saved life is out of reach'])
+  })
+
+  it('keeps the visible label of every button as it was', () => {
+    const out = renderToStaticMarkup(createElement(SaveNoticeList, { ...props }))
+    expect(out.match(/>Download copy<\/button>/g)).toHaveLength(2)
+    expect(out.match(/>Delete copy<\/button>/g)).toHaveLength(2)
+  })
+
+  it('asks before a copy goes: the notice being asked about shows the question in place of its buttons', () => {
+    const out = renderToStaticMarkup(createElement(SaveNoticeList, { ...props, asking: damaged.id, onConfirmDelete: vi.fn(), onKeep: vi.fn() }))
+    expect(out).toContain('Delete this copy? It can&#x27;t be brought back.')
+    // The other notice is untouched, and the one being asked about offers only the two answers.
+    expect(out.match(/>Download copy<\/button>/g)).toHaveLength(1)
+    expect(out).toContain('>Delete it<')
+    expect(out).toContain('>Keep it<')
+  })
+
+  it('passes the id to the answer that deletes, and nothing to the one that keeps', () => {
+    const onConfirmDelete = vi.fn()
+    const onKeep = vi.fn()
+    const tree = SaveNoticeList({ ...props, asking: tooOld.id, onConfirmDelete, onKeep })
+    const byLabel = new Map(buttonsOf(tree).map((b) => [b.label, b.press]))
+    byLabel.get('Delete it')?.()
+    expect(onConfirmDelete).toHaveBeenCalledExactlyOnceWith(tooOld.id)
+    byLabel.get('Keep it')?.()
+    expect(onKeep).toHaveBeenCalledExactlyOnceWith()
+  })
+
+  it('has a status line for what the page has to tell about a copy', () => {
+    const out = renderToStaticMarkup(createElement(SaveNoticeList, { ...props, message: "That copy couldn't be read." }))
+    expect(out).toContain('role="status"')
+    expect(out).toContain('That copy couldn&#x27;t be read.')
+  })
+})
+
 describe('isDbUnreachable and the New Life warning', () => {
   it('sees the notice for a life that is out of reach, and no other', () => {
     expect(isDbUnreachable()).toBe(false)
@@ -314,9 +377,15 @@ describe('downloadSaveCopy and removeSaveCopy', () => {
     expect(vi.mocked(downloadText).mock.calls[0][0]).toBe('anotherlife-save-2026-10-14.txt')
   })
 
-  it('does nothing when the copy cannot be read', async () => {
-    await downloadSaveCopy(`${SAVE_KEY}.bad.3`)
+  it('does nothing when the copy cannot be read, and says so', async () => {
+    expect(await downloadSaveCopy(`${SAVE_KEY}.bad.3`)).toBe(false)
     expect(downloadText).not.toHaveBeenCalled()
+  })
+
+  it('says it handed the copy over when it did', async () => {
+    await hydrateSaves({ backend: memorySaveBackend('not json') })
+    const [kept] = getSaveStatus().notices
+    expect(await downloadSaveCopy(kept.id)).toBe(true)
   })
 
   it('removes the copy and its notice', async () => {

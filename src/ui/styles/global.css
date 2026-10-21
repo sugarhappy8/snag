@@ -2169,6 +2169,22 @@ label {
 .save-notice-actions .btn {
   flex: 1 1 140px;
 }
+.save-notice-confirm {
+  margin-top: 12px;
+}
+.save-notice-confirm .save-notice-text {
+  color: var(--text);
+  font-weight: 700;
+}
+.save-notices-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.save-notices-message:empty {
+  display: none;
+}
 
 /* A view that loads on demand (lazyView): the box shown while its code arrives, and the note if it never does. */
 .lazy-box {

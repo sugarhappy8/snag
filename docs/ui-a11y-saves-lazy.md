@@ -135,7 +135,9 @@ does, `bootApp` renders anyway and the page plays from whatever localStorage hol
    record that has a consequence: if the player then abandons the IndexedDB life, the next boot finds that lone
    localStorage record and imports it. It needs five kept copies, both stores present and an abandon, and it is accepted.
    Home lists every copy with Download copy and Delete copy (`SaveNotices.tsx`); a save from a newer version offers Reload
-   and Download copy, with no Delete. A record left in the main slot can be downloaded but not deleted from there.
+   and Download copy, with no Delete. Delete copy asks "Delete this copy?" in place (Delete it, Keep it, Escape keeps) and
+   focus lands on Keep it, then back on the button, or on the list after a delete. Every button is named for its copy
+   ("Delete copy, Your save didn't load, 8 characters"), and a download that finds nothing says so. A record left in the main slot can be downloaded but not deleted from there.
 
 Tests: `test/save-hydrate.test.ts` (the table, the fallbacks, the import checks, the v4.0.2 shape and the schema 1 fixture),
 `test/save-boot.test.ts`, `test/save-notice.test.ts`. The fake database in `test/save-kit.ts` can fail to open, hang on
