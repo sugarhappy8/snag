@@ -522,6 +522,49 @@ describe('bus: the guard', () => {
     expect(() => bus.emit(g, fact('other.kind'))).toThrow(/b\.world.*world/)
   })
 
+  it('does not blame a handler for creating the bare `{ v: 1 }` world root that ensureWorld makes, and still sees anything else written there (R2-K7)', async () => {
+    const { reg, bus } = await fresh()
+    reg.registerModule(declares('make.root', 'add.sibling', 'bump.version', 'edit.root'))
+    const world = (g: GameState): Record<string, unknown> => {
+      const w = g as unknown as { world?: Record<string, unknown> }
+      return (w.world ??= { v: 1 })
+    }
+    reg.registerModule(mod('c.root', { handles: [handler('make.root', (g) => void (world(g).facts = { v: 1, rows: [] }), 'world.facts')] }))
+    reg.registerModule(
+      mod('c.sibling', {
+        handles: [
+          handler(
+            'add.sibling',
+            (g) => {
+              world(g).facts = { v: 1, rows: [] }
+              world(g).ledger = { v: 1 }
+            },
+            'world.facts',
+          ),
+        ],
+      }),
+    )
+    reg.registerModule(mod('c.bump', { handles: [handler('bump.version', (g) => void ((world(g) as { v: number }).v = 2), 'world.facts')] }))
+    reg.registerModule(mod('c.edit', { handles: [handler('edit.root', (g) => void (world(g).y = 2030), 'world.facts')] }))
+    bus.setBusGuard(ownSliceGuard())
+    // the root made on the way to the slice is not a write outside it, whether the world was absent or was already a bare root
+    const a = life()
+    expect(bus.emit(a, fact('make.root'))).toBe(true)
+    expect((a as unknown as { world: unknown }).world).toEqual({ v: 1, facts: { v: 1, rows: [] } })
+    const b = life()
+    ;(b as unknown as { world: unknown }).world = { v: 1 }
+    expect(bus.emit(b, fact('make.root'))).toBe(true)
+    // a second shard, a changed version or a changed year in that root is a write outside the slice
+    expect(() => bus.emit(life(), fact('add.sibling'))).toThrow(/c\.sibling.*world/)
+    expect(() => bus.emit(life(), fact('bump.version'))).toThrow(/c\.bump.*world/)
+    expect(() => bus.emit(life(), fact('edit.root'))).toThrow(/c\.edit.*world/)
+    // and it is the same for a world that held another shard before the handler ran
+    const c = life()
+    ;(c as unknown as { world: unknown }).world = { v: 1, ledger: { v: 1 } }
+    expect(bus.emit(c, fact('make.root'))).toBe(true)
+    expect(() => bus.emit(c, fact('edit.root'))).toThrow(/c\.edit.*world/)
+  })
+
   it('does not read a slice that is not there, and does not change the state it checks', async () => {
     const { reg, bus } = await fresh()
     reg.registerModule(declares('company.failed'))

@@ -8,7 +8,9 @@
 // it to that. Before a handler runs it clones the state, takes the slice out of the clone and writes down what is left, key by
 // key; after the handler it does the same and compares. A handler that wrote anywhere else changes a key and the guard throws,
 // naming the module, the slice and the first top-level key that moved. Taking the slice out also takes out the parent objects
-// that taking it out leaves empty, so a handler that has to create `g.world` to reach `world.facts` is not blamed for creating it.
+// that taking it out leaves bare (empty, or the `{ v: 1 }` root that world/state.ts ensureWorld creates), so a handler that has to
+// create `g.world` to reach `world.facts` is not blamed for creating it. A parent that holds anything else, or another version,
+// is not bare: a handler that adds a second shard or bumps the root's version while it is there is caught.
 //
 // The guard clones and writes down the whole state on every delivery, which costs tens of milliseconds on a long life. It is for
 // tests and for the fuzz walk. Production never sets a guard (a scan in test/kernel-bus.test.ts keeps it that way).
@@ -25,8 +27,14 @@ export function loadModules(): Promise<typeof import('../src/game/modules')> {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** What a parent holds once the slice is out of it and nobody else wrote there: nothing, or the bare root `{ v: 1 }` of the world. */
+function isBare(o: Record<string, unknown>): boolean {
+  const keys = Object.keys(o)
+  return keys.length === 0 || (keys.length === 1 && keys[0] === 'v' && o.v === 1)
+}
+
 /**
- * Takes `parts` (a dotted slice path, split) out of a state clone, then the ancestors that are left empty. Both snapshots of a
+ * Takes `parts` (a dotted slice path, split) out of a state clone, then the ancestors that are left bare. Both snapshots of a
  * delivery go through this, so a parent that only exists because the handler made it is out of both or in neither.
  */
 function cutSlice(root: Record<string, unknown>, parts: readonly string[]): void {
@@ -38,7 +46,7 @@ function cutSlice(root: Record<string, unknown>, parts: readonly string[]): void
   }
   if (chain.length === parts.length) delete chain[chain.length - 1]![parts[parts.length - 1]!]
   for (let i = chain.length - 1; i > 0; i--) {
-    if (Object.keys(chain[i]!).length > 0) break
+    if (!isBare(chain[i]!)) break
     delete chain[i - 1]![parts[i - 1]!]
   }
 }
