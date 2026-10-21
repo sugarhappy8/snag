@@ -577,7 +577,7 @@ Personal and family hedge funds should be delegable to the existing personal fin
 
 ## Priority 2: UI and accessibility
 
-**Status: PLANNED**
+**Status: PARTLY DONE in v4.1.0 (modal focus, keyboard in menus, header contrast); announcements for changing values and finance dashboards remain**
 
 - Reliable focus traps and focus restoration for every modal.
 - Full keyboard navigation for menus, candidate comparisons, and financial controls.
