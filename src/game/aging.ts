@@ -11,6 +11,7 @@ import { yearlyDevelopment } from './development'
 import { yearlySharedProjects } from './activities/shared-projects'
 import { yearlyGivingFund } from './activities/giving-fund'
 import { yearlyComputer } from './computer'
+import { erodeCash } from './cash'
 import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
@@ -116,7 +117,7 @@ export function ageUp(g: GameState): void {
   // The economic year boundary precedes every income-producing hook, including history.
   // New-year earnings must not be eroded as though held since the previous birthday.
   yearlyEconomy(g)
-  c.money /= 1 + economyOf(g).inflation
+  erodeCash(g, economyOf(g).inflation)
 
   // The life series keeps one row for each age lived, the year of death included (src/game/life-series.ts).
   for (const [, hook] of YEARLY_HOOKS) {

@@ -4238,7 +4238,7 @@ function foreclose(g: GameState, a: Asset): void {
   const shortfall = Math.max(0, owed - sale)
   g.flags.creditDefaults = (typeof g.flags.creditDefaults === 'number' ? g.flags.creditDefaults : 0) + 1
   if (shortfall > 0) {
-    const deficiency = addLoan(g, { kind: 'personal', lender: m?.lender ?? 'The bank', principal: shortfall, rate: m?.rate ?? .08, years: 5 })
+    const deficiency = addLoan(g, { kind: 'personal', lender: m?.lender ?? 'The bank', principal: shortfall, rate: m?.rate ?? .08, years: 5, noMint: true })
     if (typeof a.details.countryId === 'string') deficiency.countryId = a.details.countryId
   }
   const wasHome = isHome(g, a)
