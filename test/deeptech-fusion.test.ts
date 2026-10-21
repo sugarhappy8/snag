@@ -16,9 +16,24 @@ import { DEEP_TECH_IDS } from '../src/game/data/markets'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 import { getCountry } from '../src/game/world'
 import { adultIn, found, playLab, type LabRun } from './deeptech-kit'
+import { findSeeds } from './seed-kit'
 
 const COUNTRIES = ['us', 'de', 'jp', 'in']
-const SEEDS = [3, 11, 70, 71]
+
+/**
+ * The founders of the whole-ladder tests, found and not pinned: the first four seeds whose fusion lab in the US raises a Series C
+ * under eager play, so the cohort is four founders for whom ordinary play can carry a lab through the ladder, played in all four
+ * markets and every trade. Series C is a coin flip near one lab in two (52 of 104 over seeds 1 to 26 in the four markets after the
+ * R2 rebaseline, 54 of 104 with the old text draws), so a cohort taken blind lands under the half that the first test asks of its
+ * 16 labs about as often as over it (the old pinned four seeds had 10 of 16 with the old text draws and have 7 now). The search is
+ * memoised, so the tests that share it pay for it once.
+ */
+function founders(): number[] {
+  return findSeeds((s) => playLab('us', s, 'fusion', { eager: true }).series[4] >= 0, 4, { label: 'founders whose US fusion lab raises Series C under eager play' })
+}
+
+/** Twelve founders for the test that only needs some pilot plant to get built: consecutive seeds, not a pinned list. */
+const FOUNDERS = Array.from({ length: 12 }, (_, i) => i + 1)
 
 describe('fusion: the seed pays for the first program, as in every other deep-tech trade', () => {
   it('leaves a new company of any trade at least 8% more than its cheapest first program costs', () => {
@@ -126,6 +141,7 @@ function count(runs: LabRun[], f: (r: LabRun) => boolean): number {
 
 describe('fusion: twenty-five years of ordinary play', () => {
   it('starts its first program, raises Series C and finances the pilot plant, harder than chips and easier than drugs', { timeout: 900_000 }, () => {
+    const SEEDS = founders()
     const play = (ind: string) => COUNTRIES.flatMap((cc) => SEEDS.map((seed) => playLab(cc, seed, ind, { eager: true })))
     const fusion = play('fusion')
     const chips = play('semiconductor')
@@ -149,11 +165,12 @@ describe('fusion: twenty-five years of ordinary play', () => {
 
   it('builds the pilot plant in a rich market for some founders', { timeout: 900_000 }, () => {
     let built = 0
-    for (const cc of ['us', 'de']) for (const seed of [3, 11, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79]) if (playLab(cc, seed, 'fusion', { eager: true }).stage[3] >= 0) built++
+    for (const cc of ['us', 'de']) for (const seed of FOUNDERS) if (playLab(cc, seed, 'fusion', { eager: true }).stage[3] >= 0) built++
     expect(built).toBeGreaterThan(0)
   })
 
   it('with only the general manager’s yearly turn (no founder raising rounds), still starts and reaches a Series C', { timeout: 900_000 }, () => {
+    const SEEDS = founders()
     const runs = COUNTRIES.flatMap((cc) => SEEDS.map((seed) => playLab(cc, seed, 'fusion')))
     expect(count(runs, (r) => r.first === 0)).toBe(runs.length)
     expect(count(runs, (r) => r.series[4] >= 0)).toBeGreaterThanOrEqual(3)

@@ -109,6 +109,10 @@ function goSolo(): ContractGolden {
 
 // Captured at HEAD (eefda33 plus the plan), before any source change: `MUSIC_CAPTURE=1 npx vitest run --maxWorkers=1
 // test/music-legacy.test.ts -t "prints the golden"`. The award line keeps its em-dash as a \u2014 escape.
+// R2 rebaseline: the `hit` block was captured again (money, sales and the profile numbers did not move; the popularity, the
+// renewal terms, the award rolls and the review and award sentences did). Text draws left g.rng, so the review adjective, the
+// award line and every legacy roll after them read a different g.rng position. With pickLine drawing g.rng again the old
+// golden came back to the byte, so the move is the rebaseline and nothing else. The other blocks did not move.
 const GOLDEN: Golden = {
   "release": {
     "3": {
@@ -166,63 +170,64 @@ const GOLDEN: Golden = {
     "3": {
       "money": 1124006,
       "contractYears": 0,
-      "popularity": 72,
+      "popularity": 73,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":770173,\"earned\":770173,\"cert\":\"Gold\",\"quality\":79,\"royalty\":3611}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 770,173 copies and was certified Gold! Reviews were warm. You earned $770,173. Your popularity is now 92%. It peaked at #10.",
-        "Your contract with Garage Door Records is up. They're offering a new 2-year deal worth $692,000."
+        "Your dance studio album \"Night Bus\" sold 770,173 copies and was certified Gold! Fans seem to love it. You earned $770,173. Your popularity is now 92%. It peaked at #10.",
+        "\"Night Bus\" was nominated for the Golden Record Award for Album of the Year, but lost to your biggest rival.",
+        "Your contract with Garage Door Records is up. They're offering a new 2-year deal worth $709,000."
       ]
     },
     "4": {
       "money": 2732958,
       "contractYears": 0,
-      "popularity": 72,
+      "popularity": 75,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":2016818,\"earned\":2016818,\"cert\":\"Double Platinum\",\"quality\":87,\"royalty\":9454}],\"burnedLabels\":[],\"awards\":[\"Golden Record Award for Album of the Year \u2014 \\\"Night Bus\\\" (age 26)\"],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 2,016,818 copies and was certified Double Platinum! Critics are calling it a masterpiece. You earned $2,016,818. Your popularity is now 93%. It peaked at #12.",
-        "\"Night Bus\" won the Golden Record Award for Album of the Year! You thanked your mom and nearly tripped on the way off stage.",
-        "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $1,966,000."
+        "Your dance studio album \"Night Bus\" sold 2,016,818 copies and was certified Double Platinum! Music blogs crowned it album of the year. You earned $2,016,818. Your popularity is now 93%. It peaked at #12.",
+        "\"Night Bus\" won the Golden Record Award for Album of the Year! You thanked nobody in particular and nearly tripped on the way off stage.",
+        "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $1,500,000."
       ]
     },
     "5": {
       "money": 4458089,
       "contractYears": 0,
-      "popularity": 68,
+      "popularity": 71,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":3353483,\"earned\":3353483,\"cert\":\"Double Platinum\",\"quality\":78,\"royalty\":15720}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
         "Your dance studio album \"Night Bus\" sold 3,353,483 copies and was certified Double Platinum! Fans seem to love it. You earned $3,353,483. Your popularity is now 92%. It peaked at #17.",
-        "\"Night Bus\" was nominated for the Golden Record Award for Album of the Year, but lost to an AI-generated lullaby.",
-        "Your contract with Garage Door Records is up. They're offering a new 2-year deal worth $920,000."
+        "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $1,500,000."
       ]
     },
     "6": {
       "money": 869563,
       "contractYears": 0,
-      "popularity": 72,
+      "popularity": 74,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":573025,\"earned\":573025,\"cert\":\"Gold\",\"quality\":71,\"royalty\":2687}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 573,025 copies and was certified Gold! Reviews were warm. You earned $573,025. Your popularity is now 90%. It peaked at #10.",
-        "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $2,172,000."
+        "Your dance studio album \"Night Bus\" sold 573,025 copies and was certified Gold! Fans seem to love it. You earned $573,025. Your popularity is now 90%. It peaked at #10.",
+        "\"Night Bus\" was nominated for the Golden Record Award for Album of the Year, but lost to your biggest rival.",
+        "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $1,500,000."
       ]
     },
     "7": {
       "money": 817130,
       "contractYears": 0,
-      "popularity": 64,
+      "popularity": 66,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":532400,\"earned\":532400,\"cert\":\"Gold\",\"quality\":50,\"royalty\":2496}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 532,400 copies and was certified Gold! A few tracks are growing on people. You earned $532,400. Your popularity is now 86%. It peaked at #15.",
-        "Your contract with Garage Door Records is up. They're offering a new 3-year deal worth $901,000."
+        "Your dance studio album \"Night Bus\" sold 532,400 copies and was certified Gold! It got lost in the shuffle. You earned $532,400. Your popularity is now 86%. It peaked at #15.",
+        "Your contract with Garage Door Records is up. They're offering a new 3-year deal worth $1,019,000."
       ]
     },
     "8": {
       "money": 2725430,
       "contractYears": 0,
-      "popularity": 69,
+      "popularity": 65,
       "profile": "{\"stageName\":null,\"discography\":[{\"title\":\"Night Bus\",\"type\":\"Studio Album\",\"genre\":\"Pop\",\"subgenre\":\"Dance\",\"age\":25,\"sold\":2010987,\"earned\":2010987,\"cert\":\"Double Platinum\",\"quality\":56,\"royalty\":9427}],\"burnedLabels\":[],\"awards\":[],\"tours\":0,\"concerts\":0,\"owner\":\"v2:1:player\"}",
       "queue": [
-        "Your dance studio album \"Night Bus\" sold 2,010,987 copies and was certified Double Platinum! A few tracks are growing on people. You earned $2,010,987. Your popularity is now 87%.",
-        "Your contract with Garage Door Records is up. They're offering a new 4-year deal worth $1,231,000."
+        "Your dance studio album \"Night Bus\" sold 2,010,987 copies and was certified Double Platinum! It got lost in the shuffle. You earned $2,010,987. Your popularity is now 87%.",
+        "Your contract with Garage Door Records is up. They're offering a new 3-year deal worth $1,206,000."
       ]
     }
   },
@@ -296,7 +301,7 @@ describe('music legacy pin', () => {
 
   it('pins five legacy years of a hit with a release, royalties, awards and a renewal [RF2]', () => {
     // Music 2.0 caps every advance at $1,500,000 a deal, the renewal included (a legacy renewal could reach $2.2M).
-    // The draws are unchanged, so each golden renewal sentence is compared with its advance cut to that cap.
+    // Each golden renewal sentence is compared with its advance cut to that cap (the R2 capture is already cut, so it holds).
     const capped = (line: string): string => line.replace(/worth \$([\d,]+)\./, (_, n: string) => `worth $${Math.min(1_500_000, Number(n.replace(/,/g, ''))).toLocaleString('en-US')}.`)
     for (const s of HIT_SEEDS) expect(fiveYears(s, true)).toEqual({ ...GOLDEN.hit[s], queue: GOLDEN.hit[s].queue.map(capped) })
   })
