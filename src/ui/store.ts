@@ -12,8 +12,11 @@
 import { useSyncExternalStore } from 'react'
 import { ageUp } from '../game/aging'
 import { bindMoneyContext, moneyContextOf, netWorth, notice } from '../game/core'
+import { FLAGS } from '../game/flags'
+import { emptyInbox, inboxUnread, markSeen, routeMinorNotices } from '../game/inbox'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
 import { lifeSpark } from '../game/life-series'
+import { routesToInbox } from '../game/notice-policy'
 import { resolveTask } from '../game/offline'
 import {
   clearSave,
@@ -38,7 +41,7 @@ import {
 import { runScript } from '../game/scripts'
 import { arriveInPast, sandboxTimeMachine, travelBlock, type TimeStop } from '../game/timeMachine'
 import type { GameState, MenuAction, ModalItem } from '../game/types'
-import { loadSettings, normalizeSettings, saveSettings, type Settings } from '../settings'
+import { loadSettings, normalizeSettings, quietModeOn, saveSettings, type Settings } from '../settings'
 
 export type Screen = 'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'
 
@@ -555,18 +558,43 @@ const MAX_TASKS_PER_PASS = 50
 let resolving = false
 
 /**
+ * Quiet Mode (G.11 step 2): while FLAGS.quietInbox and the Quiet Mode setting are both on, move every notice that
+ * routesToInbox allows from the queue to the inbox, in one act(). A notice has no dependency on the items before it,
+ * so it routes from anywhere in the queue. The cheap read comes first, so a pass with nothing to route clones and
+ * saves nothing. True when it moved any. This is the store flow only: headless ageUp and every g.queue reader never
+ * see it. Which notices route is decided by routesToInbox and nothing else here.
+ */
+function routeQuietNotices(): boolean {
+  if (!FLAGS.quietInbox || !quietModeOn(state.settings)) return false
+  if (!state.game?.queue.some((m) => routesToInbox(m, true))) return false
+  let moved = 0
+  try {
+    act((draft) => {
+      moved = routeMinorNotices(draft)
+    })
+  } catch (err) {
+    // Routing is a courtesy: a notice that can't move stays a popup the player can close.
+    console.error('Routing notices to the inbox failed:', err)
+    return false
+  }
+  return moved > 0
+}
+
+/**
  * Resolve the built-in tasks ('aiTask' modals) at the head of the queue, synchronously and
  * offline (game/offline.ts), so the player never sees them: the popups they produce take their
  * place. Safe to call any time, from anywhere, as often as you like (React StrictMode's double
  * effects included): each task is looked up by id in the latest state and removed in the same
  * commit that applies it, so it can't be resolved twice; a task that throws is dropped (the
- * modal can never get stuck); calls made while a pass is running are folded into it.
+ * modal can never get stuck); calls made while a pass is running are folded into it. With Quiet
+ * Mode on, routine notices go to the inbox first (routeQuietNotices).
  */
 export function processQueue(): void {
   if (resolving) return
   resolving = true
   try {
     for (let i = 0; i < MAX_TASKS_PER_PASS; i++) {
+      if (routeQuietNotices()) continue
       const head = state.game?.queue[0]
       if (!head || head.kind !== 'aiTask') return
       const task = head.task
@@ -575,4 +603,17 @@ export function processQueue(): void {
   } finally {
     resolving = false
   }
+}
+
+// ---------------------------------------------------------------------------
+// Inbox
+
+/** The player opened the inbox: count every row as seen. One act(), and only when something is unread. */
+export function markInboxSeen(): void {
+  if (inboxUnread(state.game) > 0) act(markSeen)
+}
+
+/** Remove every row from the inbox (the total stays, so the count of what ever arrived is kept). */
+export function clearInbox(): void {
+  act(emptyInbox)
 }
