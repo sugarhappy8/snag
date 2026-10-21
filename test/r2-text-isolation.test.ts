@@ -38,7 +38,7 @@ function offenders(list: readonly PoolOffender[]): string {
 
 function failure(life: ParityLife, what: string, moves: readonly Divergence[]): string {
   const head = `${what}: ${first(moves)}. A converted pool changes state. `
-  if (!ATTRIBUTE) return `${head}Run R2_PARITY_ATTRIBUTE=1 /Users/saeed/projects/anotherlife/wt/bin/vt test/r2-text-isolation.test.ts to name the pools.`
+  if (!ATTRIBUTE) return `${head}Run R2_PARITY_ATTRIBUTE=1 vt test/r2-text-isolation.test.ts to name the pools.`
   return `${head}Pools whose rotation moves state (revert each to pick, with a skip entry, or use eraPickPlain or vPlain):\n${offenders(bisectOffenders(life))}`
 }
 

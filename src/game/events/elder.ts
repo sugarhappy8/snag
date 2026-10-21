@@ -92,7 +92,7 @@ export const ELDER_EVENTS = defineEvents([
       const gk = anyOf(g, grandkids(g, 14))
       const who = gk ? gk.firstName : 'your grandson'
       const amt = Math.round(dollars(g, 900, 4500) / 100) * 100
-      const place = g.character.countryId === 'us' ? pickLine(g, SCAM_PLACES) : fillLocal(g, pickLine(g, LOCAL_SCAM_PLACES))
+      const place = g.character.countryId === 'us' ? pickLine(g, SCAM_PLACES) : fillLocal(g, pick(g, LOCAL_SCAM_PLACES))
       const way = scamWay(g)
       return {
         text: `Your phone rings. A muffled voice says, "${gk ? `Hi, it's ${who}` : "Grandma? Grandpa? It's me"}! I'm stuck in ${place} and I need ${money(amt)} ${way.pay} for bail. Please don't tell Mom!" What will you do?`,
