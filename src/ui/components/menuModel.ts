@@ -1,6 +1,7 @@
 // Pure helpers for evaluating menu nodes safely (no React, no store), shared by the menu
 // UI and unit-tested on their own. A bug in one feature menu must not take the UI down,
 // so every callback is wrapped.
+import { readChartSpec, type ChartSpec } from '../../game/charts/spec'
 import { FLAGS } from '../../game/flags'
 import { badgeText } from '../../game/hubs/needs'
 import { HINT_EMOJI } from '../../game/talents'
@@ -80,6 +81,21 @@ export function infoText(node: MenuInfo, g: GameState): string {
   } catch (err) {
     report(`info(${node.id})`, err)
     return ''
+  }
+}
+
+/**
+ * The chart an info row carries, ready to draw: null for a row with no chart, a builder with nothing to draw, a builder
+ * that throws (reported, like infoText) and a spec the reader refuses (a NaN, a too-long text). The text of the row stays
+ * the way to read it, so a null here only means the row is drawn as words.
+ */
+export function infoChart(node: MenuInfo, g: GameState): ChartSpec | null {
+  if (typeof node.chart !== 'function') return null
+  try {
+    return readChartSpec(node.chart(g))
+  } catch (err) {
+    report(`chart(${node.id})`, err)
+    return null
   }
 }
 

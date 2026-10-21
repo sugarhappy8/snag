@@ -796,3 +796,30 @@
     width: 48px;
   }
 }
+
+/* ------------------------------------------------------------------------ */
+/* A chart row inside a menu list (R1-C13)                                   */
+
+/* The .menu-info row (global.css) is a flex row with an emoji. A chart row holds only the frame, so it becomes a block
+   that gives the frame the whole width, and it takes the text colour back from the muted words of the loading state. */
+.menu-info.menu-info-chart {
+  display: block;
+  padding: 12px 14px 14px;
+  color: var(--text);
+  white-space: normal;
+}
+
+.menu-info-chart > .ch-frame {
+  width: 100%;
+}
+
+/* The frame has no card of its own here: the list row is the card. */
+.menu-info-chart .ch-title {
+  font-size: 14px;
+}
+
+@media (max-width: 374px) {
+  .menu-info.menu-info-chart {
+    padding: 10px 10px 12px;
+  }
+}
