@@ -10,8 +10,11 @@
 //
 // The harness only reads g.log and the drained popups, so it never changes the game.
 import { describe, expect, it } from 'vitest'
+import { sportsProfile, yearlySponsors } from '../src/game/special/sports-core'
 import { fillSlots } from '../src/game/text/state'
 import { STATE_TABLE } from '../src/game/text/state-table'
+import type { GameState } from '../src/game/types'
+import { makeTestGame } from './helpers'
 import { normalize, textMetrics, type LifeTrace } from './text-metrics'
 import { formatProbe, playProbeLife, probeLives, PROBE_UNTIL_AGE, summarize, writeTextMetrics, type ProbeLife, type ProbeResult } from './text-probe'
 
@@ -140,7 +143,17 @@ const FAMILIES: readonly Family[] = [
     was: 'The IBC crashed 29% this year. Good thing I had nothing in it.',
     slots: { index: 'IBC', move: '29%' },
   },
+  {
+    name: 'endorsement income',
+    re: /^(i earned \S+ from endorsements this year|the brands paid me \S+ this year|endorsements brought in \S+)/,
+    maxExtra: 4,
+    rows: ['endorse.income'],
+    was: 'I earned $120k from endorsements this year.',
+    slots: { money: '$120k' },
+  },
 ]
+
+const family = (name: string): Family => FAMILIES.find((f) => f.name === name)!
 
 describe('R2-P9 families', () => {
   for (const f of FAMILIES) {
@@ -172,3 +185,36 @@ describe('R2-P9 families', () => {
   })
 })
 
+// A family the 13 lives never repeat today (the probe's lives rarely pay an allowance or an endorsement deal two years in a
+// row) is played directly: the same state held for twelve years used to print twelve times.
+
+const SPOKEN_LIFE = 5
+
+function lines(g: GameState): string[] {
+  return g.log.flatMap((y) => y.entries.map((e) => e.text))
+}
+
+describe('R2-P9 sites, played directly', () => {
+  it('a deal that pays the same for twelve years is said in the first year and then once in five', () => {
+    const g = makeTestGame(SPOKEN_LIFE, { age: 27, countryId: 'us' })
+    g.year = 2026
+    g.log = [{ age: 27, year: g.year, entries: [] }]
+    sportsProfile(g).sponsors = [{ brand: 'Acme Shoes', product: 'trainers', yearly: 400_000, yearsLeft: 40, sinceAge: 25 }]
+    const cash = g.character.money
+    const uids: number[] = []
+    for (let y = 0; y < 12; y++) {
+      g.year += 1
+      g.character.age += 1
+      const before = g.nextId
+      yearlySponsors(g, null, 0)
+      uids.push(g.nextId - before)
+    }
+    expect(g.character.money).toBeGreaterThanOrEqual(cash + 12 * 400_000)
+    // The line took one log id every year, spoken or not: how many lines print never moves g.nextId.
+    expect(uids).toEqual(Array.from({ length: 12 }, () => 1))
+    const said = lines(g).filter((t) => family('endorsement income').re.test(normalize(t)))
+    expect(said.length, said.join(' | ')).toBeGreaterThanOrEqual(2)
+    expect(said.length, said.join(' | ')).toBeLessThanOrEqual(3)
+    for (let i = 1; i < said.length; i++) expect(said[i]).not.toBe(said[i - 1])
+  })
+})
