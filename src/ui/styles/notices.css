@@ -39,3 +39,68 @@
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
+
+/* Inbox sheet (R1-T6): where routine notices wait while Quiet Mode is on (InboxSheet.tsx). Tokens only, so it follows
+   light and dark mode. A new row is marked by the border and by the word "New" for screen readers, not by colour alone. */
+
+.inbox-group {
+  margin: 0 0 16px;
+}
+
+.inbox-heading {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.inbox-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.inbox-row.is-new {
+  border-left: 3px solid var(--tone-event);
+}
+
+.inbox-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inbox-open {
+  flex: none;
+  min-height: 44px;
+}
+
+.inbox-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inbox-quiet {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
