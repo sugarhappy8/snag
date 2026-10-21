@@ -49,3 +49,6 @@ you opened a menu) and for words (one more line in a pool must not change the ne
 - `test/r2-text-isolation.test.ts` plays lives with one extra text draw every year. It must change text and nothing else.
 - `test/fixtures/r2-parity.json` is a canary: `g.rng` and ten slices after every year of 12 lives. A moved canary means a draw
   was added, removed or reordered. Do not re-record it without a reason: `R2_PARITY_RECORD=update` with `R2_PARITY_REASON`.
+  A digest rounds a number that is not an integer to 9 significant digits (`PARITY_DIGITS`): `Math.log`, `Math.exp` and
+  `Math.pow` differ in the last bit between CPUs and between Node 22 and 24, and the engine keeps a few unrounded floats, so the
+  exact bits would fail on every machine but the one that recorded them. A divergence the canary reports is a real move.
