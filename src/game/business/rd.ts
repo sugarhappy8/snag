@@ -7,10 +7,17 @@
 // a few projects at once without strain (one more slot per doubling of the company's sites);
 // beyond that every project stretches it. Projects move a year closer at every year-end
 // (economy.evolve → advanceRd) and then launch as a product line or flop.
+//
+// The odds, the years and the quality of a project are the Effort engine's (effort/engine.ts `quote`, through the adapter
+// rd-effort.ts), and a finished project is booked through `step` for the player's own companies (research-effort.ts
+// `bookResearch`): a flop banks know-how in the product's family, in the company's own map, and the next try at that family is likelier
+// by up to 15 points. At the default actor (ambition 50, steady, no know-how, no fatigue) the numbers are exactly what they were.
 import { firmCash } from '../cash'
 import { formatMoney, log, notice } from '../core'
 import { hasTalent } from '../talents'
-import { chance, rand, uid } from '../rng'
+import { rand, uid } from '../rng'
+import { quote } from '../effort/engine'
+import type { Quote, Reason, Task } from '../effort/types'
 import type { Asset, GameState } from '../types'
 import { marketDemand, marketKey, marketStateOf, type MarketCtx } from './competition-core'
 import { bizWorth, ceoSkill, fxValue, localEcon, marketCtxFor, ownerTalent, staffPower, type Worth } from './economy'
@@ -25,16 +32,17 @@ import { advanceLab } from './lab-year'
 import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, kindLevel, kindTrend, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
 import { complexityShare } from './products'
 import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
-import { launchSkill, launchTeam, ownerRuns, type ResearchSnap } from './research-effort'
+import { rdAfterword, rdBase, rdInputs, rdResolve, rdStartFx, rdTask } from './rd-effort'
+import { bookResearch, ownerRuns, type ResearchSnap } from './research-effort'
 import { clampN, money, plural, rec } from './util'
 
 /**
  * Chance a project at a normal budget works: whoever runs it, quality, the quality team, the research team (lab-state.ts teamPower).
- * Two parts (research-effort.ts): the skill part and the research team's part, so the Effort engine can name them.
+ * Two parts (research-effort.ts): the skill part and the research team's part, so the Effort engine can name them; rd-effort.ts
+ * `rdBase` puts them together, kept inside .1 to .9.
  */
 export function launchP(g: GameState, b: BizState): number {
-  const s = researchState(g, b)
-  return clampN(launchSkill(s) + launchTeam(s.scientists), 0.1, 0.9)
+  return rdBase(researchState(g, b))
 }
 
 /**
@@ -160,11 +168,28 @@ export function budgetQuality(k: number): number {
   return x >= 1 ? QUALITY_UP * (1 - Math.pow(x, -0.8)) : QUALITY_DOWN * Math.log2(x)
 }
 
-/** Expected quality of a line developed at `k` times its normal budget (before the launch's luck). */
+/** Quality points the talents add to a line: Business in the owner (3), and the Inventor talent in a founder who runs the company (5). */
+function talentQuality(g: GameState, b: BizState): number {
+  return (ownerTalent(g, b, 'Business') ? 3 : 0) + (b.ceo !== 'manager' && g.character.alive && !g.character.prison && hasTalent(g, 'Inventor') ? 5 : 0)
+}
+
+/** Expected quality of a line developed at `k` times its normal budget (before the launch's luck). Heavy R&D's quality is built on it. */
 export function rdQuality(g: GameState, b: BizState, k: number): number {
-  const talent = (ownerTalent(g, b, 'Business') ? 3 : 0) + (b.ceo !== 'manager' && g.character.alive && !g.character.prison && hasTalent(g, 'Inventor') ? 5 : 0)
-  const q = 0.5 * b.quality + 30 + budgetQuality(k) + 0.1 * (ceoSkill(g, b) - 50) + 6 * staffPower(b, 'quality') + talent
+  const q = 0.5 * b.quality + 30 + budgetQuality(k) + 0.1 * (ceoSkill(g, b) - 50) + 6 * staffPower(b, 'quality') + talentQuality(g, b)
   return Math.round(clampN(q, 5, 97))
+}
+
+/**
+ * The engine's quote of an idea in `family` at `k` times its normal budget `cost`: the task and the answer (the odds, the years, the
+ * quality, and the lines that say why). A read: the research state is read once, nothing is written, nothing is drawn. The quality
+ * before the budget is the company, the manager, the quality staff and the talents (the cycle members only this file may call), and the
+ * company's know-how in the family comes from its own map. Used for every quote and for the cause of a flop.
+ */
+function rdRun(g: GameState, b: BizState, family: string, cost: number, k: number): { task: Task; q: Quote } {
+  const s = researchState(g, b)
+  const task = rdTask(cost, baseYears(b.industry), family, RD_MAX, rdBase(s))
+  const quality0 = 0.5 * b.quality + 30 + 0.1 * (s.skill - 50) + 6 * s.qualityStaff + talentQuality(g, b)
+  return { task, q: quote(g, task, rdInputs(g, s, b.knowHow, family, k, quality0)) }
 }
 
 export interface RdQuote {
@@ -173,6 +198,8 @@ export interface RdQuote {
   /** Budget relative to a normal one (after crowding). */
   k: number
   odds: number
+  /** The lines of the odds, in odds points: the team, the funding, the company's know-how in the family, a tired owner (effort/why.ts oddsLine). */
+  why: readonly Reason[]
   /** Booked years until it launches (1-4). */
   years: number
   /** Expected quality of the line if it works. */
@@ -189,15 +216,19 @@ export interface RdQuote {
   lift: number
 }
 
-/** What a budget buys for an idea: odds, time, quality against the rivals (pure, diminishing returns). */
+/**
+ * What a budget buys for an idea: odds, time, quality against the rivals (pure, diminishing returns). The odds, the years and the quality
+ * are the Effort engine's (rd-effort.ts): at the default actor exactly what they always were, and a flop in the family or a tired owner
+ * moves them, with a line that says so. The budget multiple stops at RD_MAX, past which money buys nothing more.
+ */
 export function rdQuote(g: GameState, b: BizState, idea: string, budget: number, ctx?: MarketCtx): RdQuote {
   const cost = rdCost(b, idea)
   const k = Math.max(0.01, (Number.isFinite(budget) ? Math.max(0, budget) : 0) / (cost * rdCrowding(b)))
-  const p0 = launchP(g, b)
-  const odds = clampN(1 - (1 - p0) * Math.pow(k, -0.4), 0.05, 0.95)
-  const years = Math.round(clampN(Math.ceil(baseYears(b.industry) / Math.sqrt(k) - 1e-9), 1, 4))
-  const quality = rdQuality(g, b, k)
   const info = lineInfo(idea, b.industry)
+  const e = rdRun(g, b, info.family, cost, k).q
+  const odds = e.p
+  const years = e.years
+  const quality = e.quality ?? rdQuality(g, b, k)
   const c = ctx ?? marketCtxFor(g, b, g.year)
   const field = fieldFor(c)
   const f = field.of(info.family)
@@ -205,7 +236,7 @@ export function rdQuote(g: GameState, b: BizState, idea: string, budget: number,
   const later = fieldOf(c.rivals, c.fringe, c.key, launchYear, field.heavy, field.market)
   const line: Product = { name: idea, launched: launchYear, boost: 0, quality, family: info.family, kind: info.kind }
   const lift = productPull(b.industry, [...b.products, line], launchYear, later).total - productPull(b.industry, b.products, launchYear, later).total
-  return { cost, k, odds, years, quality, info, field: f.quality, offer: f.offer, level: f.level, trend: kindTrend(info.family, c.key, g.year, field.heavy), lift: Math.max(0, lift) }
+  return { cost, k: e.k, odds, why: e.reasons, years, quality, info, field: f.quality, offer: f.offer, level: f.level, trend: kindTrend(info.family, c.key, g.year, field.heavy), lift: Math.max(0, lift) }
 }
 
 /** Years of sales a new line is valued over, and the yearly discount. */
@@ -374,6 +405,8 @@ export function startRd(g: GameState, a: Asset, b: BizState, idea: string, budge
   const q = rdQuote(g, b, idea, n)
   firmCash(g, b, -n, 'rnd', a.id)
   b.yearCosts += n
+  // The owner's own strain goes on the project's record, and a default project carries none (it saves what v5.0.0 saved).
+  const fx = rdStartFx(g, researchState(g, b), g.year)
   const p: RdProject = {
     id: uid(g, 'rd'),
     name: idea,
@@ -386,6 +419,7 @@ export function startRd(g: GameState, a: Asset, b: BizState, idea: string, budge
     family: q.info.family,
     kind: q.info.kind,
     started: g.year,
+    ...(fx !== undefined ? { fx } : {}),
   }
   rdOf(b).push(p)
   log(g, `${a.name} started developing ${idea}.`)
@@ -479,15 +513,24 @@ export function advanceRd(g: GameState, b: BizState, year: number): void {
       if (done.won) wins += 1
       continue
     }
-    if (!chance(g, clampN(p.odds, 0.02, 0.98))) {
+    const info = p.family && p.kind ? { family: p.family, kind: p.kind } : lineInfo(p.name, b.industry)
+    // The stored odds decide, with the draws this function always made, in order: one for the odds, one for a hit (only if it works), one
+    // for the quality. A quote of the project as it finishes (its own budget against the idea's normal cost) says why it failed. Only the
+    // player's own companies are booked: an NPC company has no asset, banks nothing and keeps its lines as they were.
+    const cost = rdCost(b, p.name)
+    const run = a !== null ? rdRun(g, b, info.family, cost, Math.max(0.01, p.budget / cost)) : null
+    const out = rdResolve(clampN(p.odds, 0.02, 0.98), HIT_P, run?.q.reasons ?? [], () => rand(g))
+    const booked = a !== null && run !== null ? bookResearch(g, a, run.task, out, { year, ...(p.fx !== undefined ? { fx: p.fx } : {}), k: p.budget / cost }) : null
+    const after = run !== null ? rdAfterword(run.task, out, booked, info.family) : ''
+    const then = after !== '' ? ` ${after}` : ''
+    if (out.kind === 'fail') {
       b.brand = clampN(b.brand - 2, 0, 100)
-      lines.push(`\u{1F4A5} ${p.name} flopped in testing (${money(p.budget)} of R&D).`)
+      lines.push(`\u{1F4A5} ${p.name} flopped in testing (${money(p.budget)} of R&D).${then}`)
       log(g, `${name}'s ${p.name} flopped.`, 'bad')
       continue
     }
-    const hit = chance(g, HIT_P)
+    const hit = out.kind === 'hit'
     const quality = Math.round(clampN(projectQuality(p) + (rand(g) * 2 - 1) * QUALITY_SPREAD + (hit ? HIT_QUALITY : 0), 5, 99))
-    const info = p.family && p.kind ? { family: p.family, kind: p.kind } : lineInfo(p.name, b.industry)
     // A line of the same name may have come with a rival bought meanwhile: the better one stays.
     const same = b.products.findIndex((x) => x.name === p.name)
     const line: Product = { name: p.name, launched: year + 1, boost: 0, quality, family: info.family, kind: info.kind }
@@ -502,7 +545,7 @@ export function advanceRd(g: GameState, b: BizState, year: number): void {
     const f = field.of(info.family)
     const vs = f.offer > 0.02 ? `rivals' versions ${Math.round(f.quality)}` : 'no rival sells one yet'
     const verdict = f.offer <= 0.02 ? 'customers have nowhere else to get it' : quality >= f.quality + 5 ? 'customers will switch to you' : quality >= f.quality - 5 ? 'it holds its own' : 'rivals still do it better'
-    lines.push(`${hit ? '\u{1F525}' : '\u{1F680}'} ${p.name} ${hit ? 'is a smash hit' : 'launches'}: quality ${quality} (${vs}), ${verdict}.`)
+    lines.push(`${hit ? '\u{1F525}' : '\u{1F680}'} ${p.name} ${hit ? 'is a smash hit' : 'launches'}: quality ${quality} (${vs}), ${verdict}.${then}`)
     log(g, `${name} launched ${p.name}${hit ? ' and it was a smash hit' : ''}.`, 'good')
   }
   b.rd = keep
