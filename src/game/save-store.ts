@@ -20,7 +20,7 @@
 import { connectionLost, localSaveBackend, markIdbInUse, SAVE_KEY, type AsyncSaveBackend, type SaveBackend, type SyncSaveBackend } from './save-backends'
 import { assembleStored, type ChunkSource } from './save-chunk-read'
 import { isChunkedHead } from './save-codec'
-import { deleteQuarantine, QUARANTINE_SLOTS, quarantineRecord, readQuarantine, type SaveNotice } from './save-quarantine'
+import { deleteQuarantine, QUARANTINE_SLOTS, quarantineRecord, readQuarantine, replaceQuarantine, type SaveNotice } from './save-quarantine'
 import { migrateSave, SAVE_SCHEMA } from './save-schema'
 import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 
@@ -796,6 +796,30 @@ async function selfContained(backend: SaveBackend, record: string): Promise<stri
     return found.kind === 'ready' ? JSON.stringify(found.game) : null
   } catch {
     return null
+  }
+}
+
+/**
+ * Boot only. A kept copy that is a bare head is rewritten as the whole game it stands for, while its chunks are still stored. A
+ * build that knows no chunks (v4.1.1, after a release was rolled back) files a head it cannot read as "newer" by copying the head's
+ * text alone and leaves the chunk records where they are; once this page saves, the sweep takes them and the copy could be neither
+ * played nor downloaded. A copy that is no head, a head with a chunk missing or hostile, and a rewrite that storage refuses are left
+ * as they are. Never throws.
+ */
+export async function standAloneCopies(): Promise<void> {
+  try {
+    const backend = active()
+    if (backend.chunks === undefined) return
+    const ids = backend.kind === 'async' ? [...QUARANTINE_SLOTS, ...(await backend.overflow.keys())] : QUARANTINE_SLOTS
+    for (const id of ids) {
+      const raw = await readQuarantine(backend, id)
+      // Only a record with a chunk manifest is a head (or an encoded record, which has to be opened to know): the rest is not parsed here.
+      if (raw === null || (!raw.includes('"chunks":') && !/^gz\d:/.test(raw))) continue
+      const whole = await selfContained(backend, raw)
+      if (whole !== null) await replaceQuarantine(backend, id, whole)
+    }
+  } catch {
+    // storage failed: the copies stay as they are
   }
 }
 

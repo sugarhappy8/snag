@@ -102,6 +102,12 @@ The boot then runs `migrateSave(game, { versions })`. A game with lost chunks pl
 unreadable is `damaged` and quarantined whole. A head from a later schema is `newer` and left untouched. The Time Machine restores
 through the same two calls, and a snapshot with a lost part restores as nothing rather than as a life with a missing economy.
 
+A release rolled back to v4.1.1 and forward again: v4.1.1 knows no chunks, so it files a v5 head it cannot read as `newer` by copying
+the head text alone to quarantine, writes its own save, and leaves the chunk records in storage. The boot of v5 finds that copy first
+(before any save, so before the sweep), and if every chunk it names is still stored it rewrites the copy as the whole game
+(`standAloneCopies`, which swaps the text in place and reads it back). A head with a chunk already gone stays as it was: there is
+nothing left to make it from. Our own copies of a head are made whole when they are made (`copyOf` in `save-hydrate.ts`).
+
 ## The Time Machine
 
 A snapshot is the codec's head plus chunks under its own keys (`s|<life>|<rec>`, `l|<life>|<chunk id>`), compressed (`gz2`) from 1,000

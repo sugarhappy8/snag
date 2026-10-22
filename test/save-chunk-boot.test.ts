@@ -633,6 +633,87 @@ describe('the legacy record', () => {
   })
 })
 
+// --- A release rolled back to v4.1.1 and forward again ------------------------------------------------
+
+describe('a copy of a head that v4.1.1 filed after a rollback', () => {
+  // v4.1.1 knows no chunks: it files the v5 head it cannot read as 'newer' by copying the head text alone to quarantine, writes its own
+  // plain save over the main slot, and leaves the chunk records where they are. When v5 comes back, the first save sweeps them.
+
+  it('on localStorage: the boot rewrites the head as the whole game while its chunks are there, so the sweep cannot orphan it', async () => {
+    expect(save.saveGame(life)).toBe(true)
+    const head = storage.data.get(SAVE_KEY) ?? ''
+    expect(isChunkedHead(JSON.parse(head))).toBe(true)
+    // The rollback: the copy v4.1.1 makes, then its own life in the main slot.
+    storage.data.set(SLOT_1, head)
+    storage.data.set(SAVE_KEY, otherLife)
+
+    resetSaveStoreForTests()
+    expect(await hydrateSaves({ idb: false })).toMatchObject({ backend: 'local', source: 'local' })
+    const g = save.loadGame()
+    if (g === null) throw new Error('the rolled-back life did not load')
+    expect(save.saveGame(g)).toBe(true)
+    // The sweep took the chunks the old head named: nothing in storage is left for it.
+    expect([...storage.data.keys()].filter((k) => k.startsWith(CHUNK_PREFIX))).toHaveLength(neededChunkIds(JSON.parse(storage.data.get(SAVE_KEY) ?? '{}') as Rec).length)
+
+    const [copy] = getSaveStatus().notices
+    expect(copy).toMatchObject({ id: SLOT_1, kind: 'stale' })
+    expect(await readSaveCopy(SLOT_1)).toBe(JSON.stringify(life))
+    expect(copy.bytes).toBe(JSON.stringify(life).length)
+  })
+
+  it('on IndexedDB: the same, with the head as the database held it', async () => {
+    const factory = fakeIndexedDb()
+    const saved = await saveInto(factory, life)
+    storage.data.set(SLOT_1, saved.record)
+    await saved.backend.write(otherLife)
+
+    expect(await hydrateSaves({ factory })).toMatchObject({ backend: 'idb', source: 'idb' })
+    const g = save.loadGame()
+    if (g === null) throw new Error('the rolled-back life did not load')
+    expect(save.saveGame(g)).toBe(true)
+    expect(await flushSave()).toBe(true)
+    const db = await idbSaveBackend(factory)
+    expect(await chunksOf(db).ids()).toEqual([...neededChunkIds(JSON.parse(await decodeSnapshotRecord((await db.read()) ?? '')) as Rec)].sort())
+
+    expect(await readSaveCopy(SLOT_1)).toBe(JSON.stringify(life))
+  })
+
+  it('a head whose chunks are gone stays as it is (there is nothing to make it from), and a second boot leaves a whole copy alone', async () => {
+    expect(save.saveGame(life)).toBe(true)
+    const head = storage.data.get(SAVE_KEY) ?? ''
+    storage.data.set(SLOT_1, head)
+    storage.data.set(SAVE_KEY, otherLife)
+    for (const key of [...storage.data.keys()]) if (key.startsWith(CHUNK_PREFIX)) storage.data.delete(key)
+
+    resetSaveStoreForTests()
+    await hydrateSaves({ idb: false })
+    expect(storage.data.get(SLOT_1)).toBe(head)
+
+    // A copy that is the whole game already is not rewritten at the next boot.
+    storage.data.set(SLOT_2, JSON.stringify(life))
+    resetSaveStoreForTests()
+    await hydrateSaves({ idb: false })
+    expect(storage.data.get(SLOT_2)).toBe(JSON.stringify(life))
+  })
+
+  it('a rewrite storage refuses leaves the head copy as it was', async () => {
+    expect(save.saveGame(life)).toBe(true)
+    const head = storage.data.get(SAVE_KEY) ?? ''
+    storage.data.set(SLOT_1, head)
+    storage.data.set(SAVE_KEY, otherLife)
+    const set = storage.setItem.bind(storage)
+    vi.spyOn(storage, 'setItem').mockImplementation((key: string, value: string) => {
+      if (key === SLOT_1) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError')
+      set(key, value)
+    })
+
+    resetSaveStoreForTests()
+    await hydrateSaves({ idb: false })
+    expect(storage.data.get(SLOT_1)).toBe(head)
+    expect(getSaveStatus().notices.map((n) => n.id)).toContain(SLOT_1)
+  })
+})
+
 // --- The copy of the main slot ----------------------------------------------------------------------
 
 describe('readSaveCopy of the main slot', () => {

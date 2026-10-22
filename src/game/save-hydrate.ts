@@ -21,7 +21,7 @@ import { encodeSave, isChunkedHead, type LostChunk } from './save-codec'
 import type { SaveNoticeKind } from './save-quarantine'
 import { quarantineRecord, scanQuarantine } from './save-quarantine'
 import { migrateSave, SAVE_SCHEMA } from './save-schema'
-import { activeBackend, activeBackendName, addSaveNotice, primeCache, protectNewerRecord, savedThisSession, setSaveBackend } from './save-store'
+import { activeBackend, activeBackendName, addSaveNotice, primeCache, protectNewerRecord, savedThisSession, setSaveBackend, standAloneCopies } from './save-store'
 import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 import type { GameState } from './types'
 
@@ -518,6 +518,9 @@ async function boot(opts: HydrateOptions, run: Run, marked: boolean): Promise<Hy
 /** Lists the copies already kept, those made just now among them. A failure, or a store too slow to answer, changes nothing else. */
 async function listKeptCopies(minSchema: { minSchema: number } | undefined, timeoutMs: number, check: () => void): Promise<void> {
   try {
+    // First, while the chunks of any head a rolled-back build filed are still stored: this page's first save sweeps them.
+    await within(standAloneCopies(), timeoutMs)
+    check()
     const diagnose = async (raw: string): Promise<{ kind: SaveNoticeKind; version?: number; partial?: true }> => {
       if (isPartialCopy(raw)) return { kind: 'damaged', partial: true }
       const found = await diagnoseRecord(raw, minSchema)

@@ -1,7 +1,7 @@
 // Byte-exact copies of the records the game couldn't load, kept so that a failed load never costs a
 // player their save. Three copies live in localStorage slots; with IndexedDB open, up to two more
-// overflow into its `quarantine` store. A copy is never rewritten, and only deleteQuarantine removes
-// one. This file only copies: what becomes of the original is the caller's decision, and so is what a
+// overflow into its `quarantine` store. A copy is never rewritten (replaceQuarantine is the one
+// exception, below), and only deleteQuarantine removes one. This file only copies: what becomes of the original is the caller's decision, and so is what a
 // kept copy turns out to be (scanQuarantine asks the caller's `diagnose`), so it needs nothing but the
 // backends.
 import { SAVE_KEY, type AsyncSaveBackend, type SaveBackend } from './save-backends'
@@ -182,6 +182,44 @@ export async function readQuarantine(backend: SaveBackend, id: string): Promise<
   if (QUARANTINE_SLOTS.includes(id)) return peek(id) ?? null
   if (backend.kind !== 'async') return null
   return attempt(() => backend.overflow.get(id), null)
+}
+
+/**
+ * Swaps the text of the copy kept under `id` for `raw`, which must stand for the same save: the one case where a copy is rewritten,
+ * a head whose chunks are about to be swept becoming the whole game (save-store.ts standAloneCopies). The new text is read back; a
+ * write that is refused, or read back differently, puts the old text back. True only when the copy now reads as `raw`; false when
+ * there is no such copy or storage would not take it, and then the copy is as it was.
+ */
+export function replaceQuarantine(backend: SaveBackend, id: string, raw: string): Promise<boolean> {
+  return inTurn(backend, async () => {
+    if (QUARANTINE_SLOTS.includes(id)) {
+      const before = peek(id)
+      if (typeof before !== 'string') return false
+      try {
+        localStorage.setItem(id, raw)
+        if (localStorage.getItem(id) === raw) return true
+      } catch {
+        // refused: storage full or disabled
+      }
+      try {
+        localStorage.setItem(id, before)
+      } catch {
+        // a refusal leaves the old text where it was
+      }
+      return false
+    }
+    if (backend.kind !== 'async') return false
+    const { overflow } = backend
+    const before = await attempt(() => overflow.get(id), null)
+    if (before === null) return false
+    const stored = await attempt(async () => {
+      await overflow.put(id, raw)
+      return overflow.get(id)
+    }, null)
+    if (stored === raw) return true
+    await attempt(() => overflow.put(id, before), undefined)
+    return false
+  })
 }
 
 /** Removes the copy kept under `id`, and only that one. A removal storage refuses is a no-op. */
