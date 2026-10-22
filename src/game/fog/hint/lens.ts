@@ -259,7 +259,7 @@ export function lensHint(g: GameState, id: string, text: string): string {
 export function rankNoise(g: GameState, key: string, v: number): number {
   if (isExact() || !Number.isFinite(v) || v === 0) return v
   try {
-    const est = know(g, `hint:rk${hash36(key)}:rank`, v, { unit: 'delta', talent: 'Business' })
+    const est = know(g, `hint:rk${hash36(key)}:rank`, v, { unit: 'delta', talent: 'Business', scale: Math.abs(v) })
     return !est.exact && Number.isFinite(est.mid) ? est.mid : v
   } catch {
     return v

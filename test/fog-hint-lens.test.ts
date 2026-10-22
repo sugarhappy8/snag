@@ -617,7 +617,7 @@ describe('rankNoise', () => {
   })
 
   it('holds the truth in the same 80% band the hint numbers use', () => {
-    const sd = inFog(() => know(biz(0), 'hint:Business:x:0', 1000, { unit: 'delta', talent: 'Business' }).sd)
+    const sd = inFog(() => know(biz(0), 'hint:Business:x:0', 1000, { unit: 'delta', talent: 'Business', scale: 1000 }).sd)
     const share = inFog(() => {
       let hit = 0
       for (let i = 0; i < N; i++) {

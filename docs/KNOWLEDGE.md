@@ -77,7 +77,11 @@ against, and `talent` names the talent that sharpens a `hint:` key.
   `mid +- BAND_Z sd` holds the truth with probability .80 because the draw has the same distribution.
 - Money, count and pct live on a log scale (the sd is relative, the band is a ratio, the truth must be above 0). Score (0 to 100) and
   odds (0 to 1) are additive and clipped to their range; the sd is in hundredths of the range. A signed amount is additive with an
-  absolute sd of `sd x scale`.
+  absolute sd of `sd x scale`. The scale is the caller's ruler and is never the truth: the half-width of a band is `BAND_Z x sd x scale`,
+  so a scale that was the size of the truth would print the truth in the width of its own band. A signed amount with no usable scale is
+  not fogged (`spanOf` is null, so `know` is exact and a source refuses it). A what-if forecast is read against `forecastScale`: the move
+  rounded up on a 1-2-5 ladder (so the width says which step the move is in, and the band is never sharper than stated), at least a tenth
+  of last year's sales and at least `FORECAST_MIN` ($10,000). A stored reading is measured against the size of the reading itself.
 - The passive sd is `sd0 x talent x (1 - .4 exp)`, never below `SD_MIN = .03`. A talent in the row of the rule table sharpens the
   passive read by x.6 and a source by x.8; Main Character Syndrome sharpens every key.
 - A stored row ages: `agedSd(sd, drift, years)` is `sqrt(sd^2 + (drift sqrt(years))^2)`. The estimate shows whichever of the aged row and

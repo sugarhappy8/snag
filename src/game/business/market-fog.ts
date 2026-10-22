@@ -381,12 +381,32 @@ export const scenarioScope = (a: Pick<Asset, 'id'>): string => part(a.id)
 
 export const scenarioKey = (scope: string, scenarioId: string): string => `scn:${scope}:${scenarioId}:value`
 
-/** A forecast is read against the larger of its own size and this share of last year's sales, so a small move never reads as a rounding error of a big firm. */
+/** A forecast is read against at least this share of last year's sales, so a small move never reads as a rounding error of a big firm. */
 export const FORECAST_FLOOR = 0.1
 
-/** What a forecast is measured against: its own size, or the floor share of last year's sales when that is larger. */
+/** ...and at least this much money, for a company with no sales to read against (a band of a few dollars would say nothing). */
+export const FORECAST_MIN = 10_000
+
+/** The 1, 2, 5 ladder a forecast's size is rounded up on: a band says which step the move is in, and no more. */
+const LADDER = [1, 2, 5] as const
+
+/** The smallest step of the 1-2-5 ladder at or above `x` (0 for anything that is not a positive number). */
+function ladderUp(x: number): number {
+  if (!(x > 0) || !Number.isFinite(x)) return 0
+  const k = Math.floor(Math.log10(x))
+  for (const m of LADDER) if (m * 10 ** k >= x * (1 - 1e-12)) return m * 10 ** k
+  return 10 ** (k + 1)
+}
+
+/**
+ * What a forecast is measured against: the move's size rounded UP to a step of the 1-2-5 ladder, and never less than a tenth of last
+ * year's sales or FORECAST_MIN. It is a ruler, not the move: the half-width of a band is BAND_Z x sd x scale, so a scale that was the
+ * move itself would print the move in the width of its own band (hi - lo = 0.78 |truth|), a second and sharper reading than the stated
+ * 30%. On the ladder the width says which step the move is in (the words already say as much) and never makes the band sharper than
+ * stated: the scale is at least the move.
+ */
 export function forecastScale(b: Pick<BizState, 'last'>, truth: number): number {
-  return Math.max(Math.abs(truth), Math.max(0, b.last?.revenue ?? 0) * FORECAST_FLOOR)
+  return Math.max(ladderUp(Math.abs(truth)), Math.max(0, b.last?.revenue ?? 0) * FORECAST_FLOOR, FORECAST_MIN)
 }
 
 /** The estimate of what a what-if move should earn (a signed amount of money). */

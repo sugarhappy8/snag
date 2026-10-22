@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { marketViewOf } from '../src/game/business/competition'
 import {
   lineKey, marketShareKey, marketSizeKey, marketTruth, rivalKey, rivalLinesOf, rivalRead, rivalTruth, scenarioKey, scenarioScope,
-  unknownMarket, FORECAST_FLOOR, LINES_SHOWN, LOOK_RIVALS,
+  unknownMarket, FORECAST_FLOOR, FORECAST_MIN, forecastScale, LINES_SHOWN, LOOK_RIVALS,
 } from '../src/game/business/market-fog'
 import { lookFor } from '../src/game/business/market-menu-kit'
 import { countryRows, localRows, scenarioRows, scenarioTruth } from '../src/game/business/market-menu'
@@ -149,7 +149,10 @@ describe('every key family on the market screens has an owner who knows what it 
     const b = readBiz(g, a)
     for (const r of forecastRows(g, a)) {
       const key = scenarioKey(scenarioScope(a), r.id)
-      const want = Math.max(Math.abs(r.value!), Math.max(0, b.last?.revenue ?? 0) * FORECAST_FLOOR)
+      const want = forecastScale(b, r.value!)
+      // the ruler is the move rounded up on a 1-2-5 ladder, a tenth of last year's sales, or the floor: never the move itself
+      expect(want, r.id).toBeGreaterThanOrEqual(Math.max(Math.abs(r.value!), Math.max(0, b.last?.revenue ?? 0) * FORECAST_FLOOR, FORECAST_MIN))
+      expect(want, r.id).toBeLessThan(2.5 * Math.max(Math.abs(r.value!), Math.max(0, b.last?.revenue ?? 0) * FORECAST_FLOOR, FORECAST_MIN) + 1)
       expect(kindOf('scn')!.scale!(g, key), r.id).toBe(want)
     }
   })

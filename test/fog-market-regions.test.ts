@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { marketOfBiz, marketViewOf, saveMarket, shareText } from '../src/game/business/competition'
 import { marketCtxFor } from '../src/game/business/economy'
 import {
-  FORECAST_FLOOR, antitrustEstimate, antitrustKey, antitrustRead, antitrustTruth, demandRead, forecastRead, knownMarket, marketShareKey,
+  FORECAST_FLOOR, FORECAST_MIN, antitrustEstimate, antitrustKey, antitrustRead, antitrustTruth, demandRead, forecastRead, forecastScale, knownMarket, marketShareKey,
   marketSizeKey, marketTruth, profitRead, scenarioKey, scenarioScope, shareBand, unknownMarket,
 } from '../src/game/business/market-fog'
 import { countryRows, localRows, scenarioLine, scenarioRead, scenarioRows, scenarioTruth, type ScenarioRow } from '../src/game/business/market-menu'
@@ -529,7 +529,7 @@ describe('what-if scenarios', () => {
     })
   })
 
-  it('a band is wide enough to be honest and no wider than 30% of the larger of the move and a tenth of last year\'s sales', () => {
+  it('a band is wide enough to be honest and no wider than 30% of its ruler: the move rounded up on a 1-2-5 ladder, or a tenth of last year\'s sales', () => {
     const { g, a } = world(...WORLD_LIFE)
     const b = readBiz(g, a)
     const revenue = b.last?.revenue ?? 0
@@ -538,7 +538,10 @@ describe('what-if scenarios', () => {
       for (const r of scenarioRows(g, a)) {
         if (r.value === null || r.block) continue
         const e = forecastRead(g, b, scenarioScope(a), r.id, r.value)
-        const scale = Math.max(Math.abs(r.value), revenue * FORECAST_FLOOR)
+        // the ruler is never the move itself (its band would print the move), but never less than the move or a tenth of last year's sales
+        const scale = forecastScale(b, r.value)
+        expect(scale, r.id).toBeGreaterThanOrEqual(Math.max(Math.abs(r.value), revenue * FORECAST_FLOOR))
+        expect(scale, r.id).toBeLessThanOrEqual(2.5 * Math.max(Math.abs(r.value), revenue * FORECAST_FLOOR, FORECAST_MIN) + 1)
         expect(e.hi - e.lo, r.id).toBeGreaterThan(0)
         expect(e.hi - e.lo, r.id).toBeLessThanOrEqual(2 * 1.298 * 0.3 * scale * 1.0001)
       }

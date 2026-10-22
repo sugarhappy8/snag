@@ -364,14 +364,14 @@ describe('exact: Exact mode and own: keys return the truth', () => {
     }
   })
 
-  it('a delta with no usable scale falls back to |truth|, and a zero truth with no scale is exact', () => {
+  it('a delta with no usable scale is not fogged (a ruler that was the truth would print it), and a zero truth with no scale is exact', () => {
     const g = fogGame(5)
-    const a = inFog(() => know(g, 'scn:s1:value', 8e6))
-    expect(a.exact).toBe(false)
-    expect(a.hi - a.lo).toBeCloseTo(2 * BAND_Z * a.sd * 8e6, 3)
-    const b = inFog(() => know(g, 'scn:s1:value', -8e6, { scale: Number.NaN }))
+    // the ruler is the caller's: with none, or none that is usable, there is nothing to say the band against
+    expect(inFog(() => know(g, 'scn:s1:value', 8e6)).exact).toBe(true)
+    expect(inFog(() => know(g, 'scn:s1:value', -8e6, { scale: Number.NaN })).exact).toBe(true)
+    const b = inFog(() => know(g, 'scn:s1:value', -8e6, { scale: 3e6 }))
     expect(b.exact).toBe(false)
-    expect(b.hi - b.lo).toBeCloseTo(2 * BAND_Z * b.sd * 8e6, 3)
+    expect(b.hi - b.lo).toBeCloseTo(2 * BAND_Z * b.sd * 3e6, 3)
     expect(inFog(() => know(g, 'scn:s1:value', 0)).exact).toBe(true)
     expect(inFog(() => know(g, 'scn:s1:value', 0, { scale: 5e6 })).exact).toBe(false)
   })
@@ -452,7 +452,7 @@ describe('extremes: finite fields for any truth', () => {
 })
 
 describe('talents sharpen the right kinds only', () => {
-  const at = (key: string, talents: readonly string[], opts = {}): number =>
+  const at = (key: string, talents: readonly string[], opts: { scale?: number } = key.startsWith('scn') ? { scale: 4e6 } : {}): number =>
     inFog(() => know(fogGame(50, { talents }), key, key.startsWith('riv') || key.startsWith('cast') || key.startsWith('peer') || key.startsWith('pol') ? 50 : 4e6, opts).sd)
 
   it('Business: markets, rivals, candidates, odds, scorecards, hints; not securities or valuations', () => {

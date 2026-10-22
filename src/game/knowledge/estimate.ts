@@ -124,10 +124,10 @@ export function spanOf(unit: Unit, truth: number, scale: number | undefined): nu
       return 100
     case 'odds':
       return 1
-    case 'delta': {
-      const s = typeof scale === 'number' && Number.isFinite(scale) && scale > 0 ? scale : Math.abs(truth)
-      return s > 0 ? s : null
-    }
+    case 'delta':
+      // The ruler is the caller's, and it is not the truth: the half-width of a band is BAND_Z x sd x span, so a span that was the size of
+      // the truth would print the truth in the width of its band. A delta with no ruler is not fogged.
+      return typeof scale === 'number' && Number.isFinite(scale) && scale > 0 ? scale : null
   }
 }
 
@@ -218,7 +218,8 @@ export function rowEstimate(g: GameState, key: string, row: StoredRow, opts: Est
   const rule = isExactKey(key) ? null : ruleOf(key)
   const unit: Unit | null = rule ? (opts.unit ?? rule.unit) : null
   if (!rule || unit === null || !usableRow(g, row, isLog(unit))) return null
-  const span = spanOf(unit, row.mid, opts.scale)
+  // A stored reading is already the player's: a delta with no ruler of its own is measured against the size of the reading.
+  const span = spanOf(unit, row.mid, opts.scale ?? Math.abs(row.mid))
   if (span === null) return null
   const sd = Math.max(SD_MIN, agedSd(row.sd, rule.drift, g.year - row.y))
   const mid = unit === 'score' ? clamp(row.mid, 0, 100) : unit === 'odds' ? clamp(row.mid, 0, 1) : row.mid
