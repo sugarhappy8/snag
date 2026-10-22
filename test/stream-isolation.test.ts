@@ -20,6 +20,7 @@ import type { GameState } from '../src/game/types'
 import { SLICES, explainMove, type SliceName } from './golden-kit'
 import { GOLDEN_PLANS, compareGolden, playGolden, type GoldenLife, type LifeDigests, type Moved } from './golden-run'
 import { K_ID, K_STR, closeParen, isId, isPunct, lineOf, loadSources, splitArgs, toSource, type SourceFile } from './scan-kit'
+import { gainLuck } from '../src/game/world/frontier'
 import { seededEntity } from '../src/game/world/lod'
 import { makeTestGame } from './helpers'
 import { STREAM_SLICES, tap, type StreamRow, type TapRule } from './stream-tap'
@@ -70,6 +71,7 @@ const ruleYear = (l: GoldenLife, row: StreamRow): number => row.year ?? tapYear(
  */
 const DRIVERS: Readonly<Record<string, (g: GameState) => void>> = {
   lod: (g) => void seededEntity(g, 'person', 'probe', (rand) => rand()),
+  frontier: (g) => void gainLuck(g, 'fusion', 'probe', g.year),
 }
 
 /** The hook of a row that is driven: calls its driver after the years the row taps at, in every life. Undefined for a row that is not. */

@@ -5,6 +5,7 @@
 // would be a two-module cycle. A test or module that calls normalizeWorld or worldShard imports this file for its effect.
 import { normalizeLedger } from '../kernel/ledger'
 import './facts'
+import './frontier'
 import { normalizeFirms } from './firms'
 import { normalizeHoldings } from './holdings'
 import { normalizeHomes } from './homes'

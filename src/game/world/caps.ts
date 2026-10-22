@@ -12,3 +12,10 @@ export const WORLD_NODE_CAP = 40_000
 
 /** A pooled row that nobody has touched for this many years is folded back into its pool. */
 export const DEMOTE_AFTER_YEARS = 5
+
+/**
+ * The frontier's ceilings (R3-F1, world/frontier.ts): a field is at most 12 years ahead of the calendar path and gains at most 2 of
+ * them in a year, in all; it holds at most 18 points of public research, and one disclosure adds at most 6; a market keeps 6 rows, a
+ * field 4 markets, and there are room for 32 fields (20 today). An older row folds into the field's `fold`, so no lead is lost.
+ */
+export const FRONTIER_CAPS = { leadYears: 12, yearYears: 2, spillPoints: 18, spillPerDisclosure: 6, rowsPerMarket: 6, marketsPerField: 4, fields: 32 } as const
