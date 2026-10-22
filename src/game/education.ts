@@ -11,6 +11,7 @@ import { lend, personCash } from './cash'
 import { techAdoption, type TechId } from './history/timeline'
 import { householdEffects } from './household'
 import { economyOf } from './economy'
+import { FOCUS_FULL_TEXT, focusReason, spendFocus } from './effort/focus'
 import { anachronistic, eraPick, venueExists } from './events/era'
 import {
   addHidden,
@@ -2934,12 +2935,14 @@ function schoolLabel(cur: Enrollment): string {
 function studyHarder(g: GameState): void {
   const cur = current(g)
   if (!cur) return
-  if (!useYearAction(g, 'study', 3)) {
-    notice(g, 'Study Harder', pickLine(g, ["You're burnt out from studying. Your brain needs the rest of the year off.", 'You tried to study again but fell asleep on your textbook. Give it a rest until next year.']), { emoji: '\u{1F634}' })
+  // A week of the year's focus pool (effort/focus.ts): the fourth study of a year is worth half, and the 25th week is refused.
+  const use = spendFocus(g, 'study', 3)
+  if (!use.ok) {
+    notice(g, 'Study Harder', FOCUS_FULL_TEXT, { emoji: '\u{1F634}' })
     return
   }
   // Academics talent: an hour of your studying is worth an afternoon of anyone else's.
-  const gain = Math.round((cur.grades >= 90 ? randInt(g, 1, 3) : randInt(g, 3, 8)) * talentMult(g, 'Academics', 1.5))
+  const gain = Math.round((cur.grades >= 90 ? randInt(g, 1, 3) : randInt(g, 3, 8)) * talentMult(g, 'Academics', 1.5) * use.mult)
   addGrades(cur, gain)
   if (chance(g, hasTalent(g, 'Academics') ? 0.65 : 0.4)) addStat(g, 'smarts', randInt(g, 1, 2))
   addStat(g, 'happiness', -1)
@@ -3114,14 +3117,15 @@ function practiceClub(g: GameState, id: string): void {
   const clubs = clubsOf(cur)
   const m = clubs.find((x) => x.id === id)
   if (!m) return
-  if (!useYearAction(g, `practice:${id}`, 2)) {
-    notice(g, def.name, "You've already practiced as much as you can this year.", { emoji: def.emoji })
+  const use = spendFocus(g, `practice:${id}`, 2)
+  if (!use.ok) {
+    notice(g, def.name, FOCUS_FULL_TEXT, { emoji: def.emoji })
     return
   }
-  m.perf = Math.round(clamp(m.perf + randInt(g, 4, 10) * (clubGifted(g, def) ? 1.5 : 1)))
+  m.perf = Math.round(clamp(m.perf + randInt(g, 4, 10) * (clubGifted(g, def) ? 1.5 : 1) * use.mult))
   setClubs(cur, clubs)
   if (def.kind === 'sport') {
-    addHidden(g, 'athleticism', Math.round(randInt(g, 1, 3) * talentMult(g, 'Athletics', 1.5)))
+    addHidden(g, 'athleticism', Math.round(randInt(g, 1, 3) * talentMult(g, 'Athletics', 1.5) * use.mult))
     addStat(g, 'health', 1)
   } else if (def.kind === 'academic') {
     if (chance(g, 0.4)) addStat(g, 'smarts', 1)
@@ -3534,7 +3538,7 @@ function studyAction(): MenuAction {
     label: 'Study Harder',
     emoji: '\u{1F4D6}',
     subtitle: 'Improve your grades',
-    disabledReason: aliveFree,
+    disabledReason: (g) => aliveFree(g) ?? focusReason(g, 'study', 3),
     run: studyHarder,
   }
 }
@@ -3566,7 +3570,7 @@ function clubsMenu(cur: Enrollment): MenuGroup {
             subtitle: `${m.role ? `${m.role[0].toUpperCase()}${m.role.slice(1)} • ` : ''}Performance ${m.perf}%`,
             children: () => [
               { type: 'info', id: `clubs.${def.id}.info`, text: `${m.role ? `You are ${m.role}. ` : ''}Performance: ${m.perf}% • ${m.years} year${m.years === 1 ? '' : 's'} on the ${def.kind === 'sport' ? 'team' : 'club'}.`, emoji: def.emoji },
-              { type: 'action', id: `clubs.${def.id}.practice`, label: def.kind === 'sport' ? 'Practice Harder' : 'Put In More Effort', emoji: '\u{1F4AA}', disabledReason: aliveFree, run: (x) => practiceClub(x, def.id) },
+              { type: 'action', id: `clubs.${def.id}.practice`, label: def.kind === 'sport' ? 'Practice Harder' : 'Put In More Effort', emoji: '\u{1F4AA}', disabledReason: (x) => aliveFree(x) ?? focusReason(x, `practice:${def.id}`, 2), run: (x) => practiceClub(x, def.id) },
               { type: 'action', id: `clubs.${def.id}.quit`, label: `Quit the ${def.name}`, emoji: '\u{1F6AA}', confirm: () => `Quit the ${def.name}?`, disabledReason: aliveFree, run: (x) => quitClub(x, def.id) },
             ],
           })

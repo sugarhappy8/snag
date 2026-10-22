@@ -13,6 +13,7 @@ import {
 } from '../../game/core'
 import { businessSummary } from '../../game/business'
 import { agesLabel, cvEntries, cvScore, KIND_META, rankLabel, rankOf, rankShort, strengthStars, universityTarget } from '../../game/cv'
+import { ambitionReveal } from '../../game/effort/persona'
 import { highestEducationLabel } from '../../game/education'
 import { investmentsSummary } from '../../game/investments'
 import { getRibbon } from '../../game/ribbons'
@@ -307,6 +308,12 @@ export function talentRows(g: GameState): TalentRow[] {
   }
 }
 
+/** The Ambition row of the Profile (R3, C.2): the word from age 18 and nothing before it. Never a number. */
+export function ambitionRows(g: GameState): [string, string][] {
+  const a = ambitionReveal(g)
+  return a.shown ? [['Ambition', a.word]] : []
+}
+
 export function ProfileSheet({ onClose }: ProfileSheetProps) {
   const g = useApp((s) => s.game)
   const anchorRef = useRef<HTMLDivElement | null>(null)
@@ -336,6 +343,7 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
 
   // --- talents (picked before birth + discovered as a kid)
   const talents = talentRows(g)
+  const ambition = ambitionRows(g)
 
   // --- education
   const edu = c.education
@@ -460,6 +468,11 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
             <StatBar small key={key} label={label} emoji={emoji} value={c.hidden[key]} />
           ))}
         </div>
+        {ambition.length > 0 ? (
+          <div style={{ marginTop: 8 }}>
+            <KV rows={ambition} />
+          </div>
+        ) : null}
       </Section>
 
       <Section title="Education">
