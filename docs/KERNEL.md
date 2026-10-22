@@ -146,4 +146,4 @@ One line each. A track that adds a file here adds its line; `test/kernel-accepta
 - `src/game/kernel/slices.ts` - the slice registry: `defineSlice`, where each piece of saved state lives, its caps, its `normalize` and its `migrate`.
 - `src/game/kernel/spreads.ts` - the bid-ask spreads of the pools: `ask` and `bid`, so no pool trades at the mid price both ways.
 - `src/game/kernel/streams.ts` - named streams, `stream` and `outcomeStream`: the only source of luck a world module may use.
-- `src/game/kernel/tally.ts` - a company's cash by reason: the small tally the exact cash walk is built from.
+- `src/game/kernel/tally.ts` - a company's cash by reason: the small tally the exact cash walk is built from, bounded and whole dollars.
