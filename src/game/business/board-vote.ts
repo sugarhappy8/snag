@@ -12,6 +12,7 @@
 import { addMoney, formatMoney, log, notice, remember } from '../core'
 import { chance } from '../rng'
 import type { Asset, GameState } from '../types'
+import { exactOddsText, oddsKey, oddsRead } from '../fog/odds/contract'
 import { boardExists, boardOf, boardView, controlsBoard, directorName, mandateDef, readBoard, recordVote, seatLabel, syncSeats, type BoardState, type Director, type Limits, type Mandate, type Stance } from './board-state'
 import { ceoPayNorm } from './career'
 import { readTech } from './deeptech-state'
@@ -582,10 +583,19 @@ export function boardAllows(g: GameState, a: Asset, b: BizState, p: Proposal): b
   return ok
 }
 
-/** 'about 85%' for a hint. */
-export function oddsText(p: number): string {
-  const v = Math.round(clampN(p, 0, 1) * 100)
-  return v >= 99 ? 'almost certain' : v <= 1 ? 'almost no chance' : `about ${v}%`
+/**
+ * The odds of a vote for a hint. Without a game and a key it is today's text, 'about 85%'. With them it goes through the odds
+ * helper (fog/odds): the same text in Exact mode, and in Realistic mode a word, or 'about 65%' (to the nearest 5, read off an
+ * honest estimate) for the Business talent or after a read of that key.
+ */
+export function oddsText(p: number, g?: GameState, key?: string): string {
+  if (g === undefined || key === undefined) return exactOddsText(clampN(p, 0, 1))
+  return oddsRead(g, key, p, 'Business')
+}
+
+/** The knowledge key of one kind of vote of a company's board (`odds:<assetId>:<kind>:p`). */
+export function boardOddsKey(a: Asset, kind: string): string {
+  return oddsKey(a.id, kind)
 }
 
 /** The mandate's one-line brief for the CEO with its limits in dollars. */

@@ -54,6 +54,8 @@ import { spinHint } from './conglomerate-division'
 import { captureOf, groupAcquireBlock, groupCeoValue, joinValue, ownerCapture, sectorList, synergyPlan, DEAL_YEARS, type DivisionInput } from './conglomerate-econ'
 import { groupById, groupsOf, groupStake, groupValue, inGroup, sharePriceOf, type Group } from './conglomerate-state'
 import { oddsText } from './board-vote'
+import { oddsKey, oddsShown } from '../fog/odds/contract'
+import { hashKey } from '../kernel/streams'
 import { industryDef } from './industries'
 import { isFinanceFirm } from './finance-firm-state'
 import { businessScreen, shopCompany } from './manage'
@@ -141,10 +143,21 @@ function info(id: string, text: string, emoji: string): MenuNode {
   return { type: 'info', id, text, emoji }
 }
 
-/** ' · 🔮 about 70% to pass' when the group board votes (only with the Business talent). */
+/** The knowledge key of one kind of vote of a group's board (`odds:<core id>:g-<kind>:p`). */
+function groupOddsKey(grp: Group, kind: string): string {
+  return oddsKey(grp.core.id, `g-${kind}`)
+}
+
+/** The key of the merger vote of a group that is not formed yet: one reading for each combination of companies. */
+function formOddsKey(ids: readonly string[]): string {
+  return oddsKey('form', `g-merge${(hashKey(ids.join(',')) >>> 0).toString(36)}`)
+}
+
+/** ' · 🔮 about 70% to pass' when the group board votes (with the Business talent, or after a read of the vote). */
 function boardOdds(g: GameState, grp: Group, p: Proposal): string {
   if (!groupNeedsVote(g, grp, p)) return ''
-  return ` \u{00B7} the group board votes${hasTalent(g, 'Business') ? ` (\u{1F52E} ${oddsText(groupPassOdds(g, grp, p))} to pass)` : ''}`
+  const shown = oddsShown(g, groupOddsKey(grp, p.kind), () => groupPassOdds(g, grp, p))
+  return ` \u{00B7} the group board votes${shown ? ` (${shown} to pass)` : ''}`
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +267,7 @@ export const formGroupMenu: MenuGroup = {
         const p = planJoin(gg, null, picked(gg))
         const odds = p.votes.length ? mergeOdds(gg, p) : 1
         const head = p.value > 0 ? `A sound deal: about ${money(p.yearly)} a year in synergies, worth about ${money(p.value)} over ${DEAL_YEARS} years after fees, integration and any conglomerate discount` : `A costly deal: about ${money(-p.value)} lost over ${DEAL_YEARS} years once fees, integration and the conglomerate discount are counted`
-        return talentHint(gg, 'Business', `${head}${p.votes.length ? `; the boards: ${oddsText(odds)} to approve` : ''}`)
+        return talentHint(gg, 'Business', `${head}${p.votes.length ? `; the boards: ${oddsText(odds, gg, formOddsKey(picked(gg).map((a) => a.id)))} to approve` : ''}`)
       },
       disabledReason: (gg) => {
         const block = groupBlock(gg)
@@ -642,7 +655,8 @@ function addMenu(groupId: string): MenuGroup {
           disabled: (gg, cur) => planJoin(gg, cur, [a]).block,
           confirm: (gg, cur) => {
             const p = planJoin(gg, cur, [a])
-            return `Bring ${a.name} into ${cur.core.name}? Fees: ${money(p.fees)}${p.shortfall > 0 ? ` (${money(p.shortfall)} from your pocket)` : ''}. You'd own ${pct(p.share, 1)} of the group.${p.votes.length ? ` Votes: ${p.votes.join(', ')}${hasTalent(gg, 'Business') ? ` (\u{1F52E} ${oddsText(mergeOdds(gg, p, cur))} to pass)` : ''}.` : ''}`
+            const shown = p.votes.length ? oddsShown(gg, groupOddsKey(cur, 'merge'), () => mergeOdds(gg, p, cur)) : null
+            return `Bring ${a.name} into ${cur.core.name}? Fees: ${money(p.fees)}${p.shortfall > 0 ? ` (${money(p.shortfall)} from your pocket)` : ''}. You'd own ${pct(p.share, 1)} of the group.${p.votes.length ? ` Votes: ${p.votes.join(', ')}${shown ? ` (${shown} to pass)` : ''}.` : ''}`
           },
           run: (gg, cur) => {
             addToGroup(gg, cur.core.id, a.id)
@@ -773,7 +787,7 @@ function marketNodes(groupId: string, grp: Group): MenuNode[] {
         const l = cur.core.listing
         if (!l) return null
         const p: Proposal = { kind: 'sell', by: 'owner', amount: Math.round(groupValue(cur) * 1.25), label: '' }
-        const odds = groupNeedsVote(g, cur, p) ? oddsText(groupPassOdds(g, cur, p)) : null
+        const odds = groupNeedsVote(g, cur, p) ? oddsText(groupPassOdds(g, cur, p), g, groupOddsKey(cur, 'sell')) : null
         const plan = delistPlan(g, cur)
         const effect = delistEffect(g, cur)
         const premium = money((plan.cost * DELIST_PREMIUM) / (1 + DELIST_PREMIUM) + plan.fees)
