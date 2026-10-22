@@ -75,9 +75,10 @@ describe('13-life text probe', () => {
       () => {
         const { trace, alive } = playedOf(i)
         const last = trace.years[trace.years.length - 1]
-        // The life stops at the target age, or sooner because the character died.
+        // The life stops at the target age, or sooner because the character died. The loop plays a year while age < target, so a
+        // character who dies in the very year they turn the target age has it as the last row, dead (R3-Q9: seed 106 now does).
         if (alive) expect(last.age).toBeGreaterThanOrEqual(PROBE_UNTIL_AGE)
-        else expect(last.age).toBeLessThan(PROBE_UNTIL_AGE)
+        else expect(last.age).toBeLessThanOrEqual(PROBE_UNTIL_AGE)
         const m = textMetrics(trace)
         for (const [path, v] of numbers(m)) {
           if (path === 'metrics.popupFamilies.minGapYears' && v === null) continue

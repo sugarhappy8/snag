@@ -34,6 +34,7 @@ import { LEDGER_SEEDS, runLedgerLife } from './ledger-probe'
 import { writeMetrics } from './nightly-metrics'
 import { playLife } from './play-kit'
 import { probeLife } from './probe-life'
+import { findSeed } from './seed-kit'
 
 const ROOT = join(__dirname, '..')
 
@@ -185,8 +186,15 @@ describe('hostile worlds put into the oldest fixture (RF4)', () => {
  * so that the firms, the holdings and the homes of the world have something in them. The seeds are constants of the probe kit.
  */
 const REPLAYED = { seed: LEDGER_SEEDS[30]!, birthYear: 1990, untilAge: 45 } as const
+/**
+ * The seed of the plain life: the first from LEDGER_SEEDS[1] up whose character is alive at 45. The tests below need a living life, and
+ * a change that moves one draw moves who dies of old age (it was seed LEDGER_SEEDS[1] itself until R3-Q8 moved it). Memoised by label.
+ */
+const plainSeed = (): number =>
+  findSeed((seed) => playLife({ seed, birthYear: 1990, untilAge: 45 }).g.character.alive, { from: LEDGER_SEEDS[1]!, tries: 30, label: 'a plain life from 1990 that is alive at 45' })
+
 const SUBJECTS: readonly (readonly [string, () => GameState])[] = [
-  ['a plain life from 1990', () => playLife({ seed: LEDGER_SEEDS[1]!, birthYear: 1990, untilAge: 45 }).g],
+  ['a plain life from 1990', () => playLife({ seed: plainSeed(), birthYear: 1990, untilAge: 45 }).g],
   ['a founder of two companies', () => probeLife({ seed: LEDGER_SEEDS[8]!, birthYear: 1950, businesses: 2, years: 15, keepAlive: true })],
 ]
 
@@ -256,7 +264,18 @@ describe('replay, reload and fork give the same state', () => {
 
 describe('the heir of a 40-year life with three companies keeps the world (RF3)', () => {
   it('keeps every shard, folds the dead player\'s account and leaves the world sound', () => {
-    const g = probeLife({ seed: LEDGER_SEEDS[8]!, birthYear: 1950, businesses: 3, years: 40, keepAlive: true })
+    // keepAlive holds the health up, not the age: a founder can still die of old age, and a change that moves one draw moves who does
+    // (R3-Q9 moved this seed). The test is about the heir, so it takes the first life from this seed that gets to 40 years.
+    let alive: GameState | undefined
+    findSeed(
+      (seed) => {
+        const x = probeLife({ seed, birthYear: 1950, businesses: 3, years: 40, keepAlive: true })
+        if (x.character.alive) alive = x
+        return x.character.alive
+      },
+      { from: LEDGER_SEEDS[8]!, tries: 30, label: 'a founder of three companies who is alive after 40 years (RF3)' },
+    )
+    const g = alive!
     expect(g.character.alive).toBe(true)
     expect(g.assets.filter((a) => a.kind === 'business').length).toBeGreaterThanOrEqual(1)
     const child = createPerson(g, { relation: 'child', age: 26, lastName: g.character.lastName, relationship: 80 })
