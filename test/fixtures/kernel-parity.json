@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "base": "da80e5b+dirty",
+  "base": "6a621e8+dirty",
   "aging": ["history","digest","household","effort.you","relationships","sharedProjects","givingFund","background","royalty","royalCareers","health","education","professions","career","special","nation","workshop","corruption","business","techWaves","development","investments","hedge","shops","computer","finance","wealth","familyUse","nepo","willFeuds","immigration","assets","crime","underworld","advisors","milestones","world"],
   "special": ["military","actor","music","sports","gamedev","author","model","politics","astronaut","careers2","hustler","social","fame"],
   "lives": {

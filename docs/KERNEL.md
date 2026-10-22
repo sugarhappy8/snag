@@ -18,7 +18,7 @@ The aging seam is `ageUp`: the clock and the economy step run first, then one en
 | `world` | the world step W1 to W6: demography, labor, firms, housing, government, prices (empty) |
 | `frontier` | frontier and rival ledgers (empty) |
 | `society` | the society step (empty) |
-| `life` | history 10, digest 20, household 30, relationships 40, sharedProjects 50, givingFund 60, background 70, royalty 80, royalCareers 90, health 100, education 110, professions 120 |
+| `life` | history 10, digest 20, household 30, effort.you 35, relationships 40, sharedProjects 50, givingFund 60, background 70, royalty 80, royalCareers 90, health 100, education 110, professions 120 |
 | `careers` | career 10, special 20 |
 | `government` | nation 10 |
 | `firms` | workshop 10, corruption 20, business 30, techWaves 40 |
