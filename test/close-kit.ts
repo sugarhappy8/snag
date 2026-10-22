@@ -36,11 +36,14 @@ export function spread(xs: readonly number[]): Spread {
 
 /**
  * The popups the player saw in each year, in year order. With `cards: false` the year card is left out, which is how the roadmap's
- * "tycoon mean 4 plus one card" reads. Birth counts like any other year, so a caller that wants closed years only filters first.
+ * "tycoon mean 4 plus one card" reads. With `asked: false` the outcomes of the player's own answers are left out too, which leaves the
+ * popups that arrived by themselves (the audit counted both; the roadmap's numbers are the first, so a test asserts on it and only prints
+ * the second). Birth counts like any other year, so a caller that wants closed years only filters first.
  */
-export function popupsPerYear(years: readonly Pick<PlayedYear, 'popups'>[], opts: { cards?: boolean } = {}): number[] {
+export function popupsPerYear(years: readonly Pick<PlayedYear, 'popups'>[], opts: { cards?: boolean; asked?: boolean } = {}): number[] {
   const cards = opts.cards ?? true
-  return years.map((y) => (cards ? y.popups.length : y.popups.filter((p) => p.card !== true).length))
+  const asked = opts.asked ?? true
+  return years.map((y) => y.popups.filter((p) => (cards || p.card !== true) && (asked || p.passive)).length)
 }
 
 /** The log lines a year shows without folding: weight 2 or more. A line with no weight (an old save, a player action) counts as 2. */

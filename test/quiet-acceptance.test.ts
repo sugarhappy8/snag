@@ -12,8 +12,11 @@
 //      equals the books, nothing the close dropped goes unrecorded, no kept notice is folded before its choice, no popup is lost, and the
 //      books are clean at the end.
 //
-// The numeric targets (popups a year: ordinary p90 3 and max 5, $50M p90 4 and max 6, tycoon mean 4 plus the companies card) are NOT asserted
-// here. The pace lane (R3-Q8 to R3-Q10) lowers the numbers and R3-Q13 turns the targets on once it is merged. This file prints them.
+// R3-Q13 turns the numbers of the roadmap on, now that the pace and variant lanes are merged (part 3 below): popups a year (ordinary p90 3 and
+// max 5, $50M p90 4 and max 6, tycoon mean 4 plus the companies card), a tycoon's visible log at most 8 lines, and the repetition targets of the
+// 13-life probe (repeated lines 5%, or 8% for a rich life; no line more than 3 times in a life; no popup scene twice in 10 years; part 4). A
+// threshold is written as the roadmap writes it and is never loosened to fit a number: a miss fails its own case with the measured numbers, and
+// the lead decides (decision D32).
 //
 // Every life is found, not pinned (test/seed-kit.ts), and played once per run.
 import { describe, expect, it } from 'vitest'
@@ -23,10 +26,13 @@ import { YEAR_LIMITS } from '../src/game/hubs/year-plan'
 import { createNewLife } from '../src/game/life'
 import type { ChoiceModal, GameState, LogEntry, ModalItem, NoticeModal, YearCard } from '../src/game/types'
 import { EVENT_SCRIPT } from '../src/game/events/helpers'
+import { LOG_VISIBLE, viewYearLog } from '../src/ui/components/logModel'
 import { closeProblems, foldRecords, ledgerClean, lifeProblems, popupsPerYear, spread, visibleLines } from './close-kit'
 import { playLife, type ClosedYear, type PlayedYear } from './play-kit'
 import { probeLife } from './probe-life'
 import { findSeed, findSeeds } from './seed-kit'
+import { DESIGN_THRESHOLDS, mergeMetrics, normalize, textMetrics, type LifeTrace, type TextMetrics } from './text-metrics'
+import { PROBE_UNTIL_AGE, probeLives, type ProbeLife } from './text-probe'
 
 const TIMEOUT = 900_000
 const BIRTH_YEARS = [1950, 1975, 1990, 2005, 1925, 2026] as const
@@ -131,6 +137,15 @@ describe('close kit: the numbers', () => {
     const years = [{ popups: [popup(), popup(), popup(true)] }, { popups: [] }, { popups: [popup(true)] }]
     expect(popupsPerYear(years)).toEqual([3, 0, 1])
     expect(popupsPerYear(years, { cards: false })).toEqual([2, 0, 0])
+  })
+
+  it('popupsPerYear can leave out the outcomes of the player\'s own answers: only the popups that arrived by themselves are left', () => {
+    const popup = (passive: boolean, card?: true) => ({ kind: 'notice' as const, title: 't', text: 'x', passive, item: N('i'), ...(card ? { card } : {}) })
+    const years = [{ popups: [popup(true), popup(false), popup(true, true), popup(false)] }, { popups: [popup(false)] }]
+    expect(popupsPerYear(years)).toEqual([4, 1])
+    expect(popupsPerYear(years, { asked: false })).toEqual([2, 0])
+    expect(popupsPerYear(years, { asked: false, cards: false })).toEqual([1, 0])
+    expect(popupsPerYear(years, { asked: true, cards: false })).toEqual([3, 1])
   })
 
   it('visibleLines counts the lines of weight 2 or more; a line with no weight counts as 2', () => {
@@ -332,6 +347,7 @@ function print(cls: Class, lives: readonly Life[]): void {
   const all = lives.flatMap((l) => l.years.filter((y) => y.closed !== undefined))
   const withCard = spread(popupsPerYear(all))
   const without = spread(popupsPerYear(all, { cards: false }))
+  const unasked = spread(popupsPerYear(all, { cards: false, asked: false }))
   const lines = spread(all.map((y) => y.closed!.entries.length))
   const seen = spread(all.map((y) => visibleLines(y.closed!.entries)))
   const unrequested = spread(all.map((y) => y.closed!.after.filter((m) => m.kind === 'choice' && m.s !== undefined).length))
@@ -346,6 +362,7 @@ function print(cls: Class, lives: readonly Life[]): void {
       `quiet acceptance, ${cls}: ${lives.length} lives, ${all.length} closed years`,
       `  popups a year with the card   ${row(withCard)}`,
       `  popups a year without it      ${row(without)}`,
+      `  of them, unasked              ${row(unasked)}`,
       `  unrequested choices kept      ${row(unrequested)}`,
       `  notices in play kept          ${row(kept)}`,
       `  log lines a year              ${row(lines)}`,
@@ -385,55 +402,191 @@ const ordinary = (): number[] => {
   )
 }
 
+/** Play the lives of a class, the way the store plays them. */
+function play(cls: Class): Life[] {
+  if (cls === 'ordinary') {
+    return ordinary().map((seed, i) => {
+      const { g, years } = playLife({ seed, birthYear: BIRTH_YEARS[i % BIRTH_YEARS.length]!, untilAge: UNTIL_AGE, close: true })
+      return { label: `ordinary ${i} (seed ${seed})`, g, years }
+    })
+  }
+  if (cls === 'rich') {
+    const seeds = findSeeds((s) => createNewLife({ seed: s, year: 1990 }).character.alive, 4, { from: 701, tries: 20, label: 'quiet acceptance: rich lives' })
+    return seeds.map((seed, i) => {
+      const { g, years } = playLife({ seed, birthYear: BIRTH_YEARS[i % BIRTH_YEARS.length]!, untilAge: UNTIL_AGE, rich: true, close: true })
+      return { label: `rich ${i} (seed ${seed})`, g, years }
+    })
+  }
+  // A founder who can open six companies in the country they were born in (probeLife says so by throwing when it cannot).
+  const seeds = findSeeds(
+    (s) => {
+      try {
+        probeLife({ seed: s, birthYear: 1990, businesses: 6, years: 0 })
+        return true
+      } catch {
+        return false
+      }
+    },
+    3,
+    { from: 801, tries: 120, label: 'quiet acceptance: founders of six companies' },
+  )
+  return seeds.map((seed, i) => {
+    const start = probeLife({ seed, birthYear: 1990, businesses: 6, years: 0 })
+    const { g, years } = playLife({ seed, birthYear: 1990, untilAge: UNTIL_AGE, close: true, from: start })
+    return { label: `founder ${i} (seed ${seed})`, g, years }
+  })
+}
+
+// A class is played once per run: the caps and the numbers of the roadmap read the same lives.
+const played = new Map<Class, Life[]>()
+function livesOf(cls: Class): Life[] {
+  let lives = played.get(cls)
+  if (!lives) {
+    lives = play(cls)
+    played.set(cls, lives)
+  }
+  return lives
+}
+
 describe('the hard caps on real lives, played the way the store plays them', () => {
-  it(
-    'six ordinary lives to age 80',
-    () => {
-      const lives: Life[] = ordinary().map((seed, i) => {
-        const { g, years } = playLife({ seed, birthYear: BIRTH_YEARS[i % BIRTH_YEARS.length]!, untilAge: UNTIL_AGE, close: true })
-        return { label: `ordinary ${i} (seed ${seed})`, g, years }
-      })
-      assertCaps('ordinary', lives)
-    },
-    TIMEOUT,
-  )
+  it('six ordinary lives to age 80', () => assertCaps('ordinary', livesOf('ordinary')), TIMEOUT)
 
-  it(
-    'four rich lives ($60M at 25) to age 80',
-    () => {
-      const seeds = findSeeds((s) => createNewLife({ seed: s, year: 1990 }).character.alive, 4, { from: 701, tries: 20, label: 'quiet acceptance: rich lives' })
-      const lives: Life[] = seeds.map((seed, i) => {
-        const { g, years } = playLife({ seed, birthYear: BIRTH_YEARS[i % BIRTH_YEARS.length]!, untilAge: UNTIL_AGE, rich: true, close: true })
-        return { label: `rich ${i} (seed ${seed})`, g, years }
-      })
-      assertCaps('rich', lives)
-    },
-    TIMEOUT,
-  )
+  it('four rich lives ($60M at 25) to age 80', () => assertCaps('rich', livesOf('rich')), TIMEOUT)
 
-  it(
-    'three founders of six companies, from 30 to 80',
-    () => {
-      // A founder who can open six companies in the country they were born in (probeLife says so by throwing when it cannot).
-      const seeds = findSeeds(
-        (s) => {
-          try {
-            probeLife({ seed: s, birthYear: 1990, businesses: 6, years: 0 })
-            return true
-          } catch {
-            return false
-          }
-        },
-        3,
-        { from: 801, tries: 120, label: 'quiet acceptance: founders of six companies' },
-      )
-      const lives: Life[] = seeds.map((seed, i) => {
-        const start = probeLife({ seed, birthYear: 1990, businesses: 6, years: 0 })
-        const { g, years } = playLife({ seed, birthYear: 1990, untilAge: UNTIL_AGE, close: true, from: start })
-        return { label: `founder ${i} (seed ${seed})`, g, years }
-      })
-      assertCaps('founder', lives)
-    },
-    TIMEOUT,
-  )
+  it('three founders of six companies, from 30 to 80', () => assertCaps('founder', livesOf('founder')), TIMEOUT)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// 3. The numbers of the roadmap (R3-Q13)
+
+/**
+ * The roadmap, as it is written: "Popups a year: ordinary lives p90 3, max 5; $50M lives p90 4, max 6; tycoon mean 4 plus one 'Your companies'
+ * card; a tycoon's visible log lines from 12.5 to 8". A popup is what the player sees in a year, the outcome of their own answer included: that
+ * is how the audit counted (its 1.8, 5.4 and 8 a year are the popups a played year hands over, "two popups per event"), so it is how this does.
+ * The year card is not in the count: the audit had none, and the roadmap adds it to the tycoon's four. Every closed year of a life is counted,
+ * from age 1.
+ */
+const ROADMAP = { ordinary: { p90: 3, max: 5 }, rich: { p90: 4, max: 6 }, founder: { mean: 4, companiesCard: 0.9 }, visibleLog: 8 } as const
+
+type Spread = ReturnType<typeof spread>
+
+const closedYears = (lives: readonly Life[]): PlayedYear[] => lives.flatMap((l) => l.years.filter((y) => y.closed !== undefined))
+const popups = (lives: readonly Life[]): Spread => spread(popupsPerYear(closedYears(lives), { cards: false }))
+const show = (s: Spread): string => `mean ${s.mean.toFixed(2)}, p90 ${s.p90}, max ${s.max}`
+
+describe('the popups a year of the roadmap', () => {
+  it('ordinary lives: p90 at most 3 and max at most 5', () => {
+    const s = popups(livesOf('ordinary'))
+    const misses = [...(s.p90 > ROADMAP.ordinary.p90 ? [`p90 ${s.p90} is over ${ROADMAP.ordinary.p90}`] : []), ...(s.max > ROADMAP.ordinary.max ? [`max ${s.max} is over ${ROADMAP.ordinary.max}`] : [])]
+    expect(misses, `ordinary lives, popups a year: ${show(s)}`).toEqual([])
+  })
+
+  it('$50M lives: p90 at most 4 and max at most 6', () => {
+    const s = popups(livesOf('rich'))
+    const misses = [...(s.p90 > ROADMAP.rich.p90 ? [`p90 ${s.p90} is over ${ROADMAP.rich.p90}`] : []), ...(s.max > ROADMAP.rich.max ? [`max ${s.max} is over ${ROADMAP.rich.max}`] : [])]
+    expect(misses, `rich lives, popups a year: ${show(s)}`).toEqual([])
+  })
+
+  it('tycoons: a mean of at most 4 popups, and the year card carries the companies group', () => {
+    const lives = livesOf('founder')
+    const s = popups(lives)
+    const years = closedYears(lives)
+    const withCompanies = years.filter((y) => y.closed!.card?.groups.some((g) => g.k === 'companies')).length
+    const misses = [
+      ...(s.mean > ROADMAP.founder.mean ? [`mean ${s.mean.toFixed(2)} is over ${ROADMAP.founder.mean}`] : []),
+      ...(withCompanies < years.length * ROADMAP.founder.companiesCard ? [`${withCompanies} of ${years.length} cards carry a companies group, under ${ROADMAP.founder.companiesCard * 100}%`] : []),
+    ]
+    expect(misses, `tycoons, popups a year: ${show(s)}; companies on ${withCompanies} of ${years.length} cards`).toEqual([])
+  })
+
+  it('a tycoon sees at most 8 lines of the log a year, from the 12.5 the audit found: every year, and on average', () => {
+    const years = closedYears(livesOf('founder'))
+    const shown = years.map((y) => viewYearLog(y.closed!.entries).shown.length)
+    const written = years.map((y) => y.closed!.entries.length)
+    const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length
+    console.log(`quiet acceptance, tycoon log: ${mean(written).toFixed(1)} lines written a year, ${mean(shown).toFixed(1)} in view (most ${Math.max(...shown)}); the audit had 12.5`)
+    expect(Math.max(...shown), 'lines in view').toBeLessThanOrEqual(ROADMAP.visibleLog)
+    expect(Math.max(...shown)).toBeLessThanOrEqual(LOG_VISIBLE)
+    expect(mean(shown)).toBeLessThanOrEqual(ROADMAP.visibleLog)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// 4. The repetition targets, on the 13-life probe (R3-Q13, decision D32)
+
+/**
+ * The 13 lives of test/text-probe.ts (seeds 101 to 113, six birth years in turn, every second life rich), played to 85 the way the store plays
+ * them, and measured with textMetrics. The targets are the design's (DESIGN_THRESHOLDS): a life repeats at most 5% of its lines (8% when rich),
+ * no line shows up more than 3 times in a life, and no popup scene says the same thing twice in 10 years (a scene is the text of a choice nobody
+ * asked for; the same normalized text a year gap of 10 or less apart is a repeat, the rule textMetrics uses for a line). State lines that print
+ * once in 5 years are the R2 state kit's (test/text-repeat.test.ts keeps them).
+ */
+interface ProbePlayed {
+  spec: ProbeLife
+  trace: LifeTrace
+  metrics: TextMetrics
+  /** The scenes that repeated within 10 years: "<years>y <title> [<script>]". */
+  scenes: string[]
+}
+
+let probe: ProbePlayed[] | undefined
+function probed(): ProbePlayed[] {
+  probe ??= probeLives(13).map((spec) => {
+    const { years } = playLife({ seed: spec.seed, birthYear: spec.birthYear, untilAge: PROBE_UNTIL_AGE, rich: spec.rich, close: true })
+    const trace: LifeTrace = { seed: spec.seed, birthYear: spec.birthYear, rich: spec.rich, years }
+    const last = new Map<string, number>()
+    const scenes: string[] = []
+    for (const y of years) {
+      for (const p of y.popups) {
+        if (p.kind !== 'choice' || !p.passive || p.card === true) continue
+        const key = normalize(p.text)
+        const before = last.get(key)
+        if (before !== undefined && y.year - before <= 10) scenes.push(`${y.year - before}y ${p.title} [${(p.item as ChoiceModal).scriptId ?? 'no script'}]`)
+        last.set(key, y.year)
+      }
+    }
+    return { spec, trace, metrics: textMetrics(trace), scenes }
+  })
+  return probe
+}
+
+const who = (p: ProbePlayed): string => `seed ${p.spec.seed}${p.spec.rich ? ' (rich)' : ''}`
+const share = (n: number): string => `${(n * 100).toFixed(2)}%`
+
+describe('repetition on the 13-life probe', () => {
+  it('prints the numbers: the pooled share, the popup families, and the scenes that repeated', () => {
+    const lives = probed()
+    const merge = (rich: boolean): TextMetrics => mergeMetrics(lives.filter((p) => p.spec.rich === rich).map((p) => p.metrics))
+    const o = merge(false)
+    const r = merge(true)
+    console.log(
+      [
+        `quiet acceptance, repetition: 13 lives to ${PROBE_UNTIL_AGE}, ${lives.reduce((n, p) => n + p.metrics.lines, 0)} log lines`,
+        `  repeated share   ordinary ${share(o.repeatedShare)} (target ${share(DESIGN_THRESHOLDS.repeatedShare)}), rich ${share(r.repeatedShare)} (target ${share(DESIGN_THRESHOLDS.repeatedShareRich)})`,
+        `  a line shown most in a life   ordinary ${o.over3.max}, rich ${r.over3.max} (target ${DESIGN_THRESHOLDS.over3Max})`,
+        `  popup families (by title)   most in a life ${Math.max(o.popupFamilies.maxPerLife, r.popupFamilies.maxPerLife)}, titles over 6 ${o.popupFamilies.over6 + r.popupFamilies.over6}`,
+        ...lives.map((p) => `  ${who(p).padEnd(16)} share ${share(p.metrics.repeatedShare)}, most ${p.metrics.over3.max}x, scenes twice in 10 years ${p.scenes.length}${p.scenes.length ? ` (${p.scenes.slice(0, 4).join('; ')})` : ''}`),
+      ].join('\n'),
+    )
+    expect(lives).toHaveLength(13)
+    expect(lives.filter((p) => p.spec.rich)).toHaveLength(6)
+  })
+
+  it('a life repeats at most 5% of its lines, and a rich life at most 8%', () => {
+    const misses = probed().flatMap((p) => {
+      const limit = p.spec.rich ? DESIGN_THRESHOLDS.repeatedShareRich : DESIGN_THRESHOLDS.repeatedShare
+      return p.metrics.repeatedShare > limit ? [`${who(p)}: ${share(p.metrics.repeatedShare)} is over ${share(limit)}`] : []
+    })
+    expect(misses).toEqual([])
+  })
+
+  it('no line shows up more than 3 times in a life', () => {
+    const misses = probed().flatMap((p) => (p.metrics.over3.max > DESIGN_THRESHOLDS.over3Max ? [`${who(p)}: a line ${p.metrics.over3.max} times, over ${DESIGN_THRESHOLDS.over3Max}`] : []))
+    expect(misses).toEqual([])
+  })
+
+  it('no popup scene says the same thing twice in 10 years', () => {
+    const misses = probed().flatMap((p) => (p.scenes.length > 0 ? [`${who(p)}: ${p.scenes.length} repeats: ${p.scenes.slice(0, 6).join('; ')}`] : []))
+    expect(misses).toEqual([])
+  })
 })
