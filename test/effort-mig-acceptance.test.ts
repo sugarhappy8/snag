@@ -77,7 +77,7 @@ import { ENGINE_FIELD, engineActor, engineOutcome, engineQuote, engineTask } fro
 import type { Industry } from '../src/game/data/markets'
 import { quote } from '../src/game/effort/engine'
 import { newFx } from '../src/game/effort/fx'
-import { K_MAX, KNOW_HOW_FIELDS, KNOW_MAX, KNOW_ODDS_MAX, RHO_MAX, TERM_LABEL } from '../src/game/effort/limits'
+import { K_MAX, KNOW_HOW_FIELDS, KNOW_MAX, KNOW_ODDS_MAX, RHO_MAX, RIVAL_PTS, SPILL_TERM_MAX, TERM_LABEL } from '../src/game/effort/limits'
 import { boldOf } from '../src/game/effort/curves'
 import { deviate } from '../src/game/effort/factors'
 import { knowHowOf } from '../src/game/effort/knowhow'
@@ -316,8 +316,11 @@ const NAME = breakthroughsFor('restaurant')[1]!.name
 const IDEA = 'pocket-tool'
 /** The crew of a firm of 4,000 at the top of its skill, drive and morale, rested: more than any task can use. */
 const BIG_CREW: Worker = { fte: 4000, skill: 100, morale: 100, drive: 100, fatigue: 0 }
-/** The most the engine is asked for: a budget of a million times the price, perfect tools, the largest crew, a quality ahead of any ceiling. */
-const maxOf = (i: EffortInput): EffortInput => ({ ...i, k: HUGE, tools: 1, quality0: 1e6, people: [BIG_CREW] })
+/**
+ * The most the engine is asked for: a budget of a million times the price, perfect tools, the largest crew, a quality ahead of any ceiling,
+ * and the world's terms at their caps (the most public research and the most rival pressure the frontier can hand in).
+ */
+const maxOf = (i: EffortInput): EffortInput => ({ ...i, k: HUGE, tools: 1, quality0: 1e6, people: [BIG_CREW], spill: SPILL_TERM_MAX, rival: RIVAL_PTS })
 
 /** An rng state whose next draw is at least `x` (a certain loss at the odds under it), found by scanning small states: no life seed involved. */
 function rngAbove(x: number): number {
@@ -642,6 +645,44 @@ describe('the ceilings of the R3 decisions are the ones the sweep holds every sy
     expect(KNOW_ODDS_MAX).toBe(R3.knowPoints)
     expect(RHO_MAX).toBe(R3.rhoMax)
     expect(KNOW_HOW_FIELDS).toBe(40)
+  })
+})
+
+describe('the world lifts no quality ceiling: the frontier reaches a quote as odds and nothing else (headroom)', () => {
+  it.each(SYSTEMS)('%s: at the largest input the most public research and rival pressure leave the quality and the years where they were, under the ceiling of the task', (system) => {
+    const f = founder()
+    const rig = rigOf(f, system)
+    const task = rig.task()
+    const quiet = quote(f.g, task, { ...maxOf(rig.input()), spill: 0, rival: 0 })
+    const world = quote(f.g, task, maxOf(rig.input()))
+    expect(world.quality, `${system}: quality`).toBe(quiet.quality)
+    expect(world.years, `${system}: years`).toBe(quiet.years)
+    expect(world.k, `${system}: k`).toBe(quiet.k)
+    const ceiling = LEGACY[system].quality
+    if (ceiling === null) expect(world.quality, `${system}: a system with no quality has none`).toBeNull()
+    else {
+      expect(task.quality?.ceiling, `${system}: the ceiling the task states`).toBe(ceiling)
+      expect(world.quality!, `${system}: quality`).toBeLessThanOrEqual(ceiling)
+    }
+    // At the largest input a quality sits on its ceiling, which hides a lift of the raw number; at the system's own input it sits under it.
+    const own = quote(f.g, task, { ...rig.input(), spill: 0, rival: 0 })
+    const ownWorld = quote(f.g, task, { ...rig.input(), spill: SPILL_TERM_MAX, rival: RIVAL_PTS })
+    expect(ownWorld.quality, `${system}: quality at its own input`).toBe(own.quality)
+    expect(ownWorld.years, `${system}: years at its own input`).toBe(own.years)
+    // The terms did reach the odds (a task already at its clamp absorbs them), so the check above is not about terms that were never passed.
+    if (quiet.p < task.oddsHi - 1e-9 && quiet.p > task.oddsLo + 1e-9) expect(world.p, `${system}: odds`).not.toBe(quiet.p)
+  })
+
+  it('a quality that is asked to pass its ceiling by a million points lands on the ceiling, with the world at its most, in every system that has one', () => {
+    const f = founder()
+    for (const system of SYSTEMS) {
+      const ceiling = LEGACY[system].quality
+      if (ceiling === null) continue
+      const rig = rigOf(f, system)
+      const q = quote(f.g, rig.task(), maxOf(rig.input()))
+      expect(q.quality, `${system}: quality`).toBe(ceiling)
+      expect(q.capped, `${system}: the cap says so`).toContain('quality')
+    }
   })
 })
 

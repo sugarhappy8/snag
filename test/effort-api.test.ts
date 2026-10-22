@@ -6,7 +6,7 @@
 // that says how the model works and how to move a system onto it, so it has to stay true: every constant of limits.ts has a row with
 // its present value (a ceiling that moves in the code and not in the note fails here), every name of the barrel is written down, and
 // the doc holds the sections a migrator looks for. Nothing here plays a life, draws a number or books a dollar. No pinned seed.
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
@@ -267,6 +267,25 @@ describe('docs/EFFORT.md', () => {
     for (const w of ['risk', 'payrollX', 'shortcut', 'explosion', 'scandal', 'effort.risk']) expect(reserved, `reserved never says ${w}`).toContain(w)
     expect(reserved).toMatch(/not rolled/i)
     expect(reserved).toMatch(/not booked|never booked/i)
+  })
+
+  it('says what ceilingOf is for as the code has it: it says a task passes it only while a system outside the folder does', () => {
+    // The systems that import ceilingOf from the effort folder (the barrel or world.ts), outside the folder itself. The business folder
+    // has a ceilingOf of its own (nepo-model, a person's ceiling), which is another function and never imported from here.
+    const SRC = join(ROOT, 'src')
+    const users = (readdirSync(SRC, { recursive: true }) as string[])
+      .filter((f) => /\.tsx?$/.test(f) && !f.split(/[\\/]/).join('/').startsWith('game/effort/'))
+      .filter((f) => {
+        const text = readFileSync(join(SRC, f), 'utf8')
+        for (const m of text.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
+          if (/\/effort(\/world)?$/.test(m[2]!) && /\bceilingOf\b/.test(m[1]!)) return true
+        }
+        return false
+      })
+    const claim = DOC.split('\n').find((l) => l.includes('`ceilingOf(frontier, headroom)`')) ?? ''
+    expect(claim, 'the note says what ceilingOf is').not.toBe('')
+    expect(/a task passes it/i.test(claim), `the note says a task passes ceilingOf; the systems that do: ${users.join(', ') || 'none'}`).toBe(users.length > 0)
+    expect(/no system passes it/i.test(claim), `the note says no system passes ceilingOf; the systems that do: ${users.join(', ') || 'none'}`).toBe(users.length === 0)
   })
 
   it('states the rules that have no type: no draw in a read, no money, the 15 points, the 1.25 ceiling', () => {

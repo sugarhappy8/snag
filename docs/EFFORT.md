@@ -42,7 +42,7 @@ A worker's output is `skill/100 * (0.35 + 0.95 * morale/100) * (0.9 + 0.2 * driv
 
 **Know-how is the only memory of a failure.** A failed project banks `KNOW_BANK * 100 * done`, damped by `(1 - K/110)^1.3`, so the odds it can ever buy stay under 15 odds points (`KNOW_ODDS_MAX`). A win banks no know-how; for the player it adds `WIN_SHIFT` to the ambition shift. `knowGain` and `Task.learn` belong to study and practice (R6), and no migrated system calls them.
 
-**The terms from the world.** `spillPts(pool)` is public research a quote may take, at most 18 odds points, and one disclosure adds at most `SPILL_PTS_MAX` (6) to the pool; `rivalPts(pressure)` is at most 8; `ceilingOf(frontier, headroom)` is the highest a field's quality can be, and a task passes it as its curve's `ceiling`. The Frontier track works the three numbers out. The engine only bounds them, and the labels "public research" and "rival pressure" are the same two strings Frontier's reasons use.
+**The terms from the world.** `spillPts(pool)` is public research a quote may take, at most 18 odds points, and one disclosure adds at most `SPILL_PTS_MAX` (6) to the pool; `rivalPts(pressure)` is at most 8; `ceilingOf(frontier, headroom)` is the highest a field's quality can be: where the world stands plus the headroom one maker can add past it, both bounded. No system passes it in R3 (section 8). The Frontier track works out the first two numbers, and the engine only bounds them: the labels "public research" and "rival pressure" are the same two strings Frontier's reasons use.
 
 ## 3. The player
 
@@ -134,6 +134,8 @@ A module-level `const` that reads an import is flagged by rule (d) of `test/laye
 ## 8. Reserved in R3
 
 `Quote.risk` (`shortcut`, `explosion`, `scandal`, each at most `RISK_MAX` and all 0 for a plan that is neither bold nor pushing) and `Quote.payrollX` (`OVERTIME_PAY` while pushing, else 1) are reported, not rolled and not booked. Only two systems use them: studio setbacks under push, one draw from `outcomeStream(g, 'effort.risk', ...)` and only when the posture is push, so no seeded run changes; and the Workshop's kaboom, where the engine's `explosion` adds to `buildOdds().kaboom` for a bold plan only, with no new draw. A later release that wants the others rolls them from a named stream, never `g.rng`, and books the overtime as payroll through the ledger.
+
+`ceilingOf(frontier, headroom)` is reserved the same way: no system passes it as its quality curve's `ceiling` in R3. The frontier is a lead in years and a quality is points, and the one place they could meet, the AI market (`modelRating`), keeps its own calendar ceiling (the market's best plus 90, decision D17). So in R3 the world reaches a quote only as odds (public research up to 18 points, rival pressure up to 8), no quote's quality is lifted by it, and every quality stays under the ceiling its task states (97 for product and Heavy R&D, 100 for the Workshop; the other systems have no quality). `test/effort-mig-acceptance.test.ts` holds that at the largest input. A release that gives a field a frontier in quality points builds its task with `ceiling: ceilingOf(frontier, headroom)` and adds the 200-year assertion with it.
 
 ## 9. Guards
 

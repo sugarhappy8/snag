@@ -1,6 +1,7 @@
 // R3-E9 (C.12): the 200-year probe of the effort engine at maximum inputs, and the claims about ambition it proves. The engine half of
 // the R3 probe: no field above its ceiling however long and however hard the player works (the other half, no field above the
-// frontier plus headroom, needs the frontier ledgers and belongs to Frontier and Effort migration).
+// frontier plus headroom, needs the frontier ledgers: test/frontier-acceptance.test.ts holds the lead and the pool, and
+// test/effort-mig-acceptance.test.ts holds that the world lifts no quality ceiling).
 //
 // The probe plays 200 years of a person who gives the engine everything it can take: a budget of 400 times the normal one (k), 4,000
 // full-time people, perfect tools, ambition 100, pushing, and what each result taught fed back through `step` into the player's

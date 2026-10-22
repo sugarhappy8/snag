@@ -20,7 +20,9 @@ export function rivalPts(pressure: number): number {
 
 /**
  * The most a field's quality can be: where the world stands (`frontier`) plus the headroom one maker can add past it. Both are cut
- * to 0..CEILING_NUM_MAX. A task passes this as its quality curve's `ceiling`, so nobody outruns the world by more than the headroom.
+ * to 0..CEILING_NUM_MAX. A task that has a frontier in quality points passes this as its quality curve's `ceiling`, so nobody outruns
+ * the world by more than the headroom. None does in R3 (docs/EFFORT.md, section 8): the frontier is a lead in years, and the AI
+ * market keeps its own ceiling.
  */
 export function ceilingOf(frontier: number, headroom: number): number {
   return cutNum(frontier, 0, CEILING_NUM_MAX, 0) + cutNum(headroom, 0, CEILING_NUM_MAX, 0)
