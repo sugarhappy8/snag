@@ -78,6 +78,7 @@ import {
   type SecYear,
 } from './invest/engine'
 import { classFacts, lineOpen, linesOf, lineYear, votesText, type Line } from './invest/class-data'
+import { marketRead } from './invest/contract'
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
 import { addMarketShock, indexShockFactor, marketBreakthroughs, orderFlowFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { buyImpact, saleImpact } from './invest/liquidity'
@@ -2202,6 +2203,8 @@ function newsLines(g: GameState): string[] {
   // An analyst call on the year just gone: no better than a coin flip about what comes next.
   const tip = seededTip(g, l.info)
   if (tip) lines.push(tip)
+  const read = marketRead(g, l.info)
+  if (read) lines.push(read)
   const inst = investInstinct(g)
   if (inst) lines.push(`${HINT_EMOJI} ${instinctLine(inst)}`)
   return lines
