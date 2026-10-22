@@ -162,4 +162,9 @@ export const STREAM_SLICES: Readonly<Record<string, StreamRow>> = {
     year: 0,
     driven: true,
   },
+  'intel.risk': {
+    slices: ['character', 'flagsPersonal', 'text'],
+    why: 'R3-H4 the yearly roll of the illegal-intel heat (knowledge/risk.ts); a hit writes a criminal record, wanted level, notoriety and karma (character), the heat and its year stamp in flags.know (flagsPersonal), and a notice and a log line (text); only a life that bought from an informant or a hacker has heat, so no played life rolls it',
+    driven: true,
+  },
 }

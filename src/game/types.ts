@@ -786,6 +786,8 @@ interface MenuBase {
   badge?: (g: GameState) => string | number | null
   /** Information confidence 0 to 3 (H.3, R3 renders it). */
   conf?: 0 | 1 | 2 | 3
+  /** The year of the reading behind this row (an integer not after the current year); the chip adds "as of <year>" at 2 or more years old. */
+  asOf?: number
   /** A tiny trend drawn at the end of a row (stock lists, G.6). Null, or fewer than 2 points, draws nothing. Must be pure and read settled years only. */
   spark?: (g: GameState) => (number | null)[] | null
 }
@@ -819,6 +821,8 @@ export interface MenuInfo {
   chart?: (g: GameState) => ChartSpec | null
   /** Information confidence 0 to 3 (H.3, R3 renders it). */
   conf?: 0 | 1 | 2 | 3
+  /** The year of the reading behind this row (an integer not after the current year); the chip adds "as of <year>" at 2 or more years old. */
+  asOf?: number
 }
 
 /** A section heading inside a menu list. */

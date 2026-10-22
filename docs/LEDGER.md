@@ -47,7 +47,7 @@ between two accounts, and the books say which. This page is the model, the vocab
 Every booking carries a reason. A reason says who receives when the entity pays and who pays when it receives, so
 `addMoney(g, -500, 'tax.income')` needs no second account: the table sends it to `gov:<country>`. A caller that knows the real
 counterparty names it with `with`, and the table is only the default. Pools are anonymous crowds (the landlords, the retailers, the
-households of a country): money that leaves a life goes to one and money that arrives comes from one. There are 63 reasons and at
+households of a country): money that leaves a life goes to one and money that arrives comes from one. There are 64 reasons and at
 most 80 may exist. A reason is never renamed or deleted, because saved flow rows and the ratchet name them. A reason in a saved flow
 row that is not in the table drops that row on load.
 
@@ -106,6 +106,7 @@ row that is not in the table drops that row on load.
 | Business | `sales` | households | households | revenue |
 | | `payroll` | households | households | wages and benefits paid to staff |
 | | `inputs` | retail | retail | supplies, rent and services of a firm |
+| | `intel` | other | other | reports, analysts and investigators bought to know a number better (Knowledge, R3; an illegal source pays under `bribe`) |
 | | `capex` | retail | retail | equipment and buildings |
 | | `rnd` | other | other | research and development |
 | | `marketing` | other | other | advertising |
