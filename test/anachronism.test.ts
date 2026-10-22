@@ -30,6 +30,7 @@ import {
 } from '../src/game/events/era'
 import type { AnnualReportData, GameState, Json, MenuAction, MenuGroup, MenuNode, MinigameModal, ModalItem } from '../src/game/types'
 import { makeTestGame } from './helpers'
+import { writeMetrics } from './nightly-metrics'
 import { mergedSlices, ownedHere, readSlice, recordSlice, seedSlice } from './shard-kit'
 
 // In CI each shard plays a slice of the lives (SLICE=i/n) and the merge step checks the whole set (test/shard-kit.ts).
@@ -407,7 +408,11 @@ if (ownedHere('anachronism:units', slice)) describe('political broadcasts', () =
 describe('anachronism lint (offline lives born 1900-1995)', () => {
   it('never mentions things before they existed', () => {
     // Zero findings is a per-life result, so a slice checks its own lives and the union is clean when every slice is.
-    const { list, report } = lint(LIVES, 1900, 1995, 4, seedSlice(Array.from({ length: LIVES }, (_, i) => i), 'anachronism:lint', slice))
+    const mine = seedSlice(Array.from({ length: LIVES }, (_, i) => i), 'anachronism:lint', slice)
+    const { list, report } = lint(LIVES, 1900, 1995, 4, mine)
+    // The slice's share for the nightly's metric diff (anachronism.findings.sum is a hard cap of 0; nothing is written without
+    // NIGHTLY_METRICS_DIR). It goes out before the check, so a finding reaches the diff even though this test then fails.
+    writeMetrics('anachronism', { 'anachronism.findings.sum': list.length, 'anachronism.lives.sum': mine.length })
     expect(list.length, report.slice(0, 6000)).toBe(0)
   }, 900_000)
 })

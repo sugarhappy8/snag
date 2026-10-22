@@ -127,7 +127,6 @@ jobs:
             env: OLD_SAVES_YEARS=$OLD_SAVES_YEARS OLD_SAVES_RESEEDS=$OLD_SAVES_RESEEDS
           - name: text
             files: test/text-repeat.test.ts test/text-kit.test.ts
-            env: TEXT_PROBE_LIVES=$TEXT_PROBE_LIVES
           - name: golden
             files: test/golden-digest.test.ts
             env: GOLDEN_DEEP=1
@@ -172,6 +171,9 @@ jobs:
       - name: Sizes of this slice
         run: node scripts/nightly.mjs sizes "$NIGHTLY_SCALE" --shard ${{ matrix.slice }}/8 >> "$GITHUB_ENV"
       - name: Play this slice
+        env:
+          NIGHTLY_METRICS_DIR: metrics
+          NIGHTLY_SHARD: ${{ matrix.slice }}
         run: |
           echo "Slice ${{ matrix.slice }} of 8 plays its share of $ANACHRONISM_LIVES lives"
           npx vitest run --maxWorkers=1 test/anachronism.test.ts
@@ -180,6 +182,14 @@ jobs:
         with:
           name: slices-${{ matrix.slice }}
           path: test-slices
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: metrics-anachronism-${{ matrix.slice }}
+          path: metrics
           if-no-files-found: ignore
           retention-days: 14
           overwrite: true

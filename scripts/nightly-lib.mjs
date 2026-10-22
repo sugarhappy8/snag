@@ -21,7 +21,6 @@ export function nightlySizes(scale) {
       // 4 shards of 6 founders with 3 to 12 companies, a hundred times the money, 20 years.
       ceiling: { shards: 4, lives: 6, years: 20, scale: 100 },
       anachronism: { lives: 400, slices: 8 },
-      text: { lives: 20 },
       oldSaves: { years: 20, reseeds: 8 },
     }
   }
@@ -32,7 +31,6 @@ export function nightlySizes(scale) {
       balance: { shards: 4, lives: 2, years: 2 },
       ceiling: { shards: 4, lives: 2, years: 2, scale: 100 },
       anachronism: { lives: 16, slices: 8 },
-      text: { lives: 2 },
       oldSaves: { years: 3, reseeds: 2 },
     }
   }
@@ -74,7 +72,6 @@ export function sizeEnv(scale, shard) {
     ['CEILING_SCALE', String(s.ceiling.scale)],
     ['ANACHRONISM_LIVES', String(s.anachronism.lives)],
     ['ANACHRONISM_SLICES', String(s.anachronism.slices)],
-    ['TEXT_PROBE_LIVES', String(s.text.lives)],
     ['OLD_SAVES_YEARS', String(s.oldSaves.years)],
     ['OLD_SAVES_RESEEDS', String(s.oldSaves.reseeds)],
   ]

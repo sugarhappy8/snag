@@ -49,7 +49,9 @@ describe('nightlySizes', () => {
     expect(full.ceiling.shards * full.ceiling.lives).toBe(24)
     expect(full.ceiling.years).toBe(20)
     expect(full.anachronism).toEqual({ lives: 400, slices: 8 })
-    expect(full.text.lives).toBe(20)
+    // The repeat probe plays its fixed 13 lives (the gate is stated over them): it has no size to set.
+    expect(full).not.toHaveProperty('text')
+    expect(smoke).not.toHaveProperty('text')
     expect(full.oldSaves.years).toBeGreaterThanOrEqual(5)
     expect(full.oldSaves).toEqual({ years: 20, reseeds: 8 })
   })
@@ -64,7 +66,6 @@ describe('nightlySizes', () => {
       ['ceiling.lives', smoke.ceiling.lives, full.ceiling.lives],
       ['ceiling.years', smoke.ceiling.years, full.ceiling.years],
       ['anachronism.lives', smoke.anachronism.lives, full.anachronism.lives],
-      ['text.lives', smoke.text.lives, full.text.lives],
       ['oldSaves.years', smoke.oldSaves.years, full.oldSaves.years],
       ['oldSaves.reseeds', smoke.oldSaves.reseeds, full.oldSaves.reseeds],
     ]
@@ -102,7 +103,7 @@ describe('sizeEnv and parseShard', () => {
     expect(env.FUZZ_BUDGET).toBe('600')
     expect(env.CEILING_SCALE).toBe('100')
     expect(env.ANACHRONISM_LIVES).toBe('400')
-    expect(env.TEXT_PROBE_LIVES).toBe('20')
+    expect(env).not.toHaveProperty('TEXT_PROBE_LIVES')
     expect(env.OLD_SAVES_YEARS).toBe('20')
     expect(env.OLD_SAVES_RESEEDS).toBe('8')
     expect(Object.keys(env).filter((k) => k.endsWith('_START'))).toEqual([])
@@ -122,7 +123,7 @@ describe('sizeEnv and parseShard', () => {
   })
 
   it('every name the workflow reads is printed, for both scales', () => {
-    const names = ['FUZZ_START', 'FUZZ_SEEDS', 'FUZZ_YEARS', 'FUZZ_BUDGET', 'BALANCE_START', 'BALANCE_COUNT', 'BALANCE_YEARS', 'CEILING_START', 'CEILING_COUNT', 'CEILING_YEARS', 'CEILING_SCALE', 'ANACHRONISM_LIVES', 'ANACHRONISM_SLICES', 'TEXT_PROBE_LIVES', 'OLD_SAVES_YEARS', 'OLD_SAVES_RESEEDS']
+    const names = ['FUZZ_START', 'FUZZ_SEEDS', 'FUZZ_YEARS', 'FUZZ_BUDGET', 'BALANCE_START', 'BALANCE_COUNT', 'BALANCE_YEARS', 'CEILING_START', 'CEILING_COUNT', 'CEILING_YEARS', 'CEILING_SCALE', 'ANACHRONISM_LIVES', 'ANACHRONISM_SLICES', 'OLD_SAVES_YEARS', 'OLD_SAVES_RESEEDS']
     for (const scale of ['full', 'smoke'] as const) {
       const env = asMap(sizeEnv(scale, { i: 1, n: 8 }))
       for (const name of names) expect(env[name], `${scale} ${name}`).toMatch(/^\d+$/)

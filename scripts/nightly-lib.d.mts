@@ -12,7 +12,6 @@ export interface NightlySizes {
   /** shards x lives founder lives with `scale` times the money, for `years` years. */
   ceiling: { shards: number; lives: number; years: number; scale: number }
   anachronism: { lives: number; slices: number }
-  text: { lives: number }
   oldSaves: { years: number; reseeds: number }
 }
 
@@ -21,7 +20,7 @@ export function nightlySizes(scale: Scale): NightlySizes
 /** Shard `i` of `n` ('2/8'), 1 <= i <= n, where n is the shard count of a job. Throws with the reason otherwise. */
 export function parseShard(text: string, scale?: Scale): { i: number; n: number }
 /**
- * The KEY=VALUE pairs for $GITHUB_ENV, in a fixed order: FUZZ_*, BALANCE_*, CEILING_*, ANACHRONISM_*, TEXT_PROBE_LIVES, OLD_SAVES_*.
+ * The KEY=VALUE pairs for $GITHUB_ENV, in a fixed order: FUZZ_*, BALANCE_*, CEILING_*, ANACHRONISM_*, OLD_SAVES_*.
  * With a shard, each sharded job that has an i-th shard also gets its *_START (the first seed of its run).
  */
 export function sizeEnv(scale: Scale, shard?: { i: number; n: number }): [string, string][]

@@ -163,12 +163,13 @@ default branch. To run the full size earlier, land that one file on `main` first
 | balance | shards x lives x years | 4 x 50 x 40 | 4 x 2 x 2 | `lifeSpecs`: odd seeds birth lives to age 80, even seeds founders; net worth at 25, 40, 60 and 80, the year step in ms |
 | ceiling | shards x lives x years | 4 x 6 x 20 at 100x | 4 x 2 x 2 at 100x | founders with a hundred times the money, 3 to 12 companies: the richest net worth and the growth over the start |
 | anachronism | lives in slices | 400 in 8 | 16 in 8 | `test/anachronism.test.ts`, one job per slice, then `anachronism-merge` checks the union |
-| text | probe lives | 20 | 2 | `test/text-repeat.test.ts` and `test/text-kit.test.ts`; the repeat probe plays its fixed 13 lives today, so this size is passed as `TEXT_PROBE_LIVES` and read when it learns to |
 | old saves | years, reseeds | 20, 8 | 3, 2 | `test/old-saves.test.ts`: every `save-*.json.gz` fixture migrates and runs, once per reseed; it invents no world, plays a first year with balanced books, and reads back from the save store (a chunked save v3) with the same digests |
 
-Two jobs have no size of their own. `deep` runs the table's `text` and `old saves` rows and two more files:
-`test/ceiling-probe.test.ts` with `CEILING_PROBE=deep` (scales 1, 10, 100 and 1000) and `test/golden-digest.test.ts` with
-`GOLDEN_DEEP=1` (the `deep` plan of the golden digests above). `metrics` pools everything. Every size comes from
+Two jobs have no size of their own. `deep` runs the table's `old saves` row and three more runs: `test/text-repeat.test.ts` and
+`test/text-kit.test.ts` (the repeat probe plays its fixed 13 lives, the lives R1 was measured on and the R2 gate is stated over, so
+there is no size to set: the cap on `text.repeatedShare` is half of R1's share over those 13), `test/ceiling-probe.test.ts` with
+`CEILING_PROBE=deep` (scales 1, 10, 100 and 1000) and `test/golden-digest.test.ts` with `GOLDEN_DEEP=1` (the `deep` plan of the
+golden digests above). `metrics` pools everything. Every size comes from
 `nightlySizes` in `scripts/nightly-lib.mjs`, and each job prints its own with
 `node scripts/nightly.mjs sizes <full|smoke> [--shard i/n]` into `$GITHUB_ENV`. To resize a night, change that one function;
 `test/nightly-workflow.test.ts` (fast tier) keeps the YAML in step with it: the shard counts, the variables the run lines
@@ -188,7 +189,7 @@ holds tonight to `RULES` in `scripts/nightly-lib.mjs`. A hard rule fails the run
 | `balance.birth.msYear.p95` | 160 | F.1: a light-life year step on desktop |
 | `text.repeatedShare` | 0.0415 | R2: at most half of R1's 0.0831 |
 | `oldsaves.failures.sum` | 0 | an old save that cannot run is a lost game |
-| `anachronism.findings.sum` | 0 | no job writes it yet: a failed `anachronism` job stands for it |
+| `anachronism.findings.sum` | 0 | each `anachronism` slice writes its findings (and `anachronism.lives.sum`) before it checks them; a line that names a thing before it existed is a bug |
 
 Soft rules: a median (`balance.*.p50`) that moved more than a quarter, any other metric that moved more than half. A metric
 new tonight prints `new`, one that was not written prints `gone`, and a job that failed is listed first and fails the run.
@@ -218,6 +219,6 @@ Set `NIGHTLY_METRICS_DIR=/tmp/m` to have a test file write its metrics, and `nod
 
 ### Artifacts
 
-`metrics-fuzz-<shard>`, `metrics-balance-<shard>` (the balance and the ceiling file) and `metrics-deep-<name>` hold one job's
-metrics file; `fuzz-<shard>` holds the fuzzer's log and its list of findings; `slices-<i>` holds an anachronism slice's rows. All
-are kept 14 days. `nightly-metrics` is the merged `all.json`, kept 30 days (R12 wants seven nights of history).
+`metrics-fuzz-<shard>`, `metrics-balance-<shard>` (the balance and the ceiling file), `metrics-anachronism-<slice>` and
+`metrics-deep-<name>` hold one job's metrics file; `fuzz-<shard>` holds the fuzzer's log and its list of findings; `slices-<i>`
+holds an anachronism slice's rows. All are kept 14 days. `nightly-metrics` is the merged `all.json`, kept 30 days (R12 wants seven nights of history).

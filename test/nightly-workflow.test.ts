@@ -248,19 +248,23 @@ describe('the nightly workflow: shards and sizes', () => {
     expect(read('test/golden-digest.test.ts', 'GOLDEN_DEEP')).toBe(true)
     // (The slice switches SLICE and SLICE_DIR belong to test/shard-kit.ts, which ci-shard.mjs --verify keeps for the split files.)
     expect(read('test/anachronism.test.ts', 'ANACHRONISM_LIVES')).toBe(true)
+    expect(read('test/anachronism.test.ts', 'anachronism.findings.sum')).toBe(true)
     expect(read('test/nightly-metrics.ts', 'NIGHTLY_METRICS_DIR')).toBe(true)
     expect(yml).toMatch(/matrix\.files \}\}/)
     for (const file of ['test/ceiling-probe.test.ts', 'test/old-saves.test.ts', 'test/golden-digest.test.ts', 'test/text-repeat.test.ts', 'test/text-kit.test.ts']) expect(yml, file).toContain(file)
   })
 
   it('has the deep matrix rows: ceilings, old-saves, text and golden', () => {
-    const rows = [...blocks.deep.matchAll(/^ {10}- name: (\S+)\n {12}files: (.+)\n {12}env: (.+)$/gm)].map((m) => [m[1], m[2], m[3]])
+    // A row may have no env: the text row has none, because the repeat probe plays its fixed 13 lives and reads no size.
+    const rows = [...blocks.deep.matchAll(/^ {10}- name: (\S+)\n {12}files: (.+)(?:\n {12}env: (.+))?$/gm)].map((m) => [m[1], m[2], m[3] ?? ''])
     expect(rows).toEqual([
       ['ceilings', 'test/ceiling-probe.test.ts', 'CEILING_PROBE=deep'],
       ['old-saves', 'test/old-saves.test.ts', 'OLD_SAVES_YEARS=$OLD_SAVES_YEARS OLD_SAVES_RESEEDS=$OLD_SAVES_RESEEDS'],
-      ['text', 'test/text-repeat.test.ts test/text-kit.test.ts', 'TEXT_PROBE_LIVES=$TEXT_PROBE_LIVES'],
+      ['text', 'test/text-repeat.test.ts test/text-kit.test.ts', ''],
       ['golden', 'test/golden-digest.test.ts', 'GOLDEN_DEEP=1'],
     ])
+    // No variable is exported that no test file reads.
+    expect(blocks.deep).not.toContain('TEXT_PROBE_LIVES')
     expect(blocks.deep).toContain('env ${{ matrix.env }} NIGHTLY_METRICS_DIR=metrics npx vitest run --maxWorkers=1 ${{ matrix.files }}')
   })
 })
@@ -301,6 +305,12 @@ describe('the nightly workflow: the fuzzer, the probes and the previous night', 
     expect(blocks.anachronism).toContain('npx vitest run --maxWorkers=1 test/anachronism.test.ts')
     expect(blocks.anachronism).toContain('name: slices-${{ matrix.slice }}')
     expect(blocks.anachronism).toContain('path: test-slices')
+    // Each slice writes its findings and lives as metrics (the hard rule anachronism.findings.sum reads the pooled sum), even when it fails.
+    expect(blocks.anachronism).toContain('NIGHTLY_METRICS_DIR: metrics')
+    expect(blocks.anachronism).toContain('NIGHTLY_SHARD: ${{ matrix.slice }}')
+    expect(blocks.anachronism).toContain('name: metrics-anachronism-${{ matrix.slice }}')
+    const upload = stepsOf('anachronism').find((s) => s.includes('name: metrics-anachronism-'))
+    expect(upload, 'the step that uploads the slice metrics').toContain('if: ${{ always() }}')
     const merge = blocks['anachronism-merge']
     expect(merge).toMatch(/^ {4}env:\n {6}SLICE: merge\n {6}SLICE_DIR: test-slices$/m)
     expect(merge).toContain('pattern: slices-*')
@@ -365,7 +375,6 @@ describe('docs/CI.md: The nightly deep tier', () => {
     balance: `${s.balance.shards} x ${s.balance.lives} x ${s.balance.years}`,
     ceiling: `${s.ceiling.shards} x ${s.ceiling.lives} x ${s.ceiling.years} at ${s.ceiling.scale}x`,
     anachronism: `${s.anachronism.lives} in ${s.anachronism.slices}`,
-    text: `${s.text.lives}`,
     'old saves': `${s.oldSaves.years}, ${s.oldSaves.reseeds}`,
   })
 
@@ -373,7 +382,7 @@ describe('docs/CI.md: The nightly deep tier', () => {
     expect(start, 'a "## The nightly deep tier" heading').toBeGreaterThan(-1)
     expect(section).toMatch(/default branch/)
     expect(section).toMatch(/smoke/)
-    for (const name of ['metrics-fuzz-', 'fuzz-', 'metrics-balance-', 'metrics-deep-', 'slices-', 'nightly-metrics']) expect(section, name).toContain(`\`${name}`)
+    for (const name of ['metrics-fuzz-', 'fuzz-', 'metrics-balance-', 'metrics-anachronism-', 'metrics-deep-', 'slices-', 'nightly-metrics']) expect(section, name).toContain(`\`${name}`)
     expect(section).toContain('node scripts/nightly.mjs')
     expect(section).toContain('golden.mjs check --plan deep')
   })
