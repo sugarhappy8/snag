@@ -65,3 +65,17 @@ export function kindOfKey(key: string): KeyKind | null {
   const p = parseKey(key)
   return p ? kindOf(p.kind) : null
 }
+
+/** The words a menu prints for a key: its owner's label, cut to 60 characters, or the key itself when there is no owner or the owner has none. */
+export function labelOfKey(g: GameState, key: string): string {
+  const def = kindOfKey(key)
+  if (def) {
+    try {
+      const text: unknown = def.label(g, key)
+      if (typeof text === 'string' && text.trim() !== '') return text.slice(0, 60)
+    } catch {
+      // a label that throws is a label that is not there
+    }
+  }
+  return key
+}

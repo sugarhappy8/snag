@@ -8,11 +8,13 @@
 // ageUp (yearly-aging.ts, one module per hook, itself sorted by id); R2-K10 to R2-K12 convert the special careers, the menus and
 // the company view.
 import { registerModules, type ModuleDef } from '../kernel/registry'
+import { knowledgeModule } from '../knowledge/module'
 import { factsModule } from '../world/facts'
 import { MENU_MODULES } from './menus-core'
 import { YEARLY_AGING } from './yearly-aging'
 
 export const MODULES: readonly ModuleDef[] = [
+  knowledgeModule, // R3-H5: the Intelligence Briefing and the yearly standing orders (ids ascend: knowledge.core comes before menus.core)
   ...MENU_MODULES, // the rows of the Assets, Shopping and Activities menus (menus.ts imports this file for them)
   factsModule,
   ...YEARLY_AGING,

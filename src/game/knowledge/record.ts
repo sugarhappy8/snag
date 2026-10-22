@@ -151,6 +151,18 @@ export function forget(g: GameState, key: string): void {
 }
 
 /**
+ * Take the record out of the flags bag when it holds nothing that can be read or used: no row that counts today, no dial and no heat
+ * (the year stamp alone is not worth keeping). The yearly step calls it after it has pruned and settled, so a life that researched
+ * once and let it lapse is a life with no record again.
+ */
+export function tidyRecord(g: GameState): void {
+  const rec = rawRec(g)
+  if (!rec) return
+  if (readRows(g, rec).length > 0 || (dialOf(rec.d) ?? 0) > 0 || (heatOf(rec.h) ?? 0) > 0) return
+  dropRec(g)
+}
+
+/**
  * Everything the player has researched, as estimates, stalest first (ties by key): what the Briefing hub lists. It needs no truth:
  * each row is shown as it was read, aged to this year. A row whose key has no unit (a hint key) is left out. Pure; the mode does
  * not hide it (a screen decides what to show in Exact).

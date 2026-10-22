@@ -48,7 +48,7 @@ export const OWN_USES = 3
 const OWN_ACTION = 'intel.own'
 
 /** The refusals, in plain words (a button's disabledReason: 70 characters at most). */
-const WHY = {
+export const INTEL_WHY = {
   exact: 'Exact mode already shows every number.',
   notNow: 'Not now.',
   desk: 'The desk works through your standing orders.',
@@ -63,6 +63,7 @@ const WHY = {
   cash: "You can't afford that.",
   time: "You've run out of time for that this year.",
 } as const
+const WHY = INTEL_WHY
 
 // The log line of each purchase: three wordings, 90 characters at most with the fee in. `{fee}` is the price in the player's money.
 // `own` takes time and has no fee. Each pool is its own const so the pickline era guard (test/r2-pickline-era-guard.test.ts) can read it.
@@ -259,7 +260,8 @@ interface Plan {
 function plan(g: GameState, src: SourceId, rawKeys: unknown, standing: boolean): Plan {
   const none = (why: string, reachN = 0, use: Cand[] = [], price = 0, sdFrom = 0, sdTo = 0): Plan => ({ why, reach: reachN, use, price, sdFrom, sdTo })
   if (!isSourceId(src)) return none(WHY.noSuch)
-  if (isExact()) return none(WHY.exact)
+  // The standing orders (R3-H5) run in either mode, so a setting can never change a replay; only a purchase by hand is refused in Exact.
+  if (isExact() && !standing) return none(WHY.exact)
   const keys = keyList(rawKeys)
   if (keys.length === 0) return none(WHY.empty)
   const def = SOURCES[src]
@@ -305,6 +307,17 @@ export function offersFor(g: GameState, keys: readonly string[]): Offer[] {
   return out
 }
 
+/**
+ * What buying `keys` from `src` would cost and whether it can go ahead now: `price` (the fee for the keys still to read, 0 when
+ * nothing can be read), `why` (the refusal buyIntel would give, or null) and `reach` (how many keys the source can speak about).
+ * Pure; the same decision as buyIntel, for the standing orders' caption and for a menu that must name a fee it cannot book yet.
+ * `opts.standing` quotes the way the standing orders buy: the desk is open and Exact mode does not refuse.
+ */
+export function quoteIntel(g: GameState, src: SourceId, keys: readonly string[], opts: { standing?: boolean } = {}): { price: number; why: string | null; reach: number } {
+  const p = plan(g, src, keys, opts.standing === true)
+  return { price: p.price, why: p.why, reach: p.reach }
+}
+
 /** The reading of one key from one source this year: the truth plus a hashed draw of the source's sd. */
 function readingOf(g: GameState, src: SourceId, c: Cand, sd: number): number {
   return applyNoise(c.unit, c.truth, sd, zOf(g, c.key, g.year, src), c.span)
@@ -341,7 +354,8 @@ function logPurchase(g: GameState, src: SourceId, price: number): void {
 
 /**
  * Buy a reading of `keys` (at most MAX_KEYS) from `src`. Returns { ok: true }, or { ok: false, why } with nothing booked, kept or
- * logged. `opts.standing` lets the standing orders (R3-H5) use the desk, which nobody can walk up to.
+ * logged. `opts.standing` is how the standing orders (R3-H5) buy: the desk, which nobody can walk up to, is open, Exact mode does not
+ * refuse (the orders run the same years in both modes), and no line goes in the log (the orders write one line for the year).
  */
 export function buyIntel(g: GameState, src: SourceId, keys: readonly string[], opts: { standing?: boolean } = {}): { ok: boolean; why?: string } {
   const p = plan(g, src, keys, opts.standing === true)
@@ -361,7 +375,7 @@ export function buyIntel(g: GameState, src: SourceId, keys: readonly string[], o
   }
   for (const r of made) learn(g, r.c.key, { mid: r.mid, sd: r.sd, src })
   if (def.heat > 0) addHeat(g, def.heat)
-  logPurchase(g, src, p.price)
+  if (opts.standing !== true) logPurchase(g, src, p.price)
   return { ok: true }
 }
 

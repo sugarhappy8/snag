@@ -1,7 +1,7 @@
 {
   "v": 1,
-  "base": "0deb323",
-  "aging": ["history","digest","household","relationships","sharedProjects","givingFund","background","royalty","royalCareers","health","education","professions","career","special","nation","workshop","corruption","business","techWaves","development","investments","hedge","shops","computer","finance","wealth","familyUse","nepo","willFeuds","immigration","assets","crime","underworld","advisors","milestones","world"],
+  "base": "28dcaf7+dirty",
+  "aging": ["history","digest","household","relationships","sharedProjects","givingFund","background","royalty","royalCareers","health","education","professions","career","special","nation","workshop","corruption","business","techWaves","development","investments","hedge","shops","computer","finance","wealth","familyUse","nepo","willFeuds","immigration","assets","crime","underworld","advisors","milestones","knowledge.core","world"],
   "special": ["military","actor","music","sports","gamedev","author","model","politics","astronaut","careers2","hustler","social","fame"],
   "lives": {
     "traces": [
@@ -110,7 +110,7 @@
         ["66099aa6","293cdb5a","8b0fbc20","65bcf2f8","3977355d","d3131398","d358d7eb","2d08bdee","54be3177","0d1a4902","3f063d86","60270845"],
         ["5de5d662","6f76cdc5","a783303a","b4e85133","c56805be","df528110","4bb15560","14703125","f95ba3f3","a8fdf2ca","be10d2ca","7c79d2ba"],
         ["63f99621","9dda75bd","87fcb093","d939a515","fed6f59e","2536b737","cd6f48bb","f385a050","32ab548a","902ad6d7","4602320f","d9124a5e"],
-        ["9d9d64aa","ca3564a2","a2ebb1f9","0e30a9fa","e68eab6b","2536b737","4b749782","573874b7","84f7c75f","74ceea7c","d8d5b0f2","636a8a6f"],
+        ["9d9d64aa","ca3564a2","a2ebb1f9","0e30a9fa","e68eab6b","2536b737","4b749782","573874b7","84f7c75f","74ceea7c","d8d5b0f2","df52b1a6"],
         ["98c35979","147b81c4","89bade9f","76f9e53f","1a83e47a","1ee8c2ec","44699da6","66ba87a2","95c69144","a41827dd","8cee231b","9b0cfd3f"],
         ["b97afa88","bacd63fa","98474e86","687dae2c","d12ca25e","d77284fe","80ea830d","9800bd18","e5a73e18","aa630b17","e588d35c","32feb6d1"],
         ["a1cda517","02647571","542b25c6","8a1f922a","c2773973","dfdc9701","5cdbc543","17170261","13131200","fa2683a6","c661d99e","a0a1ec76"],
@@ -156,11 +156,11 @@
       ["e85d7b9b","feca1c17","1b95399a","9d185f72","66e2ef5a","5a908d5c","83226740","bd4d2d81","abbf5b8c","f0dbf2e9","741638a5","7446686a"]
     ],
     "hooks": {
-      "b1960-rich": {"n":1960,"h":"ca2b53b5"},
-      "b2000-rich": {"n":1960,"h":"ca2b53b5"},
-      "f1950-1x25": {"n":1225,"h":"34a89622"},
-      "f1990-3x25": {"n":833,"h":"0f3f5b9a"},
-      "v1": {"n":245,"h":"e51a00b6"}
+      "b1960-rich": {"n":2000,"h":"47f5cc4d"},
+      "b2000-rich": {"n":2000,"h":"47f5cc4d"},
+      "f1950-1x25": {"n":1250,"h":"cb045c51"},
+      "f1990-3x25": {"n":850,"h":"dcd2e251"},
+      "v1": {"n":250,"h":"5209bb51"}
     }
   },
   "menus": {
