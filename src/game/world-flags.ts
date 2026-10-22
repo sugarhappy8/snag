@@ -78,7 +78,7 @@ const PERSONAL: readonly string[] = [
   'computerLockedUntil', 'computerMoney', 'cravingAge', 'creative.pieces', 'creditCleanYears', 'creditDefaults',
   'creditLastMiss', 'creditReviewedYear', 'crimeFamily', 'cryptoBuys', 'cvCaughtAge', 'deathRecorded', 'deported',
   'dev', 'devFamilyComputer', 'devFamilyPcSeen', 'devParentLaptopAge', 'devScreenPromise', 'devUsedLaptopYear',
-  'diet', 'dietSurvivor', 'edu.moments', 'embezzled', 'era.pill', 'eventCooldowns', 'everydayBought', 'examScore',
+  'diet', 'dietSurvivor', 'edu.moments', 'effort.you', 'embezzled', 'era.pill', 'eventCooldowns', 'everydayBought', 'examScore',
   'eyesight', 'eyesightCorrected', 'eyewear', 'fin.team', 'finalOccupation', 'firedJobs', 'fosterCare', 'fugitive',
   'grandkidsSeen', 'greek', 'guardianId', 'hadGrandchild', 'healthInsurance', 'hero', 'heroicDeath',
   'history.covidVaccinated', 'history.done', 'history.polioVaccinated', 'history.raidYear', 'homelessLineAge',
