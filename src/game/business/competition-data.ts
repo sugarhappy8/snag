@@ -105,7 +105,8 @@ export const MARKETS: Record<Industry, MarketDef> = {
   },
   gameStudio: {
     scope: 'world', noun: 'video game', ref: 3, field: 400, fringe: 0.35, network: 2, named: 18, emerging: true,
-    from: 1971, notYet: 'Video games barely exist outside a few university labs. The first arcade cabinets are still a few years off.',
+    // Studios need the game machines themselves: the tech table's consoles (1972) reach each country on their own rollout.
+    from: 1971, needs: 'videoGameConsole', notYet: 'Video games barely exist outside a few university labs. The first arcade cabinets are still a few years off.',
     curve: [[1971, 0.001], [1975, 0.006], [1978, 0.02], [1982, 0.05], [1983, 0.03], [1985, 0.015], [1990, 0.06], [1995, 0.1], [2000, 0.17], [2005, 0.25], [2008, 0.38], [2010, 0.4], [2015, 0.6], [2020, 0.95], [2022, 0.9], [2026, 1], [2040, 1.5], [2060, 1.9]],
     hubs: [['us', 30], ['jp', 20], ['cn', 10], ['kr', 8], ['gb', 6], ['fr', 5], ['ca', 5], ['se', 4], ['pl', 4], ['fi', 3], ['de', 3]],
     names: { pre: ['Pixelstorm', 'Dragonfire', 'Moonbyte', 'Starforge', 'Questline', 'Bitstorm', 'Neon Owl', 'Glitchworks', 'Lucky Cat', 'Ironclad', 'Paper Crane', 'Red Kite'], post: ['Games', 'Interactive', 'Studios', 'Entertainment'] },
