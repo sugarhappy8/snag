@@ -2,6 +2,7 @@
 // as 'house' assets (details.typeLabel 'Private Island') so the regular house actions (move in,
 // party, rent out, amenities, renovate, sell, upkeep) keep working. Also island getaways, island
 // parties, renaming and the yearly island events (storms, treasure, noisy neighbors...).
+import { lend } from '../cash'
 import { conditionLabel, MORTGAGE_PLANS, mortgageDecision, nicePrice, seeded, yearKey, type MortgagePlan } from '../assets'
 import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, shortMoney, spend, useYearAction } from '../core'
 import { creditLabel, creditScore } from '../finance'
@@ -309,7 +310,7 @@ export function buyIsland(g: GameState, l: IslandListing, plan: MortgagePlan | n
   }
   let mortgage: Mortgage | undefined
   if (!plan) {
-    if (!spend(g, l.price)) {
+    if (!spend(g, l.price, 'property.buy')) {
       cantAfford(g, l.price, l.name)
       return null
     }
@@ -319,7 +320,8 @@ export function buyIsland(g: GameState, l: IslandListing, plan: MortgagePlan | n
       notice(g, 'Loan Denied', d.reason, { emoji: '\u{1F3E6}', tone: 'bad' })
       return null
     }
-    spend(g, d.down)
+    spend(g, d.down, 'property.buy')
+    lend(g, d.principal, 'pool:sellers') // the lender creates the loan; the sellers' pool gets the whole price
     mortgage = { lender: pick(g, ['Lagoon Private Bank', 'Atoll Trust & Co.', 'Old Harbour Private Bank', 'Meridian Wealth Lending']), balance: d.principal, yearlyPayment: d.payment, yearsLeft: plan.years, rate: d.rate }
   }
   const region = regionById(l.regionId)
@@ -544,7 +546,7 @@ function islandPartyAction(a: Asset): MenuAction {
         return
       }
       const cost = islandPartyCost(g)
-      if (!spend(g, cost)) {
+      if (!spend(g, cost, 'leisure')) {
         g.yearActions[`luxury.islandParty.${cur.id}`] = 0
         cantAfford(g, cost, 'an island bash')
         return
@@ -700,7 +702,7 @@ const INFLUENCERS = defineScript('luxury.island.influencers', (g, choice, data) 
     notice(g, 'Trespassers', `Your groundskeeper chased them off with a leaf blower. The video of it got more views than any of their posts.`, { emoji: '\u{1F32C}\u{FE0F}' })
   } else if (choice === 'charge') {
     const fee = nicePrice(randInt(g, 5_000, 40_000))
-    addMoney(g, fee)
+    addMoney(g, fee, 'royalty')
     log(g, `I charged influencers ${formatMoney(fee)} to shoot on ${island}.`, 'good')
     notice(g, 'Location Fee', `You charged them ${formatMoney(fee)} for a "location license." They paid it without blinking and tagged ${island} 400 times.`, { emoji: '\u{1F4B5}', tone: 'good' })
   } else {
@@ -731,7 +733,7 @@ export function islandEventCandidates(g: GameState): Candidate[] {
           const dmg = randInt(g, 10, 35)
           if (a.details.insured === true) {
             const ded = nicePrice(Math.min(a.value * 0.01, 250_000))
-            addMoney(g, -Math.min(ded, Math.max(0, g.character.money)))
+            addMoney(g, -Math.min(ded, Math.max(0, g.character.money)), 'premium')
             log(g, `A ${storm} hit my island, ${name}. Insurance paid for the repairs.`, 'bad')
             notice(g, `${storm.charAt(0).toUpperCase()}${storm.slice(1)}!`, `A ${storm} tore across ${name}, flattening palms and tossing your dock into the lagoon. Your insurer paid for repairs, minus a ${formatMoney(ded)} deductible.`, { emoji: '\u{1F300}', tone: 'bad' })
           } else {
@@ -750,7 +752,7 @@ export function islandEventCandidates(g: GameState): Candidate[] {
         weight: 2,
         fire: () => {
           const found = nicePrice(randInt(g, 40_000, 1_500_000))
-          addMoney(g, found)
+          addMoney(g, found, 'luck')
           addStat(g, 'happiness', 8)
           count(g, 'treasureFound')
           remember(g, `Found treasure worth ${formatMoney(found)} on my island, ${name}.`)
