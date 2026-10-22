@@ -1,4 +1,5 @@
 // Shared helpers every game module uses: stats, money, log, modals, people lookups.
+import { bookPlayer, roomFor, tokenSeen, type Why } from './kernel/ledger'
 import { noticeWeightFor } from './notice-weights'
 import { chance, uid } from './rng'
 import type {
@@ -61,33 +62,72 @@ export function addRelationship(p: Person, delta: number): void {
 // ---------------------------------------------------------------------------
 // Money
 
-export function addMoney(g: GameState, delta: number): void {
-  const next = g.character.money + delta
-  if (!Number.isFinite(g.character.money) || !Number.isFinite(delta) || !Number.isFinite(next)) return
-  g.character.money = Math.round(next)
+/** The token a money call carries, or undefined. A call's `why` may be a reason, an object, or junk (a saved or computed value). */
+function tokenOf(why: Why | undefined): string | undefined {
+  if (why === null || typeof why !== 'object') return undefined
+  const t: unknown = why.token
+  return typeof t === 'string' && t.length > 0 ? t : undefined
 }
 
-/** Spend if affordable; returns false (and spends nothing) otherwise. */
-export function spend(g: GameState, amount: number): boolean {
+/** A plain zero for a change that rounded away (Math.round(-0.4) is -0, and `toBe(0)` and JSON tell them apart). */
+const plain = (n: number): number => (n === 0 ? 0 : n)
+
+// The three primitives below keep their old validation and rounding exactly; what is new is the second argument. Every call that
+// moves cash books the same whole dollars in the ledger (kernel/ledger.ts) under `why`: a reason from the table (kernel/reasons.ts),
+// or an object that names the counterparty, the country or a token. A call with no `why` books as `unreasoned`, which the ratchet
+// counts (test/money-ratchet.test.ts), so a migration batch gives each site its reason. A receipt whose payer is a capped mint
+// (the lending mint) is clipped to the mint's room and the cash takes only what the ledger booked; nothing else ever clips.
+// A call with a token that was already booked this year changes nothing, so a replayed year pays nothing twice.
+
+/** Adds money (a negative delta takes it). Returns the change applied: the delta rounded, 0 when it was refused or clipped away. */
+export function addMoney(g: GameState, delta: number, why?: Why): number {
+  const before = g.character.money
+  if (!Number.isFinite(before) || !Number.isFinite(delta) || !Number.isFinite(before + delta)) return 0
+  const token = tokenOf(why)
+  if (token !== undefined && tokenSeen(g, token)) return 0
+  const want = Math.round(before + delta) - before
+  const after = Math.round(before + (delta > 0 ? Math.min(delta, roomFor(g, why)) : delta))
+  g.character.money = after
+  // The books get the whole amount: a mint clips it to the same room the cash was clipped to, and logs the cap row.
+  bookPlayer(g, why, want)
+  return plain(after - before)
+}
+
+/**
+ * Spend if affordable; returns false (and spends nothing) otherwise. A call whose token was already booked this year spends
+ * nothing and returns false.
+ */
+export function spend(g: GameState, amount: number, why?: Why): boolean {
   if (!Number.isFinite(g.character.money) || !Number.isFinite(amount)) return false
   if (amount <= 0) return true
   if (g.character.money < amount) return false
-  g.character.money = Math.round(g.character.money - amount)
+  const token = tokenOf(why)
+  if (token !== undefined && tokenSeen(g, token)) return false
+  const before = g.character.money
+  g.character.money = Math.round(before - amount)
+  bookPlayer(g, why, g.character.money - before)
   return true
 }
 
 /**
  * Taxable income (salary, pension, royalties...). Adds the money and accumulates
- * g.flags.taxableIncome, which yearlyFinance taxes at the end of the yearly hooks.
+ * g.flags.taxableIncome, which yearlyFinance taxes at the end of the yearly hooks. Returns the change applied (0 when refused).
  */
-export function earnIncome(g: GameState, amount: number): void {
-  if (!Number.isFinite(amount) || amount <= 0) return
+export function earnIncome(g: GameState, amount: number, why?: Why): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0
   const prev = typeof g.flags.taxableIncome === 'number' && Number.isFinite(g.flags.taxableIncome) ? g.flags.taxableIncome : 0
-  const money = g.character.money + amount
+  const before = g.character.money
+  const money = before + amount
   const taxable = prev + amount
-  if (!Number.isFinite(g.character.money) || !Number.isFinite(money) || !Number.isFinite(taxable)) return
-  g.character.money = Math.round(money)
-  g.flags.taxableIncome = Math.round(taxable)
+  if (!Number.isFinite(before) || !Number.isFinite(money) || !Number.isFinite(taxable)) return 0
+  const token = tokenOf(why)
+  if (token !== undefined && tokenSeen(g, token)) return 0
+  const room = roomFor(g, why)
+  const got = Math.min(amount, room)
+  g.character.money = Math.round(before + got)
+  g.flags.taxableIncome = Math.round(prev + got)
+  bookPlayer(g, why, Math.round(money) - before)
+  return plain(g.character.money - before)
 }
 
 export function canAfford(g: GameState, amount: number): boolean {
