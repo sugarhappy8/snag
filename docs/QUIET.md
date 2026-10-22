@@ -114,10 +114,29 @@ family (`paceKey`: `pop.<engine>.<family>`, the engines are `ev`, `ask`, `biz` a
 asserts the hard caps of the close on every year: at most 3 unrequested choices, at most 5 kept notices, one card, a money line that
 equals the books, and nothing folded without a record. It also states the roadmap's own numbers.
 
-- **Popups a year count what arrives.** Ordinary lives p90 3 and max 5, $50M lives p90 4 and max 6, a tycoon's mean 4 plus the companies
-  card: the modal popups that come by themselves after the store flow (the close, Quiet Mode, the digest). The outcome of a choice the
-  player answered is a reply, not an arrival, and the card is the popup the roadmap adds. The other readings (every popup the player sees,
-  as the audit counted, and what `ageUp` queued before the close) are measured and printed, not asserted.
+- **Popups a year count what arrives (lead decision L1, not yet the owner's).** Ordinary lives p90 3 and max 5, $50M lives p90 4 and max
+  6, a tycoon's mean 4 plus the companies card: the modal popups that come by themselves after the store flow (the close, Quiet Mode, the
+  digest). The outcome of a choice the player answered is a reply, not an arrival, and the card is the popup the roadmap adds. The other
+  readings (every popup the player sees, as the audit counted, and what `ageUp` queued before the close) are measured and printed.
+  The reading is consistent with the budget (3 unrequested choices and 3 notices is the $50M max of 6), and it is **not** what the player
+  sees. On the audit's reading, every popup of the store flow with the outcomes of answered choices in, the roadmap is **not met**, and
+  `test/quiet-acceptance.test.ts` only guards that it does not get worse. The numbers (p90 / max, tycoon mean) from the lives of that file:
+
+  | reading | ordinary | $50M | tycoon |
+  |---|---|---|---|
+  | the roadmap | 3 / 5 | 4 / 6 | mean 4 plus the card |
+  | arrives (asserted, L1) | 2 / 5 | 3 / 4 | mean 3.1 |
+  | seen, answered outcomes in (guarded) | 4 / 10 | 6 / 10 | mean 6.1 |
+  | seen, the close off (the old flow) | 4 / 9 | 7 / 10 | mean 5.9 |
+  | seen, `YEAR_LIMITS.choices` 2 (measured once, not kept) | 4 / 8 | 5 / 6 | mean 4.4 |
+  | seen, `YEAR_LIMITS.choices` 1 (measured once, not kept) | 3 / 7 | 3 / 5 | mean 2.4 |
+
+  What is left is the owner's call, and none of it is a small change: either sign L1 and change the roadmap line to arrivals, or move the
+  popups the player sees. The choices that move them are the budget (2 does not reach the ordinary p90 and a rich p90 of 4; 1 reaches
+  everything but the ordinary max, which is the arrests, funerals and other chains of several decisions), more scripts in
+  `DEFERRABLE_SCRIPTS` (the family and health choices that are still true a year later), and folding the outcome of an answered choice
+  into the log when it is calm. A budget or a deferral also moves what a rich life is asked for, so the goldens and the money of a rich
+  life move with it.
 - **A tycoon's visible log** is at most 8 lines a year.
 - **Repetition is about lines of the life log**, on the 13-life probe of `test/text-probe.ts`, with a line compared as
   `test/text-metrics.ts` compares it (lower case, every run of digits one `#`): repeated lines at most 5% (8% for a rich life), no line
