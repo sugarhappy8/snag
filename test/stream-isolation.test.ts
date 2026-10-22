@@ -21,6 +21,7 @@ import { SLICES, explainMove, type SliceName } from './golden-kit'
 import { GOLDEN_PLANS, compareGolden, playGolden, type GoldenLife, type LifeDigests, type Moved } from './golden-run'
 import { K_ID, K_STR, closeParen, isId, isPunct, lineOf, loadSources, splitArgs, toSource, type SourceFile } from './scan-kit'
 import { hazardRoll } from '../src/game/knowledge/risk'
+import { setbackLuck } from '../src/game/business/studio-effort'
 import { gainLuck } from '../src/game/world/frontier'
 import { followDraw } from '../src/game/world/frontier-step'
 import { seededEntity } from '../src/game/world/lod'
@@ -79,6 +80,7 @@ const DRIVERS: Readonly<Record<string, (g: GameState) => void>> = {
     void gainLuck(g, 'fusion', 'probe', g.year)
     void followDraw(g, 'fusion', 'probe', g.year)
   },
+  'effort.risk': (g) => void setbackLuck(g, g.year, 'probe'),
 }
 
 /** The hook of a row that is driven: calls its driver after the years the row taps at, in every life. Undefined for a row that is not. */

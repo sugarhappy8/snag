@@ -5,6 +5,8 @@
 import { chartInfo, lineSpec, scorecardSpec } from '../charts'
 import type { ChartSpec } from '../charts/spec'
 import { addStat, formatCents, formatMoney, log, notice, remember, scriptChoice, useYearAction } from '../core'
+import { revealPolicyOf } from '../effort/hooks'
+import { oddsLine } from '../effort/why'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
@@ -57,7 +59,7 @@ import {
 import { aiLine, benchRows, benchSeries, firstRows, summaryClause } from './deeptech-bench'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
-import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, slotCount, startProgram, startTrial, stopPrograms, trackCount, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
+import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programQuote, slotCount, startProgram, startTrial, stopPrograms, trackCount, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
 import { MAX_SERIES, SERIES, milestoneListingBlock, timesDone, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
@@ -167,7 +169,7 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
       defaultValue: () => '100',
       preview: (g, v) => {
         const { b, t } = view(g, a)
-        const terms = programTerms(b, t, def, v / 100)
+        const terms = programQuote(b, t, def, v / 100, g)
         // What it really costs and takes at the lab's current pace: progress moves a whole pace
         // step at every year-end, and each year is billed at the pace's cost.
         const pace = PACES.find((x) => x.id === t.pace) ?? PACES[1]
@@ -175,7 +177,9 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
         const yearly = terms.cost * pace.cost
         const funds = techFunds(b, t)
         const short = yearly > funds ? ` · more than the ${money(funds)} in the R&D account and cash covers` : ''
-        return `${money(yearly)} a year for ${yrs(n)} at a ${pace.label.toLowerCase()} pace (${money(yearly * n)} in all) · ${Math.round(terms.odds * 100)}% base odds${short}`
+        // What moved the odds off the plan's own (the budget, the lab's know-how in the trade, the world's research), when anything did.
+        const why = terms.quote.reasons.length > 0 ? ` · ${oddsLine(terms.quote, revealPolicyOf(g))}` : ''
+        return `${money(yearly)} a year for ${yrs(n)} at a ${pace.label.toLowerCase()} pace (${money(yearly * n)} in all) · ${Math.round(terms.odds * 100)}% base odds${why}${short}`
       },
     },
     run: (g, cur, b, t, input) => {

@@ -83,6 +83,8 @@ export const LAB_TIP: Record<string, Say> = {
   cost: (percent) => `unit costs fall up to ${percent}%`,
   yield: (percent) => `output rises up to ${percent}%`,
   quality: (percent) => `demand rises up to ${percent}%`,
+  // The lab's know-how row: what failed tries taught it, by track ("unit cost 6, quality 3").
+  know: (list) => `What failed tries taught the lab: ${list}. The next try is likelier.`,
   // The confirm before a program starts: it repeats the price, the years and the odds.
   confirm: (program, price, years, odds) => `Start ${program}? It costs ${price} and has about ${odds}% odds in ${years}. If it fails, the money is gone.`,
   // The team's info row: scientists now, the trade's cap, a year's pay each, the odds points and the slots ("2 more slots") they add.

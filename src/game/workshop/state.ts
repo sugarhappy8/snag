@@ -29,6 +29,9 @@ export interface NoteIdea {
 
 export interface MadeEntry { id: string; name: string; emoji: string; route: string; year: number; first?: boolean }
 
+/** A hired bench assistant (R3-M9): the year they joined and how good they are, 0 to 100. Optional: most workshops never have one. */
+export interface Helper { since: number; skill: number }
+
 export interface Workshop {
   v: 1
   owner: string
@@ -48,9 +51,13 @@ export interface Workshop {
   /** Ideas offered recently (newest last, bounded): drawn ideas avoid them, so a forgotten or
    * scrapped idea doesn't come straight back. */
   seen: string[]
+  /** The bench assistant, when one is hired (bench.ts). Absent otherwise, so a workshop that never hired keeps its old stored shape. */
+  helper?: Helper
 }
 
 export const SEEN_MAX = 40
+/** A new assistant's skill (it grows a little with every paid year, bench.ts). */
+export const HELPER_START_SKILL = 40
 
 export type Route = 'license' | 'pitch' | 'crowd' | 'company' | 'open'
 export type PatentScope = 'home' | 'world'
@@ -123,6 +130,13 @@ export function ideaDef(id: string, custom?: CustomIdea): IdeaDef | null {
   return { id, name: custom.name, emoji: custom.emoji, blurb: custom.blurb, cat: custom.cat, d: custom.d, a: custom.a, from: 0 }
 }
 
+/** The bench assistant a save holds: a record with a year, its skill cut to 0-100 (a missing or odd skill reads as the start skill). Anything else is no assistant. */
+export function readHelper(v: unknown): Helper | undefined {
+  const d = rec(v)
+  if (typeof d.since !== 'number' || !Number.isFinite(d.since)) return undefined
+  return { since: year(d.since, 0), skill: fin(d.skill, HELPER_START_SKILL, 0, 100) }
+}
+
 function readNote(v: unknown, fallbackYear: number): NoteIdea | null {
   const d = rec(v)
   const id = text(d.id, 80)
@@ -154,6 +168,7 @@ export function normalizeWorkshop(g: GameState, raw: unknown): Workshop {
   }
   const events: Record<string, number> = {}
   for (const [k, v] of Object.entries(rec(d.events)).slice(0, 200)) if (typeof v === 'number' && Number.isFinite(v)) events[text(k, 60)] = Math.round(v)
+  const helper = readHelper(d.helper)
   const made: MadeEntry[] = (Array.isArray(d.made) ? d.made : []).map(rec).filter((m) => text(m.id) && text(m.name)).slice(-60).map((m) => ({
     id: text(m.id), name: text(m.name), emoji: text(m.emoji, 16) || '\u{1F4A1}', route: text(m.route, 20), year: year(m.year, g.year), ...(m.first === true ? { first: true } : {}),
   }))
@@ -163,6 +178,7 @@ export function normalizeWorkshop(g: GameState, raw: unknown): Workshop {
     builds: Math.floor(fin(d.builds, 0, 0, 1e6)), launches: Math.floor(fin(d.launches, 0, 0, 1e6)), earned: fin(d.earned), kabooms: Math.floor(fin(d.kabooms, 0, 0, 1e6)),
     made, events, last: year(d.last, -1),
     seen: [...new Set((Array.isArray(d.seen) ? d.seen : []).map((x) => text(x, 80)).filter((x) => !!x))].slice(-SEEN_MAX),
+    ...(helper ? { helper } : {}),
   }
 }
 
