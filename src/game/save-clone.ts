@@ -20,8 +20,12 @@
 // Keeping the draft's own parts writable: the log array, the flags object and the world container are new objects every time, so a
 // draft can append a year, set a flag or add a shard; only the roots inside them are shared.
 //
-// A leaf of the layering like the codec: it imports the slice registry, the slice table and types. It draws no random numbers and
+// The ledger shard is cloned with the core, and the clone is a new object: the ledger checks a shard once per object, so the clone is
+// handed the committed shard's mark (carryLedgerMark) instead of being checked in full at the first booking of every tap.
+//
+// A leaf of the layering like the codec: it imports the slice registry, the slice table, the ledger's mark and types. It draws no random numbers and
 // never changes the state it reads, except to freeze what it shares (a deep-frozen state is fine).
+import { carryLedgerMark } from './kernel/ledger'
 import { LOG_TAIL, freezeRoot, getAt, listSlices, setAt, sliceOf } from './kernel/slices'
 import { ensureSliceTable } from './save-slices'
 import type { GameState } from './types'
@@ -30,6 +34,9 @@ type Rec = Record<string, unknown>
 
 const isObj = (v: unknown): v is object => typeof v === 'object' && v !== null
 const isHolder = (v: unknown): v is Rec => isObj(v) && !Array.isArray(v)
+
+/** Where the ledger shard lives (the slice 'world.ledger', save-slices.ts). */
+const LEDGER_PATH = 'world.ledger'
 
 /** What stands in a shared slot while the core is cloned. Never read: setAt puts the shared root back. */
 const SHARED = ''
@@ -98,6 +105,8 @@ export function cloneForAct(g: GameState): GameState {
   }
 
   const out = structuredClone(view)
+  // The one in-place world shard: equal to the committed one, which the ledger checked, so it needs no check of its own.
+  carryLedgerMark(getAt(g, LEDGER_PATH), getAt(out, LEDGER_PATH))
   for (const [path, root] of shared) {
     freezeRoot(root)
     setAt(out, path, root)

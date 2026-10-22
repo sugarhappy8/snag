@@ -8,6 +8,7 @@
 // mid-range Android" rule, and the 250 ms light-life target) is checked as desktop milliseconds times that printed ratio, until a
 // device run exists (the lead's decision 21).
 import { beforeAll, describe, expect, it } from 'vitest'
+import { addMoney } from '../src/game/core'
 import { encodeSave, type EncodedSave } from '../src/game/save-codec'
 import { cloneForAct } from '../src/game/save-clone'
 import type { GameState } from '../src/game/types'
@@ -27,13 +28,16 @@ const HEAD_BUDGET_CHARS = 400_000
 const median = (xs: readonly number[]): number => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!
 
 /** A tap as the store makes it: a draft of the committed state, one small change, then the save's encode. */
-function tap(committed: GameState): { draft: GameState; ms: number; encoded: EncodedSave } {
+function tap(committed: GameState, change: (draft: GameState) => void = (draft) => void (draft.character.money += 1)): { draft: GameState; ms: number; encoded: EncodedSave } {
   const t0 = performance.now()
   const draft = cloneForAct(committed)
-  draft.character.money += 1
+  change(draft)
   const encoded = encodeSave(draft)
   return { draft, ms: performance.now() - t0, encoded }
 }
+
+/** A tap that books a dollar through the ledger, as every earn, spend and pay does: the ledger's own cost (its check, the booking, the shard in the core) is in the figure. */
+const booking = (draft: GameState): void => void addMoney(draft, 1, 'wage')
 
 let heavy: GameState
 
@@ -50,12 +54,12 @@ describe('the heavy probe life', () => {
     expect(heavy.flags.worldEconomy).toBeDefined()
   })
 
-  it('costs at most 8 ms (times the machine factor) for the clone plus the encode of the core, after the caches are warm', () => {
+  it('costs at most 8 ms (times the machine factor) for the clone, a booking through the ledger and the encode of the core, after the caches are warm', () => {
     let committed = heavy
-    for (let i = 0; i < WARM_ROUNDS; i++) committed = tap(committed).draft
+    for (let i = 0; i < WARM_ROUNDS; i++) committed = tap(committed, booking).draft
     const times: number[] = []
     for (let i = 0; i < TIMED_ROUNDS; i++) {
-      const t = tap(committed)
+      const t = tap(committed, booking)
       times.push(t.ms)
       committed = t.draft
     }
@@ -71,7 +75,7 @@ describe('the heavy probe life', () => {
     const factor = machineFactor()
     const budget = TAP_BUDGET_MS * factor
     console.log(
-      `per-tap clone+encode: median ${m.toFixed(2)} ms (max ${Math.max(...times).toFixed(2)}), budget ${budget.toFixed(2)} ms = ${TAP_BUDGET_MS} ms x factor ${factor.toFixed(2)} ` +
+      `per-tap clone+booking+encode: median ${m.toFixed(2)} ms (max ${Math.max(...times).toFixed(2)}), budget ${budget.toFixed(2)} ms = ${TAP_BUDGET_MS} ms x factor ${factor.toFixed(2)} ` +
         `(calibration ${calibrationMs().toFixed(2)} ms against ${REFERENCE_MS} ms); the old structuredClone+stringify of the whole state: median ${median(old).toFixed(2)} ms`,
     )
     expect(m).toBeLessThanOrEqual(budget)

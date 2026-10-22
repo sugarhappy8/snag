@@ -124,7 +124,7 @@ roadmap's 50-year probe). The "measured" column is what R2-S12 saw on the dev de
 | head (core), heavy and light | 400,000 characters | 217,600 and 10,400 |
 | `world` chunk | 1,000,000 characters, 600,000 bytes gzipped | 520,200 characters, 137,100 bytes |
 | chunks written by ten taps between two birthdays | 150,000 characters | 0 (the head is written every tap) |
-| clone plus encode of the core, per tap (`test/save-tap-cost.test.ts`) | 8 ms | 0.9 ms |
+| clone, one booking through the ledger and encode of the core, per tap (`test/save-tap-cost.test.ts`) | 8 ms | 1.0 ms |
 | v4.1.1 heavy fixture, stored size | at most 0.8 of the old, raw and gzipped | 0.35 raw, 0.51 gzipped |
 | light-life `ageUp` | 160 ms | 17 ms |
 | clone, `ageUp` and encode of a light life | 200 ms | 28 ms |

@@ -224,8 +224,10 @@ function parseFlowKey(key: string): { year: number; country: string; reason: Rea
 // Reading: the shard of a state
 // ---------------------------------------------------------------------------------------------------------------------------
 
-/** Shards this module has checked (the object itself, so a structuredClone is checked once more). */
+/** Shards this module has checked, by the object itself. A structuredClone is a new object; carryLedgerMark hands it the mark. */
 const VALIDATED = new WeakSet<object>()
+/** How many times normalizeLedger has run (a test counts them: a tap must not pay for a check the committed shard already passed). */
+let CHECKS = 0
 /** What peekLedger made of a saved object that was not valid as it stood, by the identity of that object. */
 const PEEKED = new WeakMap<object, LedgerShard>()
 
@@ -245,6 +247,20 @@ export function peekLedger(g: GameState): Readonly<LedgerShard> {
   if (n === raw) VALIDATED.add(raw)
   else PEEKED.set(raw, n)
   return n
+}
+
+/**
+ * `copy` is a structured clone of `source`, a shard this module has checked: it is equal to it, so it is checked already. Nothing
+ * else is marked (an object that was never checked stays unchecked), which makes the call safe for any pair. The clone act() makes
+ * of every tap would otherwise be checked in full at its first booking.
+ */
+export function carryLedgerMark(source: unknown, copy: unknown): void {
+  if (typeof source === 'object' && source !== null && typeof copy === 'object' && copy !== null && VALIDATED.has(source)) VALIDATED.add(copy)
+}
+
+/** Tests only: how many times a shard has been checked (normalizeLedger runs). */
+export function ledgerChecksForTests(): number {
+  return CHECKS
 }
 
 /**
@@ -806,6 +822,7 @@ function rebuild(raw: unknown): LedgerShard {
  * is repaired by a mint or burn named `heal` with a log row. A shard that is already valid comes back as the same object.
  */
 export function normalizeLedger(raw: unknown): LedgerShard {
+  CHECKS++
   try {
     const out = rebuild(raw)
     return raw !== undefined && raw !== null && sameShape(raw, out, 0) ? (raw as LedgerShard) : out

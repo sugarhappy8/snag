@@ -14,7 +14,9 @@
 //   (g) the fuzz kit's action probe plays through the clone, and the detector it gives for an in-place writer works.
 import { describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
+import { addMoney } from '../src/game/core'
 import { economyState } from '../src/game/economy/model'
+import { checkLedger, ledgerChecksForTests } from '../src/game/kernel/ledger'
 import { LOG_TAIL } from '../src/game/kernel/slices'
 import { encodeSave } from '../src/game/save-codec'
 import { cloneForAct } from '../src/game/save-clone'
@@ -483,4 +485,32 @@ describe('the codec reads a draft as it reads the state', () => {
     expect([...again.chunks.keys()]).toEqual([...first.chunks.keys()])
     expect(again.stats.stringified).toBe(0)
   }, 120_000)
+})
+
+describe('the ledger shard in a draft', () => {
+  it('is not checked again at the first booking of a tap: the committed shard was checked, and its clone is deep-equal', () => {
+    const g = makeTestGame(1)
+    expect(addMoney(g, 5, 'wage')).toBe(5)
+    const before = ledgerChecksForTests()
+    const draft = cloneForAct(g)
+    expect(worldOf(draft).ledger).not.toBe(worldOf(g).ledger)
+    expect(addMoney(draft, 7, 'wage')).toBe(7)
+    expect(ledgerChecksForTests()).toBe(before)
+    // And a tap later, from the draft that was committed.
+    const next = cloneForAct(draft)
+    expect(addMoney(next, 1, 'wage')).toBe(1)
+    expect(ledgerChecksForTests()).toBe(before)
+    expect(checkLedger(next).ok).toBe(true)
+  })
+
+  it('still checks a clone of a shard nothing had checked, and repairs it', () => {
+    const g = makeTestGame(1)
+    rec(g).world = { v: 1, ledger: { v: 1, y: 0, a: { bogus: 5, 'person:a': 3 }, m: { gift: 3 } } }
+    const before = ledgerChecksForTests()
+    const draft = cloneForAct(g)
+    addMoney(draft, 2, 'wage')
+    expect(ledgerChecksForTests()).toBeGreaterThan(before)
+    expect(checkLedger(draft, { allowHeal: true }).ok).toBe(true)
+    expect(Object.keys((worldOf(draft).ledger as { a: Rec }).a)).not.toContain('bogus')
+  })
 })
