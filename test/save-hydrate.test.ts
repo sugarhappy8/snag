@@ -107,6 +107,22 @@ async function putIdbRecord(factory: IDBFactory, record: string): Promise<void> 
   await (await idbSaveBackend(factory)).write(record)
 }
 
+/**
+ * The game the database holds, as JSON, whether its record is the one text v4.1.1 wrote or a head with chunks (R2-S7: the import
+ * writes a head and the chunks it names, and the game is what they make together).
+ */
+async function idbGameJson(factory: IDBFactory): Promise<string> {
+  const db = await idbSaveBackend(factory)
+  const found = await diagnoseRecord((await db.read()) ?? '', {
+    chunks: async (ids) => {
+      const rows = (await db.chunks?.get(ids)) ?? []
+      return new Map(ids.map((id, i) => [id, rows[i] ?? null] as const))
+    },
+  })
+  if (found.kind !== 'ready') throw new Error(`expected the database to hold a ready save, got ${found.kind}`)
+  return JSON.stringify(found.game)
+}
+
 /** The game a record migrates to, as JSON: what boot stores when it imports `raw`. */
 function migratedJson(raw: string): string {
   const found = migrateSave(JSON.parse(raw))
@@ -205,7 +221,7 @@ describe('importing the localStorage save', () => {
     const out = await hydrateSaves({ factory })
     expect(out).toEqual({ backend: 'idb', source: 'legacy', fellBack: false, imported: true })
     expect(storage.data.has(SAVE_KEY)).toBe(false)
-    expect(await decodeSnapshotRecord((await idbRecord(factory)) ?? '')).toBe(migratedJson(older))
+    expect(await idbGameJson(factory)).toBe(migratedJson(older))
     const loaded = save.loadGame()
     expect(isLoadableGame(loaded)).toBe(true)
     expect(loaded?.lifeId).toBe(lifeId)
@@ -275,7 +291,7 @@ describe('importing the localStorage save', () => {
     expect(await hydrateSaves({ factory })).toMatchObject({ source: 'legacy', imported: true })
     const stored = (await idbRecord(factory)) ?? ''
     expect(stored.startsWith('gz2:')).toBe(true)
-    expect(await decodeSnapshotRecord(stored)).toBe(migratedJson(bigJson))
+    expect(await idbGameJson(factory)).toBe(migratedJson(bigJson))
 
     resetSaveStoreForTests()
     expect(await hydrateSaves({ factory })).toMatchObject({ backend: 'idb', source: 'idb' })
@@ -295,7 +311,7 @@ describe('both stores hold a game', () => {
     expect(notices[0]).toMatchObject({ kind: 'stale', bytes: older.length })
     expect(await readSaveCopy(notices[0].id)).toBe(older)
     expect(storage.data.has(SAVE_KEY)).toBe(false)
-    expect(await decodeSnapshotRecord((await idbRecord(factory)) ?? '')).toBe(migratedJson(later))
+    expect(await idbGameJson(factory)).toBe(migratedJson(later))
   })
 
   it('keeps the IndexedDB save when it is the later one, and the legacy record becomes the stale copy', async () => {

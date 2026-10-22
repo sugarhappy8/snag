@@ -29,10 +29,16 @@ export interface SaveNotice {
   readonly bytes: number
   /** The save version the copy was written by, when it is known. */
   readonly version?: number
+  /**
+   * The copy is of the part of a save that did not load (a missing or hostile chunk), not of a save that could not be played: the
+   * game plays, with that part started fresh. Only a `damaged` copy has it.
+   */
+  readonly partial?: true
 }
 
-function notice(id: string, raw: string, kind: SaveNoticeKind, version?: number): SaveNotice {
-  return version === undefined ? { id, kind, bytes: raw.length } : { id, kind, bytes: raw.length, version }
+function notice(id: string, raw: string, kind: SaveNoticeKind, version?: number, partial?: true): SaveNotice {
+  const found: SaveNotice = version === undefined ? { id, kind, bytes: raw.length } : { id, kind, bytes: raw.length, version }
+  return partial === true ? { ...found, partial } : found
 }
 
 // --- The slots (localStorage) ------------------------------------------------------------------
@@ -148,13 +154,13 @@ export function quarantineRecord(backend: SaveBackend, raw: string, kind: SaveNo
  */
 export async function scanQuarantine(
   backend: SaveBackend,
-  diagnose: (raw: string) => Promise<{ kind: SaveNoticeKind; version?: number }>,
+  diagnose: (raw: string) => Promise<{ kind: SaveNoticeKind; version?: number; partial?: true }>,
   onFound?: (found: SaveNotice) => void,
 ): Promise<SaveNotice[]> {
   const notices: SaveNotice[] = []
   const list = async (id: string, raw: string): Promise<void> => {
-    const { kind, version } = await diagnose(raw)
-    const found = notice(id, raw, kind, version)
+    const { kind, version, partial } = await diagnose(raw)
+    const found = notice(id, raw, kind, version, partial)
     notices.push(found)
     onFound?.(found)
   }

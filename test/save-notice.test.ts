@@ -58,6 +58,8 @@ const tooOld: SaveNotice = { id: `${SLOT}.2`, kind: 'tooOld', bytes: 100, versio
 const newer: SaveNotice = { id: `${SLOT}.3`, kind: 'newer', bytes: 100, version: 3 }
 const stale: SaveNotice = { id: 'bad-1', kind: 'stale', bytes: 100 }
 const unreachable: SaveNotice = { id: IDB_MARKER_KEY, kind: 'unreachable', bytes: 0 }
+/** The copy of the part of a save that did not load (R2-S7): the game plays, that part started fresh. */
+const partial: SaveNotice = { id: `${SLOT}.2`, kind: 'damaged', bytes: 3000, partial: true }
 
 let storage: ReturnType<typeof memoryLocalStorage>
 
@@ -110,8 +112,20 @@ describe('noticeCopy', () => {
     })
   })
 
+  it('says a part of the save started fresh, and that a copy is kept, for a partial load', () => {
+    expect(noticeCopy(partial)).toEqual({
+      title: "Part of your save didn't load",
+      text: 'That part started fresh, and a copy is kept on this device. Download it if you want to look.',
+    })
+    // A damaged copy without the flag keeps its own words.
+    expect(noticeCopy(damaged).title).toBe("Your save didn't load")
+    const { title, text } = noticeCopy(partial)
+    expect(title.length).toBeLessThanOrEqual(120)
+    expect(text.length).toBeLessThanOrEqual(120)
+  })
+
   it('keeps to the voice: straight apostrophes, no dashes', () => {
-    for (const n of [damaged, tooOld, newer, stale, unreachable]) {
+    for (const n of [damaged, tooOld, newer, stale, unreachable, partial]) {
       const { title, text } = noticeCopy(n)
       expect(`${title} ${text}`).not.toMatch(/[\u2014\u2013\u2019]/)
     }
@@ -152,7 +166,7 @@ describe('noticeActions', () => {
   })
 
   it('offers a download and a delete for a kept copy', () => {
-    for (const n of [damaged, tooOld, stale]) expect(noticeActions(n)).toEqual(['download', 'delete'])
+    for (const n of [damaged, tooOld, stale, partial]) expect(noticeActions(n)).toEqual(['download', 'delete'])
   })
 })
 
@@ -202,6 +216,15 @@ describe('SaveNoticeList', () => {
     expect(out).toContain('Download copy')
     expect(out).toContain('Delete copy')
     expect(out).not.toContain('Reload')
+    expect(out).toContain('role="alert"')
+  })
+
+  it('shows the partial variant for a copy of the part of a save that did not load, as an alert with both buttons', () => {
+    const out = html([partial])
+    expect(out).toContain('Part of your save didn&#x27;t load')
+    expect(out).not.toContain('Your save didn&#x27;t load')
+    expect(out).toContain('Download copy')
+    expect(out).toContain('Delete copy')
     expect(out).toContain('role="alert"')
   })
 

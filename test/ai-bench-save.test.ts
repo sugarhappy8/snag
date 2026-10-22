@@ -48,9 +48,9 @@ describe('hostile saves: models and tech', () => {
     expect(readTech(J({ firsts: Array.from({ length: 10_000 }, (_, i) => `language.${i}`) })).firsts).toEqual(['language.1', 'language.2', 'language.3'])
     expect([readTech(undefined).caps, readTech(undefined).firsts]).toEqual([{}, []])
   })
-  it('re-normalizes a version 3 save on first use; TECH_VERSION is 4 and SAVE_SCHEMA stays 2', () => {
+  it('re-normalizes a version 3 save on first use; TECH_VERSION is 4 and SAVE_SCHEMA is 3', () => {
     const { b } = lab(); b.tech = J({ v: 3, level: 55, stage: 2, models: [{ gen: 1, name: 'Nova 1', score: 61, open: false, year: 2020 }] })
-    const t = techOf(b); expect(t).toMatchObject({ v: 4, level: 55, caps: {}, firsts: [] }); expect(t.models[0]).toEqual({ gen: 1, name: 'Nova 1', score: 61, open: false, year: 2020 }); expect([TECH_VERSION, SAVE_SCHEMA]).toEqual([4, 2])
+    const t = techOf(b); expect(t).toMatchObject({ v: 4, level: 55, caps: {}, firsts: [] }); expect(t.models[0]).toEqual({ gen: 1, name: 'Nova 1', score: 61, open: false, year: 2020 }); expect([TECH_VERSION, SAVE_SCHEMA]).toEqual([4, 3])
   })
 })
 describe('bestModel and bestModelAsOf', () => {

@@ -38,6 +38,7 @@ import {
   timeStops,
   unrecordDeath,
 } from '../game/save'
+import { cloneForAct } from '../game/save-clone'
 import { runScript } from '../game/scripts'
 import { arriveInPast, sandboxTimeMachine, travelBlock, type TimeStop } from '../game/timeMachine'
 import type { GameState, MenuAction, ModalItem } from '../game/types'
@@ -421,11 +422,15 @@ function finalizeIfDead(g: GameState): void {
   })
 }
 
-/** Run a mutation against a fresh copy of the game state. */
+/**
+ * Run a mutation against a fresh copy of the game state. The copy clones the core and shares the frozen `replace` roots (the world
+ * economy, finished log years, world shards) with the committed state, so a tap costs the core and nothing for those: a write into
+ * one throws. See save-clone.ts.
+ */
 export function act(mutator: (g: GameState) => void): void {
   const current = state.game
   if (!current) return
-  const draft = structuredClone(current)
+  const draft = cloneForAct(current)
   bindMoneyContext(draft)
   try {
     mutator(draft)

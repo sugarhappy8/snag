@@ -142,6 +142,8 @@ One line each. A track that adds a file here adds its line; `test/kernel-accepta
 - `src/game/kernel/ports.ts` - `definePort` and `portStatus`: how one domain calls another without importing it.
 - `src/game/kernel/reasons.ts` - the reason table: why money moved, who is on the other side, and the closed lists of mints and burns with their yearly caps.
 - `src/game/kernel/registry.ts` - the module registry: `ModuleDef`, `registerModule`, `YEARLY_PHASES` and the sorted lists.
+- `src/game/kernel/shapes.ts` - shape tables for the save: `packShapes` writes a repeated object shape's key list once, `unpackShapes` reads it back under hard limits.
+- `src/game/kernel/slices.ts` - the slice table: every piece of saved state declares its home chunk, caps, `normalize` and `migrate`; `sliceOf`, `hasSlice`.
 - `src/game/kernel/spreads.ts` - the bid-ask spreads of the pools: `ask` and `bid`, so no pool trades at the mid price both ways.
 - `src/game/kernel/streams.ts` - named streams, `stream` and `outcomeStream`: the only source of luck a world module may use.
 - `src/game/kernel/tally.ts` - a company's cash by reason: the small tally the exact cash walk is built from, bounded and whole dollars.

@@ -9,6 +9,7 @@ import { advanceCountry, worldConditions, type NationInput } from './simulation'
 import { nationOverlay } from '../nation/effects'
 import { tradeOverlay } from '../nation/trade-policy'
 import { consumeWriteDowns } from '../nation/state'
+import { economyFocus, HISTORY_YEARS, pruneToFocus } from './focus'
 import { bound, ECONOMY_VERSION, economyOf, economyState, initialCountry, pointOf, sectorOf, storeEconomy, type EconomicPolicy, type EconomyFeedback, type EconomyState } from './model'
 
 export { bound, ECONOMY_KEY, economicRoll, economyOf, economyState, initialCountry, sectorOf, SECTORS, SECTOR_RULES } from './model'
@@ -31,7 +32,8 @@ export function yearlyEconomy(g: GameState): void {
   const opening = prev.year === g.year - 1 ? prev.countries : Object.fromEntries(COUNTRIES.map(c => [c.id, initialCountry(c.id, g.year - 1)]))
   const world = worldConditions(opening)
   const seed = `${g.lifeId.replace(/-g\d+$/, '')}${outcomeTag(g, g.year)}`
-  const next: EconomyState = { v: ECONOMY_VERSION, year: g.year, countries: {}, previous: opening, history: {}, pending: [], policies: prev.policies.filter(p => p.until >= g.year), receipts: [], rivals: advanceRivals(g, opening, prev.rivals, g.year), previousRivals: prev.rivals }
+  // Last year's frame is kept for the countries a reader can name (A.K9): the simulation below reads the full `opening`.
+  const next: EconomyState = { v: ECONOMY_VERSION, year: g.year, countries: {}, previous: pruneToFocus(opening, economyFocus(g)), history: {}, pending: [], policies: prev.policies.filter(p => p.until >= g.year), receipts: [], rivals: advanceRivals(g, opening, prev.rivals, g.year), previousRivals: prev.rivals }
   // Governments' own laws (nation/): measures passed before this year move this transition.
   const trade = tradeOverlay(g, g.year)
   for (const c of COUNTRIES) {
@@ -40,7 +42,7 @@ export function yearlyEconomy(g: GameState): void {
     const nation: NationInput | null = overlay || trade ? { overlay, trade } : null
     const current = advanceCountry(old, c.id, g.year, seed, world, prev.pending, next.policies, opening, nation)
     next.countries[c.id] = current
-    next.history[c.id] = [...(prev.history[c.id] ?? [pointOf(old)]), pointOf(current)].slice(-32)
+    next.history[c.id] = [...(prev.history[c.id] ?? [pointOf(old)]), pointOf(current)].slice(-HISTORY_YEARS)
   }
   storeEconomy(g, next)
   consumeWriteDowns(g)

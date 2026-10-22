@@ -58,24 +58,42 @@ export async function encodeSnapshotRecord(json: string, minimum = 100000): Prom
   } catch { return json }
 }
 
-/** Original uncompressed records and gz1/base64 records remain readable. */
-export async function decodeSnapshotRecord(value: string): Promise<string> {
+/**
+ * Original uncompressed records and gz1/base64 records remain readable. `maxChars` bounds what a compressed record may inflate to
+ * (UTF-16 units; default the 20 MB cap): a chunk is read within the length its manifest gives it, so a record that claims more
+ * is refused, early when its own trailer says so and otherwise as soon as the stream has produced more than that. A plain record
+ * is returned as it is, whatever its length: the caller checks it.
+ */
+export async function decodeSnapshotRecord(value: string, maxChars = MAX_SNAPSHOT_BYTES): Promise<string> {
   if (!value.startsWith('gz1:') && !value.startsWith('gz2:')) return value
   if (value.startsWith('gz1:') && value.length > Math.ceil(MAX_SNAPSHOT_BYTES / 3) * 4 + 4) throw new Error('Snapshot exceeds safe size')
   const bytes = value.startsWith('gz2:') ? unpackSnapshotBytes(value)
     : Uint8Array.from(atob(value.slice(4)), c => c.charCodeAt(0))
   if (bytes.length > MAX_SNAPSHOT_BYTES) throw new Error('Snapshot exceeds safe size')
+  const limit = Math.min(maxChars, MAX_SNAPSHOT_BYTES)
+  // A UTF-16 unit takes at most three bytes of UTF-8 (a surrogate pair four for two), so this never refuses text that fits `limit`.
+  const byteLimit = Math.min(limit * 3, MAX_SNAPSHOT_BYTES)
+  // The last four bytes of a gzip member say, little endian, how many bytes it inflates to (modulo 2^32): an honest record too big for
+  // `limit` is refused before the first byte is inflated. A record that lies is still stopped by the stream below.
+  if (bytes.length > 18 && (((bytes[bytes.length - 1] << 24) | (bytes[bytes.length - 2] << 16) | (bytes[bytes.length - 3] << 8) | bytes[bytes.length - 4]) >>> 0) > byteLimit) {
+    throw new Error('Snapshot exceeds safe size')
+  }
   const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader()
   const decoder = new TextDecoder('utf-8', { fatal: true }), parts: string[] = []
-  let size = 0
+  let size = 0, chars = 0
   try {
     for (;;) {
       const next = await reader.read()
       if (next.done) break
       size += next.value.length
-      if (size > MAX_SNAPSHOT_BYTES) { await reader.cancel(); throw new Error('Snapshot exceeds safe size') }
-      parts.push(decoder.decode(next.value, { stream: true }))
+      if (size > byteLimit) { await reader.cancel(); throw new Error('Snapshot exceeds safe size') }
+      const part = decoder.decode(next.value, { stream: true })
+      chars += part.length
+      if (chars > limit) { await reader.cancel(); throw new Error('Snapshot exceeds safe size') }
+      parts.push(part)
     }
-    return parts.join('') + decoder.decode()
+    const rest = decoder.decode()
+    if (chars + rest.length > limit) throw new Error('Snapshot exceeds safe size')
+    return parts.join('') + rest
   } finally { reader.releaseLock() }
 }
