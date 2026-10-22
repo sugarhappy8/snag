@@ -11,6 +11,7 @@
 //   MainCharacter → every talent at once (hasTalent is true for any id) and mastery of anything
 //               after the first time (mastery.ts); it takes one of the MAX_START_TALENTS slots
 // Purple hints are shown with ChoiceOption.hint, MenuBase.hint and AnnualReportData.talentHint.
+import { definePort } from './kernel/ports'
 import type { GameState, Person } from './types'
 
 export type TalentId =
@@ -183,9 +184,16 @@ export function talentMult(g: GameState, id: TalentId | string, mult: number): n
   return hasTalent(g, id) ? mult : 1
 }
 
+/**
+ * The lens a hint's text passes through on its way to the player (R3-G11): in Realistic mode the numbers after "about" are the
+ * talent's reading of them, honest and fallible; in Exact mode, or while nothing is bound, the text itself. Bound by
+ * fog/hint/lens.ts when it loads (modules/index.ts imports it for the effect), so this file stays at L0.
+ */
+export const hintLens = definePort('talents.hintLens', (_g: GameState, _id: string, text: string): string => text)
+
 /** A purple hint string for ChoiceOption.hint / MenuBase.hint ('' when the talent is missing). */
 export function talentHint(g: GameState, id: TalentId | string, text: string): string {
-  return hasTalent(g, id) ? `${HINT_EMOJI} ${text}` : ''
+  return hasTalent(g, id) ? `${HINT_EMOJI} ${hintLens(g, id, text)}` : ''
 }
 
 /** The emoji for a talent id ('🌟' for anything unknown). */
