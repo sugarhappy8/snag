@@ -651,3 +651,42 @@ button.cockpit-kpi-fallback:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+/* The confidence chip (R3-H7): three dots after an estimate, filled from the left, and "as of 2023" when the reading is two
+   or more years old. In a row it sits under the subtitle (the row text is a column); in an info row it sits at the end. */
+.conf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.conf-chip i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.conf-chip i.on {
+  background: var(--action-blue);
+}
+
+.conf-asof {
+  margin-left: 4px;
+}
+
+.menu-row-text .conf-chip {
+  align-self: flex-start;
+  margin: 3px 0 1px;
+}
+
+.menu-info .conf-chip {
+  margin: 4px 0 0 auto;
+}

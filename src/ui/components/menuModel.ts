@@ -75,6 +75,29 @@ export function nodeHint(node: MenuAction | MenuGroup, g: GameState): string | n
   }
 }
 
+/** A reading shows its year ("as of 2023") from this many years back; a fresher one is just "now". */
+export const CONF_ASOF_YEARS = 2
+
+/**
+ * The confidence chip of a row (MenuBase.conf, MenuInfo.conf): `conf` is its dots and `asOf` the year to print, which is
+ * null for a reading that is under two years old. Null (no chip, the row is drawn as it always was) for a row with no
+ * conf, a conf that is not an integer 0 to 3, and an asOf that is not a whole year or is later than g.year: a reading from
+ * a year that has not happened is never shown. Pure; a getter that throws is reported like a subtitle that throws.
+ */
+export function nodeConf(node: MenuAction | MenuGroup | MenuInfo, g: GameState): { conf: 0 | 1 | 2 | 3; asOf: number | null } | null {
+  try {
+    const conf: unknown = node.conf
+    if (typeof conf !== 'number' || !Number.isInteger(conf) || conf < 0 || conf > 3) return null
+    const asOf: unknown = node.asOf
+    if (asOf === undefined || asOf === null) return { conf: conf as 0 | 1 | 2 | 3, asOf: null }
+    if (typeof asOf !== 'number' || !Number.isInteger(asOf) || !(asOf <= g.year)) return null
+    return { conf: conf as 0 | 1 | 2 | 3, asOf: g.year - asOf >= CONF_ASOF_YEARS ? asOf : null }
+  } catch (err) {
+    report(`conf(${node.id})`, err)
+    return null
+  }
+}
+
 export function infoText(node: MenuInfo, g: GameState): string {
   if (typeof node.text === 'string') return node.text
   try {
