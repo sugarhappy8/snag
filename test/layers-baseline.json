@@ -331,7 +331,7 @@
       "secretaryDeskMenu"
     ],
     "src/game/special.ts": [
-      "YEARLY",
+      "SPECIAL_YEARLY",
       "influencerMenu"
     ],
     "src/game/special/actor-events.ts": [

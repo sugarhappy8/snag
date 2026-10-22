@@ -26,7 +26,7 @@ import type { GameState, MenuGroup, MenuNode } from './types'
 export { fameMenu, militaryMenu, socialMediaMenu }
 
 /** Yearly hooks, in order. Each is a no-op when it doesn't apply. */
-const YEARLY: [string, (g: GameState) => void][] = [
+export const SPECIAL_YEARLY: [string, (g: GameState) => void][] = [
   ['military', yearlyMilitary],
   ['actor', yearlyActor],
   ['music', yearlyMusic],
@@ -44,7 +44,7 @@ const YEARLY: [string, (g: GameState) => void][] = [
 
 /** Special-career pay, residuals and royalties, promotions, the draft, follower growth, fame decay. */
 export function yearlySpecial(g: GameState): void {
-  for (const [, hook] of YEARLY) {
+  for (const [, hook] of SPECIAL_YEARLY) {
     if (!g.character.alive) return
     hook(g)
   }
