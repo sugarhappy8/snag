@@ -52,7 +52,19 @@ import {
 const BASELINE_PATH = join(ROOT, 'test', 'money-ratchet.json')
 
 /** Path prefixes whose files hold no counted site. One per line; a migration batch appends its own (R2-L6 to R2-L12). */
-const MIGRATED: readonly string[] = []
+const MIGRATED: readonly string[] = [
+  // R2-L6: home, family, love, NPC lives
+  'src/game/assets.ts',
+  'src/game/birth-background.ts',
+  'src/game/development.ts',
+  'src/game/household.ts',
+  'src/game/immigration.ts',
+  'src/game/landlord.ts',
+  'src/game/love.ts',
+  'src/game/npc-lives.ts',
+  'src/game/relationships.ts',
+  'src/game/royalty.ts',
+]
 
 /** The comment that says a raw `.cash` or `.money` write is not a purse. */
 const MARKER = 'ledger-ok:'
