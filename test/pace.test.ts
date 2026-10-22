@@ -2,9 +2,10 @@
 // R3-Q8 (E.T5): the pace core. One family rule for every popup engine: a family that spoke lately weighs a quarter as much
 // (events, company events, the career kit) or waits out a gap (asks). The memory is the text kit's family record
 // (flags.textMem.f), so the whole rule costs no new saved field. Everything the rule reads is pure: no g.rng draw, no write,
-// nothing after g.year.
+// nothing after g.year. An ask family also has a lifetime cap (PACE.askLife, R3 lead decision L2): the family record of an ask
+// keeps its years for the whole life, so the cap can count them.
 import { describe, expect, it } from 'vitest'
-import { familyLast, isMemKey, noteFamily, readTextMem, familyStats } from '../src/game/text/memory'
+import { familyLast, familyUses, isMemKey, noteFamily, readTextMem, familyStats } from '../src/game/text/memory'
 import { PACE, askGapOk, notePopup, paceKey, paceWeight, popupSeen, withPaceOff } from '../src/game/text/pace'
 import type { GameState } from '../src/game/types'
 import { deepFreeze } from './fuzz-kit'
@@ -18,7 +19,7 @@ function game(year = 2030): GameState {
 
 describe('PACE', () => {
   it('holds the agreed numbers', () => {
-    expect(PACE).toEqual({ window: 5, weight: 0.25, askGap: 4, maxFamilies: 60 })
+    expect(PACE).toEqual({ window: 5, weight: 0.25, askGap: 4, askLife: 6, maxFamilies: 60 })
     expect(Object.isFrozen(PACE)).toBe(true)
   })
 })
@@ -200,6 +201,147 @@ describe('askGapOk', () => {
     expect(askGapOk(g, key, true)).toBe(true)
     expect(askGapOk(g, undefined)).toBe(true)
     expect(askGapOk(g, undefined, false)).toBe(true)
+  })
+})
+
+describe('familyUses', () => {
+  const key = paceKey('ask', 'loan')
+
+  it('counts the years the family was noted, not after g.year, and none for a family never noted', () => {
+    const g = game(2030)
+    expect(familyUses(g, key)).toBe(0)
+    g.flags.textMem = { v: 1, p: {}, f: { [key]: '2020,2024,2028,2034' }, r: {} }
+    for (const [year, uses] of [[2019, 0], [2020, 1], [2027, 2], [2028, 3], [2033, 3], [2034, 4], [2090, 4]] as const) {
+      g.year = year
+      expect(familyUses(g, key), String(year)).toBe(uses)
+    }
+  })
+
+  it('reads a damaged record, a key the memory would not hold and a family map over its cap as the sanitized memory does', () => {
+    for (const rec of ['2030,2029', 'x', '', '2030,', '1,2,3,4,5,6,7,8,9,10,11,12,13', 5, null, { a: 1 }]) {
+      const g = game(2031)
+      g.flags.textMem = { v: 1, p: {}, f: { [key]: rec }, r: {} } as never
+      expect(familyUses(g, key), JSON.stringify(rec)).toBe(0)
+    }
+    const g = game(2031)
+    g.flags.textMem = { v: 1, p: {}, f: { '9bad': '2030' }, r: {} } as never
+    expect([familyUses(g, '9bad'), familyUses(g, 'toString'), familyUses(g, '__proto__')]).toEqual([0, 0, 0])
+    const f: Record<string, string> = { [key]: '2030,2031' }
+    for (let i = 0; i < 130; i++) f[`pop.ev.f${i}`] = '2030'
+    g.flags.textMem = { v: 1, p: {}, f, r: {} } as never
+    // The sanitized memory keeps the newest 120 keys, so the oldest one (key) is dropped there.
+    expect(familyUses(g, key)).toBe(0)
+    expect(familyUses(g, 'pop.ev.f129')).toBe(1)
+  })
+})
+
+describe('askGapOk: the lifetime cap (lead decision L2: a popup family at most 6 times a life)', () => {
+  const key = paceKey('ask', 'venture')
+  /** Notes the family in each year, the way the engine does where it presents. */
+  const told = (g: GameState, years: readonly number[]): void => {
+    for (const y of years) {
+      g.year = y
+      notePopup(g, key)
+    }
+  }
+  const SIX = [2030, 2034, 2038, 2042, 2046, 2050]
+
+  it('refuses the 7th telling of a family however long it waited, and still offers the 6th', () => {
+    const g = game(2030)
+    told(g, SIX.slice(0, 5))
+    g.year = 2054
+    expect(askGapOk(g, key), 'after 5 tellings').toBe(true)
+    told(g, [2054])
+    for (const year of [2058, 2070, 2100]) {
+      g.year = year
+      expect(askGapOk(g, key), `after 6 tellings, at ${year}`).toBe(false)
+    }
+  })
+
+  it('remembers a telling for the whole life: the 10 year window of the text kit does not make a family new again', () => {
+    const g = game(2030)
+    told(g, SIX)
+    g.year = 2080
+    expect(familyUses(g, key)).toBe(6)
+    expect(askGapOk(g, key)).toBe(false)
+  })
+
+  it('keeps the gap as it was before the cap: 4 years from the last telling, whatever the count', () => {
+    const g = game(2030)
+    told(g, SIX.slice(0, 3))
+    for (const [year, ok] of [[2038, false], [2039, false], [2041, false], [2042, true]] as const) {
+      g.year = year
+      expect(askGapOk(g, key), String(year)).toBe(ok)
+    }
+  })
+
+  it('holds a storyline too: it is let through the gap, but not past the 6th telling', () => {
+    const g = game(2030)
+    told(g, [2030, 2031, 2032, 2033, 2034])
+    expect(askGapOk(g, key, true)).toBe(true)
+    told(g, [2035])
+    expect(askGapOk(g, key, true)).toBe(false)
+    expect(askGapOk(g, key, false)).toBe(false)
+  })
+
+  it('counts each family on its own and leaves a missing family and the pace-off seam alone', () => {
+    const g = game(2030)
+    told(g, SIX)
+    g.year = 2060
+    expect(askGapOk(g, key)).toBe(false)
+    expect(askGapOk(g, paceKey('ask', 'loan'))).toBe(true)
+    expect(askGapOk(g, undefined)).toBe(true)
+    expect(withPaceOff(() => askGapOk(g, key))).toBe(true)
+  })
+
+  it('does not count a telling after g.year (no foresight)', () => {
+    const g = game(2030)
+    told(g, [2030, 2034, 2038, 2060, 2064, 2068])
+    g.year = 2050
+    expect(familyUses(g, key)).toBe(3)
+    expect(askGapOk(g, key)).toBe(true)
+    g.year = 2070
+    expect(familyUses(g, key)).toBe(6)
+    expect(askGapOk(g, key)).toBe(false)
+  })
+
+  it('keeps the life only for asks: an event family still forgets a telling 10 years behind', () => {
+    const g = game(2030)
+    const ev = paceKey('ev', 'scam')
+    notePopup(g, ev)
+    g.year = 2041
+    notePopup(g, ev)
+    expect(readTextMem(g).f[ev]).toBe('2041')
+    const ask = paceKey('ask', 'loan')
+    g.year = 2030
+    notePopup(g, ask)
+    g.year = 2041
+    notePopup(g, ask)
+    expect(readTextMem(g).f[ask]).toBe('2030,2041')
+  })
+
+  it('stays inside the memory caps: at most 12 years of a family, the newest, and the 6 that count are among them', () => {
+    const g = game(2030)
+    for (let i = 0; i < 20; i++) {
+      g.year = 2030 + i * 5
+      notePopup(g, key)
+    }
+    const years = readTextMem(g).f[key]!.split(',').map(Number)
+    expect(years).toHaveLength(12)
+    expect(years[11]).toBe(2125)
+    expect(familyUses(g, key)).toBe(12)
+  })
+
+  it('is as pure as the gap: a deep-frozen state is fine and g.rng does not move', () => {
+    const g = game(2030)
+    told(g, SIX)
+    const rng = g.rng
+    const json = JSON.stringify(g)
+    deepFreeze(g)
+    expect(askGapOk(g, key)).toBe(false)
+    expect(familyUses(g, key)).toBe(6)
+    expect(g.rng).toBe(rng)
+    expect(JSON.stringify(g)).toBe(json)
   })
 })
 

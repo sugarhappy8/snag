@@ -1,10 +1,11 @@
 // Pace families of the wealth asks (R3-Q9, E.T5): which of the 57 money requests are the same kind of ask, so a kind that was
 // put to you lately waits (text/pace.ts askGapOk). Before this the only brake was each ask's own cooldown (1 to 12 years, per person
 // for the ones a person makes), so a rich life heard about a toy, a console, a phone and a concert one after another and the same
-// kind of ask came back every 2 to 4 years. Now a family is offered at most once in PACE.askGap (4) years, whoever asks.
+// kind of ask came back every 2 to 4 years. Now a family is offered at most once in PACE.askGap (4) years, whoever asks, and at most
+// PACE.askLife (6) times in a life (R3 lead decision L2; the count is the pace core's, text/pace.ts askGapOk, so no ask site keeps one).
 //
-// A storyline is exempt: a crisis (bail, then rehab, then a gambling debt) and the will are one thread, and the thread should not be
-// cut because its last chapter was two years ago. `storyline` is per ask, so a family may mix.
+// A storyline is exempt from the gap: a crisis (bail, then rehab, then a gambling debt) and the will are one thread, and the thread should
+// not be cut because its last chapter was two years ago. It is not exempt from the life cap. `storyline` is per ask, so a family may mix.
 //
 // The catalogs (wealth-kids.ts, wealth-family.ts, wealth-world.ts) are not edited: this file names the ids. An ask in no family has
 // only its own cooldown, and test/ask-families.test.ts fails when a new ask is added without one. Unlike an event family, a family

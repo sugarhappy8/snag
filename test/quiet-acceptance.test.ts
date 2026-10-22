@@ -546,10 +546,11 @@ describe('the log a tycoon sees', () => {
  * (decision L2), and a line is its normalized text (test/text-metrics.ts). A life repeats at most 5% of its lines (8% when rich), no line shows
  * up more than 3 times in a life, the same line is never told twice within 10 years, and a state line (text/state.ts) is not told twice
  * within the 5 years its row waits. Popup scenes are not lines: they follow family pacing. Where the rule is a bar it is asserted: an event
- * popup title at most 6 times a life (as test/pace-families.test.ts measures it) and an ask family at most once in PACE.askGap (4) years, a
- * thread bar. Where the rule is a weight (events, company events, the career kit) a family may come twice in 5 years and an ask family
- * has no count of its own, so those readings are printed for every engine and not asserted. The thresholds are the design's and are
- * never loosened to fit a number.
+ * popup title at most 6 times a life (as test/pace-families.test.ts measures it), an ask family at most once in PACE.askGap (4) years, a
+ * thread bar, and an ask family at most PACE.askLife (6) times in a life, the rich lives included (the fix of lead decision L2: the pace core
+ * counts an ask family's tellings for the whole life, text/pace.ts askGapOk). Where the rule is a weight (events, company events, the career
+ * kit) a family may come twice in 5 years, so those readings are printed for every engine and not asserted. The thresholds are the design's
+ * and are never loosened to fit a number.
  */
 interface ProbePlayed {
   spec: ProbeLife
@@ -601,6 +602,18 @@ function askGapMisses(families: ReadonlyMap<string, readonly number[]>, gap: num
   for (const [key, told] of families) {
     if (!key.startsWith('pop.ask.') || STORYLINE_FAMILIES.has(key)) continue
     for (let i = 1; i < told.length; i++) if (told[i]! - told[i - 1]! < gap) out.push(`${key} (years ${told[i - 1]}, ${told[i]})`)
+  }
+  return out
+}
+
+/**
+ * Ask families told more than `max` times in a life, a bar of the whole life: a storyline family counts too, because a thread is let through
+ * the gap and not past the cap. "pop.ask.loan (7 times, years 2030, 2034, ...)".
+ */
+function askLifeMisses(families: ReadonlyMap<string, readonly number[]>, max: number): string[] {
+  const out: string[] = []
+  for (const [key, told] of families) {
+    if (key.startsWith('pop.ask.') && told.length > max) out.push(`${key} (${told.length} times, years ${told.slice(0, 8).join(', ')}${told.length > 8 ? ', ...' : ''})`)
   }
   return out
 }
@@ -756,6 +769,43 @@ describe('repetition on the 13-life probe', () => {
     const asked = probed().reduce((n, p) => n + [...p.families.keys()].filter((k) => k.startsWith('pop.ask.')).length, 0)
     expect(asked, 'ask families told in the 13 lives').toBeGreaterThan(20)
   }, TIMEOUT)
+})
+
+describe('the ask life cap, rich lives included (lead decision L2: a popup family at most 6 times a life)', () => {
+  it('no ask family is offered more than PACE.askLife (6) times in a life, in the 6 rich lives of the probe as in the 7 ordinary ones', () => {
+    const misses = probed().flatMap((p) => {
+      const over = askLifeMisses(p.families, DESIGN_THRESHOLDS.popupFamilyMax)
+      return over.length > 0 ? [`${who(p)}: ${over.slice(0, 5).join('; ')}`] : []
+    })
+    expect(misses).toEqual([])
+    // The rule the pace core enforces is the roadmap's number, not a looser one.
+    expect(PACE.askLife).toBe(DESIGN_THRESHOLDS.popupFamilyMax)
+  }, TIMEOUT)
+
+  it('the cap is met, not just never needed: a rich life is asked about one family as many times as the cap allows', () => {
+    // The rich lives were asked about one family up to 15 times before the cap. If none of them reaches 6 now, the cap case above passes
+    // on lives nobody asked enough of, so it holds nothing.
+    const rich = probed().filter((p) => p.spec.rich)
+    const most = Math.max(0, ...rich.flatMap((p) => [...p.families].filter(([k]) => k.startsWith('pop.ask.')).map(([, told]) => told.length)))
+    const held = rich.flatMap((p) => [...p.families].filter(([k, told]) => k.startsWith('pop.ask.') && told.length === DESIGN_THRESHOLDS.popupFamilyMax).map(([k, told]) => `${who(p)} ${k.slice(8)} ${told[0]} to ${told[told.length - 1]}`))
+    console.log(['quiet acceptance, ask families held at the cap in the rich lives (first and last telling):', ...held.map((h) => `  ${h}`)].join('\n'))
+    expect(most, 'the most one ask family was told in a rich life').toBe(DESIGN_THRESHOLDS.popupFamilyMax)
+  }, TIMEOUT)
+})
+
+describe('the ask life checker', () => {
+  it('finds a family told more than the cap, a thread included, and leaves the other engines and a family at the cap alone', () => {
+    const years = (n: number, from = 2000): number[] => Array.from({ length: n }, (_, i) => from + i * 4)
+    const lives = new Map<string, number[]>([
+      ['pop.ask.loan', years(7)],
+      ['pop.ask.gifts', years(6)],
+      ['pop.ask.crisis', years(9)],
+      ['pop.ev.scam', years(9)],
+    ])
+    const found = askLifeMisses(lives, 6)
+    expect(found).toEqual(['pop.ask.loan (7 times, years 2000, 2004, 2008, 2012, 2016, 2020, 2024)', 'pop.ask.crisis (9 times, years 2000, 2004, 2008, 2012, 2016, 2020, 2024, 2028, ...)'])
+    expect(STORYLINE_FAMILIES.has('pop.ask.crisis')).toBe(true)
+  })
 })
 
 describe('the ask gap checker', () => {
