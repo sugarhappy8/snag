@@ -3,7 +3,9 @@
 //
 //   moneyOdds    what the budget buys: `1 - (1 - base) * k^-oddsExp`, cut to the task's odds clamp (the shape of rd.ts, bit for bit)
 //   *Pts         the odds points each deviation is worth, written once: tools, crew, know-how, a hard field, a tired maker
-//   deviate      the deviations applied in logit space, so a term nudges the odds without ever pushing them past 0 or 1
+//   deviate      the deviations applied in logit space, so a term nudges the odds without ever pushing them past 0 or 1; the three
+//                that carry a stated cap (know-how 15, public research 18, rival pressure 8) are added on top in odds points, so each
+//                is worth exactly its points in the final odds however the other terms moved them (the R3-E9 probe)
 //   attribute    the labelled lines: each term's own effect, rounded, with the rounding and the interactions put on the largest line
 //   speedOf      how fast the work goes: crew, tools, ambition, fatigue and know-how, multiplied
 //   risksOf      what a bold plan risks (reported, never rolled)
@@ -92,23 +94,36 @@ function shiftFor(pts: number, pk: number, here: number): number {
   return s < 0 ? Math.max(s, -STEP_MAX) : 0
 }
 
+/** Whether a term is one of the three that carry a stated cap in odds points and so are added in points, not in logit space. */
+const isFlat = (key: DevKey): key is 'know' | 'rival' | 'spill' => key === 'know' || key === 'rival' || key === 'spill'
+
 /**
- * Applies the deviations to the money odds `pk` in logit space. `pts` holds the odds points of every term but `bold` (a bold plan is
- * not worth points: it pulls the logit toward even odds, so it costs a favourite and helps a long shot); `bold` is the boldness
- * from `boldOf`. Returns the odds, cut to `lo..hi`, and each term's own effect in points (what it would move `pk` alone), in
- * DEV_ORDER. With every term quiet the shifts sum to exactly 0 and the odds are `pk` itself.
+ * Applies the deviations to the money odds `pk`. `pts` holds the odds points of every term but `bold` (a bold plan is not worth
+ * points: it pulls the logit toward even odds, so it costs a favourite and helps a long shot); `bold` is the boldness from `boldOf`.
+ * Crew, tools, a hard field and tiredness are logit shifts that add up, so none can push the odds past 0 or 1. Know-how, rival
+ * pressure and public research are added to that result in odds points instead: a logit shift sized at `pk` would grow when another
+ * term pulled the odds toward even, and the stated caps (15, 8 and 18 points) would hold only for the term alone. Returns the odds,
+ * cut to `lo..hi`, and each term's own effect in points (what it would move `pk` alone), in DEV_ORDER. With every term quiet the
+ * shifts sum to exactly 0 and the odds are `pk` itself.
  */
 export function deviate(pk: number, lo: number, hi: number, pts: Readonly<Record<Exclude<DevKey, 'bold'>, number>>, bold: number): { p: number; pieces: Piece[] } {
   const here = logit(pk)
   const pieces: Piece[] = []
   let sum = 0
+  let flat = 0
   for (const key of DEV_ORDER) {
+    if (isFlat(key)) {
+      const v = pts[key]
+      flat += v
+      pieces.push({ key, pts: v === 0 ? 0 : (Math.min(1, Math.max(0, pk + v / 100)) - pk) * 100 })
+      continue
+    }
     const s = key === 'bold' ? (bold === 0 ? 0 : cutNum(-BOLD_PULL * bold * here, -STEP_MAX, STEP_MAX, 0)) : shiftFor(pts[key], pk, here)
     sum += s
     pieces.push({ key, pts: s === 0 ? 0 : (sigmoid(here + s) - pk) * 100 })
   }
-  if (sum === 0) return { p: pk, pieces }
-  const p = sigmoid(here + sum)
+  if (sum === 0 && flat === 0) return { p: pk, pieces }
+  const p = (sum === 0 ? pk : sigmoid(here + sum)) + flat / 100
   return { p: p < lo ? lo : p > hi ? hi : p, pieces }
 }
 

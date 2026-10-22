@@ -48,6 +48,7 @@ import { catalogIdea, type Level } from '../src/game/workshop/catalog'
 import { HELPER_CENTRE_MAX, WORKSHOP_TOOLS_MAX, buildNumbers } from '../src/game/workshop/effort'
 import { addIdea, mutWorkshop } from '../src/game/workshop/notebook'
 import '../src/game/world/shards'
+import { EFFORT_ROWS } from './effort-ceilings'
 import { makeTestGame } from './helpers'
 import { labGame, patchLab } from './lab-kit'
 import { flowTotal } from './ledger-kit'
@@ -691,5 +692,5 @@ const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
   },
 ]
 
-/** Every row: the R0 and R1 growth terms, the world rows, then the Knowledge rows. */
-export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...KNOWLEDGE_ROWS]
+/** Every row: the R0 and R1 growth terms, the world rows, the Knowledge rows (R3-H4), then the effort rows (R3-E9, test/effort-ceilings.ts). */
+export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...KNOWLEDGE_ROWS, ...EFFORT_ROWS]
