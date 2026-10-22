@@ -64,7 +64,7 @@ const SPECS: EraEventSpec[] = [
             after: (g) => {
               const sev = Math.round((g.character.job?.salary ?? 0) * 0.15)
               endJob(g, 'job', 'laid off')
-              if (sev > 0) earnIncome(g, sev)
+              if (sev > 0) earnIncome(g, sev, 'severance')
             },
           },
         ],

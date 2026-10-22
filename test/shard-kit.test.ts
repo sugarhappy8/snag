@@ -2,7 +2,7 @@
 // R1-P7 (K.7a b): the seed-slice kit that lets the five slowest test files run a part of their seeds in each CI shard,
 // and the merge step that runs their aggregate assertions on the whole set. The kit is plain Node (no vitest), so these
 // tests drive it directly with temp directories and a scratch SLICE_DIR. The layout tests at the end tie the kit to
-// scripts/test-timings.json (the split list) and to the five files that use it.
+// scripts/test-timings.json (the split list) and to the files that use it (the five slow ones, and the conservation probe of R2-L5).
 //
 // This file reaches the kit as ../test/shard-kit on purpose: scripts/ci-shard.mjs treats any test file that imports
 // the kit by its sibling path as a sliced file, and this one is a guard in the fast tier, not a sliced file.
@@ -15,7 +15,8 @@ import { listTestFiles, readTimings, verifyCoverage } from '../scripts/ci-shard.
 import { decodeRows, encodeRows, mergedSlices, ownedHere, readSlice, recordSlice, seedSlice, sliceDir, type SliceSpec } from '../test/shard-kit'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
-const FIVE = ['test/anachronism.test.ts', 'test/era-features.test.ts', 'test/main-character-life.test.ts', 'test/sector-story.test.ts', 'test/simulate.test.ts']
+// The five slow files of R1-P7 and the conservation probe of R2-L5 (forty lives of a hundred years).
+const SLICED = ['test/anachronism.test.ts', 'test/era-features.test.ts', 'test/ledger-conservation.test.ts', 'test/main-character-life.test.ts', 'test/sector-story.test.ts', 'test/simulate.test.ts']
 
 const scratch: string[] = []
 afterAll(() => {
@@ -247,16 +248,16 @@ describe('the layout of the sliced files', () => {
   const importsKit = /^[ \t]*import\s[^'"`;]*?['"]\.\/shard-kit(?:\.ts)?['"]/m
   const text = (file: string) => readFileSync(join(ROOT, file), 'utf8')
 
-  it('lists in split exactly the test files that import the kit, and those are the five slow files', () => {
+  it('lists in split exactly the test files that import the kit, and those are the sliced files', () => {
     const importing = listTestFiles().filter((file) => importsKit.test(text(file)))
     const split = readTimings().split
     expect([...importing].sort()).toEqual([...split].sort())
-    expect([...split].sort()).toEqual(FIVE)
+    expect([...split].sort()).toEqual(SLICED)
     for (const n of [1, 2, 4, 8]) expect(verifyCoverage(n), `${n} shards`).toEqual([])
   })
 
-  it('has no afterAll in the five files, and one readSlice call in each', () => {
-    for (const file of FIVE) {
+  it('has no afterAll in the sliced files, and one readSlice call in each', () => {
+    for (const file of SLICED) {
       const source = text(file)
       expect(source.includes('afterAll('), `${file} still has afterAll`).toBe(false)
       expect(source.split('readSlice(').length - 1, `${file} readSlice calls`).toBe(1)

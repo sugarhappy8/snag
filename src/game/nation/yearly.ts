@@ -4,7 +4,7 @@
 // office, the State of the Nation report, debt crises and, through the other modules, crises,
 // lobbyists, protests, coups and trials. At most one decision popup a year comes from here, plus
 // the report.
-import { formatMoney, log, minigame, netWorth, notice, scriptChoice } from '../core'
+import { addMoney, formatMoney, log, minigame, netWorth, notice, scriptChoice } from '../core'
 import { economyOf, economyState } from '../economy'
 import { typicalIncome } from '../events/wealth-core'
 import { defineScript } from '../scripts'
@@ -233,7 +233,7 @@ function personalTaxes(g: GameState): void {
       const due = Math.round(base * rate)
       const paid = Math.max(0, Math.min(due, Math.round(c.money)))
       if (paid > 0) {
-        c.money -= paid
+        addMoney(g, -paid, 'tax.property')
         log(g, `I paid ${formatMoney(paid)} in wealth tax.`, 'bad')
       }
     }
@@ -247,9 +247,9 @@ function personalTaxes(g: GameState): void {
       const amount = Math.round(value * Math.max(-.006, prop))
       if (amount > 0) {
         const paid = Math.min(amount, Math.max(0, Math.round(c.money)))
-        if (paid > 0) { c.money -= paid; log(g, `The new property tax cost me ${formatMoney(paid)}.`, 'bad') }
+        if (paid > 0) { addMoney(g, -paid, 'tax.property'); log(g, `The new property tax cost me ${formatMoney(paid)}.`, 'bad') }
       } else if (amount < 0) {
-        c.money += -amount
+        addMoney(g, -amount, 'tax.property')
         log(g, `The property tax cut saved me ${formatMoney(-amount)}.`, 'good')
       }
     }

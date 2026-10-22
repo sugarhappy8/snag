@@ -1113,7 +1113,7 @@ function endFight(g: GameState, st: FightState, result: 'win' | 'loss' | 'decisi
     }
     paid = tidy(paid)
     if (paid > 0) {
-      earnIncome(g, paid)
+      earnIncome(g, paid, 'prize')
       jd0.earned += paid
       p.earnings += paid
     }
@@ -2022,7 +2022,7 @@ const renewScript = defineScript('sports.fight.renew', (g, choice) => {
   }
   j.promoWins += 2
   const bonus = tidy(discipline(j.disc).purse.major * 3 * Math.max(1, 16 - (j.rank ?? 15)) / 4)
-  earnIncome(g, bonus)
+  earnIncome(g, bonus, 'wage')
   log(g, `I used free agency to squeeze a ${short(bonus)} signing bonus out of ${j.promotion}.`, 'good')
   say(g, 'Free Agency', `Your manager leaked a fake offer from a rival promotion. ${j.promotion} panicked and paid you a ${short(bonus)} signing bonus to stay.`, '\u{1F4B0}', 'good')
 })

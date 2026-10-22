@@ -44,7 +44,7 @@ export function yearlyHousehold(g: GameState): void {
   h.lastYear = g.year; h.effective = h.priority; h.spent = 0
   if (h.priority === 'learning') {
     const cost = annualLearningCost(g)
-    if (cost > 0 && !spend(g, cost)) {
+    if (cost > 0 && !spend(g, cost, 'tuition')) {
       h.effective = 'balanced'
       log(g, 'I postponed my extra training because my savings could not cover it.', 'neutral')
     } else {

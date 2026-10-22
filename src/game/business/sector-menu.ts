@@ -110,7 +110,7 @@ export function applyLever(g: GameState, a: Asset, lever: string, option: number
   const rec = readSector(b) ?? seedSector(g, cur, b, g.year - 1)
   if (!rec) return refuse('menu.no.desk.out')
   if (!useYearAction(g, yearKey(def.id, cur.id), 1)) return refuse('menu.no.used.out', { lever: name })
-  const paid = bookCost(b, cost)
+  const paid = bookCost(g, b, cost, cur.id)
   if (by === 'ceo' && paid > 0) noteSpend(g, boardOf(b), paid)
   const next = def.apply(rec, opt.value, g.year)
   addDiary(next, def.paid ? copy('menu.paid.log', { year: g.year, lever: def.label, cost: money(paid) }) : copy('menu.set.log', { year: g.year, lever: def.label, setting: opt.label }))

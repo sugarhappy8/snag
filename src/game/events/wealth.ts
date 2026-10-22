@@ -12,12 +12,14 @@
 // Modules: wealth-core (model, prices, per-person ties), wealth-ask (request shape), wealth-kids /
 // wealth-family / wealth-world (the catalog), wealth-resolve (popups and answers), wealth-menu
 // (the Money section of a person's sheet).
+import { moveCash, personCash } from '../cash'
 import { addMoney, addRelationship, log, notice, scriptChoice } from '../core'
 import { notePerson } from '../people'
 import { chance, rand, randFloat, randInt, weightedPick } from '../rng'
 import { stateLine } from '../text/state'
 import { logStateLine } from '../text/state-log'
 import { askDefs } from './wealth-catalog'
+import { askedPurse, wholePurse } from './purses'
 import { ADULT_SCRIPT, presentAsk, presentBundle } from './wealth-resolve'
 import type { Ask, AskDef } from './wealth-ask'
 import { isEstranged } from './will-core'
@@ -115,8 +117,7 @@ function payAllowances(g: GameState): void {
     }
     const amt = t.allowance
     if (g.character.money - amt >= reserve) {
-      addMoney(g, -amt)
-      p.money = Math.round(p.money + amt)
+      moveCash(g, askedPurse(g), wholePurse(p), amt, 'support')
       paid += amt
       count += 1
       const norm = allowanceNorm(g, p)
@@ -156,8 +157,7 @@ function collectLoans(g: GameState): void {
       const want = Math.max(Math.min(t.owes, 100), Math.round(t.owes * randFloat(g, 0.3, 1)))
       const pay = Math.max(0, Math.min(t.owes, Math.floor(p.money), want))
       if (pay <= 0) continue
-      p.money = Math.round(p.money - pay)
-      addMoney(g, pay)
+      moveCash(g, wholePurse(p), askedPurse(g), pay, 'support')
       updateTies(g, p, (x) => {
         x.owes = Math.max(0, x.owes - pay)
         if (x.owes === 0) x.owesSince = 0
@@ -197,11 +197,11 @@ function settleVentures(g: GameState): void {
     const who = p ? myOf(p) : x.name.replace(/^your /, 'my ')
     if (r < x.odds) {
       const back = Math.round(x.amt * SUCCESS_RETURN)
-      addMoney(g, back)
+      addMoney(g, back, { reason: 'draw', with: 'pool:firms' })
       if (p && p.alive) {
         // They keep a stake in what they built; with your 1.25x the family still ends up with less
         // than it put in on average (odds are at most 0.5), so funding kids is never a money machine.
-        p.money = Math.round(p.money + x.amt * 0.4)
+        personCash(g, p, Math.round(p.money + x.amt * 0.4) - p.money, { reason: 'draw', with: 'pool:firms' })
         // A royal appointment is their title: the court keeps it (syncRoyalAppointment), and a
         // reload would put it straight back.
         if (p.age < 65 && x.kind === 'venture' && !p.data.royalAppointment) p.occupation = 'Business Owner'
@@ -212,7 +212,7 @@ function settleVentures(g: GameState): void {
       notice(g, 'It Worked!', `${cap(x.what)}, the one ${p ? `${p.firstName}` : x.name.replace(/^your /, 'your ')} talked you into, actually worked. You got ${money(back)} back on your ${money(x.amt)}. Nobody is more surprised than you.`, { emoji: '\u{1F389}', tone: 'good' })
     } else if (r < x.odds + x.partial) {
       const back = Math.round(x.amt * PARTIAL_RETURN)
-      addMoney(g, back)
+      addMoney(g, back, { reason: 'draw', with: 'pool:firms' })
       log(g, `${cap(x.what)} fizzled. ${cap(who)} paid me back ${money(back)} of the ${money(x.amt)} I put in.`)
     } else {
       if (p && p.alive) addRelationship(p, -randInt(g, 0, 3))

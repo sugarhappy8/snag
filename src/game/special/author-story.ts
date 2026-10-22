@@ -72,7 +72,7 @@ export function storyFeedback(g: GameState, w: AuthorWork): string {
 export function workshopStory(g: GameState, id: string): boolean {
   const current = work(g, id), cost = localPrice(g, 500)
   if (gate(g, id) || !current || !['ready', 'serial'].includes(current.stage) || yearActionsUsed(g, `author.workshop.${id}`) >= 1 || g.character.money < cost) return false
-  if (!useYearAction(g, `author.workshop.${id}`, 1) || !spend(g, cost)) return false
+  if (!useYearAction(g, `author.workshop.${id}`, 1) || !spend(g, cost, 'purchase')) return false
   const p = authorMut(g), w = p.works.find(row => row.id === id)!
   w.quality = Math.min(98, w.quality + 2); p.burnout = Math.max(0, p.burnout - 2)
   saveAuthor(g, p)

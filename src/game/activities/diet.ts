@@ -107,7 +107,7 @@ export function syncDiet(g: GameState): void {
       log(g, `I had to give up the ${def.name} diet. Prison food doesn't do substitutions.`, 'neutral')
       return
     }
-    if (!spend(g, cost)) {
+    if (!spend(g, cost, 'health')) {
       saveDiet(g, null)
       log(g, `I couldn't afford the ${def.name} diet anymore, so I quit it.`, 'bad')
       notice(g, 'Diet Over', `You couldn't afford the ${money(cost)} a year for the ${def.name} diet, so you went back to eating whatever was in the fridge.`, { emoji: '\u{1F37D}\u{FE0F}' })
@@ -145,7 +145,7 @@ function startDiet(g: GameState, def: DietDef): void {
     return
   }
   const firstMonth = localPrice(g, def.monthly)
-  if (!spend(g, firstMonth)) {
+  if (!spend(g, firstMonth, 'health')) {
     result(g, 'Insufficient Funds', `The ${def.name} diet costs ${money(firstMonth)} a month. You can't afford even the first month.`, '\u{1F4B8}', 'bad')
     return
   }

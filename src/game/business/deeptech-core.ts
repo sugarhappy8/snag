@@ -5,6 +5,8 @@
 import { FACTOR_BOUNDS, marketEventFactors, shortageIntensity } from '../history/market-events'
 import { outcomeTag } from '../timeMachine'
 import { seeded } from '../assets'
+import { firmCash } from '../cash'
+import type { Reason } from '../kernel/reasons'
 import { marketOf, industryDemand } from '../data/markets'
 import { codingSkill } from '../computer/skills'
 import { hasTalent } from '../talents'
@@ -21,6 +23,7 @@ import { hedgeProfitIn, hedgeResultFor } from './hedge-record'
 import { industryDef } from './industries'
 import { CHIP_LANES, SHORTAGE_MARKUP, laneOpen, type ChipLane } from './silicon-data'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
+import { firmOf } from './settle'
 import { isQuoted, runsIt, totalOutlets, type BizState } from './state'
 import { stockLevelFor, waveFactorsFor } from './tech-wave-factors'
 import { clampN, round2, toJson } from './util'
@@ -704,16 +707,17 @@ export function techFunds(b: BizState, t: TechState): number {
 
 /**
  * Pay a one-off deep-tech cost (a test launch, a demo, a lawyer): from the R&D account first,
- * then company cash. Booked as a cost of the year either way, never moved twice.
+ * then company cash. Booked as a cost of the year either way, never moved twice. `why` is the
+ * reason of what the cash pays for (research by default).
  */
-export function payTech(b: BizState, t: TechState, amount: number): number {
+export function payTech(g: GameState, b: BizState, t: TechState, amount: number, why: Reason = 'rnd'): number {
   const n = Math.max(0, Math.round(amount))
   const fromVenture = Math.min(Math.max(0, t.venture), n)
   t.venture -= fromVenture
   t.yearSpent += fromVenture
   const rest = n - fromVenture
   if (rest > 0) {
-    b.cash -= rest
+    firmCash(g, b, -rest, why, firmOf(g, b))
     b.yearCosts += rest
   }
   return n
@@ -724,9 +728,9 @@ export function payTech(b: BizState, t: TechState, amount: number): number {
  * broker's money). Booked as income, and remembered as a one-off so the valuation doesn't pay a
  * profit multiple for a windfall.
  */
-export function earnTech(b: BizState, t: TechState, amount: number): number {
+export function earnTech(g: GameState, b: BizState, t: TechState, amount: number, why: Reason = 'royalty'): number {
   const n = Math.max(0, Math.round(amount))
-  b.cash += n
+  firmCash(g, b, n, why, firmOf(g, b))
   b.yearIncome += n
   t.oneOff += n
   return n

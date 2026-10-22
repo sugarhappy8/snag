@@ -4,6 +4,7 @@
 // the factories to demand without a cap (within the board's budget and cash reserve) and keeps the
 // cushion the mandate asks for; one at 75 or below stays cautious. Price and output mistakes shrink
 // with skill (the year re-plans with them: deeptech-sim). Either way they write the owner a letter.
+import { firmCash } from '../cash'
 import { log } from '../core'
 import { chance } from '../rng'
 import { boardOf } from './board-state'
@@ -150,7 +151,7 @@ function scaleUp(g: GameState, a: Asset, b: BizState, t: TechState, smart: boole
   const affordable = Math.floor(Math.min(Math.max(0, b.cash - reserve), budget) / Math.max(1, capital))
   const n = Math.min(smart ? Infinity : 25, affordable, Math.ceil((plan.demand - plan.capacity) / per))
   if (!(n > 0)) return ''
-  b.cash -= n * capital
+  firmCash(g, b, -(n * capital), 'capex', a.id)
   if (smart) noteSpend(g, boardOf(b), n * capital)
   const home = b.outlets.find((o) => o.countryId === b.countryId && o.city === b.city)
   if (home) home.count += n

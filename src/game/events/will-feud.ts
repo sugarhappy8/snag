@@ -124,7 +124,7 @@ function elderYear(g: GameState, notes: string[]): void {
   addStat(g, 'happiness', partner ? -1 : -2)
   if (c.age >= 75 && !partner) {
     const aide = Math.round(9000 * goodsScale(g) * realWealthFactor(g.year))
-    if (spend(g, aide)) {
+    if (spend(g, aide, 'health')) {
       log(g, `With nobody from the family around, I paid ${formatMoney(aide)} for help at home.`)
       notes.push(`Nobody from the family is around to drive you to appointments or check on you. You paid ${formatMoney(aide)} for a home aide instead.`)
     } else {

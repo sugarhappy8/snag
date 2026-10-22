@@ -327,7 +327,7 @@ function cup(g: GameState): void {
   const place = Math.max(1, Math.min(64, Math.round(64 / (1 + Math.exp((perf - 62) / 6)))))
   const prize = place === 1 ? tidy(1_000 + mmr) : place <= 4 ? tidy(200 + mmr / 5) : 0
   if (prize) {
-    earnIncome(g, prize)
+    earnIncome(g, prize, 'prize')
     p.earnings += prize
   }
   if (place === 1) {
@@ -488,7 +488,7 @@ function bookEs(g: GameState, job: Job, ev: EsEvent, name: string, place: number
   const p = es(g)
   const prize = playerCut(gm, ev.pool * shareOf(place, ev.teams))
   if (prize > 0) {
-    earnIncome(g, prize)
+    earnIncome(g, prize, 'prize')
     d.earned += prize
     p.earnings += prize
   }
@@ -655,7 +655,7 @@ export function esportsJobNodes(g: GameState): MenuNode[] {
           return say(gg, 'Stream Meltdown', 'You raged at a teammate live on stream and threw your keyboard. The clip has nine million views. Your team issued a statement. Your mom called.', '\u{1F92C}', 'bad')
         }
         const income = tidy(500 + fame * fame * 40)
-        earnIncome(gg, income)
+        earnIncome(gg, income, 'royalty')
         addFame(gg, 2)
         say(gg, 'Stream', `You streamed ranked games for 14 hours and made ${short(income)} from subs and donations. Chat spammed your emote.`, '\u{1F4F9}', 'good')
       },
@@ -767,7 +767,7 @@ export function yearlyEsports(g: GameState): void {
     if (d.played.includes(ev.id) || (ev.minTier ?? 0) > d.tier) continue
     bookEs(g, job, ev, fillEvent(g, ev.name, g.year - 1), eventPlace(g, eventPerf(g, job), ev), true)
   }
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   const wins = p.titles.filter((t) => t.endsWith(`(${g.year - 1})`) || t.endsWith(`(${g.year})`)).length
   fameToward(g, d.tier === 1 ? 20 + skill(g, p) * 0.4 + wins * 5 : 8, 4)
   d.teamStrength = Math.max(30, Math.min(95, d.teamStrength + randInt(g, -6, 6)))

@@ -1,6 +1,7 @@
 // The yearly business loop: simulate every company in its own market, pay the owner, update the
 // valuation, then hand the CEO the Annual Report (price + production for next year).
-import { addMoney, addStat, count, earnIncome, formatCents, formatMoney, log, minigame, notice, scriptChoice } from '../core'
+import { firmCash, firmPurse, moveCash, playerPurse } from '../cash'
+import { addStat, count, earnIncome, formatCents, formatMoney, log, minigame, notice, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { baseLoanRate } from '../finance'
 import { economyOf, lendingConditions, recordEconomicActivity } from '../economy'
@@ -378,8 +379,9 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
   if (need <= 0) return
   const c = g.character
   if (choice === 'cover' && c.money >= need) {
-    addMoney(g, -need)
-    b.cash = 0
+    // The owner's money goes in as one move; what is left of the shortfall (under a dollar: the owner pays whole dollars) settles to zero.
+    moveCash(g, playerPurse(g), firmPurse(b, a.id), need, 'inject')
+    firmCash(g, b, -b.cash, 'inject', a.id)
     b.invested += need
     log(g, `I put ${money(need)} of my own money into ${a.name} to keep it afloat.`)
     notice(g, 'Bailed Out', `You moved ${formatMoney(need)} from your savings into ${a.name}. Payroll clears; your bank balance winces.`, { emoji: '\u{1F6DF}' })
@@ -389,7 +391,7 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
     const amount = Math.round(need * 1.1)
     b.debt += amount
     b.debtRate = companyLoanRate(b, g)
-    b.cash += amount
+    firmCash(g, b, amount, 'loan.principal', a.id)
     log(g, `${a.name} took an emergency loan.`, 'neutral')
     notice(g, 'Emergency Loan', `The bank lent ${a.name} ${formatMoney(amount)} at ${pct(b.debtRate, 1)}. The company's debt is now ${formatMoney(b.debt)}.`, { emoji: '\u{1F3E6}' })
     return
@@ -399,7 +401,7 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
     const stake = clampN(inject / (b.valuation + inject), 0.05, 0.6)
     b.share = clampN(b.share * (1 - stake), 0.01, 1)
     diluteBusinessEquity(b, 1 - stake)
-    b.cash += inject
+    firmCash(g, b, inject, 'firm.sale', a.id)
     log(g, `I sold part of ${a.name} to an investor to cover a cash shortfall.`, 'neutral')
     notice(g, 'New Investor', `An investor put ${formatMoney(inject)} into ${a.name} for ${pct(stake)} of the company. You now own ${pct(b.share)}.`, { emoji: '\u{1F4BC}' })
     return
@@ -576,7 +578,7 @@ export function yearlyBusinessImpl(g: GameState): void {
     // the statement counts them once as other income, taxed at headquarters.
     const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
     const s = res.stmt
-    if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
+    if (s.ownerPay > 0) earnIncome(g, s.ownerPay, 'wage')
     recordEconomicReport(b, previousStatement, s)
     statementBridges.set(a.id, { previous: previousStatement, bookedNet: s.net })
     const lastCycle = s.cycle

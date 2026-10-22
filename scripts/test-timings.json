@@ -206,6 +206,7 @@
     "test/lab-team.test.ts": 3.2,
     "test/lab-voice.test.ts": 1.8,
     "test/landlord.test.ts": 0,
+    "test/ledger-conservation.test.ts": 400,
     "test/life.test.ts": 0.3,
     "test/listing-id.test.ts": 0.2,
     "test/living-economy.test.ts": 7.8,
@@ -418,6 +419,7 @@
   "split": [
     "test/anachronism.test.ts",
     "test/era-features.test.ts",
+    "test/ledger-conservation.test.ts",
     "test/main-character-life.test.ts",
     "test/sector-story.test.ts",
     "test/simulate.test.ts"

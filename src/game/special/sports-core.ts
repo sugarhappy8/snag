@@ -3,6 +3,7 @@
 // cabinet), local popularity, fees parents pay for kids, the Olympic calendar, endorsements and
 // the long-term brain-injury risk of contact sports.
 import { anachronistic } from '../events/era'
+import { personCash } from '../cash'
 import { typicalIncome } from '../events/wealth-core'
 import { allBrands, type Brand } from '../data/brands'
 import { brandPool, pickBrand } from '../shops/everyday-brands'
@@ -264,11 +265,12 @@ export function payFee(g: GameState, cost: number): Payer | null {
       .filter((p) => p.alive && (p.relation === 'parent' || p.relation === 'stepparent') && p.money >= cost)
       .sort((a, b) => b.relationship - a.relationship)[0]
     if (parent) {
-      parent.money = Math.max(0, Math.round(parent.money - cost))
+      // The parent's cash keeps the rounding and the floor this line always had; the books follow what it lost.
+      personCash(g, parent, Math.max(0, Math.round(parent.money - cost)) - parent.money, 'purchase', 0)
       return 'parent'
     }
   }
-  return spend(g, cost) ? 'self' : null
+  return spend(g, cost, 'purchase') ? 'self' : null
 }
 
 export function payerNote(p: Payer | null): string {
@@ -591,7 +593,7 @@ export function yearlySponsors(g: GameState, sport: string | null, appeal: numbe
     total += d.yearly
     d.yearsLeft -= 1
   }
-  if (total > 0) earnIncome(g, total)
+  if (total > 0) earnIncome(g, total, 'royalty')
   const ended = p.sponsors.filter((d) => d.yearsLeft <= 0)
   p.sponsors = p.sponsors.filter((d) => d.yearsLeft > 0)
   for (const d of ended) {

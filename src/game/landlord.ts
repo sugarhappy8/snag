@@ -120,7 +120,7 @@ export function hireRentalManager(g: GameState, id: string, skill: number): void
   const p = landlordView(a)
   if (p.managerSkill === skill) return
   const fee = skill ? Math.round(Math.max(100, p.askingRent * .01)) : 0
-  if (fee && !spend(g, fee)) return notice(g, 'Property Management', `A new management contract costs ${formatMoney(fee)} to set up.`, { emoji: '🏠' })
+  if (fee && !spend(g, fee, 'purchase')) return notice(g, 'Property Management', `A new management contract costs ${formatMoney(fee)} to set up.`, { emoji: '🏠' })
   p.managerSkill = skill; p.managerFee = skill === 90 ? .12 : skill === 65 ? .08 : 0
   save(a, p)
   notice(g, 'Property Management', skill ? `Your skill-${skill} manager takes ${Math.round(p.managerFee * 100)}% of rent actually collected. They screen replacements, follow up on arrears and arrange affordable repairs. Listing a vacant home is still your decision.` : 'You will manage leasing, tenant concerns and repairs yourself.', { emoji: '🏠' })
@@ -131,7 +131,7 @@ export function repairRental(g: GameState, id: string): void {
   if (!a) return
   const p = landlordView(a)
   if (!p.issue || p.repairCost <= 0) return
-  if (!spend(g, p.repairCost)) return notice(g, 'Rental Repair', `You need ${formatMoney(p.repairCost)} for ${p.issue}.`, { emoji: '🛠️' })
+  if (!spend(g, p.repairCost, 'purchase')) return notice(g, 'Rental Repair', `You need ${formatMoney(p.repairCost)} for ${p.issue}.`, { emoji: '🛠️' })
   const cost = p.repairCost
   p.issue = ''; p.repairCost = 0; p.satisfaction = Math.min(100, p.satisfaction + 15)
   a.condition = Math.min(100, a.condition + 5); refreshHouseValue(a); save(a, p)
@@ -220,8 +220,8 @@ export function yearlyLandlord(g: GameState): number {
     const managerFee = Math.round(gross * p.managerFee)
     const expenses = serviceCost + managerFee + repairs, net = gross - expenses
     p.lastGross = gross; p.lastExpenses = expenses; p.lastNet = net
-    if (net > 0) { earnIncome(g, net); taxAdditionalIncome(g, net) }
-    else if (net < 0) addMoney(g, net)
+    if (net > 0) { earnIncome(g, net, 'rent'); taxAdditionalIncome(g, net) }
+    else if (net < 0) addMoney(g, net, 'rent')
     total += net; refreshHouseValue(a); save(a, p)
   }
   return total

@@ -411,7 +411,7 @@ export function yearlyBrandAssets(g: GameState, budget: PopupBudget): void {
     // Premium: the policy lapses if you can't pay it.
     if (a.details.luxIns === true && a.details.insured !== true) {
       const prem = insurePremium(a)
-      if (c.money >= prem) addMoney(g, -prem)
+      if (c.money >= prem) addMoney(g, -prem, 'premium')
       else {
         a.details.luxIns = false
         log(g, `My insurance on the ${a.name} lapsed because I couldn't pay the premium.`, 'bad')
@@ -424,7 +424,7 @@ export function yearlyBrandAssets(g: GameState, budget: PopupBudget): void {
       const insured = insuredNow(a)
       const pay = insured ? claimPayout(a) : 0
       g.assets = g.assets.filter((x) => x.id !== a.id)
-      if (pay > 0) addMoney(g, pay)
+      if (pay > 0) addMoney(g, pay, 'claim')
       log(g, `My ${a.name} was ${portable ? 'lost' : 'stolen'}${pay > 0 ? `; the insurer paid ${formatMoney(pay)}` : ''}.`, 'bad')
       losses.push(
         `${portable ? pick(g, LOSS_LINES)(a.name) : `Thieves took your ${a.name} from where it was kept.`} ${pay > 0 ? `The insurer paid ${formatMoney(pay)} after the ${formatMoney(deductibleOf(a))} deductible.` : insured && isFake(a) ? 'The insurer found it was a counterfeit and paid nothing.' : 'It was not insured, so it is simply gone.'}`,

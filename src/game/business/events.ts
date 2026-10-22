@@ -2,7 +2,9 @@
 // choice with real consequences, flavored by the market the company operates in (inspectors who
 // expect envelopes, unions that strike, currencies that melt, hurricanes and earthquakes).
 import { currencyOf } from '../data/currencies'
+import { firmCash } from '../cash'
 import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice } from '../core'
+import type { Why } from '../kernel/ledger'
 import { arrestPlayer } from '../crime'
 import { marketOf } from '../data/markets'
 import { chance, pick, rand, randInt, weightedPick } from '../rng'
@@ -37,10 +39,10 @@ function ctx(g: GameState, data: Json | undefined): Ctx | null {
   return { a, b: bizOf(g, a), d }
 }
 
-/** Pay from company cash (it may go negative; the year-end review deals with that). */
-function pay(b: BizState, amount: number): number {
+/** Pay from company cash (it may go negative; the year-end review deals with that). `why` is what the money is for (supplies and services by default). */
+function pay(g: GameState, a: Asset, b: BizState, amount: number, why: Why = 'inputs'): number {
   const n = Math.max(0, Math.round(amount))
-  b.cash -= n
+  firmCash(g, b, -n, why, a.id)
   b.yearCosts += n
   return n
 }
@@ -117,7 +119,7 @@ const INSPECTION = defineScript('business.ev.inspection', (g, choice, data) => {
   const { a, b } = x
   const passP = inspectionPassP(b, choice)
   if (choice === 'bribe') {
-    const cost = pay(b, num(x.d.bribe))
+    const cost = pay(g, a, b, num(x.d.bribe), 'bribe')
     addHidden(g, 'karma', -6)
     if (bribeCaught(g, b, 'Bribery')) return
     log(g, `I bribed a health inspector to look the other way at ${a.name}.`, 'neutral')
@@ -130,7 +132,7 @@ const INSPECTION = defineScript('business.ev.inspection', (g, choice, data) => {
     tell(g, 'Inspection Passed', `The inspector ran a finger along every shelf, sniffed the fridge and gave ${a.name} top marks. You framed the certificate.`, '\u{2705}', 'good')
     return
   }
-  const fine = pay(b, inspectionFine(b, choice))
+  const fine = pay(g, a, b, inspectionFine(b, choice), { reason: 'fine', country: b.countryId })
   b.brand = clampN(b.brand - 7, 0, 100)
   b.demandShock = Math.min(b.demandShock, 0.93)
   if (choice === 'stall') b.capacityLoss = Math.max(b.capacityLoss, 0.08)
@@ -209,7 +211,7 @@ const AUDIT = defineScript('business.ev.audit', (g, choice, data) => {
   const { a, b } = x
   const m = marketOf(b.countryId)
   if (choice === 'gift') {
-    const cost = pay(b, num(x.d.gift))
+    const cost = pay(g, a, b, num(x.d.gift), 'bribe')
     addHidden(g, 'karma', -6)
     if (bribeCaught(g, b, 'Bribery Of A Tax Official')) return
     if (b.cooked > 0) b.cooked = 0
@@ -217,11 +219,11 @@ const AUDIT = defineScript('business.ev.audit', (g, choice, data) => {
     return
   }
   let lawyer = 0
-  if (choice === 'lawyer') lawyer = pay(b, scaled(b, 4_000))
+  if (choice === 'lawyer') lawyer = pay(g, a, b, scaled(b, 4_000), 'legal')
   if (b.cooked > 0) {
     const found = chance(g, auditFoundP(choice))
     if (found) {
-      const fine = pay(b, auditFraudFine(b))
+      const fine = pay(g, a, b, auditFraudFine(b), { reason: 'fine', country: b.countryId })
       b.cooked = 0
       b.brand = clampN(b.brand - 20, 0, 100)
       addHidden(g, 'karma', -5)
@@ -236,7 +238,7 @@ const AUDIT = defineScript('business.ev.audit', (g, choice, data) => {
     tell(g, 'Clean Audit', `After three weeks of questions about receipts, the auditors found nothing wrong with ${a.name}'s books.${lawyer ? ` Your tax lawyer billed ${formatMoney(lawyer)} for sitting next to you looking serious.` : ''}`, '\u{2705}', 'good')
     return
   }
-  const penalty = pay(b, auditPenalty(b, choice, rand(g)))
+  const penalty = pay(g, a, b, auditPenalty(b, choice, rand(g)), { reason: 'tax.corp', country: b.countryId })
   log(g, `A tax audit cost ${a.name} ${money(penalty)} in back taxes and penalties.`, 'bad')
   tell(g, 'Audit Penalty', `The auditors decided ${a.name} misread a rule about ${pickSite(g, ['deductible lunches', 'depreciation schedules', `${m.salesTaxName} on delivery fees`, 'staff benefits', 'a form nobody has ever heard of'], 0xb93f7b41)}. Back taxes and penalties: ${formatMoney(penalty)}.${lawyer ? ` Your lawyer (${formatMoney(lawyer)}) got it cut in half.` : ''}`, '\u{1F9FE}', 'bad')
 })
@@ -356,7 +358,7 @@ const VIRAL = defineScript('business.ev.viral', (g, choice, data) => {
   const w = reviewWords(g, b)
   if (good) {
     if (choice === 'ride') {
-      const cost = pay(b, scaled(b, 5_000))
+      const cost = pay(g, a, b, scaled(b, 5_000), 'marketing')
       b.brand = clampN(b.brand + 9, 0, 100)
       b.demandShock = Math.max(b.demandShock, 1.16)
       tell(g, 'Riding the Wave', `You spent ${formatMoney(cost)} on ads around ${w.theRave}. Lines out the door, and the brand is hot.`, '\u{1F525}', 'good')
@@ -463,7 +465,7 @@ const COMPETITOR = defineScript('business.ev.competitor', (g, choice, data) => {
     b.pressure = Math.max(b.pressure, 0.1)
     tell(g, 'Price War', `You cut prices 12% to keep your regulars, and you can't sneak them back up this year without losing the war. Margins hurt, but so do theirs.`, '\u{2694}\u{FE0F}')
   } else if (choice === 'quality') {
-    const cost = pay(b, scaled(b, 8_000))
+    const cost = pay(g, a, b, scaled(b, 8_000), 'capex')
     b.quality = clampN(b.quality + 8, 0, 100)
     b.pressure = Math.max(b.pressure, 0.14)
     tell(g, 'Better, Not Cheaper', `You spent ${formatMoney(cost)} upgrading everything customers can see and taste. Quality is up to ${b.quality}%.`, '\u{2728}', 'good')
@@ -569,7 +571,7 @@ const CURRENCY = defineScript('business.ev.currency', (g, choice, data) => {
     b.brand = clampN(b.brand + 6, 0, 100)
     tell(g, 'Holding the Line', `You promised to keep prices steady for the rest of the year while everyone else hiked. Customers love you; your margins less so.`, '\u{1F6E1}\u{FE0F}', 'good')
   } else {
-    const fee = pay(b, Math.max(0, b.cash) * 0.03)
+    const fee = pay(g, x.a, b, Math.max(0, b.cash) * 0.03, 'fee.bank')
     b.costShock = Math.max(1, b.costShock - 0.05)
     tell(g, 'Into Hard Currency', `You moved the company's ${currencyOf(b.countryId, g.year).name} cash into dollars (${formatMoney(fee)} in fees and "fees"). Your cash should hold its value better.`, '\u{1F4B5}', 'good')
   }
@@ -611,7 +613,7 @@ const CELEB = defineScript('business.ev.celebrity', (g, choice, data) => {
     tell(g, 'Passed', `You passed on ${str(x.d.celeb)}. ${pickLine(g, ['Probably for the best.', 'Their agent called you "small-time". You will live.'])}`, '\u{1F645}')
     return
   }
-  const cost = pay(b, num(x.d.fee))
+  const cost = pay(g, a, b, num(x.d.fee), 'marketing')
   if (chance(g, CELEB_SCANDAL)) {
     b.brand = clampN(b.brand - 12, 0, 100)
     b.demandShock = Math.min(b.demandShock, 0.92)
@@ -674,16 +676,16 @@ const LAWSUIT = defineScript('business.ev.lawsuit', (g, choice, data) => {
   const { a, b } = x
   const claim = num(x.d.claim)
   if (choice === 'settle') {
-    const cost = pay(b, claim * 0.5)
+    const cost = pay(g, a, b, claim * 0.5, 'legal')
     tell(g, 'Settled', `${a.name} settled out of court for ${formatMoney(cost)}, without admitting anything, obviously.`, '\u{1F4DD}')
     return
   }
-  const fees = pay(b, claim * 0.15)
+  const fees = pay(g, a, b, claim * 0.15, 'legal')
   if (chance(g, lawsuitWinP(g, b))) {
     count(g, 'lawsuitsWon')
     tell(g, 'Case Dismissed', `The judge threw the case out. ${a.name} only lost ${formatMoney(fees)} in legal fees and a little faith in humanity.`, '\u{2696}\u{FE0F}', 'good')
   } else {
-    const damages = pay(b, claim * 1.4)
+    const damages = pay(g, a, b, claim * 1.4, 'legal')
     b.brand = clampN(b.brand - 4, 0, 100)
     log(g, `${a.name} lost a lawsuit.`, 'bad')
     tell(g, 'Lost in Court', `The jury sided with the plaintiff. Damages: ${formatMoney(damages)}, plus ${formatMoney(fees)} in legal fees.`, '\u{2696}\u{FE0F}', 'bad')
@@ -749,7 +751,7 @@ const EMBEZZLE = defineScript('business.ev.embezzle', (g, choice, data) => {
   b.staff = b.staff.filter((y) => y.id !== id)
   if (choice === 'press') {
     const back = Math.round(amount * (EMBEZZLE_BACK_MIN + rand(g) * EMBEZZLE_BACK_SPREAD))
-    b.cash += back
+    firmCash(g, b, back, 'legal', a.id)
     b.yearIncome += back
     tell(g, 'Charges Pressed', `${who} was fired and charged. The court ordered ${formatMoney(back)} paid back; the rest is "gone".`, '\u{1F46E}', 'good')
   } else {
@@ -763,7 +765,7 @@ function presentEmbezzle(g: GameState, a: Asset, b: BizState): void {
   const who = s ? `${s.firstName} ${s.lastName}, your ${s.role}` : `${randomFirstName(g, b.countryId, chance(g, 0.5) ? 'male' : 'female')}, a shift supervisor`
   const amount = Math.round(Math.min(Math.max(1_000, (b.last?.revenue ?? 0) * (0.01 + rand(g) * 0.04)), Math.max(1_000, Math.abs(b.cash) * 0.5 + 1_000)))
   // A theft loss is a cost on the books (money the court orders back is booked as income).
-  b.cash -= amount
+  firmCash(g, b, -amount, 'crime.take', a.id)
   b.yearCosts += amount
   const choices: ChoiceOption[] = [
     { id: 'press', label: 'Fire them and press charges', emoji: '\u{1F46E}' },
@@ -861,14 +863,14 @@ const DISASTER = defineScript('business.ev.disaster', (g, choice, data) => {
   const loss = num(x.d.loss, 0.3)
   const covered = b.insured ? Math.round(damage * 0.85) : 0
   if (covered) {
-    b.cash += covered
+    firmCash(g, b, covered, 'claim', a.id)
     b.yearIncome += covered
   }
   if (choice === 'fast') {
-    pay(b, damage * 1.2)
+    pay(g, a, b, damage * 1.2, 'capex')
     b.capacityLoss = Math.max(b.capacityLoss, loss / 2)
   } else {
-    pay(b, damage)
+    pay(g, a, b, damage, 'capex')
     b.capacityLoss = Math.max(b.capacityLoss, loss)
   }
   log(g, `${a.name} was hit by a disaster and had to close for repairs.`, 'bad')
@@ -917,7 +919,7 @@ const TACOS = defineScript('business.ev.tacos', (g, choice, data) => {
   if (!x) return
   const { b } = x
   if (choice === 'yes') {
-    const cost = pay(b, num(x.d.cost))
+    const cost = pay(g, x.a, b, num(x.d.cost))
     b.morale = clampN(b.morale + 8, 0, 100)
     addStat(g, 'happiness', 2)
     tell(g, num(x.d.kind) === 0 ? 'Taco Tuesday!' : 'Pizza Friday!', `You treated everyone (${formatMoney(cost)}). Morale is up to ${b.morale}%, and somebody wrote you a thank-you song.`, '\u{1F32E}', 'good')

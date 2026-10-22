@@ -6,8 +6,10 @@
 //
 // Each holding is an Asset of kind 'investment' (value = market value). Prices come from the
 // deterministic market engine in invest/engine.ts. Taxes: dividends, coupons and interest are
-// taxable income (earnIncome, taxed by yearlyFinance); realized capital gains are taxed as income
-// too, right away when you sell (taxAdditionalIncome), with losses carried forward.
+// taxable income (earnIncome, taxed by yearlyFinance); realized capital gains are taxed at the
+// nation's capital gains rate, withheld at the sale, with losses carried forward; the nation's
+// tax on trades is charged on every order. Every dollar has a named counterparty in the ledger:
+// the markets, the banks, or the government that issued a bond.
 //
 // History: a life lived in the past trades in the past. The engine follows real market history
 // (the 1929 crash, the dot-com bust, 2008...), companies wear the names of their era, index
@@ -19,12 +21,14 @@ import type { ChartSpec } from './charts/spec'
 import { currencyOf } from './data/currencies'
 import { bound, economyMarketFactor, economyOf, economyState, economicRoll, initialCountry } from './economy'
 import { flagOn } from './flags'
+import { isRef } from './kernel/ids'
+import type { AcctRef, Why } from './kernel/ledger'
+import { capitalGainsTax, transactionsLevy } from './nation/rates'
 import { stateLine } from './text/state'
 import { logStateLine } from './text/state-log'
 import { timelineFamily } from './timeMachine'
 import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
-import { gameIncomeTax, taxAdditionalIncome } from './finance'
 import { exchangeClosedReason, exchangeState, goldBan, investingBlocked, marketNote } from './history/markets'
 import { brokerEraMult, reitSince } from './invest/era'
 import { allFundProviderNames } from './invest/funds'
@@ -114,6 +118,10 @@ const CRYPTO_BANNED = new Set(['cn', 'dz', 'eg', 'np', 'bd', 'af', 'iq', 'qa'])
 
 const TERM_YEARS = 3
 const BOND_YEARS = 10
+/** The face value of one bond unit, in engine dollars. The government repays this (eroded, less any default haircut), never the marked price (F37). */
+const BOND_PAR = 1_000
+/** A bond's face value can rise with falling prices, but never past three times the issue: deflation worse than that is not a thing a ten-year bond sees. */
+const PAR_CEILING = 3 * BOND_PAR
 /** A defensive cap shared with other durable economy ledgers. */
 const MAX_INVESTMENT_VALUE = 1e15
 
@@ -528,29 +536,33 @@ export interface Realized {
 }
 
 /**
- * Pays `net` into the bank account and records the capital gain or loss. Gains (after using up
- * carried-forward losses) count as taxable income; `immediate` taxes them now (menu trades),
- * otherwise yearlyFinance taxes them with the rest of the year's income.
+ * Pays `net` into the bank account (booked under `why`, a trade sale unless the caller names the payer) and records the capital gain
+ * or loss. A gain, after the carried-forward losses are used up, pays the nation's capital gains rate, withheld right here whether it
+ * is a menu trade or a year-end close (F38). The gain is not income: it does not enter taxableIncome, and the income tax's credit
+ * (flags.taxesPaid) is not touched. `immediate` only says whether the caller shows the tax to the player; the tax is the same.
  */
-export function realize(g: GameState, net: number, gain: number, immediate: boolean): Realized {
+export function realize(g: GameState, net: number, gain: number, _immediate: boolean, why: Why = 'trade.sell'): Realized {
   const carry = lossCarry(g)
   const cash = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(net) ? net : 0)))
   const gn = Math.max(-MAX_INVESTMENT_VALUE, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(gain) ? gain : 0)))
   if (gn <= 0) {
     g.flags.investLossCarry = Math.min(MAX_INVESTMENT_VALUE, Math.round(carry - gn))
-    addMoney(g, cash)
+    addMoney(g, cash, why)
     return { gain: gn, taxable: 0, offset: 0, tax: 0 }
   }
   const offset = Math.min(carry, gn)
   g.flags.investLossCarry = Math.round(carry - offset)
   const taxable = Math.min(cash, Math.max(0, gn - offset))
-  addMoney(g, cash - taxable)
-  earnIncome(g, taxable)
-  const tax = immediate && taxable > 0 ? taxAdditionalIncome(g, taxable) : 0
+  addMoney(g, cash, why)
+  const tax = capitalGainsTax(g, taxable, 0)
+  if (tax > 0) {
+    addMoney(g, -tax, 'tax.capgains')
+    count(g, 'taxesPaid', tax)
+  }
   return { gain: gn, taxable, offset, tax }
 }
 
-/** Estimated tax on selling a holding for `gross` right now. */
+/** Estimated tax on selling a holding for `gross` right now: the capital gains tax realize will withhold, before any trades tax. */
 function estimateTax(g: GameState, a: Asset, gross: number): { fee: number; penalty: number; gain: number; tax: number; impact: number } {
   const v = holdingValue(a)
   const frac = v > 0 ? Math.min(1, gross / v) : 1
@@ -560,8 +572,7 @@ function estimateTax(g: GameState, a: Asset, gross: number): { fee: number; pena
   const impact = depth ? gross - saleImpact(gross, depth).proceeds : 0
   const gain = Math.round(gross - impact - fee - penalty - basis(a) * frac)
   const taxable = Math.max(0, gain - Math.min(lossCarry(g), Math.max(0, gain)))
-  const before = Math.max(0, num(g.flags.taxableIncome))
-  const tax = taxable > 0 ? Math.max(0, gameIncomeTax(g, before + taxable) - gameIncomeTax(g, before)) : 0
+  const tax = capitalGainsTax(g, taxable, 0)
   return { fee, penalty, gain, tax, impact }
 }
 
@@ -842,7 +853,7 @@ function listing(g: GameState): Listing {
     name: `${country} Government Bond (due ${y + BOND_YEARS})`,
     symbol: `${cid.toUpperCase()}10Y`,
     emoji: TYPE_EMOJI.bond,
-    price: 1_000,
+    price: BOND_PAR,
     risk: bondRisk(cid, y),
     yield: br,
     ret: null,
@@ -1099,6 +1110,12 @@ export function buySecurity(g: GameState, secId: string, amount: number, quiet =
     if (!quiet) notice(g, 'Insufficient Funds', `You only have ${formatMoney(g.character.money)} in the bank.`, { emoji: '💸', tone: 'bad' })
     return false
   }
+  // The nation's tax on trades comes on top of the order: a buy it would overdraw is refused.
+  const levy = transactionsLevy(g, amt)
+  if (amt + levy > g.character.money) {
+    if (!quiet) notice(g, 'Insufficient Funds', `You only have ${formatMoney(g.character.money)} in the bank, and the tax on trades adds ${formatMoney(levy)} to this order.`, { emoji: '💸', tone: 'bad' })
+    return false
+  }
   const room = cryptoRoom(g, q)
   if (room !== null && amt > room) {
     if (!quiet) notice(g, 'Not Enough Sellers', `The ${q.name} market is still tiny: about ${formatMoney(room)} more is all anyone will sell you this year.`, { emoji: '🪙' })
@@ -1108,10 +1125,11 @@ export function buySecurity(g: GameState, secId: string, amount: number, quiet =
   const invested = amt - fee
   // Gold, bonds and deposits track their own unit price per holding; listed securities use the market price.
   const price = held && (q.type === 'gold' || q.type === 'bond' || q.type === 'savings') ? unitPrice(held) || q.price : q.price
-  if (!(price > 0) || invested <= 0 || !spend(g, amt)) {
+  if (!(price > 0) || invested <= 0 || !spend(g, amt, 'trade.buy')) {
     if (!quiet) notice(g, 'Order Rejected', 'The order could not be filled.', { emoji: '🚫' })
     return false
   }
+  if (levy > 0) addMoney(g, -levy, 'tax.transaction')
   const depth = tradingDepth(g, q.type, q.details)
   const order = depth ? buyImpact(invested, depth) : { value: invested, end: 1 }
   const newUnits = order.value / price
@@ -1148,7 +1166,7 @@ export function buySecurity(g: GameState, secId: string, amount: number, quiet =
   if (depth) recordOrderFlow(g, a, order.end)
   if (room !== null) noteCryptoBuy(g, q.secId, amt)
   const what = q.type === 'savings' ? `put ${formatMoney(invested)} into ${str(q.details.product) === 'term' ? 'a term deposit' : 'savings'}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol && lineLetter(q.secId) === null ? ` (${q.symbol})` : ''}`
-  const feeLine = fee > 0 ? ` ${formatMoney(fee)} went to fees.` : ''
+  const feeLine = `${fee > 0 ? ` ${formatMoney(fee)} went to fees.` : ''}${levy > 0 ? ` Transactions tax: ${formatMoney(levy)}.` : ''}`
   // Price impact past the 10% mark (the mark the Buy row names), measured on the money that reached the market:
   // the fee is not price impact.
   const lost = depth && invested > 0 ? 1 - order.value / invested : 0
@@ -1174,6 +1192,8 @@ interface SaleResult {
   net: number
   realized: Realized
   impact?: number
+  /** The nation's tax on this trade (0 under no law). */
+  levy: number
 }
 
 /** Gameplay liquidity, not a claim about a real exchange's current order book. */
@@ -1201,7 +1221,7 @@ function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | nul
   const value = holdingValue(a)
   if (value <= 0) {
     g.assets = g.assets.filter((x) => x.id !== a.id)
-    return { gross: 0, fee: 0, penalty: 0, net: 0, realized: realize(g, 0, -basis(a), true) }
+    return { gross: 0, fee: 0, penalty: 0, net: 0, realized: realize(g, 0, -basis(a), true), levy: 0 }
   }
   const gross = Math.max(0, Math.min(value, Math.round(grossWanted)))
   if (gross <= 0) return null
@@ -1229,15 +1249,18 @@ function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | nul
     }
   }
   const realized = realize(g, net, net - basisPart, true)
+  // The nation's tax on trades, never more than the sale paid.
+  const levy = Math.min(transactionsLevy(g, sold), net)
+  if (levy > 0) addMoney(g, -levy, 'tax.transaction')
   if (depth) recordOrderFlow(g, a, order.end)
   count(g, 'investTrades')
-  return { gross: sold, fee, penalty, net, realized, impact: sold - order.proceeds }
+  return { gross: sold, fee, penalty, net, realized, impact: sold - order.proceeds, levy }
 }
 
 function gainLine(r: Realized): string {
   if (r.gain > 0) {
     const off = r.offset > 0 ? ` ${formatMoney(r.offset)} of it was covered by earlier losses.` : ''
-    return `Profit: ${formatMoney(r.gain)}.${off}${r.tax > 0 ? ` You owe ${formatMoney(r.tax)} in tax on it at your income tax rate.` : r.taxable > 0 ? ' It falls under your tax-free allowance this year.' : ''}`
+    return `Profit: ${formatMoney(r.gain)}.${off}${r.tax > 0 ? ` ${formatMoney(r.tax)} went in capital gains tax.` : r.taxable > 0 ? ' No tax is due on it.' : ''}`
   }
   if (r.gain < 0) return `Loss: ${formatMoney(-r.gain)}. It will offset tax on future profits.`
   return 'You broke even.'
@@ -1263,7 +1286,7 @@ export function sellHolding(g: GameState, assetId: string, amount: number | 'all
   const res = sellCore(g, a, want)
   if (!res) return false
   const t = typeOf(a)
-  const extra = [res.fee > 0 ? `Fees: ${formatMoney(res.fee)}.` : '', res.penalty > 0 ? `Early withdrawal penalty: ${formatMoney(res.penalty)}.` : '', (res.impact ?? 0) >= 1 ? `Market depth reduced proceeds by ${formatMoney(res.impact!)} and moved the quote. Splitting an order does not avoid the price impact.` : ''].filter(Boolean).join(' ')
+  const extra = [res.fee > 0 ? `Fees: ${formatMoney(res.fee)}.` : '', res.penalty > 0 ? `Early withdrawal penalty: ${formatMoney(res.penalty)}.` : '', res.levy > 0 ? `Transactions tax: ${formatMoney(res.levy)}.` : '', (res.impact ?? 0) >= 1 ? `Market depth reduced proceeds by ${formatMoney(res.impact!)} and moved the quote. Splitting an order does not avoid the price impact.` : ''].filter(Boolean).join(' ')
   const verb = t === 'savings' ? `withdrew ${formatMoney(res.gross)} from your ${str(a.details.product) === 'term' ? 'term deposit' : 'savings account'}` : `sold ${formatMoney(res.gross)} of ${a.name}`
   if (!quiet) notice(g, t === 'savings' ? 'Withdrawal' : 'Order Filled', `You ${verb}. ${extra ? `${extra} ` : ''}${formatMoney(res.net)} landed in your bank account. ${gainLine(res.realized)}`, { emoji: a.emoji, tone: res.realized.gain >= 0 ? 'good' : 'bad' })
   if (!quiet) log(g, t === 'savings' ? `I withdrew ${formatMoney(res.gross)} from the bank.` : res.realized.gain >= 0 ? `I sold some ${a.name} at a profit.` : `I sold some ${a.name} at a loss.`, res.realized.gain >= 0 ? 'good' : 'bad')
@@ -1290,6 +1313,7 @@ export function liquidatePortfolio(g: GameState): boolean {
   let net = 0
   let gain = 0
   let tax = 0
+  let levies = 0
   for (const a of list) {
     const r = sellCore(g, a, holdingValue(a))
     if (!r) continue
@@ -1298,10 +1322,12 @@ export function liquidatePortfolio(g: GameState): boolean {
     net += r.net
     gain += r.realized.gain
     tax += r.realized.tax
+    levies += r.levy
   }
+  const levyLine = levies > 0 ? ` Transactions tax: ${formatMoney(levies)}.` : ''
   const result = gain > 0 ? `Overall profit: ${formatMoney(gain)}${tax > 0 ? `, and ${formatMoney(tax)} of tax on it` : ''}.` : gain < 0 ? `Overall loss: ${formatMoney(-gain)}, which will offset tax on future profits.` : 'You broke even.'
   const stuckLine = stuck ? ` ${stuck === 1 ? 'One holding is' : `${stuck} holdings are`} stuck on a closed exchange.` : ''
-  notice(g, 'Portfolio Liquidated', `You sold ${stuck ? 'what you could' : 'everything'} for ${formatMoney(gross)}. Fees and penalties: ${formatMoney(fees)}. ${formatMoney(net)} landed in your bank account. ${result}${stuckLine}`, { emoji: '💰', tone: gain >= 0 ? 'good' : 'bad' })
+  notice(g, 'Portfolio Liquidated', `You sold ${stuck ? 'what you could' : 'everything'} for ${formatMoney(gross)}. Fees and penalties: ${formatMoney(fees)}.${levyLine} ${formatMoney(net)} landed in your bank account. ${result}${stuckLine}`, { emoji: '💰', tone: gain >= 0 ? 'good' : 'bad' })
   log(g, 'I sold my entire investment portfolio.', gain >= 0 ? 'good' : 'bad')
   return true
 }
@@ -1536,7 +1562,7 @@ function inflationText(infl: number): string {
   return infl < 0 ? `${rateText(-infl)} deflation` : rateText(infl)
 }
 
-const TAX_NOTE = 'Dividends, coupons and interest are taxed as income each year. Profits are taxed when you sell, at your income tax rate; losses carry forward against future profits.'
+const TAX_NOTE = "Dividends, coupons and interest are taxed as income each year. Profits are taxed when you sell, at your country's capital gains rate; losses carry forward against future profits."
 
 // ---------------------------------------------------------------------------
 // Menus
@@ -1828,7 +1854,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       if (q.type !== 'savings' && q.type !== 'bond') rows.push(`Price: ${priceText(q.price)}${q.ret !== null ? ` (${change(q.ret)} this year)` : ''}`)
       rows.push(`${q.sector} · ${q.size ? `${q.size} (rough) · ` : ''}${riskText(q.risk)}`)
       if (q.wave) rows.push(q.wave)
-      if (q.type === 'bond') rows.push(`Coupon: ${rateText(q.yield)} a year, paid as taxable income. Sold in ${formatMoney(1_000)} bonds.`)
+      if (q.type === 'bond') rows.push(`Coupon: ${rateText(q.yield)} a year, paid as taxable income. Sold in ${formatMoney(BOND_PAR)} bonds.`)
       else if (q.type === 'savings') rows.push(`Interest: ${rateText(q.yield)} a year, added to the balance and taxed as income.`)
       else if (q.yield > 0) rows.push(`${q.type === 'crypto' ? 'Rewards' : q.type === 'reit' ? 'Payout' : 'Dividend'}: ${rateText(q.yield)} a year, taxed as income.`)
       rows.push(...extraInfo)
@@ -2447,11 +2473,23 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
           log: `The government of ${theCountry(cid)} defaulted on the bonds I owned.`,
         })
       }
-      const newPrice = Math.max(0.01, price * (1 + ret))
+      // F37: the face value. Each holding carries the face of one unit, in engine dollars (`par`), and the government repays that, never
+      // the marked price. It erodes with the money it is paid in (what cash suffers), and a default cuts it by the haircut. A holding
+      // with no par yet starts at the lower of the issue face and its mark, so an old holding gets no windfall.
+      const par = Math.min(PAR_CEILING, Math.max(0.01, faceOf(d, price) * Math.max(0, 1 - dep)))
+      const face = fx.defaulted ? Math.max(0.01, par * (1 - fx.haircut)) : par
+      d.par = face
+      let newPrice = Math.max(0.01, price * (1 + ret))
       const payout = fx.defaulted ? 0 : coupon
       const maturity = num(d.maturity)
-      if (maturity > 0 && g.year >= maturity) return { price: newPrice, ratio: 1, ret, payout, ended: { kind: 'matured', perUnit: newPrice, premium: 0 } }
-      return { price: newPrice, ratio: 1, ret, payout }
+      // The mark is pulled to par: in the last years it closes the gap by a share of what is left, and in the maturity year all of it.
+      if (maturity > 0) {
+        const left = maturity - g.year + 1
+        newPrice = left <= 1 ? face : Math.max(0.01, newPrice + (face - newPrice) / left)
+      }
+      const moved = price > 0 ? newPrice / price - 1 : ret
+      if (maturity > 0 && g.year >= maturity) return { price: newPrice, ratio: 1, ret: moved, payout, ended: { kind: 'matured', perUnit: face, premium: 0 } }
+      return { price: newPrice, ratio: 1, ret: moved, payout }
     }
     case 'savings': {
       const cid = str(d.country, g.character.countryId)
@@ -2477,6 +2515,27 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
   }
 }
 
+/** The face value of one bond unit (F37): `details.par` when it is a number in range, else the lower of the issue face and the mark. */
+function faceOf(d: Record<string, Json>, mark: number): number {
+  const p = d.par
+  if (typeof p === 'number' && Number.isFinite(p) && p > 0 && p <= PAR_CEILING) return p
+  return Math.min(BOND_PAR, mark > 0 ? mark : BOND_PAR)
+}
+
+/** A government's account, or null when the country id (saved data) is not one a ref can carry. */
+function govAcct(country: string): AcctRef | null {
+  const r = `gov:${country}`
+  return isRef(r) ? r : null
+}
+
+/** Who pays what a holding pays out: the issuing government for a coupon, the banks for a deposit, the markets for everything else. */
+function incomePayer(g: GameState, a: Asset): AcctRef {
+  const t = typeOf(a)
+  // A bond whose country is damaged is still the government's: the holder's own pays.
+  if (t === 'bond') return govAcct(str(a.details.country, g.character.countryId)) ?? govAcct(g.character.countryId) ?? 'pool:markets'
+  return t === 'savings' ? 'pool:banks' : 'pool:markets'
+}
+
 function eventNews(a: Asset, mv: YearlyMove, valueBefore: number): News | null {
   const t = typeOf(a)
   const sym = str(a.details.symbol)
@@ -2500,8 +2559,10 @@ function eventNews(a: Asset, mv: YearlyMove, valueBefore: number): News | null {
           return { priority: 80, title: 'Merger', text: `${label} merged with, or was taken over by, another company and stopped trading under its own name. Your shares were cashed out in the deal.`, emoji: '🤝', tone: 'good', log: `${a.name} was merged away and my shares were cashed out.` }
         }
         return { priority: 80, title: 'Buyout!', text: `${label} was bought by a bigger rival at a ${Math.round(mv.ended.premium * 100)}% premium. Your shares were cashed out automatically.`, emoji: '🤝', tone: 'good', log: `${a.name} was bought out and my shares were cashed out at a premium.` }
-      case 'matured':
-        return { priority: 35, title: 'Bond Matured', text: `Your ${a.name} matured, and the government paid back ${formatMoney(valueBefore * (1 + mv.ret))}.`, emoji: '🏛️', tone: 'neutral', log: `My ${a.name} matured and paid me back ${formatMoney(valueBefore * (1 + mv.ret))}.` }
+      case 'matured': {
+        const paid = endedProceeds(a, valueBefore, mv.ended.perUnit, mv.ended.premium)
+        return { priority: 35, title: 'Bond Matured', text: `Your ${a.name} matured, and the government paid back ${formatMoney(paid)}.`, emoji: '🏛️', tone: 'neutral', log: `My ${a.name} matured and paid me back ${formatMoney(paid)}.` }
+      }
       case 'delisted':
         return { priority: 30, title: 'Delisted', text: `${label} was delisted, and your shares were paid out at their last price.`, emoji: '📤', tone: 'neutral', log: `${a.name} was delisted and my shares were paid out.` }
       case 'nationalized':
@@ -2748,6 +2809,8 @@ export function yearlyInvestments(g: GameState): void {
   let income = 0
   let credited = 0
   let cashOut = 0
+  // What each payer pays out this year, in the order the holdings come.
+  const payers = new Map<AcctRef, number>()
   for (const a of held) {
     const d = a.details
     if (num(d.updatedYear, -1) >= g.year) continue
@@ -2759,13 +2822,18 @@ export function yearlyInvestments(g: GameState): void {
     const pay = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(rawPay) ? rawPay : 0)))
     if (pay > 0) {
       income = Math.min(MAX_INVESTMENT_VALUE, income + pay)
+      const payer = incomePayer(g, a)
+      payers.set(payer, (payers.get(payer) ?? 0) + pay)
       d.income = Math.min(MAX_INVESTMENT_VALUE, Math.round(num(d.income) + pay))
     }
     const ev = eventNews(a, mv, before)
     if (ev) news.push(ev)
     if (mv.ended) {
       const proceeds = endedProceeds(a, before, mv.ended.perUnit, mv.ended.premium)
-      realize(g, proceeds, proceeds - basis(a), false)
+      // A bond that matured is repaid by the government that issued it (a damaged country leaves the reason's own default: the holder's
+      // government); everything else that closes is a sale to the market.
+      const why: Why | undefined = mv.ended.kind === 'matured' ? { reason: 'bond.redeem', with: govAcct(str(d.country, c.countryId)) ?? undefined } : undefined
+      realize(g, proceeds, proceeds - basis(a), false, why)
       cashOut = Math.min(MAX_INVESTMENT_VALUE, cashOut + proceeds)
       if (mv.ended.kind === 'bankrupt' || mv.ended.kind === 'nationalized') count(g, 'investWipeouts')
       g.assets = g.assets.filter((x) => x.id !== a.id)
@@ -2782,8 +2850,8 @@ export function yearlyInvestments(g: GameState): void {
     const interest = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(rawInterest) ? rawInterest : 0)))
     if (interest > 0 && mv.price > 0) {
       // Taxed as income this year, but it stays in the account (and joins the cost basis).
-      earnIncome(g, interest)
-      addMoney(g, -interest)
+      earnIncome(g, interest, { reason: 'invest.income', with: 'pool:banks' })
+      addMoney(g, -interest, { reason: 'trade.buy', with: 'pool:banks' })
       credited = Math.min(MAX_INVESTMENT_VALUE, credited + interest)
       d.income = Math.min(MAX_INVESTMENT_VALUE, Math.round(num(d.income) + interest))
       setPosition(a, units(a) + interest / mv.price, mv.price, basis(a) + interest)
@@ -2847,7 +2915,12 @@ export function yearlyInvestments(g: GameState): void {
   }
 
   if (income > 0) {
-    earnIncome(g, income)
+    let left = income
+    for (const [payer, amount] of payers) {
+      const part = Math.min(amount, left)
+      left -= part
+      earnIncome(g, part, { reason: 'invest.income', with: payer })
+    }
     count(g, 'investIncome', income)
     log(g, `My investments paid out ${formatMoney(income)} in dividends and coupons.`, 'good')
   }

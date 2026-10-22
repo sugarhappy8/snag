@@ -270,7 +270,7 @@ const AMOUNT = defineScript('act.lawsuit.amount', (g, choice, data) => {
   const idx = Math.max(0, Math.min(4, Number.parseInt(choice, 10) || 0))
   const firm = lawFirms(g, d.kind)[tier]
   const amount = damageOptions(g, d.kind)[idx]
-  if (!spend(g, firm.fee)) {
+  if (!spend(g, firm.fee, 'legal')) {
     brokeNotice(g, firm.fee, `a retainer at ${firm.name}`)
     return
   }
@@ -280,7 +280,7 @@ const AMOUNT = defineScript('act.lawsuit.amount', (g, choice, data) => {
   count(g, 'lawsuits')
   const vs = `${d.name}, who ${d.detail}`
   if (won) {
-    addMoney(g, amount)
+    addMoney(g, amount, 'legal')
     count(g, 'lawsuitsWon')
     addStat(g, 'happiness', randInt(g, 8, 18))
     remember(g, `Won a ${money(amount)} lawsuit against ${d.name}.`)

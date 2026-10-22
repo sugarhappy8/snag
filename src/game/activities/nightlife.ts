@@ -412,7 +412,7 @@ const FLIRT = defineScript('act.night.flirt', (g, choice, data) => {
       result(g, 'Embarrassing', `${declined(g)} You couldn't buy ${name} a drink. ${name} paid for their own and walked away.`, '\u{1F4B3}', 'bad')
       return
     }
-    addMoney(g, -cost)
+    addMoney(g, -cost, 'leisure')
   }
   const c = g.character
   const p = 0.4 + (c.stats.looks - 50) / 120 + (choice === 'drink' ? 0.1 : 0)
@@ -637,7 +637,7 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
       }
       const lost = Math.min(Math.max(0, c.money), randInt(g, 20, 200))
       if (lost > 0) {
-        addMoney(g, -lost)
+        addMoney(g, -lost, 'luck')
         log(g, `Someone stole ${money(lost)} from me at ${venue}.`, 'bad')
         result(g, 'Pickpocketed', `${intro}\n\nOn your way home you realized someone had lifted ${money(lost)} from your pocket.`, '\u{1F45B}', 'bad')
         return
@@ -670,7 +670,7 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
     case 'trivia': {
       if (chance(g, c.stats.smarts / 130)) {
         const prize = localPrice(g, 100)
-        addMoney(g, prize)
+        addMoney(g, prize, 'prize')
         addStat(g, 'happiness', randInt(g, 3, 6))
         log(g, `My team won trivia night at ${venue}.`, 'good')
         result(g, 'Trivia Champs', `${intro}\n\nYour team won trivia night and a ${money(prize)} bar tab. Turns out knowing the capital of Mongolia pays.`, '\u{1F3C6}', 'good')
@@ -694,7 +694,7 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
       }
       if (chance(g, 0.15)) {
         const fine = Math.min(Math.max(0, c.money), localPrice(g, 200))
-        addMoney(g, -fine)
+        addMoney(g, -fine, 'fine')
         log(g, 'The police broke up the party and I got a ticket.', 'bad')
         result(g, 'Busted Party', `${intro}\n\nThe cops showed up over a noise complaint and you got a ${money(fine)} ticket for being drunk and loud.`, '\u{1F6A8}', 'bad')
       } else {
@@ -741,7 +741,7 @@ function goClubbing(g: GameState, club: Club): void {
     result(g, 'Denied Entry', refusal, '\u{1F6AB}', 'bad')
     return
   }
-  addMoney(g, -cover)
+  addMoney(g, -cover, 'leisure')
   count(g, 'nightlife')
   addStat(g, 'happiness', randInt(g, 2, 5))
   const intro = say(g, [
@@ -765,7 +765,7 @@ const BAR_ORDER = defineScript('act.night.barOrder', (g, choice, data) => {
   }
   const intro = choice === 'soda' ? 'You ordered a soda and people-watched.' : `You ordered ${choice === 'shots' ? 'a round of shots' : choice === 'cocktail' ? 'a fancy cocktail' : choice === 'wine' ? 'a glass of wine' : 'a cold beer'}.`
   if (choice !== 'soda') {
-    addMoney(g, -price)
+    addMoney(g, -price, 'leisure')
     const drink = choice === 'shots' ? 'Tequila Shot' : choice === 'cocktail' ? eraPick(g, ['@1938 Margarita', 'Mojito', '@1988 Cosmopolitan', 'Whiskey Sour', '@-1934 Bathtub Gin']) : choice === 'wine' ? 'Wine' : 'Beer'
     count(g, 'drinks')
     addStat(g, 'happiness', randInt(g, 1, 4))
@@ -796,7 +796,7 @@ const CAFE_ORDER = defineScript('act.night.cafeOrder', (g, choice, data) => {
     result(g, 'Short on Cash', "You checked your wallet and ordered a glass of water instead. The waiter was very understanding.", '\u{1F4B3}', 'bad')
     return
   }
-  addMoney(g, -price)
+  addMoney(g, -price, 'leisure')
   addStat(g, 'happiness', randInt(g, 1, 4))
   if (choice === 'shisha') addStat(g, 'health', -1)
   nightEvent(g, 'bar', venue, `You ordered ${what} and settled in to people-watch.`)

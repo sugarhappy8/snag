@@ -9,7 +9,7 @@ import { practice } from '../computer/dev-learn'
 import { localFee } from '../computer/dev-state'
 import { seeded, yearKey, type SRng } from '../assets'
 import { severanceMonths } from '../business/flavor'
-import { addHidden, addRelationship, addStat, count, currentPartner, earnIncome, log, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, addRelationship, addStat, count, currentPartner, earnIncome, log, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { industryDemand, localMarket } from '../data/markets'
 import { chance, pick, randFloat, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
@@ -482,7 +482,7 @@ const BURNOUT = defineScript('gamedev.job.burnout', (g, choice) => {
   if (choice === 'therapy') {
     const cost = localFee(g, 1_200)
     if (g.character.money >= cost) {
-      g.character.money -= cost
+      addMoney(g, -cost, 'health')
       p.burnout = Math.round(clampN(p.burnout - 30, 0, 100))
       addStat(g, 'happiness', 4)
       say(g, 'Therapy', `You saw a therapist (${money(cost)}). You learned the word "boundaries" and practiced saying "no" to your producer in the mirror.`, '\u{1F6CB}\u{FE0F}', 'good')
@@ -565,7 +565,7 @@ function releaseStudioGame(g: GameState, job: Job, d: GdJobData, p: GdProfile): 
   // Leads earn a bonus on a hit; everyone gets a launch party.
   let bonus = 0
   if (r.critic >= 80 && job.level >= 2) bonus = Math.round(job.salary * (0.05 + 0.05 * job.level) * (r.critic >= 90 ? 2 : 1))
-  if (bonus > 0) earnIncome(g, bonus)
+  if (bonus > 0) earnIncome(g, bonus, 'wage')
   if (r.critic >= 85) addStat(g, 'happiness', 8)
   else if (r.critic < 55) addStat(g, 'happiness', -5)
   const verdict = r.critic >= 90 ? 'a masterpiece' : r.critic >= 80 ? 'a hit' : r.critic >= 65 ? 'a solid release' : r.critic >= 50 ? 'a disappointment' : 'a disaster'
@@ -628,7 +628,7 @@ export function yearlyGameJob(g: GameState, budget: number): number {
     setRole(g, job, 'QA Tester', salaryFor(g, 0, d.tier), 0)
     log(g, `I went full-time as a QA Tester at ${d.studio}.`, 'good')
   }
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
 
   // Skills grow on the job.
   if (d.track === 'code') practice(g, 2, bestLanguageFor(g, 'games')?.id ?? null, 1)
@@ -685,7 +685,7 @@ export function yearlyGameJob(g: GameState, budget: number): number {
     const studio = d.studio
     leave(g, 'laid off')
     p.layoffs += 1
-    if (sev > 0) earnIncome(g, sev)
+    if (sev > 0) earnIncome(g, sev, 'severance')
     addStat(g, 'happiness', -randInt(g, 6, 12))
     count(g, 'laidOff')
     log(g, `I was laid off from ${studio}.`, 'bad')
@@ -911,7 +911,7 @@ export function attendConvention(g: GameState): void {
   if (!useYearAction(g, 'gamedev.convention', 1)) return tell(g, CONVENTION, `${CONVENTION} only happens once a year. Your feet are still recovering.`, '\u{1F3AA}')
   const cost = localFee(g, 250)
   if (g.character.money < cost) return tell(g, "Can't Afford It", `A ${CONVENTION} pass costs ${money(cost)}.`, '\u{1F4B8}')
-  g.character.money -= cost
+  addMoney(g, -cost, 'purchase')
   const p = gdMut(g)
   const port = gamePortfolio(g, p)
   const gain = addGamerFame(p, randInt(g, 0, 2) + (port.best >= 80 ? 2 : 0))

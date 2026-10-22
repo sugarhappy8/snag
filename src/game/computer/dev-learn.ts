@@ -2,6 +2,7 @@
 // coding camp for kids, coding contests and hackathons; and, before any of that, getting a
 // computer (asking your parents, or a used laptop off the local classifieds).
 import { electronicsStoreMenu, localGoodsMult, nicePrice, seeded, yearKey } from '../assets'
+import { personCash } from '../cash'
 import { ownsComputer } from '../computer'
 import { addHidden, addRelationship, addStat, count, formatMoney, log, notice, pronouns, remember, spend, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
@@ -560,7 +561,7 @@ function compete(g: GameState, def: CompDef): void {
   }
   const prizeUsd: number = place <= 2 ? (def.prizes[place] ?? 0) : 0
   const prize = prizeUsd > 0 ? (def.local ? localFee(g, prizeUsd) : onlinePrice(g, prizeUsd)) : 0
-  const tax = prize > 0 ? earnNow(g, prize) : 0
+  const tax = prize > 0 ? earnNow(g, prize, 'prize') : 0
   addStat(g, 'happiness', randInt(g, 3, 8))
   addStat(g, 'smarts', randInt(g, 0, 1))
   const detail = olympiad ? (strength >= 9 ? 'Selected for the international olympiad' : 'National olympiad') : place === 3 ? 'Made the final round' : 'Podium finish'
@@ -674,7 +675,8 @@ export function askParentsForComputer(g: GameState): void {
   const modern = model.name === 'Laptop'
   const thing = modern ? 'laptop' : 'computer'
   if (budget >= price * 4 && score >= 0.55) {
-    payer.money = Math.round(payer.money - price)
+    // A parent buys it: the retail pool is paid, and the rounding is the line's own.
+    personCash(g, payer, Math.round(payer.money - price) - payer.money, 'purchase')
     addRelationship(payer, 2)
     giveComputer(g, model.displayName, price, 100, { gift: 'parents' })
     g.flags.devParentLaptopAge = c.age
@@ -744,7 +746,7 @@ function buyUsedLaptop(g: GameState): void {
   if (reason) return notice(g, title, reason, { emoji: '\u{1F4BB}' })
   if (g.flags.devUsedLaptopYear === g.year) return notice(g, title, 'That listing is gone. Check again next year.', { emoji: '\u{1F4BB}' })
   const l = usedLaptopListing(g)
-  if (!spend(g, l.price)) return notice(g, title, `It costs ${formatMoney(l.price)} and you have ${formatMoney(Math.max(0, c.money))}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+  if (!spend(g, l.price, 'purchase')) return notice(g, title, `It costs ${formatMoney(l.price)} and you have ${formatMoney(Math.max(0, c.money))}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
   g.flags.devUsedLaptopYear = g.year
   count(g, 'purchases')
   if (l.dud) {
@@ -842,7 +844,7 @@ export function familyComputerYear(g: GameState, budget: number): number {
   const price = laptopPrice(g)
   const payer = ps.reduce((a, b) => (b.money > a.money ? b : a))
   if (payer.money < price) return 0
-  payer.money = Math.round(payer.money - price)
+  personCash(g, payer, Math.round(payer.money - price) - payer.money, 'purchase')
   const model = computerModel(g)
   const name = familyComputerName(g)
   giveComputer(g, name, price, 100, { gift: 'family' })

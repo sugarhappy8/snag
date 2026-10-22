@@ -859,7 +859,7 @@ export function yearlyActor(g: GameState): void {
       } else cr.residual = 0
     }
     if (residuals > 0) {
-      earnIncome(g, residuals)
+      earnIncome(g, residuals, 'royalty')
       log(g, `I received ${money(residuals)} in residuals.`)
     }
   }
@@ -888,7 +888,7 @@ export function yearlyActor(g: GameState): void {
   const popularity = clamp100(quality * 0.6 + fameOf(g) * 0.2 + proj.buzz + randInt(g, -15, 25))
   const cut = ap.agent?.cut ?? 0
   const pay = Math.round(proj.pay * (1 - cut))
-  earnIncome(g, pay)
+  earnIncome(g, pay, 'wage')
   const verdict = verdictFor(g, popularity, proj.kind)
   const fameGain = (proj.role === 'Extra' ? (chance(g, 0.3) ? 1 : 0) : proj.role === 'Supporting' ? 1 + Math.round(popularity / 30) : 3 + Math.round(popularity / 14)) + (hasTalent(g, 'Acting') && proj.role !== 'Extra' ? 1 : 0)
   addFame(g, fameGain)

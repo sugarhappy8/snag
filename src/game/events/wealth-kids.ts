@@ -3,6 +3,7 @@
 // break, university, a wedding, a house, seed money, bail, rehab and gambling debts. Spoiled kids
 // ask for more and thank you less; see wealth-core entitlement.
 import { notePerson } from '../people'
+import { personCash } from '../cash'
 import { addRelationship, log, notice, pronouns, scriptInput } from '../core'
 import { chance, pick, randInt, uid } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
@@ -823,7 +824,7 @@ export const KID_ASKS: AskDef[] = [
         })
         return `${cap(pr(p).he)} sold the car you bought ${pr(p).him} to pay it off.`
       }
-      p.money = Math.max(0, Math.round(p.money * 0.5))
+      personCash(g, p, Math.max(0, Math.round(p.money * 0.5)) - p.money, 'gamble', 0)
       return `${cap(pr(p).he)} sold most of what ${pr(p).he} owns to pay it off.`
     },
     spoil: 10,

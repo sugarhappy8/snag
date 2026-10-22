@@ -136,7 +136,8 @@ describe('a founder runs three funds and passes the family fund on', () => {
     expect(half.tax).toBeGreaterThan(0)
     expect(takeOut(g, personal.a.id, 0.5)).toBe(true)
     expect(Math.abs(g.character.money - cash - (half.gross - half.tax))).toBeLessThanOrEqual(1)
-    expect(num(g.flags.taxableIncome)).toBeGreaterThan(income)
+    // R2-L13 (F38): the tax is the capital gains rate, withheld at the take out; the gain is not income, so taxableIncome stays put.
+    expect(num(g.flags.taxableIncome)).toBe(income)
     // Net worth falls by the tax and nothing else.
     expect(Math.abs(before - netWorth(g) - half.tax)).toBeLessThanOrEqual(2)
     expect(fundOf(g, 'person')).not.toBeNull()

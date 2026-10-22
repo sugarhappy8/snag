@@ -123,9 +123,9 @@ describe('World 2: funded resilience interventions', () => {
   })
 
   it('keeps contract stock accounting, projections and saved policies exactly aligned with real settlement', () => {
-    const { g, b } = fixture()
+    const { g, a, b } = fixture()
     const quote = inputContractQuote(g, b)!
-    expect(purchaseInputContract(b, quote)).toBe(true)
+    expect(purchaseInputContract(g, a, b, quote)).toBe(true)
     target(b, .5)
     const snapshot = JSON.stringify(g), opening = b.cash
     const p = planFor(g, b, g.year, { noise: 1 })
@@ -187,7 +187,7 @@ describe('World 2: funded resilience interventions', () => {
     b.manager = null; b.production = 1e9
     conditions(g, b.industry, .5, .5, .2)
     const quote = inputContractQuote(g, b)!
-    expect(purchaseInputContract(b, quote)).toBe(true)
+    expect(purchaseInputContract(g, a, b, quote)).toBe(true)
     expect(purchaseTraining(g, a, b)).toBeGreaterThan(0)
     const plan = techPlan(g, b, t, g.year, { noise: 1 })
     expect(plan.capacity).toBeLessThanOrEqual(plan.equipmentCapacity * .51)
@@ -236,13 +236,13 @@ describe('World 2: funded resilience interventions', () => {
   })
 
   it('quotes grade-adjusted inputs consistently with the existing cost factor', () => {
-    const { g, b } = fixture()
+    const { g, a, b } = fixture()
     for (const supplier of ['standard', 'premium', 'budget'] as const) {
       const bb = { ...b, supplier }, q = inputContractQuote(g, bb)!, plan = planFor(g, bb, g.year, { noise: 1 })
       expect(q.spotPrice).toBeCloseTo(plan.unitCost * costFactor(bb) * .7)
     }
     const poor = { ...b, cash: 0 }, quote = inputContractQuote(g, poor)!
-    expect(purchaseInputContract(poor, quote)).toBe(false)
+    expect(purchaseInputContract(g, a, poor, quote)).toBe(false)
     expect(poor.supply).toBeUndefined()
   })
 

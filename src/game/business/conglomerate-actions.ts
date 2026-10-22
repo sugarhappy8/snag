@@ -4,9 +4,11 @@
 // the whole group. Every deal pays real fees; boards with outside members vote on anything that
 // touches their shareholders; nothing here creates value out of thin air (merger stakes are set at
 // fair value and spin-offs hand every holder their share).
+import { firmCash, firmPurse, moveCash as moveBetween } from '../cash'
 import { addMoney, addStat, count, earnIncome, endJob, formatMoney, log, moneyWith, notice, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { exchangeFor } from '../data/markets'
+import type { Reason } from '../kernel/reasons'
 import { masterBusiness } from '../mastery'
 import { saleImpact } from '../invest/liquidity'
 import { bell, chance, randInt, uid } from '../rng'
@@ -224,10 +226,10 @@ export function feeShortfall(parts: { a: Asset; b: BizState; fee: number }[]): n
   return parts.reduce((s, p) => s + Math.max(0, p.fee - spendable(p.a, p.b)), 0)
 }
 
-function charge(b: BizState, n: number): void {
+function charge(g: GameState, a: Asset, b: BizState, n: number, reason: Reason): void {
   const v = Math.max(0, Math.round(n))
   if (!v) return
-  b.cash -= v
+  firmCash(g, b, -v, reason, a.id)
   b.yearCosts += v
   if (!b.public) b.valuation = Math.max(0, Math.round(b.valuation - v))
 }
@@ -243,10 +245,10 @@ function payFees(g: GameState, parts: { a: Asset; b: BizState; fee: number }[]):
   for (const p of parts) {
     const fee = Math.max(0, Math.round(p.fee))
     const own = Math.min(fee, spendable(p.a, p.b))
-    charge(p.b, own)
+    charge(g, p.a, p.b, own, 'legal')
     const rest = fee - own
     if (rest > 0) {
-      addMoney(g, -rest)
+      addMoney(g, -rest, 'legal')
       p.b.invested += rest
       p.b.yearCosts += rest
       fromOwner += rest
@@ -258,11 +260,12 @@ function payFees(g: GameState, parts: { a: Asset; b: BizState; fee: number }[]):
 }
 
 /** Move cash between two divisions of a group (no P&L: it is the same group's money). */
-function shift(from: BizState, to: BizState, n: number): void {
+function shift(g: GameState, fromX: GroupMember, toX: GroupMember, n: number): void {
+  const from = fromX.b
+  const to = toX.b
   const v = Math.max(0, Math.round(n))
   if (!v) return
-  from.cash -= v
-  to.cash += v
+  moveBetween(g, firmPurse(from, fromX.a.id), firmPurse(to, toX.a.id), v, 'inject')
   if (!from.public) from.valuation = Math.max(0, Math.round(from.valuation - v))
   if (!to.public) to.valuation = Math.round(to.valuation + v)
 }
@@ -276,7 +279,7 @@ function pool(g: GameState, grp: Group, to: GroupMember, need: number, from?: { 
     if (left <= 0) break
     const take = Math.min(left, o.spare)
     if (take <= 0) continue
-    shift(o.x.b, to.b, take)
+    shift(g, o.x, to, take)
     from?.push({ x: o.x, n: take })
     left -= take
     moved += take
@@ -375,7 +378,7 @@ function brokenDeal(g: GameState, parts: { a: Asset; b: BizState; fee: number }[
   let billed = 0
   for (const p of parts) {
     const bill = Math.min(Math.round(p.fee * 0.25), spendable(p.a, p.b))
-    charge(p.b, bill)
+    charge(g, p.a, p.b, bill, 'legal')
     refreshValue(p.a, p.b)
     billed += bill
   }
@@ -637,15 +640,15 @@ export function spinOff(g: GameState, groupId: string, assetId: string): boolean
   // The fee: the division's own cash, then the group's treasury, then the player's pocket.
   let left = plan.fee
   const own = Math.min(left, spendable(x.a, x.b))
-  charge(x.b, own)
+  charge(g, x.a, x.b, own, 'legal')
   left -= own
   if (left > 0) {
     const pulled = pool(g, grp, x, left)
-    charge(x.b, pulled)
+    charge(g, x.a, x.b, pulled, 'legal')
     left -= pulled
   }
   if (left > 0) {
-    addMoney(g, -left)
+    addMoney(g, -left, 'legal')
     x.b.invested += left
     x.b.yearCosts += left
   }
@@ -696,7 +699,7 @@ export function moveCash(g: GameState, groupId: string, fromId: string, toId: st
     notice(g, 'Nothing to Move', `${from.a.name} has no cash it can spare: what it holds covers its debts and the reserve its board requires.`, { emoji: '\u{1F4B8}' })
     return false
   }
-  shift(from.b, to.b, n)
+  shift(g, from, to, n)
   syncMembers(grp)
   log(g, `${grp.core.name} moved ${money(n)} from ${from.a.name} to ${to.a.name}.`, 'neutral')
   notice(g, 'Cash Moved', `${grp.core.name}'s treasury moved ${formatMoney(n)} from ${from.a.name} to ${to.a.name}. ${from.a.name} keeps ${formatMoney(from.b.cash)}; ${to.a.name} now has ${formatMoney(to.b.cash)}.`, { emoji: '\u{1F3E6}' })
@@ -730,10 +733,10 @@ export function groupDividend(g: GameState, groupId: string, amount: number): bo
   grp.members.forEach((x, i) => {
     const part = parts[i]
     if (part <= 0) return
-    x.b.cash -= part
+    firmCash(g, x.b, -part, 'dividend', x.a.id)
     if (!x.b.public) x.b.valuation = Math.max(0, Math.round(x.b.valuation - part))
   })
-  earnIncome(g, mine)
+  earnIncome(g, mine, 'dividend')
   payFamilyGroupDividend(g, grp, parts.reduce((sum, part, i) => sum + part * grp.members[i].m.own, 0))
   // A listed group's price falls by the cash paid out by itself (it is derived from the divisions).
   syncMembers(grp)
@@ -799,15 +802,15 @@ function face(m: Manager): string {
 }
 
 /** Pay a group expense from treasury cash first, then the player's pocket. Null means unaffordable. */
-function payGroup(g: GameState, grp: Group, n: number): 'group' | 'owner' | 'split' | null {
+function payGroup(g: GameState, grp: Group, n: number, reason: Reason): 'group' | 'owner' | 'split' | null {
   const t = treasuryOf(grp)
   const cost = Math.max(0, Math.round(Number.isFinite(n) ? n : 0))
   const fromGroup = Math.min(cost, spendable(t.a, t.b))
   const fromOwner = cost - fromGroup
   if (fromOwner > Math.max(0, g.character.money)) return null
-  if (fromGroup > 0) charge(t.b, fromGroup)
+  if (fromGroup > 0) charge(g, t.a, t.b, fromGroup, reason)
   if (fromOwner > 0) {
-    addMoney(g, -fromOwner)
+    addMoney(g, -fromOwner, reason)
     t.b.invested += fromOwner
     t.b.yearCosts += fromOwner
   }
@@ -858,7 +861,7 @@ const CEO_PICK = defineScript('business.group.ceo', (g, choice, data) => {
     saveGroup(g, grp)
     return
   }
-  if (sev > 0 && !payGroup(g, grp, sev)) {
+  if (sev > 0 && !payGroup(g, grp, sev, 'payroll')) {
     notice(g, 'Not Enough Cash', `Buying out ${managerName(out!)}'s contract costs ${formatMoney(sev)}. The group and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
@@ -885,7 +888,7 @@ export function searchGroupCeo(g: GameState, groupId: string, kind: SearchKind):
   const gb = groupBiz(g, grp)
   const key = `biz.group.headhunt.${groupId}`
   const fee = headhunterFee(gb, kind, yearActionsUsed(g, key))
-  const by = payGroup(g, grp, fee)
+  const by = payGroup(g, grp, fee, 'inputs')
   if (!by) {
     notice(g, 'Not Enough Cash', `The headhunter wants ${formatMoney(fee)}. The group's available cash and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
@@ -934,7 +937,7 @@ export function chairGroup(g: GameState, groupId: string): boolean {
     saveGroup(g, grp)
     return false
   }
-  if (sev > 0 && !payGroup(g, grp, sev)) {
+  if (sev > 0 && !payGroup(g, grp, sev, 'payroll')) {
     notice(g, 'Not Enough Cash', `Buying out ${managerName(m)}'s contract costs ${formatMoney(sev)}. The group and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return false
   }
@@ -1002,7 +1005,7 @@ export function acquireForGroup(g: GameState, groupId: string, assetId: string, 
   const pulled = need > 0 ? pool(g, grp, x, need, from) : 0
   if (!acquireRival(g, x.a, x.b, rivalId)) {
     // Give each sister its money back.
-    for (const f of from) shift(x.b, f.x.b, Math.min(f.n, Math.max(0, x.b.cash)))
+    for (const f of from) shift(g, x, f.x, Math.min(f.n, Math.max(0, x.b.cash)))
     syncMembers(grp)
     return false
   }
@@ -1084,7 +1087,8 @@ export function groupIpo(g: GameState, groupId: string, floatPct = FLOAT_DEFAULT
   const { raise, fees } = plan
   const pop = clampN(1 + bell(g, -150, 300) / 1000 + 0.06 * Math.max(0, Math.min(3, plan.coverage) - 1), 0.8, 1.45)
   const t = treasuryOf(grp)
-  t.b.cash += raise - fees
+  // One booking: the money raised, net of the underwriters' fees.
+  firmCash(g, t.b, raise - fees, 'firm.sale', t.a.id)
   if (!t.b.public) t.b.valuation = Math.round(t.b.valuation + raise - fees)
   grp.core.share = clampN(grp.core.share * plan.retain, 0, 1)
   diluteGroupEquity(grp, plan.retain)
@@ -1146,7 +1150,8 @@ export function sellGroupShares(g: GameState, groupId: string, fraction: number)
   if (!grp || !l || f <= 0) return false
   const stake = grp.core.share
   const { sold, price, gross, tax } = shareSale(g, grp, f)
-  addMoney(g, gross - tax)
+  addMoney(g, gross, 'trade.sell')
+  if (tax) addMoney(g, -tax, 'tax.capgains')
   for (const x of grp.members) x.b.invested = Math.round(x.b.invested * (1 - f))
   grp.core.share = stake - sold
   if (f >= 0.999 || grp.core.share < 0.01) {
@@ -1226,11 +1231,11 @@ export function delistGroup(g: GameState, groupId: string): boolean {
     if (left <= 0) break
     const take = Math.min(left, movableCash(g, x))
     if (take <= 0) continue
-    x.b.cash -= take
+    firmCash(g, x.b, -take, 'trade.buy', x.a.id)
     if (!x.b.public) x.b.valuation = Math.max(0, Math.round(x.b.valuation - take))
     left -= take
   }
-  if (plan.fromYou > 0) addMoney(g, -plan.fromYou)
+  if (plan.fromYou > 0) addMoney(g, -plan.fromYou, 'trade.buy')
   grp.core.share = 1
   diluteGroupEquity(grp, 0)
   grp.core.listing = null

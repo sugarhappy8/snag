@@ -372,7 +372,7 @@ export function buyOffer(g: GameState, l: LuxLine, variantIdx: number, channel: 
     }
   }
   const fake = offer.fakeOdds > 0 && chance(g, offer.fakeOdds)
-  if (!spend(g, total)) {
+  if (!spend(g, total, 'asset.buy')) {
     cantAfford(g, total, lineTitle(l))
     return null
   }
@@ -423,7 +423,7 @@ export function authenticate(g: GameState, a: Asset): void {
     return
   }
   const cost = authCost(a, serviceMult(g))
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'purchase')) {
     cantAfford(g, cost, 'an authentication')
     return
   }
@@ -442,7 +442,7 @@ export function authenticate(g: GameState, a: Asset): void {
 
 export function serviceAsset(g: GameState, a: Asset): void {
   const cost = serviceCost(a, serviceMult(g))
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'purchase')) {
     cantAfford(g, cost, 'the service')
     return
   }
@@ -492,7 +492,7 @@ export function sellToDealer(g: GameState, a: Asset): void {
   syncValue(a)
   const price = a.value
   removeAsset(g, a)
-  addMoney(g, price)
+  addMoney(g, price, 'asset.sell')
   count(g, 'assetsSold')
   log(g, `I sold my ${a.name} to a dealer for ${formatMoney(price)}.`)
   notice(g, 'Sold!', `The dealer paid ${formatMoney(price)} for ${a.name}, about ${Math.round((price / Math.max(1, marketValue(a))) * 100)}% of its market value. Dealers have to make a living too.`, { emoji: '🤝', tone: 'good' })
@@ -502,12 +502,13 @@ export function consignToAuction(g: GameState, a: Asset, house: string): void {
   if (!gateAuth(g, a, house)) return
   const res = runAuction(g, a)
   if (!res.sold) {
-    addMoney(g, res.net)
+    // Bought in: res.net is the house's fixed fee, a cost.
+    addMoney(g, res.net, 'purchase')
     notice(g, 'Bought In', `${a.name} failed to reach its reserve at ${house} and was bought in. The catalogue and handling still cost ${formatMoney(res.fees)}. It is still yours.`, { emoji: '🔨', tone: 'bad' })
     return
   }
   removeAsset(g, a)
-  addMoney(g, res.net)
+  addMoney(g, res.net, 'asset.sell')
   count(g, 'assetsSold')
   const mv = marketValue(a)
   const verdict = res.hammer > mv * 1.1 ? 'Two bidders fell in love with it.' : res.hammer < mv * 0.9 ? 'The room was quiet.' : 'It went roughly where it should.'

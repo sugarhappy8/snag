@@ -1,6 +1,7 @@
 // Leaving a business: selling it, listing it on a stock exchange, selling shares, going bankrupt.
+import { firmCash } from '../cash'
 import { addMoney, addStat, count, endJob, formatMoney, log, moneyWith, notice, remember } from '../core'
-import { exchangeFor, marketOf } from '../data/markets'
+import { exchangeFor } from '../data/markets'
 import { recordMissedPayment } from '../finance'
 import { bell } from '../rng'
 import { saleImpact } from '../invest/liquidity'
@@ -20,7 +21,7 @@ import { controlsFor } from './board-state'
 import { clampFounders, ownerVotes, planFactor, votesAfterIpo } from './share-classes'
 import { FLOAT_DEFAULT, ipoPlan, retailDepth, retailVerdict, shareCountOf, shareCountText, type IpoPlan } from './share-structure'
 import { listingMood } from '../history/market-events'
-import { personalTax } from '../nation/effects'
+import { capitalGainsTax } from '../nation/rates'
 
 /**
  * IPO threshold: last year's net profit. Set where a successful mid-size company gets to (about
@@ -36,18 +37,8 @@ export const IPO_PROFIT = 25_000_000
  */
 export const IPO_COLLAPSE = 0.5
 
-/** Capital gains tax rate on selling a business or shares where the owner lives. */
-export function capitalGainsRate(g: GameState): number {
-  const m = marketOf(g.character.countryId)
-  const change = personalTax(g, 'capitalGains') / 100
-  return change ? clampN(m.corporateTax * 0.8 + change, 0, 0.6) : clampN(m.corporateTax * 0.8, 0, 0.3)
-}
-
-/** Tax owed on proceeds above the owner's cost basis (scaled to the share sold). */
-export function capitalGainsTax(g: GameState, proceeds: number, basis: number): number {
-  const gain = proceeds - Math.max(0, basis)
-  return gain > 0 ? Math.round(gain * capitalGainsRate(g)) : 0
-}
+// The capital gains rate and tax live in nation/rates (a leaf, so investments.ts can read them without joining the import cycles).
+export { capitalGainsRate, capitalGainsTax } from '../nation/rates'
 
 function removeBusiness(g: GameState, a: Asset): void {
   g.assets = g.assets.filter((x) => x.id !== a.id)
@@ -83,7 +74,10 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
   const tax = capitalGainsTax(g, gross, b.invested)
   const loan = settleFoundingLoan(g, b, gross - tax)
   const net = gross - tax - loan
-  addMoney(g, net)
+  // The sale, the tax on its gain and the payoff of the founding loan are three flows with three counterparties; their sum is `net`.
+  addMoney(g, gross, 'firm.sale')
+  if (tax > 0) addMoney(g, -tax, 'tax.capgains')
+  if (loan > 0) addMoney(g, -loan, 'loan.repay')
   payFamilyBusinessProceeds(g, b, price)
   removeBusiness(g, a)
   count(g, 'businessesSold')
@@ -133,7 +127,7 @@ export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: 
     return
   }
   const mine = ownerProceeds(b, proceeds)
-  addMoney(g, mine)
+  addMoney(g, mine, 'firm.sale')
   payFamilyBusinessProceeds(g, b, proceeds)
   removeBusiness(g, a)
   log(g, `I closed ${a.name} for good.`, 'neutral')
@@ -178,7 +172,7 @@ export function goPublic(g: GameState, a: Asset, b: BizState, floatPct = FLOAT_D
   const pop = clampN(1 + bell(g, -150, 300) / 1000 + 0.06 * Math.max(0, Math.min(3, plan.coverage) - 1), 0.8, 1.45)
   b.sharesOut = plan.sharesOut
   b.sharePrice = Math.round(plan.price * pop * 100) / 100
-  b.cash += plan.raise - plan.fees
+  firmCash(g, b, plan.raise - plan.fees, 'trade.sell', a.id) // one booking: the raise net of the underwriters' fees
   b.share = clampN(b.share * plan.retain, b.familyShares?.length ? 0 : .01, 1)
   diluteBusinessEquity(b, plan.retain)
   delete b.shareCount
@@ -274,7 +268,8 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   const gross = Math.round(b.sharesOut * b.sharePrice * order.proceeds)
   const basis = b.invested * f
   const tax = capitalGainsTax(g, gross, basis)
-  addMoney(g, gross - tax)
+  addMoney(g, gross, 'trade.sell')
+  if (tax > 0) addMoney(g, -tax, 'tax.capgains')
   b.invested = Math.round(b.invested * (1 - f))
   b.share = stake - sold
   clampFounders(b)

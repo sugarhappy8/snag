@@ -1,6 +1,7 @@
 // Site assets are the single ownership/estate record for unfinished developments.
 // Escrow is included in their value, never also held in the personal bank balance.
 import { addMoney, formatMoney, log, notice } from './core'
+import { lend } from './cash'
 import { mortgageDecision, refreshHouseValue } from './assets'
 import { gate, payForAction } from './activities/common'
 import { economyOf } from './economy'
@@ -73,6 +74,7 @@ export function financeDevelopment(g: GameState, id: string): boolean {
   if (!q.ok) { notice(g, 'Development Finance', q.reason, { emoji: '🏦' }); return false }
   if (!payForAction(g, q.down)) return false
   a.mortgage = { lender: 'Development lender', balance: q.principal, yearlyPayment: q.payment, yearsLeft: 15, rate: q.rate, rateType: 'fixed' }
+  lend(g, q.principal, 'pool:sellers') // the lender creates the loan; it goes into the project reserve below
   d.escrow += q.down + q.principal; save(a, d)
   notice(g, 'Secured Development Loan', `You contributed ${formatMoney(q.down)} and borrowed ${formatMoney(q.principal)}. Annual payments: ${formatMoney(q.payment)}. The loan remains attached to the property after completion or inheritance.`, { emoji: '🏦' })
   return true
@@ -126,7 +128,7 @@ export function commissionDevelopment(g: GameState, id: string): boolean {
   const inspection = Math.round(d.base * .01)
   const fromReserve = Math.min(d.escrow, inspection)
   if (!payForAction(g, inspection - fromReserve)) return false
-  d.escrow -= fromReserve; d.spent += inspection; addMoney(g, d.escrow)
+  d.escrow -= fromReserve; d.spent += inspection; addMoney(g, d.escrow, 'property.sell')
   if (d.kind === 'industrial' && target) {
     const live = bizOf(g, target); live.lines = linesOf(live) + d.units; live.invested += d.spent; live.valuation = valuationOf(live); refreshValue(target, live)
     g.assets = g.assets.filter(x => x.id !== id)
@@ -146,7 +148,8 @@ export function cancelDevelopment(g: GameState, id: string): boolean {
   const d = developmentOf(a)!
   const reserve = Math.min(d.escrow, a.value), site = Math.round((a.value - reserve) * .85)
   const proceeds = reserve + site - (a.mortgage?.balance ?? 0)
-  addMoney(g, proceeds); g.assets = g.assets.filter(x => x.id !== id)
+  // One booking: net of the secured loan.
+  addMoney(g, proceeds, 'property.sell'); g.assets = g.assets.filter(x => x.id !== id)
   notice(g, 'Development Sold', `The site and work in place sold for ${formatMoney(site)} after a 15% distressed discount, and ${formatMoney(reserve)} of unspent reserves came back in full. After repaying the secured loan, your cash changed by ${formatMoney(proceeds)}. This can be negative for an underwater site.`, { emoji: '🏗️' }); return true
 }
 export function developmentNodes(g: GameState, a: Asset): MenuNode[] | null {

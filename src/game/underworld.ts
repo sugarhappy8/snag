@@ -1,5 +1,6 @@
 // Fictional criminal-economy simulation. Lots, staff and risk are deliberately abstract;
 // no real substances, production methods, concealment procedures or practical advice.
+import { firmCash } from './cash'
 import { addHidden, formatMoney, log, netWorth, notice, spend, useYearAction, yearActionsUsed } from './core'
 import { arrestPlayer } from './crime'
 import { economyOf } from './economy'
@@ -68,7 +69,7 @@ export function tradeUnderground(g: GameState, segment: Segment, buy: boolean): 
   if (!useYearAction(g, 'underworld.trade', 6)) return false
   if (buy) {
     if (p.dirtyCash >= quote.buy) p.dirtyCash -= quote.buy
-    else if (!spend(g, quote.buy)) return false
+    else if (!spend(g, quote.buy, 'crime.cost')) return false
     p[key] += 1
   } else { p[key] -= 1; p.dirtyCash += quote.sell }
   p.heat = Math.min(100, p.heat + (segment === 'private' ? 5 : 3))
@@ -79,7 +80,7 @@ export function tradeUnderground(g: GameState, segment: Segment, buy: boolean): 
 }
 export function foundUnderground(g: GameState, name: string): boolean {
   const clean = name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 60)
-  if (block(g) || !clean || underworldView(g).name || g.character.money < 50_000 || !spend(g, 50_000)) return false
+  if (block(g) || !clean || underworldView(g).name || g.character.money < 50_000 || !spend(g, 50_000, 'crime.cost')) return false
   const p = underworldView(g)
   p.name = clean; p.founded = g.year; p.dirtyCash += 50_000; p.scale = 1
   record(p, `${g.year}: founded with ${formatMoney(50_000)} of your own money.`)
@@ -99,7 +100,7 @@ export function hireUnderworldCrew(g: GameState, role: Role): boolean {
 export function fundUnderground(g: GameState, amount: number): boolean {
   const p = underworldView(g)
   const whole = Math.round(amount)
-  if (block(g) || !p.name || !Number.isFinite(amount) || whole < 1 || whole > 1e9 || whole > MAX_DIRTY_CASH - p.dirtyCash || !spend(g, whole)) return false
+  if (block(g) || !p.name || !Number.isFinite(amount) || whole < 1 || whole > 1e9 || whole > MAX_DIRTY_CASH - p.dirtyCash || !spend(g, whole, 'crime.cost')) return false
   p.dirtyCash += whole; save(g, p); return true
 }
 
@@ -129,7 +130,7 @@ export function launderUnderworld(g: GameState, assetId: string): boolean {
     arrestPlayer(g, 'Money Laundering', 3)
   } else {
     const b = bizOf(g, a), recovered = Math.floor(amount * .65)
-    b.cash += recovered; b.yearIncome += recovered
+    firmCash(g, b, recovered, 'crime.take', a.id); b.yearIncome += recovered
     b.valuation = valuationOf(b); refreshValue(a, b)
     record(p, `${g.year}: risky conversion placed ${formatMoney(recovered)} in ${a.name}; remainder lost.`); save(g, p)
     notice(g, 'Criminal Funds Converted', `${formatMoney(recovered)} reached ${a.name}'s corporate treasury. The remaining 35% was lost. This is taxable company income, not personal cash; ordinary corporate withdrawals still apply. Exposure increased.`, { emoji: '⚠️' })

@@ -2,6 +2,7 @@
 // Everything here is either a pure function of state (safe inside menu `children`,
 // `subtitle`, `disabledReason`...) or clearly mutates a draft (only call from `run`
 // functions and script handlers).
+import { personCash } from '../cash'
 import {
   addHidden,
   addRelationship,
@@ -16,6 +17,7 @@ import {
   yearActionsUsed,
 } from '../core'
 import { declined } from '../events/era'
+import type { Reason } from '../kernel/reasons'
 import { createPerson, notePerson } from '../people'
 import { chance, nextRandom, pick, randInt } from '../rng'
 import { getCountry, NAME_POOLS, type Country } from '../world'
@@ -132,10 +134,10 @@ export function paymentBlock(g: GameState, cost: number): string | null {
   return cost > 0 && cost > g.character.money ? `You need ${money(cost)}; available cash is ${money(Math.max(0, g.character.money))}.` : null
 }
 
-/** Player-triggered payment only. Failed attempts explain the cost without charging. */
-export function payForAction(g: GameState, cost: number): boolean {
+/** Player-triggered payment only. Failed attempts explain the cost without charging. `why` is what the money was for (a purchase unless the caller says). */
+export function payForAction(g: GameState, cost: number, why: Reason = 'purchase'): boolean {
   const reason = paymentBlock(g, cost)
-  if (!reason && spend(g, cost)) return true
+  if (!reason && spend(g, cost, why)) return true
   notice(g, 'Insufficient Funds', reason ?? 'This payment could not be completed.', { emoji: '💸' })
   return false
 }
@@ -163,18 +165,18 @@ export interface Payment {
  * Pay for something. Minors' parents pick up the tab when they can (if `parentsPay`), otherwise
  * the player pays. Returns null (and spends nothing) when nobody can pay.
  */
-export function payFor(g: GameState, cost: number, parentsPay: boolean): Payment | null {
+export function payFor(g: GameState, cost: number, parentsPay: boolean, why: Reason = 'purchase'): Payment | null {
   if (cost <= 0) return { by: 'free' }
   if (parentsPay && g.character.age < 18) {
     const parent = payingParents(g)
       .filter((p) => p.money >= cost)
       .sort((a, b) => b.relationship - a.relationship)[0]
     if (parent) {
-      parent.money = Math.max(0, Math.round(parent.money - cost))
+      personCash(g, parent, Math.max(0, Math.round(parent.money - cost)) - parent.money, why, 0)
       return { by: 'parent', parent }
     }
   }
-  if (spend(g, cost)) return { by: 'self' }
+  if (spend(g, cost, why)) return { by: 'self' }
   return null
 }
 

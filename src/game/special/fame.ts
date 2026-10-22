@@ -182,7 +182,7 @@ const bookAction: MenuAction = {
   },
   run: (g, input) => {
     if (!useYearAction(g, 'fame.book', 1)) return tooBusy(g, 'released a book')
-    if (!spend(g, BOOK_COST)) {
+    if (!spend(g, BOOK_COST, 'purchase')) {
       g.yearActions['fame.book'] = 0
       return tell(g, 'Book', `You can't afford the ${money(BOOK_COST)} it costs to get your manuscript edited and printed.`, '\u{1F4B8}')
     }
@@ -193,7 +193,7 @@ const bookAction: MenuAction = {
     const score = fameOf(g) * 0.55 + c.stats.smarts * 0.35 + randInt(g, -20, 20) + (writer ? 14 : 0)
     const [, verdict, mult, fameDelta] = BOOK_TIERS.find(([max]) => score < max) ?? BOOK_TIERS[BOOK_TIERS.length - 1]
     const earned = Math.max(150, vary(g, (4_000 + fameOf(g) ** 2 * 120 + c.stats.smarts * 150) * mult * (writer ? 1.3 : 1), 0.3))
-    earnIncome(g, earned)
+    earnIncome(g, earned, 'royalty')
     addFame(g, fameDelta)
     addStat(g, 'happiness', fameDelta >= 2 ? 8 : fameDelta < 0 ? -6 : 2)
     addStat(g, 'smarts', 2)
@@ -258,7 +258,7 @@ const commercialScript = defineScript('special.fame.commercial', (g, choice, dat
     log(g, `I turned down a commercial for ${offer.brand}.`)
     return say(g, 'Commercial', `You turned down ${offer.brand}. Somewhere, an advertising executive is crying into a stack of storyboards.`, '\u{1F4FA}')
   }
-  earnIncome(g, offer.pay)
+  earnIncome(g, offer.pay, 'royalty')
   fameProfile(g).commercials += 1
   count(g, 'fameActions')
   if (offer.pay >= 2_000_000) g.flags['special.endorser'] = true
@@ -353,7 +353,7 @@ const photoScript = defineScript('special.fame.photo', (g, choice, data) => {
     return say(g, 'Photo Shoot', `You passed on the ${offer.magazine} shoot. Their photographer will have to find another muse.`, '\u{1F4F8}')
   }
   const c = g.character
-  earnIncome(g, offer.pay)
+  earnIncome(g, offer.pay, 'wage')
   count(g, 'fameActions')
   const good = c.stats.looks + randInt(g, -25, 25) >= 55
   addFame(g, good ? randInt(g, 2, 4) : 1)
@@ -559,14 +559,14 @@ const merchScript = defineScript('special.fame.merch', (g, choice) => {
   if (choice === 'cancel') return
   const item = merchNow(g).find((m) => m.id === choice)
   if (!item) return
-  if (!spend(g, item.cost)) {
+  if (!spend(g, item.cost, 'purchase')) {
     g.yearActions['fame.merch'] = 0
     return tell(g, 'Merchandise', `You can't afford the ${money(item.cost)} it costs to manufacture your ${item.label.toLowerCase()}.`, '\u{1F4B8}')
   }
   const f = fameOf(g)
   const mult = (f / 50) ** 2 * (0.3 + rand(g) * 2.2)
   const revenue = Math.round(item.cost * mult)
-  earnIncome(g, revenue)
+  earnIncome(g, revenue, 'royalty')
   fameProfile(g).merchLines += 1
   count(g, 'fameActions')
   const profit = revenue - item.cost
@@ -745,7 +745,7 @@ const stuntScript = defineScript('special.fame.stunt', (g, choice) => {
       break
     case 'vanish': {
       const fine = Math.min(Math.max(0, c.money), 25_000)
-      if (fine > 0) spend(g, fine)
+      if (fine > 0) spend(g, fine, 'fine')
       addHidden(g, 'notoriety', 5)
       text = win
         ? `You "vanished" for two weeks and reappeared to a media frenzy.${fine > 0 ? ` The police fined you ${money(fine)} for wasting their time.` : ''}`
@@ -754,7 +754,7 @@ const stuntScript = defineScript('special.fame.stunt', (g, choice) => {
     }
     case 'charity': {
       const cost = Math.min(Math.max(0, c.money), 10_000)
-      if (cost > 0) spend(g, cost)
+      if (cost > 0) spend(g, cost, 'donation')
       addHidden(g, 'karma', 5)
       text = win ? `You gave away ${money(cost)} in surprise gifts. Fans called you an angel.` : `You gave away ${money(cost)}, but critics called it a shameless publicity grab.`
       break
@@ -820,7 +820,7 @@ const paparazziScript = defineScript('special.fame.paparazzi', (g, choice) => {
     if (chance(g, 0.4)) addFame(g, -1)
   } else if (choice === 'smash') {
     const fine = Math.min(Math.max(0, g.character.money), randInt(g, 5_000, 40_000))
-    if (fine > 0) spend(g, fine)
+    if (fine > 0) spend(g, fine, 'legal')
     addHidden(g, 'notoriety', 4)
     addFame(g, 2)
     text = `You smashed a photographer's camera. ${fine > 0 ? `You paid ${money(fine)} to settle the lawsuit. ` : ''}${online(g) && g.year >= 2006 ? 'The video went viral.' : 'It made every front page.'}`
@@ -996,7 +996,7 @@ export function yearlyFame(g: GameState): void {
   if (p) {
     for (const b of p.books) {
       if (b.royalty >= 50) {
-        earnIncome(g, b.royalty)
+        earnIncome(g, b.royalty, 'royalty')
         b.royalty = Math.round(b.royalty / 2)
       } else b.royalty = 0
     }
@@ -1006,7 +1006,7 @@ export function yearlyFame(g: GameState): void {
       pod.listeners = Math.min(MAX_AUDIENCE, Math.max(50, Math.round(pod.listeners * (1 + drift))))
       const income = Math.round(pod.listeners * (0.4 + rand(g) * 0.5) * payScale(g))
       if (income > 0 && !c.prison) {
-        earnIncome(g, income)
+        earnIncome(g, income, 'royalty')
         log(g, `My ${podcastWord(g)} "${pod.name}" earned ${money(income)} from ads.`)
       }
     }

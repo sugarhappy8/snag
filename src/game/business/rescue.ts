@@ -1,4 +1,5 @@
 import { seeded } from '../assets'
+import { firmCash, firmPurse, moveCash, playerPurse } from '../cash'
 import { addMoney, log, moneyWith, notice, useYearAction, yearActionsUsed } from '../core'
 import type { Asset, GameState, MenuNode } from '../types'
 import { boardAllows, ownerControls } from './board'
@@ -53,7 +54,7 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
   // (A private company's record is only the plan for its IPO; listing sets it again.)
   if (b.public) clampFounders(b)
   if (kind === 'subscribe') {
-    addMoney(g, -amount); b.cash += amount; b.invested += amount
+    moveCash(g, playerPurse(g), firmPurse(b, a.id), amount, 'inject'); b.invested += amount
     const retain = q.value / (q.value + amount)
     diluteBusinessEquity(b, retain)
     if (b.public) b.sharesOut /= retain
@@ -61,11 +62,11 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
     // The cash adds to the price at the structure's factor, like the rest of the value (share-classes.ts classFactor).
     b.valuation = q.value + amount * classFactor(b)
   } else if (kind === 'secondary') {
-    addMoney(g, -amount); b.invested += amount
+    addMoney(g, -amount, 'trade.buy'); b.invested += amount
     b.pref = (b.pref ?? 0) * (1 - q.units / Math.max(.0001, 1 - b.share))
     // Payment leaves to the selling investors; the company receives nothing.
   } else {
-    b.cash -= amount
+    firmCash(g, b, -amount, 'trade.buy', a.id)
     b.executiveEquity = executiveEquity(b) / (1 - q.units)
     for (const holder of b.familyShares ?? []) holder.share /= 1 - q.units
     if (b.manager?.equity) b.manager.equity /= 1 - q.units

@@ -7,6 +7,7 @@
 // "SD Negeri 3 Menteng", sits the UTBK and goes to prom night; an American one starts at
 // "Lincoln Elementary School", takes the SATs and goes to prom. Internal level ids
 // ('elementary' | 'middle' | 'high' ...) never change.
+import { lend, personCash } from './cash'
 import { techAdoption, type TechId } from './history/timeline'
 import { householdEffects } from './household'
 import { economyOf } from './economy'
@@ -1592,8 +1593,12 @@ function chargeTuition(g: GameState, cur: Enrollment): void {
   if (tuition <= 0) return
   if (cur.funding === 'loans') {
     const loan = g.character.loans.find((l) => l.id === str(cur.data.loanId))
-    if (loan) loan.balance = Math.round(loan.balance + tuition)
-    else createStudentLoan(g, cur, tuition)
+    if (loan) {
+      // Another year on the same loan is more credit: the lender creates it and the school is paid.
+      const grown = Math.round(loan.balance + tuition)
+      lend(g, grown - loan.balance, 'pool:edu')
+      loan.balance = grown
+    } else createStudentLoan(g, cur, tuition)
   } else if (cur.funding === 'parents') {
     billParents(g, tuition)
   }
@@ -2681,6 +2686,8 @@ function createStudentLoan(g: GameState, cur: Enrollment, amount: number): void 
     yearlyPayment: 0,
     rate: 0.05,
   })
+  // The lender creates what it lends and the school is paid with it.
+  lend(g, Math.round(amount), 'pool:edu')
   cur.data.loanId = id
 }
 
@@ -2691,7 +2698,7 @@ function billParents(g: GameState, amount: number): void {
   let remaining = amount
   for (const p of ps) {
     const share = Math.min(p.money, Math.ceil(remaining / ps.length))
-    p.money = Math.max(0, Math.round(p.money - share))
+    personCash(g, p, Math.max(0, Math.round(p.money - share)) - p.money, 'tuition', 0)
     remaining -= share
   }
 }
@@ -2763,7 +2770,7 @@ const TUITION = defineScript('school.tuition', (g, choice, data) => {
       return
     }
     case 'cash': {
-      if (!spend(g, total)) {
+      if (!spend(g, total, 'tuition')) {
         notice(g, 'Tuition', `You can't afford the ${formatMoney(total)} tuition.`, { emoji: '\u{1F4B8}', tone: 'bad' })
         askTuition(g, { ...a, tried: [...a.tried] })
         return
@@ -3492,7 +3499,7 @@ function takeGed(g: GameState): void {
     notice(g, eq.title, `You can only take ${eq.exam} once a year. Study up and try again next year.`, { emoji: '\u{1F4DD}' })
     return
   }
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'tuition')) {
     g.yearActions.ged = 0
     notice(g, eq.title, `You can't afford the ${formatMoney(cost)} fee for ${eq.exam}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return

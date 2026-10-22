@@ -2,6 +2,7 @@
 // births, new siblings, grandchildren, relationship decay, partner drama, family events)
 // and every interaction on the Relationships screen.
 import { arrestPlayer } from './crime'
+import { moveCash, payPerson, personCash, personPurse, playerPurse } from './cash'
 import { householdEffects } from './household'
 import { economyOf } from './economy'
 import { yearlyNpcLife, npcLifeNodes, liquidateNpcEstate, recordNpcFamilyHistory } from './npc-lives'
@@ -1061,15 +1062,23 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
     const rate = Math.max(0, personalTax(g, 'inheritance')) / 100
     inheritanceTax = inherited > 1_000_000 && rate > 0 ? Math.round((inherited - 1_000_000) * rate) : 0
     if (inherited > 0) {
-      addMoney(g, inherited - inheritanceTax)
+      addMoney(g, inherited - inheritanceTax, 'inheritance') // one booking: net of the estate tax
       count(g, 'inheritances')
       count(g, 'inheritedMoney', inherited)
     }
+    // What leaves the dead person's money is your share. A parent's other half goes to the other parent, and then nothing stays behind.
+    let leaves = inherited
     if (p.relation === 'parent') {
       const other = g.people.find((x) => x.alive && x.relation === 'parent' && x.id !== p.id && !splitUp(x))
-      if (other && !splitUp(p)) { other.money += Math.max(0, p.money - inherited); p.money = inherited }
+      if (other && !splitUp(p)) {
+        // One-sided pair, not a move, so the float arithmetic of both parents' money stays as it was.
+        const rest = Math.max(0, p.money - inherited)
+        personCash(g, p, -rest, 'estate', 0)
+        personCash(g, other, rest, 'estate')
+        leaves = p.money
+      }
     }
-    p.money = Math.max(0, p.money - inherited)
+    personCash(g, p, -leaves, 'inheritance', 0)
   }
   if (p.relation === 'partner' || p.relation === 'fiance') {
     p.data.lateLover = p.relation
@@ -1178,7 +1187,7 @@ defineScript('rel.funeral', (g, choice, data) => {
   const wish = dStr(data, 'wish')
   if (choice === 'burial' || choice === 'cremation' || choice === 'taxidermy') {
     const cost = dNum(data, choice)
-    if (!spend(g, cost)) {
+    if (!spend(g, cost, 'purchase')) {
       count(g, 'funerals')
       log(g, `My family helped pay to cremate ${myRel(p)}.`)
       notice(g, 'Funeral', `You couldn't afford it, so ${name} was cremated with help from the rest of the family.`, { emoji: '\u{1F3FA}' })
@@ -1307,8 +1316,8 @@ function updateOccupation(g: GameState, p: Person): void {
   if (p.occupation === 'Unemployed' && p.age < 65 && chance(g, Math.max(.06, .3 - e.unemployment + (e.mobility - .5) * .2))) p.occupation = typeof p.data.previousOccupation === 'string' ? p.data.previousOccupation : randomOccupation(g, Math.max(23, p.age))
   if (p.occupation !== 'Retired' && p.age >= 65 && (p.age >= 70 || chance(g, 0.25))) p.occupation = 'Retired'
   // Earnings / spending
-  if (p.occupation === 'Retired') p.money = Math.max(0, Math.round(p.money * 0.98))
-  else if (p.occupation !== 'Unemployed' && p.occupation !== 'University Student') p.money += Math.round(randInt(g, 500, 4000) * Math.max(.15, getCountry(country).wealth) * e.wages)
+  if (p.occupation === 'Retired') personCash(g, p, Math.max(0, Math.round(p.money * 0.98)) - p.money, 'living', 0)
+  else if (p.occupation !== 'Unemployed' && p.occupation !== 'University Student') personCash(g, p, Math.round(randInt(g, 500, 4000) * Math.max(.15, getCountry(country).wealth) * e.wages), 'wage')
 }
 
 function familyLifeCycle(g: GameState): void {
@@ -1606,8 +1615,7 @@ function partnerDrama(g: GameState): void {
   if (p.relation === 'spouse' && c.money > 2000 && dramaReady(g, p, 'money', 6) && chance(g, 0.04)) {
     stampDrama(g, p, 'money')
     const amount = Math.round(Math.min(c.money * randFloat(g, 0.05, 0.15), 25_000))
-    spend(g, amount)
-    p.money += amount
+    moveCash(g, playerPurse(g), personPurse(p), amount, 'support')
     scriptChoice(
       g,
       'rel.spouse.money',
@@ -1680,8 +1688,7 @@ defineScript('rel.spouse.money', (g, choice, data) => {
     notice(g, 'Missing Money', `You let it go. ${money(amount)} is a small price for peace and quiet.`, { emoji: '\u{1F937}' })
   } else if (choice === 'demand') {
     if (chance(g, 0.55) && p.money >= amount) {
-      p.money -= amount
-      addMoney(g, amount)
+      moveCash(g, personPurse(p), playerPurse(g), amount, 'support')
       notice(g, 'Missing Money', `${p.firstName} grumbled but paid you back ${money(amount)}.`, { emoji: '\u{1F4B5}' })
     } else {
       addRelationship(p, -randInt(g, 4, 8))
@@ -1830,8 +1837,7 @@ function yearlyFamilyEvent(g: GameState): void {
       w: 1,
       run: () => {
         const amt = randInt(g, 2, 10) * 10
-        gp.money -= amt
-        addMoney(g, amt)
+        moveCash(g, personPurse(gp), playerPurse(g), amt, 'gift')
         touch(g, gp)
         log(g, `${cap(myRel(gp))} slipped me ${money(amt)}.`, 'good')
         notice(g, 'Grandparent Bonus', `${the(gp)} slipped you ${money(amt)} and said "Don't tell your parents." \u{1F4B5}`, { emoji: '\u{1F475}', tone: 'good' })
@@ -1994,7 +2000,7 @@ defineScript('rel.child.tuition', (g, choice, data) => {
   if (!k || !k.alive) return
   const tuition = dNum(data, 'tuition')
   touch(g, k)
-  if (choice === 'pay' && spend(g, tuition)) {
+  if (choice === 'pay' && spend(g, tuition, 'tuition')) {
     k.occupation = 'University Student'
     k.data.collegePaid = true
     addRelationship(k, randInt(g, 15, 25))
@@ -2419,7 +2425,7 @@ defineScript('rel.gift.pick', (g, choice, data) => {
 
 function giveGift(g: GameState, p: Person, gift: Gift): void {
   if (!limit(g, p, 'gift', 2, 'Gift')) return
-  if (!spend(g, gift.price)) {
+  if (!spend(g, gift.price, 'purchase')) {
     notice(g, 'Gift', `You can't afford ${gift.name} (${money(gift.price)}).`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -2654,7 +2660,7 @@ function movie(g: GameState, p: Person): void {
   if (!limit(g, p, 'movie', 2, 'Movie Theater')) return
   const c = g.character
   const cost = c.age >= 18 ? randInt(g, 26, 45) : 0
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'leisure')) {
     notice(g, 'Movie Theater', `You can't afford two movie tickets (${money(cost)}).`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -2696,7 +2702,7 @@ defineScript('rel.vacation.pick', (g, choice, data) => {
   const place = typeof v.place === 'string' ? v.place : 'somewhere nice'
   const cost = typeof v.cost === 'number' ? v.cost : 2000
   if (!limit(g, p, 'vacation', 1, 'Vacation')) return
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'leisure')) {
     notice(g, 'Vacation', `You can't afford a trip to ${place} (${money(cost)}).`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -2735,8 +2741,7 @@ function askForMoney(g: GameState, p: Person): void {
     notice(g, 'Ask for Money', `${the(p)} turned ${x.his} pockets inside out. Lint. Just lint.`, { emoji: '\u{1F4B8}' })
     return
   }
-  p.money -= amount
-  addMoney(g, amount)
+  moveCash(g, personPurse(p), playerPurse(g), amount, 'gift')
   log(g, `${cap(myRel(p))} gave me ${money(amount)}.`, 'good')
   notice(g, 'Ask for Money', `${the(p)} gave you ${money(amount)}. ${pickSite(g, ["Don't spend it all in one place.", 'Spend it wisely.', `${x.He} sighed heavily while handing it over.`, ''], 0x2152c28c)}`.trim(), { emoji: '\u{1F4B5}', tone: 'good' })
 }
@@ -2747,13 +2752,12 @@ function giveMoney(g: GameState, p: Person, input?: string): void {
     notice(g, 'Give Money', 'Enter an amount greater than zero.', { emoji: '\u{1F4B5}' })
     return
   }
-  if (!spend(g, amount)) {
+  if (!payPerson(g, p, amount, 'gift')) {
     notice(g, 'Give Money', `You don't have ${money(amount)}.`, { emoji: '\u{1F4B8}' })
     return
   }
   touch(g, p)
   count(g, 'gaveMoney')
-  p.money += amount
   // Counted in Money Matters; a big handout spoils a kid (events/wealth-core.ts).
   noteCashGift(g, p, amount)
   const d = Math.round(clamp(Math.log10(amount) * 4 - 4, 0, 25))
@@ -2878,7 +2882,7 @@ function party(g: GameState, p: Person): void {
 function concert(g: GameState, p: Person): void {
   if (!limit(g, p, 'concert', 1, 'Concert')) return
   const cost = randInt(g, 6, 20) * 10
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'leisure')) {
     notice(g, 'Concert', `You can't afford two concert tickets (${money(cost)}).`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -2930,7 +2934,7 @@ function dateNight(g: GameState, p: Person): void {
     cost = v.cost
     text = eraStrip(v.text)
   }
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'leisure')) {
     notice(g, 'Date Night', `You can't afford date night (${money(cost)}). Maybe a walk in the park instead?`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -3145,7 +3149,7 @@ function petVet(g: GameState, p: Person): void {
   if (!limit(g, p, 'vet', 1, 'Veterinarian')) return
   const c = g.character
   const cost = c.age >= 18 ? randInt(g, 8, 40) * 10 : 0
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'health')) {
     notice(g, 'Veterinarian', `You can't afford the vet bill (${money(cost)}).`, { emoji: '\u{1F4B8}' })
     return
   }

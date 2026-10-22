@@ -138,11 +138,11 @@ const EVENTS: DtEvent[] = [
       const cost = num(x.d.cost)
       const name = str(x.d.name, 'Your star engineer')
       if (choice === 'match') {
-        payTech(x.b, x.t, cost)
+        payTech(x.g, x.b, x.t, cost)
         x.b.morale = clampN(x.b.morale + 3, 0, 100)
         tell(x.g, 'Staying Put', `${name} took the retention bonus (${formatMoney(cost)}) and a slightly embarrassing hug. The lab exhales.`, '\u{1F91D}', 'good')
       } else if (choice === 'raid') {
-        payTech(x.b, x.t, cost * 2)
+        payTech(x.g, x.b, x.t, cost * 2)
         addHidden(x.g, 'karma', -2)
         x.t.level = clampN(x.t.level + 3, 0, 100)
         tell(x.g, 'Counter-Raid', `${name} left, but you hired three of the rival's best engineers with ${formatMoney(cost * 2)} of signing bonuses. Recruiters on both sides are buying boats.`, '\u{1F3F4}\u{200D}\u{2620}\u{FE0F}')
@@ -201,18 +201,18 @@ const EVENTS: DtEvent[] = [
     resolve: (x, choice) => {
       const settle = num(x.d.settle)
       if (choice === 'settle') {
-        payTech(x.b, x.t, settle)
+        payTech(x.g, x.b, x.t, settle)
         tell(x.g, 'Settled', `You paid the troll ${formatMoney(settle)} to go back under its bridge. It will be back.`, '\u{1F4B8}')
         return
       }
       const fees = Math.round(settle * 0.35)
-      payTech(x.b, x.t, fees)
+      payTech(x.g, x.b, x.t, fees)
       if (chance(x.g, 0.65)) {
         count(x.g, 'lawsuitsWon')
         tell(x.g, 'Patent Invalidated', `The judge tossed the patent as "obvious to anyone with a calculator". Legal fees: ${formatMoney(fees)}.`, '\u{2696}\u{FE0F}', 'good')
       } else {
         const award = Math.round(settle * 1.5)
-        payTech(x.b, x.t, award)
+        payTech(x.g, x.b, x.t, award)
         tell(x.g, 'Lost in Court', `A jury that didn't understand the patent (nobody does) awarded the troll ${formatMoney(award)}. Legal fees on top: ${formatMoney(fees)}.`, '\u{2696}\u{FE0F}', 'bad')
       }
     },
@@ -231,7 +231,7 @@ const EVENTS: DtEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice === 'fix') {
-        payTech(x.b, x.t, num(x.d.fix))
+        payTech(x.g, x.b, x.t, num(x.d.fix))
         x.t.level = clampN(x.t.level - 1, 0, 100)
         tell(x.g, 'Locked Down', has(x, 'internet') ? `The security firm kicked the intruders out and found three more back doors. Only a few designs leaked.` : `The security firm caught two more moles on the payroll. Only a few designs leaked.`, '\u{1F6E1}\u{FE0F}', 'good')
       } else if (choice === 'public') {
@@ -332,13 +332,13 @@ const EVENTS: DtEvent[] = [
       } else if (choice === 'shell') {
         addHidden(x.g, 'karma', -6)
         if (chance(x.g, 0.3)) {
-          payTech(x.b, x.t, licence * 5)
+          payTech(x.g, x.b, x.t, licence * 5)
           x.b.brand = clampN(x.b.brand - 10, 0, 100)
           tell(x.g, 'Caught', `Customs traced the shell company back to you. The fine was ${formatMoney(licence * 5)} and the headlines were worse.`, '\u{1F6A8}', 'bad')
           if (chance(x.g, 0.25)) arrestPlayer(x.g, 'Sanctions Evasion', 2, { evidence: 0.6, noResist: true, context: `Prosecutors charged you over ${x.a.name}'s shell-company purchases.` })
         } else tell(x.g, 'Quietly Sourced', `Crates of "agricultural equipment" arrived on schedule. Nobody asked questions. Yet.`, '\u{1F3AD}')
       } else if (choice === 'licence') {
-        payTech(x.b, x.t, licence)
+        payTech(x.g, x.b, x.t, licence)
         if (chance(x.g, 0.55)) tell(x.g, 'Licences Granted', `After ${formatMoney(licence)} of lawyers and eleven months of forms, you got the licences. Sales keep flowing.`, '\u{1F4DD}', 'good')
         else {
           x.b.demandShock = clampN(x.b.demandShock * 0.88, 0.3, 2)
@@ -374,7 +374,7 @@ const EVENTS: DtEvent[] = [
         x.b.brand = clampN(x.b.brand - 3, 0, 100)
         tell(x.g, 'Price Hike', `Customers paid up, muttering. They'll remember this when the shortage ends.`, '\u{1F4C8}')
       } else if (choice === 'broker') {
-        const n = earnTech(x.b, x.t, num(x.d.cash))
+        const n = earnTech(x.g, x.b, x.t, num(x.d.cash))
         x.b.brand = clampN(x.b.brand - 6, 0, 100)
         tell(x.g, 'Quick Money', `Brokers paid ${formatMoney(n)} for a batch and resold it at triple the price. Your regular customers noticed.`, '\u{1F4B0}')
       } else {
@@ -398,7 +398,7 @@ const EVENTS: DtEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice === 'rush') {
-        payTech(x.b, x.t, num(x.d.fix))
+        payTech(x.g, x.b, x.t, num(x.d.fix))
         x.b.capacityLoss = clampN(x.b.capacityLoss + 0.1, 0, 0.8)
         tell(x.g, 'Back in Business', `Crews worked around the clock (${formatMoney(num(x.d.fix))}). Production was back within weeks.`, '\u{1F6E0}\u{FE0F}', 'good')
       } else {
@@ -468,7 +468,7 @@ const EVENTS: DtEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice === 'patch') {
-        payTech(x.b, x.t, num(x.d.fix))
+        payTech(x.g, x.b, x.t, num(x.d.fix))
         x.t.safety = clampN(x.t.safety + 10, 0, 100)
         x.t.hype = clampN(x.t.hype - 4, 0, 100)
         tell(x.g, 'Patched', `A fix shipped within days, with an apology written by humans. The story died down.`, '\u{1FA79}')
@@ -481,7 +481,7 @@ const EVENTS: DtEvent[] = [
         x.b.brand = clampN(x.b.brand - 6, 0, 100)
         if (chance(x.g, 0.4)) {
           const fine = num(x.d.fix) * 4
-          payTech(x.b, x.t, fine)
+          payTech(x.g, x.b, x.t, fine)
           tell(x.g, 'Fined', `${aiRegulator(x.b.countryId)} was not convinced it was the users' fault. Fine: ${formatMoney(fine)}.`, '\u{1F6A8}', 'bad')
         } else tell(x.g, 'Blame Game', `Your statement blaming users went over badly, but the regulators moved on to someone else.`, '\u{1F449}', 'bad')
       }
@@ -501,7 +501,7 @@ const EVENTS: DtEvent[] = [
     resolve: (x, choice) => {
       const run = x.t.programs.find((p) => p.id === 'train')
       if (choice === 'pay') {
-        payTech(x.b, x.t, num(x.d.cost))
+        payTech(x.g, x.b, x.t, num(x.d.cost))
         tell(x.g, has(x, 'deepLearning') || x.g.year >= 2009 ? 'GPUs Delivered' : 'Hours Found', has(x, 'deepLearning') || x.g.year >= 2009 ? `The crates arrived. The hoodie guy also tried to sell you a timeshare. The training run is on schedule.` : `The hours appeared, logged as "maintenance". The operator also tried to sell you a timeshare. The training run is on schedule.`, '\u{1F5A5}\u{FE0F}')
       } else {
         if (run) run.progress = Math.max(0, run.progress - 0.5)
@@ -522,15 +522,15 @@ const EVENTS: DtEvent[] = [
     resolve: (x, choice) => {
       const licence = num(x.d.licence)
       if (choice === 'license') {
-        payTech(x.b, x.t, licence)
+        payTech(x.g, x.b, x.t, licence)
         x.b.brand = clampN(x.b.brand + 3, 0, 100)
         tell(x.g, 'Licensed', `You paid ${formatMoney(licence)} for licences. ${has(x, 'aiAssistants') ? 'Authors are' : 'The photographers are'} mollified, and your training data is legal now.`, '\u{1F4DD}', 'good')
       } else if (chance(x.g, 0.5)) {
-        payTech(x.b, x.t, Math.round(licence * 0.3))
+        payTech(x.g, x.b, x.t, Math.round(licence * 0.3))
         count(x.g, 'lawsuitsWon')
         tell(x.g, 'Fair Use', `The judge sided with you on fair use. Legal fees: ${formatMoney(licence * 0.3)}. ${has(x, 'aiAssistants') ? 'The newspaper wrote a furious editorial.' : 'The photographers wrote a furious open letter.'}`, '\u{2696}\u{FE0F}', 'good')
       } else {
-        payTech(x.b, x.t, licence * 3)
+        payTech(x.g, x.b, x.t, licence * 3)
         tell(x.g, 'Lost', `The court ruled against you: ${formatMoney(licence * 3)} in damages, and you have to retrain without the disputed data.`, '\u{2696}\u{FE0F}', 'bad')
         x.t.level = clampN(x.t.level - 3, 0, 100)
       }
@@ -552,18 +552,18 @@ const EVENTS: DtEvent[] = [
     resolve: (x, choice) => {
       const fix = num(x.d.fix)
       if (choice === 'recall') {
-        payTech(x.b, x.t, fix)
+        payTech(x.g, x.b, x.t, fix)
         x.t.safety = clampN(x.t.safety + 15, 0, 100)
         tell(x.g, 'Recalled', `Every unit got a software and sensor update (${formatMoney(fix)}). Customers appreciated it; the worker got a fruit basket and full pay.`, '\u{1F527}', 'good')
       } else if (choice === 'settle') {
-        payTech(x.b, x.t, Math.round(fix * 0.4))
+        payTech(x.g, x.b, x.t, Math.round(fix * 0.4))
         x.b.brand = clampN(x.b.brand - 2, 0, 100)
         tell(x.g, 'Settled', `The worker got a generous settlement and a non-disclosure agreement. ${has(x, 'internet') ? 'The video is still online.' : 'The papers moved on, eventually.'}`, '\u{1F91D}')
       } else {
         addHidden(x.g, 'karma', -6)
         x.b.brand = clampN(x.b.brand - 8, 0, 100)
         if (chance(x.g, 0.4)) {
-          payTech(x.b, x.t, fix * 2)
+          payTech(x.g, x.b, x.t, fix * 2)
           tell(x.g, 'Sued', `The worker's lawyer had the robot's logs. The court did not believe "operator error". Damages: ${formatMoney(fix * 2)}.`, '\u{2696}\u{FE0F}', 'bad')
         } else tell(x.g, 'Blame Shifted', `"Operator error" held up, legally. Morally, the public has opinions.`, '\u{1F449}', 'bad')
       }
@@ -603,7 +603,7 @@ const EVENTS: DtEvent[] = [
         }
         upfront = Math.round(upfront * 1.4)
       }
-      earnTech(x.b, x.t, upfront)
+      earnTech(x.g, x.b, x.t, upfront)
       d.partner = pharma
       d.royalty = 0.15
       stopPrograms(x.g, x.b, x.t, (p) => p.id === 'trial' && p.target === d.id)
@@ -658,7 +658,7 @@ const EVENTS: DtEvent[] = [
         addHidden(x.g, 'karma', 4)
         tell(x.g, 'Price Cut', `You cut the price by a fifth. The hearings were cancelled and patients sent thank-you cards.`, '\u{2702}\u{FE0F}', 'good')
       } else if (choice === 'program') {
-        payTech(x.b, x.t, scaled(x.b, 1_000_000))
+        payTech(x.g, x.b, x.t, scaled(x.b, 1_000_000))
         x.b.brand = clampN(x.b.brand + 3, 0, 100)
         addHidden(x.g, 'karma', 2)
         tell(x.g, 'Patient Program', `Patients who can't afford it now get it free. The outrage cooled and your list price stayed put.`, '\u{1F91D}', 'good')
@@ -701,7 +701,7 @@ const EVENTS: DtEvent[] = [
         tell(x.g, 'Declined', `You declined. The pop star wrote a breakup song about your company. It went platinum.`, '\u{1F6AB}')
         return
       }
-      const fee = earnTech(x.b, x.t, num(x.d.fee))
+      const fee = earnTech(x.g, x.b, x.t, num(x.d.fee))
       x.t.hype = clampN(x.t.hype + 15, 0, 100)
       if (chance(x.g, 0.15)) {
         x.b.brand = clampN(x.b.brand - 5, 0, 100)
@@ -728,14 +728,14 @@ const EVENTS: DtEvent[] = [
     resolve: (x, choice) => {
       const fix = num(x.d.fix)
       if (choice === 'recall') {
-        payTech(x.b, x.t, fix)
+        payTech(x.g, x.b, x.t, fix)
         x.t.safety = clampN(x.t.safety + 15, 0, 100)
         x.b.brand = clampN(x.b.brand - 2, 0, 100)
         tell(x.g, 'Recalled', `Every affected car got a new battery module (${formatMoney(fix)}). Owners got a free coffee. Trust held.`, '\u{1F527}', 'good')
       } else if (choice === 'ota') {
-        payTech(x.b, x.t, Math.round(fix * 0.15))
+        payTech(x.g, x.b, x.t, Math.round(fix * 0.15))
         if (chance(x.g, 0.35)) {
-          payTech(x.b, x.t, fix * 2)
+          payTech(x.g, x.b, x.t, fix * 2)
           x.b.brand = clampN(x.b.brand - 10, 0, 100)
           tell(x.g, 'More Fires', `The software patch didn't stop the fires. The regulator ordered a full recall and a fine: ${formatMoney(fix * 2)} in all.`, '\u{1F525}', 'bad')
         } else tell(x.g, 'Patched Overnight', `The update limited charging until a fix arrived. No more fires. Owners noticed slightly slower charging.`, '\u{1F4F2}')
@@ -743,7 +743,7 @@ const EVENTS: DtEvent[] = [
         addHidden(x.g, 'karma', -6)
         x.b.brand = clampN(x.b.brand - 6, 0, 100)
         if (chance(x.g, 0.5)) {
-          payTech(x.b, x.t, fix * 3)
+          payTech(x.g, x.b, x.t, fix * 3)
           tell(x.g, 'Forced Recall', `The regulator ordered a recall anyway, plus a fine. ${formatMoney(fix * 3)} and a very awkward press conference.`, '\u{1F6A8}', 'bad')
         } else tell(x.g, 'Spun', `Your chart showing your cars are "four times safer than horses" somehow worked.`, '\u{1F4CA}')
       }
@@ -769,7 +769,7 @@ const EVENTS: DtEvent[] = [
         else x.t.level = clampN(x.t.level + 3, 0, 100)
         tell(x.g, 'Living at the Factory', `You slept under your desk for three months. The line is faster; your back may never recover.`, '\u{1F6CF}\u{FE0F}')
       } else if (choice === 'coo') {
-        payTech(x.b, x.t, num(x.d.coo))
+        payTech(x.g, x.b, x.t, num(x.d.coo))
         if (ramp) ramp.progress += 0.5
         else x.t.level = clampN(x.t.level + 3, 0, 100)
         tell(x.g, 'Veteran Hired', `Your new production chief rearranged half the line in a week and banned the fox. Things are moving.`, '\u{1F477}', 'good')
@@ -790,7 +790,7 @@ const EVENTS: DtEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice === 'lobby') {
-        payTech(x.b, x.t, num(x.d.lobby))
+        payTech(x.g, x.b, x.t, num(x.d.lobby))
         if (chance(x.g, lobbyOdds(x.b))) {
           x.b.demandShock = clampN(x.b.demandShock * 1.05, 0.3, 2)
           tell(x.g, 'Subsidy Saved', `Your lobbyists (${formatMoney(num(x.d.lobby))}) and a petition from owners kept the tax credit alive for now.`, '\u{1F3DB}\u{FE0F}', 'good')
@@ -820,7 +820,7 @@ const EVENTS: DtEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice === 'cooperate') {
-        payTech(x.b, x.t, num(x.d.fix))
+        payTech(x.g, x.b, x.t, num(x.d.fix))
         x.t.safety = clampN(x.t.safety + 12, 0, 100)
         x.t.premium = clampN(x.t.premium - 0.02, 0, 1)
         tell(x.g, 'Investigation Closed', `You added camera-based driver monitoring (${formatMoney(num(x.d.fix))}). The investigation closed with a stern letter.`, '\u{1F91D}')
@@ -894,7 +894,7 @@ const EVENTS: DtEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice === 'help') {
-        payTech(x.b, x.t, num(x.d.fix))
+        payTech(x.g, x.b, x.t, num(x.d.fix))
         x.b.brand = clampN(x.b.brand + 4, 0, 100)
         x.t.safety = clampN(x.t.safety + 8, 0, 100)
         tell(x.g, 'Crisis Handled', `Your team worked through the weekend and kicked the attackers out. The client renewed for three more years.`, '\u{1F6A8}', 'good')
@@ -930,7 +930,7 @@ const EVENTS: DtEvent[] = [
         addHidden(x.g, 'karma', 4)
         tell(x.g, 'Responsible Disclosure', `The vendor patched it in two weeks and thanked your team by name. Every security conference wants your researchers on stage.`, '\u{1F6E1}\u{FE0F}', 'good')
       } else if (choice === 'gov') {
-        const n = earnTech(x.b, x.t, num(x.d.gov))
+        const n = earnTech(x.g, x.b, x.t, num(x.d.gov))
         addHidden(x.g, 'karma', -3)
         if (chance(x.g, 0.2)) {
           x.b.brand = clampN(x.b.brand - 12, 0, 100)
@@ -943,7 +943,7 @@ const EVENTS: DtEvent[] = [
           tell(x.g, 'Busted', `The broker was an undercover agent. They seized the money and came for you.`, '\u{1F6A8}', 'bad')
           arrestPlayer(x.g, 'Trafficking in Cyberweapons', 3, { evidence: 0.75, noResist: true, context: 'Federal agents arrested you for selling a software exploit to a criminal broker.' })
         } else {
-          const n = earnTech(x.b, x.t, num(x.d.broker))
+          const n = earnTech(x.g, x.b, x.t, num(x.d.broker))
           tell(x.g, 'Dark Money', `The broker paid ${formatMoney(n)} in untraceable installments. You try not to read the news about ransomware.`, '\u{1F576}\u{FE0F}')
         }
       }
@@ -1032,7 +1032,7 @@ function govBid(x: Ctx, choice: string, what: string): void {
   const per = num(x.d.per)
   const agency = str(x.d.agency, 'The government')
   const bidCost = Math.round(per * 0.03)
-  payTech(x.b, x.t, bidCost)
+  payTech(x.g, x.b, x.t, bidCost)
   const odds = bidOdds(x.b, x.t, choice === 'low' ? 'low' : 'fair')
   if (chance(x.g, odds)) {
     const perYear = Math.round(per * (choice === 'low' ? 0.8 : 1))

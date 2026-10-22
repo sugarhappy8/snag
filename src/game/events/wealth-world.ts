@@ -52,7 +52,7 @@ export function isMoocher(g: GameState, p: Person): boolean {
  */
 export function donate(g: GameState, amount: number, cause: string): boolean {
   const amt = Math.max(0, Math.round(amount))
-  if (amt <= 0 || !spend(g, amt)) return false
+  if (amt <= 0 || !spend(g, amt, 'donation')) return false
   const karma = donationKarma(g, amt)
   const fame = useYearAction(g, 'wealth.fame', 1) ? donationFame(g, amt) : 0
   noteDonation(g, amt)
@@ -233,7 +233,7 @@ export const WORLD_ASKS: AskDef[] = [
         label: (_g, a) => `Send the ${money(a.amt)}`,
         emoji: '\u{1F4B8}',
         run: (g, a) => {
-          if (!spend(g, a.amt)) {
+          if (!spend(g, a.amt, 'crime.take')) {
             notice(g, 'Opportunity Knocks', "You went to send the money and didn't have it. Possibly the luckiest broke moment of your life.", { emoji: '\u{1F4B8}' })
             return
           }
@@ -286,7 +286,7 @@ export const WORLD_ASKS: AskDef[] = [
         label: (_g, a) => `Enjoy the attention (about ${money(a.amt)} in dinners and gifts)`,
         emoji: '\u{1F942}',
         run: (g, a) => {
-          if (!spend(g, a.amt)) {
+          if (!spend(g, a.amt, 'leisure')) {
             notice(g, 'Admirer', `Your card was declined at the first dinner. ${a.name ?? 'Your admirer'} excused themselves to the bathroom and never came back.`, { emoji: '\u{1F48B}' })
             return
           }

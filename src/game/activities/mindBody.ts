@@ -1,6 +1,7 @@
 // Mind & Body: gym, walks, meditation, library, gardening, instruments, lessons, space camp.
 // Books, diet, martial arts and the memory test live in their own files.
-import { addHidden, addRelationship, addStat, count, log, relationLabel, remember, scriptChoice, useYearAction } from '../core'
+import { personCash } from '../cash'
+import { addHidden, addMoney, addRelationship, addStat, count, log, relationLabel, remember, scriptChoice, useYearAction } from '../core'
 import { createPerson, notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
@@ -208,7 +209,7 @@ function gymVisit(g: GameState, w: Workout): void {
     return
   }
   const cost = c.prison ? 0 : localPrice(g, 12)
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'leisure')
   if (!paid) {
     brokeNotice(g, cost, 'a day pass at the gym')
     return
@@ -352,14 +353,14 @@ const WALLET_SCRIPT = defineScript('act.walk.wallet', (g, choice, data) => {
   const d = (data ?? {}) as Record<string, Json>
   const amount = typeof d.amount === 'number' ? d.amount : 50
   if (choice === 'keep') {
-    g.character.money += amount
+    addMoney(g, amount, 'luck')
     addHidden(g, 'karma', -5)
     log(g, `I found a wallet with ${money(amount)} in it and kept the cash.`, 'neutral')
     result(g, 'Finders Keepers', `You pocketed the ${money(amount)} and tossed the wallet in a mailbox. Your conscience will get over it. Probably.`, '\u{1F4B5}')
   } else {
     addHidden(g, 'karma', 6)
     const reward = chance(g, 0.4) ? Math.round(amount * 0.2) + 10 : 0
-    if (reward) g.character.money += reward
+    if (reward) addMoney(g, reward, 'luck')
     log(g, 'I found a lost wallet and returned it to its owner.', 'good')
     result(g, 'Good Samaritan', reward ? `You returned the wallet. The grateful owner gave you a ${money(reward)} reward!` : 'You returned the wallet to its owner, who thanked you profusely. Good karma is its own reward.', '\u{1F607}', 'good')
   }
@@ -429,7 +430,7 @@ function walkEvent(g: GameState, w: WalkType): boolean {
   }
   if (roll <= 14) {
     const found = randInt(g, 1, 20)
-    c.money += found
+    addMoney(g, found, 'luck')
     log(g, `I found ${money(found)} on the sidewalk during my walk.`, 'good')
     result(g, 'Lucky Day', `You found ${money(found)} on the sidewalk! Today is your day.`, '\u{1F4B0}', 'good')
     return true
@@ -795,12 +796,12 @@ function instrumentLesson(g: GameState, name: string): void {
         ], { word, inst: name.toLowerCase(), He: parent.gender === 'male' ? 'He' : 'She' }), '\u{1F645}', 'bad')
         return
       }
-      parent.money = Math.max(0, parent.money - cost)
-    } else if (!payFor(g, cost, false)) {
+      personCash(g, parent, -cost, 'tuition', 0)
+    } else if (!payFor(g, cost, false, 'tuition')) {
       brokeNotice(g, cost, `a ${name.toLowerCase()} lesson`)
       return
     }
-  } else if (!payFor(g, cost, false)) {
+  } else if (!payFor(g, cost, false, 'tuition')) {
     brokeNotice(g, cost, `a ${name.toLowerCase()} lesson`)
     return
   }
@@ -953,7 +954,7 @@ function takeLesson(g: GameState, l: LessonDef): void {
     return
   }
   const cost = localPrice(g, l.price)
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'tuition')
   if (!paid) {
     brokeNotice(g, cost, l.label.toLowerCase())
     return
@@ -1004,8 +1005,8 @@ function spaceCamp(g: GameState): void {
     result(g, 'Grounded', `Your ${word} said space camp is too expensive. "The backyard has stars too."`, '\u{1F645}', 'bad')
     return
   }
-  if (parent) parent.money = Math.max(0, parent.money - cost)
-  else if (!payFor(g, cost, false)) {
+  if (parent) personCash(g, parent, -cost, 'tuition', 0)
+  else if (!payFor(g, cost, false, 'tuition')) {
     g.yearActions['act.spaceCamp'] = 0
     brokeNotice(g, cost, 'space camp')
     return

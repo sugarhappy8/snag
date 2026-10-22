@@ -2,6 +2,7 @@
 // replaces the engine: it only writes the generic channels (demandShock, costShock, capacityLoss,
 // openFraction) and books money through b.cash together with b.yearIncome or b.yearCosts, which
 // bookYear in economy.ts already counts once. It never calls g.rng: draws are hashes (sector-kit.ts).
+import { firmCash } from '../cash'
 import { log } from '../core'
 import { isIndustryLegal } from '../data/markets'
 import type { Asset, GameState } from '../types'
@@ -22,17 +23,17 @@ function whole(x: number): number {
 }
 
 /** Income of the company: cash and the year's other income, once (bookYear adds the pair back to cash). Returns the dollars booked. */
-export function bookIncome(b: BizState, x: number): number {
+export function bookIncome(g: GameState, b: BizState, x: number, firm?: string): number {
   const n = whole(x)
-  b.cash += n
+  firmCash(g, b, n, 'sales', firm)
   b.yearIncome += n
   return n
 }
 
 /** A cost of the company: cash and the year's other costs, once. Returns the dollars booked. */
-export function bookCost(b: BizState, x: number): number {
+export function bookCost(g: GameState, b: BizState, x: number, firm?: string): number {
   const n = whole(x)
-  b.cash -= n
+  firmCash(g, b, -n, 'inputs', firm)
   b.yearCosts += n
   return n
 }
@@ -112,8 +113,8 @@ export function prepareSectorYear(g: GameState, a: Asset, b: BizState, fiscal: n
   b.costShock *= fx.cost
   b.capacityLoss = 1 - (1 - b.capacityLoss) * (1 - fx.capLoss)
   b.openFraction = Math.min(b.openFraction, fx.open)
-  const income = bookIncome(b, fx.income) + bookIncome(b, fx.randIncome)
-  const costs = bookCost(b, fx.costs) + bookCost(b, fx.randCosts)
+  const income = bookIncome(g, b, fx.income, a.id) + bookIncome(g, b, fx.randIncome, a.id)
+  const costs = bookCost(g, b, fx.costs, a.id) + bookCost(g, b, fx.randCosts, a.id)
 
   const row: SectorRow = { year: fiscal, income, costs, demand: fx.demand, cost: fx.cost, capLoss: fx.capLoss }
   const next: SectorState = clampRecord({ ...fx.next, since: st.since, lastYear: fiscal, lastEvent: st.lastEvent, pending: st.pending, ledger: [...st.ledger, row], diary: st.diary })

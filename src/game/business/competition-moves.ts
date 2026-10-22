@@ -3,6 +3,7 @@
 // authority. Each has an honest dollar value for the Business talent's purple hint, computed from
 // the same numbers the move uses (no RNG in quotes or hints).
 import { seeded } from '../assets'
+import { firmCash } from '../cash'
 import { addHidden, count, formatMoney, log, notice, useYearAction } from '../core'
 import type { Asset, GameState } from '../types'
 import { placeName } from './market-places'
@@ -228,7 +229,7 @@ export function acquireRival(g: GameState, a: Asset, b: BizState, rivalId: strin
     return false
   }
   const st = marketOfBiz(b)
-  b.cash -= q.price
+  firmCash(g, b, -q.price, 'firm.sale', a.id)
   // Its sites keep trading where they were: spread over the country's biggest cities.
   const placed = spreadSites(b.countryId, q.outlets)
   if (placed.length) {
@@ -340,7 +341,7 @@ export function talentRaid(g: GameState, a: Asset, b: BizState): void {
     notice(g, 'Not Again This Year', `Your recruiters already approached ${top.name}'s people once this year. Give it a rest.`, { emoji: '\u{23F3}' })
     return
   }
-  b.cash -= cost
+  firmCash(g, b, -cost, 'payroll', a.id)
   b.yearCosts += cost
   const st = marketOfBiz(b)
   st.mods[top.id] = { mult: Math.min(st.mods[top.id]?.mult ?? 1, 0.92), until: g.year + 1 }
@@ -378,7 +379,7 @@ export function lobby(g: GameState, a: Asset, b: BizState): void {
     notice(g, 'Not Again This Year', 'Your lobbyists have already bought every regulator lunch they could this year.', { emoji: '\u{23F3}' })
     return
   }
-  b.cash -= cost
+  firmCash(g, b, -cost, 'legal', a.id)
   b.yearCosts += cost
   addHidden(g, 'karma', -3)
   const st = marketOfBiz(b)

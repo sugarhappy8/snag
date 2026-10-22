@@ -4,7 +4,9 @@
 // before any pick is rewritten. A moved digest means a draw moved: a new draw, a removed draw, or a draw in a new order.
 //
 // A digest is eight hex digits of fnv1a (src/game/text/hash.ts) over a canonical JSON of a shallow projection of the
-// state: keys sorted, a non-finite number written as a string (so NaN is not null and not 0), undefined skipped.
+// state: keys sorted, a non-finite number written as a string (so NaN is not null and not 0), undefined skipped, and a
+// number that is not an integer rounded to PARITY_DIGITS significant digits (see there: the engine's Math.log, Math.exp
+// and Math.pow differ in the last bit between V8 versions and between CPUs, so exact bits would hold on one machine only).
 //
 // The slices (one more, 'text', is only ever shown, never compared):
 //   rng            g.rng
@@ -35,11 +37,28 @@ export type ParitySlice = (typeof PARITY_SLICES)[number]
 /** Eight lowercase hex digits per slice. */
 export type ParityDigests = Record<ParitySlice | 'text', string>
 
-/** Canonical JSON: keys sorted, `undefined` object members skipped (an array hole is null, as in JSON), non-finite numbers as strings. */
+/**
+ * Significant digits kept of a number that is not an integer. ECMA-262 only approximates Math.log, Math.exp and Math.pow, and the
+ * engine's results differ in the last bit between environments: measured with the same Node 22.23.3 (V8 12.4), Math.log differs on
+ * about 1 call in 130 between macOS arm64 and Linux x64, and between Node 22 and Node 24 (V8 13.6) Math.pow differs. The
+ * engine stores a few unrounded floats that carry that noise (economy.previous.<country>.housingReturn in the first year, a
+ * company's market share and base), so a digest of the exact bits recorded on one machine fails on the next. Neither moves a
+ * draw or a decision: every other slice matched bit for bit. Nine significant digits drop the noise (about 1e-15 of the value) and
+ * keep every real move, which is far larger than 1e-9 of the value it moves.
+ */
+export const PARITY_DIGITS = 9
+
+/** The number as canonical JSON text: an integer as it is, any other finite number rounded to PARITY_DIGITS significant digits, a non-finite one as a string. */
+function canonNumber(v: number): string {
+  if (!Number.isFinite(v)) return JSON.stringify('#' + String(v))
+  return JSON.stringify(Number.isInteger(v) ? v : Number(v.toPrecision(PARITY_DIGITS)))
+}
+
+/** Canonical JSON: keys sorted, `undefined` object members skipped (an array hole is null, as in JSON), non-finite numbers as strings, floats rounded (canonNumber). */
 function canon(v: unknown): string {
   switch (typeof v) {
     case 'number':
-      return Number.isFinite(v) ? JSON.stringify(v) : JSON.stringify('#' + String(v))
+      return canonNumber(v)
     case 'string':
       return JSON.stringify(v)
     case 'boolean':

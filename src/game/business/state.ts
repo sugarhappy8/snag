@@ -13,6 +13,10 @@ import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
 import { readFamilyShares } from './family-share-state'
 import { dividendField, type DividendPolicy } from './dividend-policy'
+import { addTally, liveTally, readTally, TALLY_OPERATING } from '../kernel/tally'
+
+// The cash walk (charts/books.ts) reads a company's tally through here, as it reads the rest of the books.
+export { readTally, TALLY_OPERATING }
 
 export interface KeyStaff {
   id: string
@@ -157,6 +161,12 @@ export interface YearRecord {
   otherIncome?: number
   ownerPay?: number
   draws?: number
+  /**
+   * R2: the ledger's reason for every move of the company's cash between the books close of the year before and this one, as whole
+   * dollars (kernel/tally.ts). Written by recordYear, absent on rows from before R2, on the first row after the upgrade and on an
+   * NPC company's rows. The cash walk names each move from it; a row without it draws the walk as R1 did.
+   */
+  flows?: Record<string, number>
 }
 
 /** A book dollar amount: whole, at most BOOK_MAX either way, and 0 for anything that is not a finite number. */
@@ -178,7 +188,25 @@ export function setBookLines(h: YearRecord, s: Statement): void {
  */
 export function syncBookRow(h: YearRecord, s: Statement, cashChange = 0): void {
   if (LINE_KEYS.some((k) => h[k] !== undefined)) setBookLines(h, s)
-  if (h.cash !== undefined) h.cash = bookDollars(h.cash + (Number.isFinite(cashChange) ? cashChange : 0))
+  if (h.cash !== undefined) h.cash = bookDollars(h.cash + (Number.isFinite(cashChange) ? cashChange : 0)) // ledger-ok: the closing cash on a history row, not a purse
+}
+
+/** What the company's tally holds as its operating result right now (whole dollars; 0 with no tally). */
+export function tallied(b: Pick<BizState, 'tally'>): number {
+  const v: unknown = b.tally?.[TALLY_OPERATING]
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
+/**
+ * A change of the operating result that was booked after a year's books closed but amends that year's row (a group's internal invoice,
+ * syncBookRow's other caller): the row's flows take it and the live tally gives it up, so the row's flows still add up to the row's cash.
+ * A company or row that keeps no flows is left as it is, and so is a change of nothing.
+ */
+export function shiftFlow(b: Pick<BizState, 'tally'>, h: YearRecord, whole: number): void {
+  if (!b.tally || !h.flows || !Number.isFinite(whole) || whole === 0) return
+  const live = liveTally(b.tally)
+  if (live) addTally(live, TALLY_OPERATING, -whole)
+  addTally(h.flows, TALLY_OPERATING, whole)
 }
 
 /** The rows the simulation reads: the last SIM_HISTORY, however many the company keeps. */
@@ -486,6 +514,13 @@ export interface BizState {
    * company. Validate it before use: bizOf does not re-normalize a current-version record.
    */
   wave?: WaveStamp
+  /**
+   * R2: the ledger's reason for every move of the company's cash since its books last closed, as whole dollars (kernel/tally.ts).
+   * firmCash and the other company-cash helpers add to it; recordYear moves it into the year's row (YearRecord.flows) and starts it
+   * again as `{}`. Missing until the books first close under R2 (an old save, a new company) and never kept for an NPC company, so a
+   * row's flows cover every move or are absent. Validate it before use: bizOf does not re-normalize a current-version record.
+   */
+  tally?: Record<string, number>
 }
 
 /** The tech-wave valuation mood of a booked year (BizState.wave); `q` marks the stock grade of a quoted company. */
@@ -653,6 +688,9 @@ export function readRecord(x: Record<string, Json>): YearRecord | null {
     const v = x[k]
     if (typeof v === 'number' && Number.isFinite(v)) row[k] = bookDollars(v)
   }
+  // The reasons of the year's cash moves: only the ledger's own reasons, whole dollars, at most 16 (kernel/tally.ts).
+  const flows = readTally(x.flows)
+  if (flows !== undefined) row.flows = flows
   return row
 }
 
@@ -752,6 +790,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   // Chip fabs and the sister's chip record: devices only, and a damaged value is dropped, never repaired (devices-data.ts).
   const fabs = readFabs(d.fabs)
   const chips = readChips(d.chips)
+  // The tally of the company's cash moves since its books last closed: ledger reasons only, whole dollars (kernel/tally.ts).
+  const tally = readTally(d.tally)
   // The tech-wave mood stamp (tech-waves.ts stampWave): both numbers finite, the factor clamped; never kept on deep tech.
   const ws = rec(d.wave)
   const waveStamp: WaveStamp | null = ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && typeof ws.y === 'number' && Number.isFinite(ws.y) && !isDeepTechIndustry(industry)
@@ -847,6 +887,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.lab && typeof d.lab === 'object' && !Array.isArray(d.lab) ? { lab: d.lab } : {}),
     ...dividendField(d.dividend),
     ...(waveStamp ? { wave: waveStamp } : {}),
+    ...(tally !== undefined ? { tally } : {}),
   }
 }
 

@@ -1,5 +1,6 @@
 import { underworldMenu } from './underworld'
 import { economyOf } from './economy'
+import { personCash } from './cash'
 // Crime: the Crime activity menu (petty theft to murder), arrests & trials, organized crime,
 // and the yearly police work (wanted level, fugitives, stolen cars, audits, prison years).
 import {
@@ -191,13 +192,13 @@ function commitCrime(g: GameState, crime: string, cost: CrimeCost): number {
 function pocket(g: GameState, amount: number): number {
   const n = Math.max(0, Math.round(amount))
   if (n <= 0) return 0
-  addMoney(g, n)
+  addMoney(g, n, 'crime.take')
   count(g, 'moneyStolen', n)
   const fam = crimeFamily(g)
   if (fam && n >= 1000) {
     const cut = Math.round(n * (fam.rank >= 4 ? 0 : 0.15))
     if (cut > 0) {
-      addMoney(g, -cut)
+      addMoney(g, -cut, 'crime.cost')
       fam.earnings += cut
       fam.standing = clamp(fam.standing + 2)
       log(g, `I kicked up ${formatMoney(cut)} to the ${fam.name}.`, 'neutral')
@@ -415,7 +416,7 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
     for (const p of parents(g)) addRelationship(p, -randInt(g, 3, 8))
     log(g, `The police caught me ${name === 'Disorderly Conduct' ? 'causing trouble' : `doing something I shouldn't (${name.toLowerCase()})`} and drove me home.`, 'bad')
     // No case, no conviction: whatever was held for it comes straight back.
-    if (refund > 0) addMoney(g, refund)
+    if (refund > 0) addMoney(g, refund, 'legal')
     notice(g, 'Busted', `A police officer caught you and drove you home. After a long lecture about ${name.toLowerCase()}, your parents grounded you for what feels like forever.${gotBack(refund)}`, {
       emoji: '\u{1F46E}',
       tone: 'bad',
@@ -532,14 +533,14 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
     const p = bribeOdds0(t.severity)
     if (chance(g, p)) {
       // Bribed, not cleared: the case is dropped and any refund with it.
-      spend(g, amount)
+      spend(g, amount, 'bribe')
       unmarkCaught(g, t)
       log(g, `I bribed a police officer with ${formatMoney(amount)} to let me go.`, 'event')
       outcome(g, 'Bribed', `The officer looked around, pocketed the ${formatMoney(amount)}, and told you to get lost. Nobody saw anything.`, '\u{1F4B5}', 'good')
       return
     }
     if (chance(g, 0.5)) {
-      spend(g, amount)
+      spend(g, amount, 'bribe')
       notice(g, 'Bad Cop', `The officer took your ${formatMoney(amount)}, thanked you, and arrested you anyway.`, { emoji: '\u{1F46E}', tone: 'bad' })
     } else {
       t.charges.push('Bribery')
@@ -681,7 +682,7 @@ defineScript(LAWYER_SCRIPT, (g, choice, data) => {
   const pd = t.lawyers.find((l) => l.id === 'pd') ?? { id: 'pd', name: defenderTitle(g), fee: 0, quality: 0.1, blurb: '' }
   let lawyer = t.lawyers.find((l) => l.id === choice) ?? pd
   if (lawyer.fee > 0) {
-    if (!spend(g, lawyer.fee)) {
+    if (!spend(g, lawyer.fee, 'legal')) {
       notice(g, "Can't Afford It", `You can't afford ${lawyer.name}'s ${formatMoney(lawyer.fee)} retainer. The court appointed a ${defenderTitle(g).toLowerCase()} instead.`, { emoji: '\u{1F4B8}', tone: 'bad' })
       lawyer = pd
     } else {
@@ -809,7 +810,7 @@ function acquit(g: GameState, t: TrialData): void {
   }
   // Cleared: whatever the investigation took comes back, once.
   const back = cleanRefund(t.refund)
-  if (back > 0) addMoney(g, back)
+  if (back > 0) addMoney(g, back, 'legal')
   if (t.violent === 'attempted' && t.victimId) {
     const v = getPerson(g, t.victimId)
     if (v && v.alive) {
@@ -2416,7 +2417,7 @@ const HITMAN_DEMAND = defineScript('crime.hitman.demand', (g, choice, data) => {
   const name = str(data.name, 'The hitman')
   const extra = num(data.extra)
   if (choice === 'pay') {
-    if (spend(g, extra)) {
+    if (spend(g, extra, 'crime.cost')) {
       if (chance(g, 0.1)) {
         const dmg = hurt(g, randInt(g, 15, 35))
         outcome(g, 'Hitman', `${name} took the extra ${formatMoney(extra)}, then roughed you up anyway "for the principle of it." (-${dmg} health)`, '\u{1F915}', 'bad')
@@ -2463,7 +2464,7 @@ const HITMAN_SCRIPT = defineScript('crime.hitman.pick', (g, choice, data) => {
     arrestPlayer(g, 'Conspiracy to Commit Murder', 4, { evidence: 0.9, noResist: true, context: `"${h.name}" was an undercover cop. The handcuffs came out before the money did.` })
     return
   }
-  if (!spend(g, h.price)) {
+  if (!spend(g, h.price, 'crime.cost')) {
     notice(g, "Can't Afford It", `${h.name} wants ${formatMoney(h.price)} up front. You don't have it.`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -2690,7 +2691,7 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
     money = Math.round(Math.min(wealth * base, cash(g, hack.id === 'bank' ? 100000 : 20000)))
     if (hack.id === 'ransom') money = Math.max(money, cash(g, randInt(g, 300, 3000)))
     if (person) {
-      person.money = Math.max(0, person.money - money)
+      personCash(g, person, -money, 'crime.take', 0)
       addPersonStat(person, 'happiness', -randInt(g, 5, 15))
     }
     text =
@@ -3547,7 +3548,7 @@ const organizedCrimeMenu: MenuGroup = {
 function yearlyFamily(g: GameState, fam: CrimeFamily): void {
   const c = g.character
   const pay = cash(g, RANK_PAY[clamp(fam.rank, 0, 4)] * (0.6 + rand(g) * 0.8))
-  addMoney(g, pay)
+  addMoney(g, pay, 'crime.take')
   fam.earnings += pay
   log(g, `${fam.name} paid me ${formatMoney(pay)} this year.`, 'neutral')
   if (fam.rank < 4) fam.standing = clamp(fam.standing - randInt(g, 2, 5))

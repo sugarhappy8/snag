@@ -1,3 +1,4 @@
+import { personCash } from '../cash'
 import { addHidden, addRelationship, addStat, formatMoney, fullName, log, notice, remember, useYearAction } from '../core'
 import { addCvEntry } from '../cv'
 import { initializeNpc } from '../npc-lives'
@@ -56,7 +57,7 @@ export function workSharedProject(g: GameState, id: string): boolean {
   if (!q || !p || q.completed || q.effort || gate(g, { minAge: definitions[q.kind].age }) || sharedAvailability(g, p, q.kind)) return false
   const fee = definitions[q.kind].fee, own = p.age >= 18 ? Math.min(Math.max(0, p.money) * .005, fee * .1) : 0
   if (!payForAction(g, fee - own)) return false
-  p.money -= own; q.spent += fee - own; q.effort = true; q.note = 'Materials paid and sessions attended. Outcome at next birthday.'; save(g, projects)
+  personCash(g, p, -own, 'purchase'); q.spent += fee - own; q.effort = true; q.note = 'Materials paid and sessions attended. Outcome at next birthday.'; save(g, projects)
   addStat(g, 'happiness', 2)
   notice(g, 'A Year of Shared Effort', `You paid ${formatMoney(fee - own)}; ${p.firstName} contributed ${formatMoney(own)}. Advance a year to see the result.`, { emoji: definitions[q.kind].emoji }); return true
 }

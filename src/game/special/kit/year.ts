@@ -81,7 +81,7 @@ function makeCtx<S extends CareerBase>(g: GameState, career: string, s: S, budge
       }
       if (amount < 1 || !Number.isFinite(g.character.money)) return 0
       const n = Math.min(MONEY_MAX, Math.round(amount))
-      earnIncome(g, n)
+      earnIncome(g, n, 'career.income')
       ledger.earned += n
       ledger.moves += 1
       careerAudit({ t: 'earn', career, label, amount: n })
@@ -95,7 +95,7 @@ function makeCtx<S extends CareerBase>(g: GameState, career: string, s: S, budge
       }
       const n = Math.min(MONEY_MAX, Math.round(amount))
       if (n < 1) return true
-      if (!spend(g, n)) return false
+      if (!spend(g, n, 'career.cost')) return false
       ledger.paid += n
       ledger.moves += 1
       careerAudit({ t: 'pay', career, label, amount: n })

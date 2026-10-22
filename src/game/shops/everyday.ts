@@ -3,6 +3,7 @@
 // g.rng use while rendering), prices scaled for the player's market, local-flavor items where
 // people actually buy them, and Use actions for what you own (ride the bike, hit the slopes,
 // host a BBQ). Bought items are Asset kind 'other' with details.category / details.store.
+import { personCash } from '../cash'
 import { byEra } from '../events/era'
 import { hasTech } from '../history/timeline'
 import { addCondition, companionCandidates, payingParents } from '../activities/common'
@@ -513,7 +514,8 @@ function begParent(g: GameState, l: EverydayListing): Person | null | 'none' {
   const priceFactor = rel <= 60 ? 1 : rel <= 300 ? 0.8 : rel <= 1_000 ? 0.5 : 0.2
   const p = (0.15 + parent.relationship / 200 + (g.character.age < 13 ? 0.1 : 0)) * priceFactor
   if (parents.includes(parent) && chance(g, p)) {
-    parent.money = Math.max(0, Math.round(parent.money - l.price))
+    // The parent pays the shop; the floor and the rounding are the line's own.
+    personCash(g, parent, Math.max(0, Math.round(parent.money - l.price)) - parent.money, 'purchase', 0)
     return parent
   }
   addStat(g, 'happiness', -1)
@@ -561,7 +563,7 @@ export function buyEverydayItem(g: GameState, l: EverydayListing): Asset | null 
     notice(g, 'Sold Out', 'Someone bought the last one while you were deciding. New stock arrives next year.', { emoji: '🏷️' })
     return null
   }
-  if (spend(g, l.price)) return completePurchase(g, l, d, null)
+  if (spend(g, l.price, 'purchase')) return completePurchase(g, l, d, null)
   if (g.character.age < 18) {
     const parent = begParent(g, l)
     if (parent && parent !== 'none') return completePurchase(g, l, d, parent)
@@ -579,7 +581,7 @@ export function buyForChild(g: GameState, l: EverydayListing, childId: string): 
     notice(g, 'Sold Out', 'Someone bought the last one while you were deciding. New stock arrives next year.', { emoji: '🏷️' })
     return false
   }
-  if (!spend(g, l.price)) {
+  if (!spend(g, l.price, 'purchase')) {
     cantAfford(g, l)
     return false
   }
@@ -1187,9 +1189,9 @@ export function useEverydayItem(g: GameState, assetId: string): void {
     const fee = use.feeWhat === 'food and drinks' ? nicePrice(use.fee * basisMult(g, 'food')) : servicePrice(g, use.fee)
     const parent = c.age < 18 ? payingParents(g).filter((p) => p.money >= fee).sort((x, y) => y.relationship - x.relationship)[0] : undefined
     if (parent) {
-      parent.money = Math.max(0, Math.round(parent.money - fee))
+      personCash(g, parent, Math.max(0, Math.round(parent.money - fee)) - parent.money, 'leisure', 0)
       feeNote = ` (${parent.firstName} paid the ${formatMoney(fee)} ${use.feeWhat}.)`
-    } else if (spend(g, fee)) {
+    } else if (spend(g, fee, 'leisure')) {
       feeNote = ` The ${use.feeWhat} cost ${formatMoney(fee)}.`
     } else {
       notice(g, 'Insufficient Funds', `You can't afford the ${formatMoney(fee)} ${use.feeWhat}.`, { emoji: '💸', tone: 'bad' })
@@ -1417,7 +1419,7 @@ export function buyPetSupply(g: GameState, l: EverydayListing, petId: string): b
     return false
   }
   let paidBy: Person | null = null
-  if (!spend(g, l.price)) {
+  if (!spend(g, l.price, 'purchase')) {
     if (g.character.age < 18) {
       const parent = begParent(g, l)
       if (parent === null) return false
@@ -1603,7 +1605,7 @@ export function yearlyEveryday(g: GameState): void {
     const sun = continent === 'Middle East' || continent === 'Africa' || continent === 'Oceania' ? 1.25 : continent === 'Europe' ? 0.85 : 1
     const saved = Math.round(a.purchasePrice * (0.055 + randInt(g, 0, 25) / 1000) * sun * (a.condition / 100))
     if (saved > 0) {
-      addMoney(g, saved)
+      addMoney(g, saved, 'living')
       count(g, 'solarSavings', saved)
       if (chance(g, 0.35)) log(g, `My solar panels saved me ${formatMoney(saved)} on power bills this year.`, 'good')
     }

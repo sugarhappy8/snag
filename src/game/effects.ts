@@ -54,7 +54,7 @@ export function applyEffects(g: GameState, eff: GameEffects): string[] {
     const { maxGain, maxLoss } = moneyLimits(g)
     const delta = Math.round(clamp(money, -maxLoss, maxGain))
     if (delta !== 0) {
-      addMoney(g, delta)
+      addMoney(g, delta, 'luck')
       changes.push(`${delta > 0 ? '+' : '-'}${formatMoney(Math.abs(delta))}`)
     }
   }

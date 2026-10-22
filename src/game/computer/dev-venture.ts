@@ -11,10 +11,12 @@
 // then your pocket. Events: outages, going viral, clones, a big customer, acquisition offers,
 // data breaches, co-founder drama, investors, and type-specific chaos.
 import { cycleOf } from '../business/economy'
+import { firmCash } from '../cash'
 import { COMPANY_WORDS } from '../data/jobs'
 import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, formatCents, formatMoney, log, notice, peopleBy, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal, localPick, localTerm } from '../data/locales'
 import { worldYear } from '../invest/engine'
+import type { Reason } from '../kernel/reasons'
 import { chance, pick, rand, randFloat, randInt, shuffle, uid, weightedPick } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
@@ -440,7 +442,7 @@ const NAME_SCRIPT = defineScript('computer.dev.venture.name', (g, input, data) =
   if (g.character.money < cost) {
     return notice(g, "Can't Afford It", `You need ${formatMoney(cost)} to get it going.`, { emoji: '\u{1F4B8}', tone: 'bad' })
   }
-  addMoney(g, -cost)
+  addMoney(g, -cost, 'purchase')
   const name = cleanName(input) || suggestName(g, type, str(idea.key, 'Idea'))
   const hired = d.hired === true
   const a = createVenture(g, type, name, { text: str(idea.text, name), key: str(idea.key, 'Idea'), mult: num(idea.mult, 1), product: str(idea.product) }, { hired, invested: cost })
@@ -569,7 +571,7 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
     // Building costs: contractors (and ads to build hype before launch).
     const spendNeeded = contractors + ads
     const before = Math.max(0, c.money)
-    const paid = coverCosts(g, v, spendNeeded)
+    const paid = coverCosts(g, a, v, spendNeeded)
     if (ads > 0 && paid >= spendNeeded) v.hype = between(v.hype + 10 * v.ad, 0, 100)
     if (paid < spendNeeded) cutBack(v)
     else {
@@ -584,7 +586,7 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
       res.line = launchLine(a.name, v)
       if (v.type === 'game' && v.revenue > 0) {
         res.payout = whole(v.revenue * v.stake)
-        if (res.payout > 0) earnIncome(g, res.payout)
+        if (res.payout > 0) earnIncome(g, res.payout, 'royalty')
         res.revenue = v.revenue
         v.history.push({ y: g.year, users: v.users, revenue: v.revenue, profit: v.revenue })
       }
@@ -673,7 +675,7 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
   // Unpaid fines come out of the company account first.
   if (v.owed > 0 && v.cash > 0) {
     const x = Math.min(v.cash, v.owed)
-    v.cash -= x
+    firmCash(g, v, -x, 'fine', a.id)
     v.owed -= x
   }
 
@@ -682,12 +684,12 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
     const due = Math.min(v.owed, profit)
     v.owed -= due
     const payout = whole((profit - due) * v.stake)
-    if (payout > 0) earnIncome(g, payout)
+    if (payout > 0) earnIncome(g, payout, 'royalty')
     res.payout = payout
     v.strain = 0
   } else {
     const before = Math.max(0, c.money)
-    const paid = coverCosts(g, v, -profit)
+    const paid = coverCosts(g, a, v, -profit)
     if (paid < -profit) cutBack(v)
     else {
       v.strain = 0
@@ -727,15 +729,15 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
 }
 
 /** Pay costs from company cash, then the owner's money. Returns how much was covered. */
-function coverCosts(g: GameState, v: VentureData, amount: number): number {
+function coverCosts(g: GameState, a: Asset, v: VentureData, amount: number): number {
   const need = whole(amount)
   if (need <= 0) return 0
   const fromCash = Math.min(v.cash, need)
-  v.cash -= fromCash
+  firmCash(g, v, -fromCash, 'inputs', a.id)
   const rest = need - fromCash
   const fromYou = Math.min(rest, Math.max(0, g.character.money))
   if (fromYou > 0) {
-    addMoney(g, -fromYou)
+    addMoney(g, -fromYou, 'inputs')
     v.invested += fromYou
   }
   return fromCash + fromYou
@@ -1080,14 +1082,14 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
     const base = v.type === 'game' ? Math.max(v.tail, v.users * 0.05) : v.users
     addUsers(Math.max(1, base * frac * 5 + marketCap(v) * frac * 0.1 * Math.min(1.5, pull(v))))
   }
-  const payNow = (amount: number): boolean => {
+  const payNow = (amount: number, reason: Reason = 'purchase'): boolean => {
     if (amount <= 0) return true
     const fromCash = Math.min(v.cash, amount)
     const rest = amount - fromCash
     if (c.money < rest) return false
-    v.cash -= fromCash
+    firmCash(g, v, -fromCash, reason, a.id)
     if (rest > 0) {
-      addMoney(g, -rest)
+      addMoney(g, -rest, reason)
       v.invested += rest
     }
     return true
@@ -1095,10 +1097,10 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
   /** A fine: company cash, then your savings; whatever is left is owed and comes out of future profits. Returns the unpaid part. */
   const payFine = (amount: number): number => {
     const fromCash = Math.min(v.cash, amount)
-    v.cash -= fromCash
+    firmCash(g, v, -fromCash, 'fine', a.id)
     const fromYou = Math.min(amount - fromCash, Math.max(0, c.money))
     if (fromYou > 0) {
-      addMoney(g, -fromYou)
+      addMoney(g, -fromYou, 'fine')
       v.invested += fromYou
     }
     const rest = whole(amount - fromCash - fromYou)
@@ -1157,7 +1159,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
       return
     case 'viral':
       if (choice === 'ride') {
-        if (payNow(cost)) {
+        if (payNow(cost, 'marketing')) {
           gain(randFloat(g, 0.04, 0.1))
           // Ads bought while everyone is already looking go twice as far (if people want the thing).
           addUsers((cost / cacOf(v)) * 2 * Math.sqrt(v.fit) * Math.max(0, 1 - v.users / marketCap(v)))
@@ -1201,7 +1203,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
         done()
         say('Price War', `You cut prices to ${tierOf(v).label}. Your customers stayed. Your margins cried quietly.`)
       } else if (choice === 'sue') {
-        if (!payNow(cost)) {
+        if (!payNow(cost, 'legal')) {
           lose(randFloat(g, 0.05, 0.12))
           done()
           say('No Lawyer', `You couldn't afford ${formatMoney(cost)} for a lawyer. The clone took a chunk of your ${def(v).unit[1]}.`, 'bad')
@@ -1303,7 +1305,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
     case 'cofounderDrama': {
       const cs = cofounderStake(a)
       if (choice === 'buyout') {
-        if (cs > 0 && payNow(cost)) {
+        if (cs > 0 && payNow(cost, 'firm.sale')) {
           v.stake = between(v.stake + cs, 0.01, 1)
           a.details.cofounderStake = 0
           const who = v.cofounder
@@ -1354,7 +1356,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
       const cs = cofounderStake(a)
       v.stake = between(v.stake * (1 - pct), 0.01, 1)
       if (cs > 0) a.details.cofounderStake = between(cs * (1 - pct), 0, 0.95)
-      v.cash += amount
+      firmCash(g, v, amount, 'inject', a.id)
       v.valuation = Math.max(v.valuation, whole(amount / pct))
       done()
       count(g, 'fundraises')
@@ -1393,7 +1395,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
         addHidden(g, 'karma', -6)
         if (chance(g, 0.5)) {
           const extra = whole(cost * 0.8)
-          if (extra > 0) earnNow(g, extra)
+          if (extra > 0) earnNow(g, extra, 'crime.take')
           done()
           say('Got Away With It', `Nobody noticed. You made an extra ${formatMoney(extra)} and a little bit of your soul left your body.`, 'neutral')
         } else {
@@ -1428,7 +1430,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
       const revenue = whole(extra * price * 0.7)
       v.users += extra
       v.hype = between(v.hype + 40, 0, 100)
-      if (revenue > 0) earnNow(g, whole(revenue * v.stake))
+      if (revenue > 0) earnNow(g, whole(revenue * v.stake), 'royalty')
       done()
       say('Sales Spike', `${capWord(plural(extra, 'new player'))} bought ${name} in a week, bringing in ${formatMoney(revenue)}.${choice === 'sale' ? ' The sale made it an impulse buy.' : ''}`, 'good')
       return
@@ -1783,7 +1785,7 @@ function shutDown(g: GameState, id: string): void {
   // Salvage is what the domain and code fetch; any company cash goes back to the investors first.
   const salvage = whole(Math.max(0, v.valuation - v.cash) * v.stake * 0.03)
   closeVenture(g, a, v, 'was closed by its founder')
-  if (salvage > 0) addMoney(g, salvage)
+  if (salvage > 0) addMoney(g, salvage, 'firm.sale')
   addStat(g, 'happiness', -randInt(g, 2, 6))
   const investors = v.cash > 0 ? ` The ${formatMoney(v.cash)} left in the company account went back to your investors, who sent a very short email.` : ''
   notice(g, 'Shut Down', `You shut down ${a.name}. ${salvage > 0 ? `You sold the domain name and the code for ${formatMoney(salvage)}.` : 'You kept the domain name. For sentimental reasons.'}${investors} ${pickLine(g, ['You wrote a long post about "lessons learned."', 'You still have 40 branded hoodies.', 'Your users were sad. Well, three of them.'])}`, { emoji: '\u{1FAA6}' })
