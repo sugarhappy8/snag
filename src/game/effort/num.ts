@@ -21,3 +21,12 @@ export function clampNum(x: unknown, lo: number, hi: number, fallback: number = 
 export function round2(x: number): number {
   return Math.round(x * 100) / 100
 }
+
+/**
+ * `x` cut to `lo..hi`, where infinity counts as a number (it lands on the nearer end) and only a value that is not a number at all
+ * (NaN, a string, nothing) becomes `fallback`. The curves use this one: a pure curve is asked for any number and answers with one.
+ */
+export function cutNum(x: unknown, lo: number, hi: number, fallback: number = lo): number {
+  if (typeof x !== 'number' || Number.isNaN(x)) return fallback
+  return x < lo ? lo : x > hi ? hi : x
+}
