@@ -29,6 +29,9 @@ import {
   freshNavState,
   lifeOf,
   menuParity,
+  rounded,
+  rowOf,
+  traceOf,
   tracedLife,
   v1Life,
   viewParity,
@@ -36,7 +39,8 @@ import {
   type Digest,
   type LivesParity,
 } from './parity-kit'
-import { compareTraces, traceLife, type Divergence, type ParityTrace } from './r2-parity-kit'
+import { navState } from './nav-kit'
+import { compareTraces, type Divergence, type ParityTrace } from './r2-parity-kit'
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const FIXTURE = join(ROOT, PARITY_FILE)
@@ -304,6 +308,34 @@ describe('kernel parity: the kit is sensitive and deterministic', () => {
     TIMEOUT,
   )
 
+  it('rounded cuts floats to 9 significant digits, keeps integers and non-finite numbers, and rounding twice is rounding once', () => {
+    const v = { a: 1 / 3, b: 12, c: -2.5, d: 1e21, e: [0.1 + 0.2, Number.NaN, Number.POSITIVE_INFINITY, undefined, 'x', null, true], f: { g: 123456.7890123456 }, h: undefined }
+    const r = rounded(v)
+    expect(r.a).toBe(0.333333333)
+    expect([r.b, r.c, r.d]).toEqual([12, -2.5, 1e21])
+    expect(r.e[0]).toBe(0.3)
+    expect(Number.isNaN(r.e[1])).toBe(true)
+    expect(r.e.slice(2)).toEqual([Number.POSITIVE_INFINITY, undefined, 'x', null, true])
+    expect(r.f.g).toBe(123456.789)
+    expect('h' in r).toBe(true)
+    expect(rounded(r)).toEqual(r)
+    expect(v.a).toBe(1 / 3)
+  })
+
+  it('a row does not depend on the last bits of a float, and does depend on a real move of one', () => {
+    const nudge = (x: unknown, k: number): unknown => {
+      if (typeof x === 'number') return Number.isInteger(x) ? x : x * (1 + k)
+      if (Array.isArray(x)) return x.map((y) => nudge(y, k))
+      if (typeof x === 'object' && x !== null) return Object.fromEntries(Object.entries(x).map(([key, y]) => [key, nudge(y, k)]))
+      return x
+    }
+    const g = navState('ceo')
+    const floats = JSON.stringify(g).match(/\d\.\d{6,}/g) ?? []
+    expect(floats.length, 'the canned state carries floats to test with').toBeGreaterThanOrEqual(5)
+    expect(rowOf(nudge(g, 4e-16) as typeof g)).toEqual(rowOf(g))
+    expect(rowOf(nudge(g, 1e-6) as typeof g)).not.toEqual(rowOf(g))
+  })
+
   it('reordering to something that is not a permutation throws, and leaves the list alone', () => {
     const before = yearly.names('aging')
     expect(() => yearly.reordered((names) => names.slice(1), () => undefined)).toThrow(/permutation/)
@@ -323,7 +355,7 @@ describe('kernel parity: the kit is sensitive and deterministic', () => {
 
   it('traced names every hook of a year in the order of the lists: aging as `name`, special as `special.name`', () => {
     const out: string[] = []
-    const trace = yearly.traced(out, () => traceLife({ ...FOUNDER, years: 1 }))
+    const trace = yearly.traced(out, () => traceOf({ ...FOUNDER, years: 1 }))
     expect(trace.years).toHaveLength(2)
     const special = yearly.names('special').map((n) => `special.${n}`)
     // one year of a founder who stays alive: every aging hook ran once, the special ones inside `special`

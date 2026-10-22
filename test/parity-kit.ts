@@ -18,6 +18,12 @@
 // seeds of the fixture kits (`rich()`, `founder()`, `adultIn()`). If a legitimate change moves the simulation, re-record with
 // RECORD_KERNEL_PARITY=1 and say why in the commit message; never edit the fixture by hand.
 //
+// Floats are rounded before they are digested (the lead's decision 31): the engine's Math.log, Math.exp and Math.pow differ in the last
+// bit between macOS arm64 and Linux x64 and between Node versions, so a lives digest of exact bits holds on one machine only. The state
+// is deep-copied with every non-integer number cut to FLOAT_DIGITS significant digits and then digested by wave 0's parityDigests, which
+// gives the same digests as test/r2-parity-kit.ts does once it rounds the same way (rounding twice is the same as once). For that
+// reason this file plays the lives itself (traceOf, a copy of traceLife in test/r2-parity-kit.ts that digests the rounded copy).
+//
 // This kit draws no random number of its own.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -39,7 +45,9 @@ import { adultIn, found } from './deeptech-kit'
 import { company, rich } from './hedge-kit'
 import { buildNavState, canonical, navState, walkTree, type NavStateName } from './nav-kit'
 import { founder, listed, listedGroup } from './own-listing-kit'
-import { PARITY_LIVES, PARITY_SLICES, parityDigests, traceLife, type ParityLife, type ParityTrace } from './r2-parity-kit'
+import { playLife } from './play-kit'
+import { probeLife } from './probe-life'
+import { PARITY_LIVES, PARITY_SLICES, parityDigests, type ParityLife, type ParityTrace } from './r2-parity-kit'
 import { managedDesk } from './sector-kit'
 
 /** Where the fixture is written and read, relative to the repository root. */
@@ -112,6 +120,41 @@ export const KERNEL_LIFE_IDS: readonly string[] = ['b1960-rich', 'b2000-rich', '
 /** Years the v4.0.2 save is played. */
 export const V1_YEARS = 5
 
+/** Significant digits kept of a number that is not an integer (the same as PARITY_DIGITS in test/r2-parity-kit.ts once that rounds). */
+export const FLOAT_DIGITS = 9
+
+/** A deep copy of plain data with every finite non-integer number cut to FLOAT_DIGITS significant digits; integers and non-finite numbers stay. */
+export function rounded<T>(v: T): T {
+  if (typeof v === 'number') return (Number.isFinite(v) && !Number.isInteger(v) ? Number(v.toPrecision(FLOAT_DIGITS)) : v) as T
+  if (Array.isArray(v)) return Array.from(v, rounded) as T
+  if (typeof v === 'object' && v !== null) {
+    const out: Record<string, unknown> = {}
+    for (const k of Object.keys(v)) out[k] = rounded((v as Record<string, unknown>)[k])
+    return out as T
+  }
+  return v
+}
+
+/** One row of a trace, in wave 0's order (the slices, then 'text'), digested from the rounded copy of the state. */
+export function rowOf(g: GameState): string[] {
+  const d = parityDigests(rounded(g))
+  return [...PARITY_SLICES.map((s) => d[s]), d.text]
+}
+
+/** A copy of traceLife (test/r2-parity-kit.ts): the same play, the same rows, digested by rowOf. Row 0 is the state before the first year. */
+export function traceOf(life: ParityLife): ParityTrace {
+  const years: string[][] = []
+  const onYear = (g: GameState): void => {
+    years.push(rowOf(g))
+  }
+  if (life.kind === 'birth') {
+    playLife({ seed: life.seed, birthYear: life.birthYear, untilAge: life.untilAge ?? 40, rich: life.rich ?? false, onYear })
+  } else {
+    probeLife({ seed: life.seed, birthYear: life.birthYear, businesses: life.businesses ?? 1, years: life.years ?? 25, onYear })
+  }
+  return { id: life.id, years }
+}
+
 export interface LivesParity {
   /** Wave 0's trace of each life of KERNEL_LIFE_IDS (a row per year, the slice digests of parityDigests, then 'text'). */
   traces: ParityTrace[]
@@ -130,15 +173,9 @@ export function lifeOf(id: string): ParityLife {
 /** Plays `life` through the real loop; `reorder` (when given) runs the aging list in another order. Returns the trace and the digest of the hooks that ran. */
 export function tracedLife(life: ParityLife, reorder?: (names: string[]) => string[]): { trace: ParityTrace; hooks: Digest } {
   const out: string[] = []
-  const play = (): ParityTrace => yearly.traced(out, () => traceLife(life))
+  const play = (): ParityTrace => yearly.traced(out, () => traceOf(life))
   const trace = reorder ? yearly.reordered(reorder, play) : play()
   return { trace, hooks: digestOf(out) }
-}
-
-/** One row of a trace, in wave 0's order (the slices, then 'text'). */
-function rowOf(g: GameState): string[] {
-  const d = parityDigests(g)
-  return [...PARITY_SLICES.map((s) => d[s]), d.text]
 }
 
 const V1_SAVE = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures', 'save-v1.json.gz')
