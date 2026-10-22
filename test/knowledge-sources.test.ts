@@ -270,18 +270,20 @@ describe('kinds: how an owner says where the truth of a key lives', () => {
     truth: () => 5,
   })
 
+  // The names here are synthetic (tmk, trv, tod): the game registers scn, riv, mkt, val, odds and sec itself (Fog track, R3-G), and a
+  // test that registered one of those with a def of its own would meet the game's def and throw.
   it('registers a kind and finds it again', () => {
-    const d = def('mkt')
+    const d = def('tmk')
     registerKeyKind(d)
-    expect(kindOf('mkt')?.kind).toBe('mkt')
+    expect(kindOf('tmk')?.kind).toBe('tmk')
     expect(kindOf('nothing')).toBeNull()
   })
 
   it('takes the same def twice, and the same code again (a reloaded module)', () => {
-    const d = def('riv')
+    const d = def('trv')
     registerKeyKind(d)
     expect(() => registerKeyKind(d)).not.toThrow()
-    expect(() => registerKeyKind(def('riv'))).not.toThrow()
+    expect(() => registerKeyKind(def('trv'))).not.toThrow()
   })
 
   it('refuses a different def for a taken kind', () => {
@@ -300,7 +302,7 @@ describe('kinds: how an owner says where the truth of a key lives', () => {
   it('keeps the registry apart from the game: registering writes no state', () => {
     const g = makeTestGame(1)
     const before = JSON.stringify(g)
-    registerKeyKind(def('odds'))
+    registerKeyKind(def('tod'))
     expect(JSON.stringify(g)).toBe(before)
   })
 })
