@@ -34,6 +34,10 @@ function asset(id: string, kind: Asset['kind'], value: number, details: Record<s
 
 const peopleOf = (g: GameState): Person[] => g.people
 
+/** JSON with the keys of every object sorted: the content of a world, whatever order its shards were first written in. */
+const canonical = (x: unknown): string =>
+  JSON.stringify(x, (_key, v: unknown) => (v !== null && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v))
+
 describe('an heir after a 40-year life with three companies', () => {
   let late: GameState
   let heir: GameState
@@ -88,7 +92,9 @@ describe('an heir after a 40-year life with three companies', () => {
     const books = JSON.stringify(stripped.world?.ledger)
     syncWorld(stripped)
     expect(JSON.stringify(stripped.world?.ledger)).toBe(books)
-    expect(JSON.stringify(stripped.world)).toBe(JSON.stringify(heir.world))
+    // The world step (R2-L17) writes `lod` after the indexes, in the order of the heir's own life; a sync that re-adds the indexes puts
+    // them after it. The content is the same, so it is compared with the keys sorted (the ledger above stays a byte for byte check).
+    expect(canonical(stripped.world)).toBe(canonical(heir.world))
   })
 
   it('lists the companies the heir keeps, owned by the heir, each summing to 1', () => {
