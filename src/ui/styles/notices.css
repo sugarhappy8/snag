@@ -137,19 +137,32 @@
   color: var(--muted);
 }
 
-/* Inline: part of the page above the feed. It never takes more than a third of the screen; the rest scrolls. */
+/* Inline: a block of the Life feed (LifeLog.tsx, the lead slot), right before the newest year. It takes the height its lines need
+   and has no scroller of its own, so it scrolls with the lines around it: it never shares a short phone screen with the log, and
+   nothing of either is clipped or drawn under the other. Do not give it a height, a max-height or an overflow. */
 .year-card.is-inline {
-  flex: none;
-  max-height: 34vh;
-  max-height: 34dvh;
-  margin: 0 12px 8px;
+  margin: 0;
   padding: 12px 14px 4px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   background: var(--card);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   color: var(--text);
+}
+
+/* The slot is always in the feed (an empty one draws nothing). With a card in it, the card sits a year's gap below the year before
+   it, and the newest year keeps the rule and the gap it has when it follows a year directly (global.css .lifelog-year + .lifelog-year). */
+.lifelog-lead:empty {
+  display: none;
+}
+
+.lifelog-year + .lifelog-lead:not(:empty) {
+  margin-top: 14px;
+}
+
+.lifelog-year + .lifelog-lead + .lifelog-year {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
 }
 
 .year-card-head {

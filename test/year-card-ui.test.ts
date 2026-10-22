@@ -3,12 +3,13 @@
 // reader here is total: hostile input is repaired or refused, never thrown on. The model (yearCardModel.ts) is pure;
 // the card and the store's dismissNotice are tested with the real store, the way notice-digest.test.ts does.
 import { readFileSync } from 'node:fs'
-import { createElement, isValidElement, type ReactNode } from 'react'
+import { createElement, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { unitFlags } from '../scripts/voice/rules.mjs'
 import { resetFlags, withFlags } from '../src/game/flags'
-import type { ChoiceModal, GameState, ModalItem, NoticeModal } from '../src/game/types'
+import type { ChoiceModal, GameState, LogYear, ModalItem, NoticeModal } from '../src/game/types'
+import { LifeLog, YearList, scrollTopFor } from '../src/ui/components/LifeLog'
 import { headNoticeRun, mergeable, planHead } from '../src/ui/components/noticeModel'
 import {
   CARD_LIMITS,
@@ -662,5 +663,124 @@ describe('the wiring and the stylesheet', () => {
 
   it('the model is a leaf: it imports nothing', () => {
     expect(src('src/ui/components/yearCardModel.ts')).not.toMatch(/^\s*import\s/m)
+  })
+})
+
+// The inline card at phone width (R3 card fix). It used to be a box above the log with a max height of its own and a scroller of
+// its own, so on a 375 px screen it took a third of the column, clipped its own last line, and left the log a strip where the top line
+// was cut. Now the card is a block of the one feed: it has the height its lines need, it scrolls with the lines around it, and the
+// newest year starts below it. Nothing here needs a DOM: the structure and the stylesheet are what keep the two apart.
+describe('the inline card is a block of the feed, not a box over it', () => {
+  const view = cleanCard(rawCard({ inline: true }))!
+  const years = (n: number): LogYear[] =>
+    Array.from({ length: n }, (_, i) => ({ age: 30 + i, year: 2020 + i, entries: [{ id: `e${i}`, text: `Line of year ${i}`, tone: 'neutral' as const }] }))
+  const feed = (n: number, lead?: ReactNode): string =>
+    renderToStaticMarkup(createElement(YearList, { log: years(n), expanded: new Set<string>(), onToggle: () => undefined, seen: n, lead }))
+  const card = (): ReactNode => createElement(YearCardInline, { card: view })
+  const SLOT = '<div class="lifelog-lead" aria-live="off">'
+
+  it('sits between the older years and the newest year, inside the one feed, and the newest year starts below it', () => {
+    const html = feed(5, card())
+    const slot = html.indexOf(`${SLOT}<section class="year-card is-inline"`)
+    expect(slot).toBeGreaterThan(-1)
+    expect(count(html, 'lifelog-lead')).toBe(1)
+    expect(count(html, 'year-card is-inline')).toBe(1)
+    expect(html.indexOf('aria-label="Age: 33 years"')).toBeLessThan(slot)
+    expect(html).toContain('</section></div><section class="lifelog-year" aria-label="Age: 34 years">')
+    expect(slot).toBeLessThan(html.indexOf('aria-label="Age: 34 years"'))
+  })
+
+  it('is the whole log region and the card in one scroller: the log component holds the card, with no box beside it', () => {
+    const html = renderToStaticMarkup(createElement(LifeLog, { log: years(5), lead: card(), leadKey: 2034 }))
+    expect(html.startsWith('<div class="lifelog" role="log" aria-live="polite" aria-label="Life story">')).toBe(true)
+    expect(html).toContain(`${SLOT}<section class="year-card is-inline"`)
+    expect(count(html, 'year-card is-inline')).toBe(1)
+    expect(count(html, 'role="log"')).toBe(1)
+  })
+
+  it('adds nothing to a feed with no lead, and an empty lead is an empty box that draws nothing', () => {
+    expect(feed(4)).not.toContain('lifelog-lead')
+    expect(feed(3, createElement(YearCardInline, { card: null }))).toContain(`${SLOT}</div><section class="lifelog-year"`)
+    // A life with no year yet still has the slot, once, and nothing breaks.
+    expect(count(feed(0, card()), 'lifelog-lead')).toBe(1)
+  })
+
+  it('keeps the older years where they were: the lead only adds its own box', () => {
+    const plain = feed(6)
+    const withCard = feed(6, createElement(YearCardInline, { card: null }))
+    expect(withCard.replace(`${SLOT}</div>`, '')).toBe(plain)
+  })
+
+  it('is one more child of the list, keyed apart, so the year blocks keep their keys and their state when a card comes or goes', () => {
+    const list = (lead?: ReactNode): ReactElement[] =>
+      (YearList({ log: years(5), expanded: new Set<string>(), onToggle: () => undefined, seen: 5, lead }).props as { children: ReactElement[] }).children
+    const plain = list()
+    const withCard = list(card())
+    expect(plain.map((e) => e.key)).toEqual(['30-2020', '31-2021', '32-2022', '33-2023', '34-2024'])
+    expect(withCard.map((e) => e.key)).toEqual(['30-2020', '31-2021', '32-2022', '33-2023', 'lead', '34-2024'])
+  })
+
+  it('is not announced as a new line of the story: the box is outside the live region', () => {
+    expect(feed(2, card())).toContain('aria-live="off"')
+  })
+
+  /** The rules of notices.css whose selector ends in `.is-inline`: the card itself, whatever it is nested under. */
+  function inlineRules(css: string): string[] {
+    return [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((m) => /\.year-card\.is-inline\s*$/.test(m[1]!.trim())).map((m) => m[2]!)
+  }
+
+  it('the stylesheet gives the card no height, no scroller and no place of its own, in light or dark', () => {
+    const css = src('src/ui/styles/notices.css')
+    const rules = inlineRules(css)
+    expect(rules.length).toBeGreaterThanOrEqual(1)
+    const BOX = /(?:^|[\s{;])(?:height|max-height|min-height|overflow(?:-[xy])?|overscroll-behavior|position|float|flex|z-index|transform|top|bottom|left|right|inset)\s*:/
+    for (const body of rules) {
+      expect(body).not.toMatch(BOX)
+      expect(body).not.toMatch(/\d\s*d?v[hw]\b|\d\s*%/)
+      // Tokens only, so the two themes both read it.
+      expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\brgba?\(/)
+    }
+    const main = rules[0]!
+    for (const token of ['var(--card)', 'var(--hairline)', 'var(--text)']) expect(main).toContain(token)
+    // The tokens exist in both themes.
+    const global = src('src/ui/styles/global.css')
+    for (const token of ['--card', '--hairline', '--text']) expect(count(global, `${token}:`), token).toBeGreaterThanOrEqual(2)
+  })
+
+  it('the stylesheet keeps the newest year apart from the card the way it is apart from a year before it, and hides an empty box', () => {
+    const css = src('src/ui/styles/notices.css')
+    expect(css).toMatch(/\.lifelog-lead:empty \{\s*display: none;\s*\}/)
+    expect(css).toMatch(/\.lifelog-year \+ \.lifelog-lead \+ \.lifelog-year \{[^}]*border-top: 1px solid var\(--hairline\)/)
+    expect(css).toMatch(/\.lifelog-year \+ \.lifelog-lead:not\(:empty\) \{[^}]*margin-top: 14px/)
+  })
+
+  it('the feed is the only scroller of the Life column: the log scrolls, the card around it does not', () => {
+    const global = src('src/ui/styles/global.css')
+    const log = global.slice(global.indexOf('\n.lifelog {'), global.indexOf('}', global.indexOf('\n.lifelog {')))
+    expect(log).toContain('overflow-y: auto')
+    expect(log).toContain('flex: 1 1 auto')
+    expect(log).toContain('min-height: 0')
+  })
+
+  it('the Life screen hands the card to the log as its lead, keyed by the year, and draws it nowhere else', () => {
+    const screen = src('src/ui/screens/GameScreen.tsx')
+    expect(count(screen, '<YearCardInline')).toBe(1)
+    expect(screen).toContain('const yearCard = <YearCardInline card={inlineCard(g.flags.yearBook, g.year)} />')
+    expect(screen).toMatch(/<LifeLog [^>]*lead=\{yearCard\} leadKey=\{g\.year\} \/>/)
+  })
+
+  it('scrollTopFor puts the top of a block under the top of the feed, never above it, and is total', () => {
+    expect(scrollTopFor({ top: 122, scrollTop: 1500 }, { top: 622 })).toBe(2000)
+    expect(scrollTopFor({ top: 122, scrollTop: 1500 }, { top: 622 }, 8)).toBe(1992)
+    expect(scrollTopFor({ top: 122, scrollTop: 0 }, { top: 130 }, 8)).toBe(0)
+    expect(scrollTopFor({ top: 122, scrollTop: 0 }, { top: 50 })).toBe(0)
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      expect(scrollTopFor({ top: 0, scrollTop: 0 }, { top: bad })).toBe(0)
+      expect(scrollTopFor({ top: bad, scrollTop: 5 }, { top: 10 })).toBe(0)
+    }
+  })
+
+  it('the files of the layout have no em-dash or en-dash', () => {
+    for (const f of ['src/ui/components/LifeLog.tsx', 'src/ui/screens/GameScreen.tsx', 'src/ui/styles/notices.css']) expect(src(f), f).not.toMatch(DASH)
   })
 })
