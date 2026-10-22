@@ -16,7 +16,8 @@
 // max 5, $50M p90 4 and max 6, tycoon mean 4 plus the companies card), a tycoon's visible log at most 8 lines, and the repetition targets of the
 // 13-life probe (repeated lines 5%, or 8% for a rich life; no line more than 3 times in a life; no popup scene twice in 10 years; part 4). A
 // threshold is written as the roadmap writes it and is never loosened to fit a number: a miss fails its own case with the measured numbers, and
-// the lead decides (decision D32).
+// the lead decides (decision D32). The popup numbers are asserted on both readings of "a popup" (part 3): every popup the player sees, as the
+// audit counted, and only the ones that arrive by themselves, which is what the close budgets.
 //
 // Every life is found, not pinned (test/seed-kit.ts), and played once per run.
 import { describe, expect, it } from 'vitest'
@@ -461,44 +462,61 @@ describe('the hard caps on real lives, played the way the store plays them', () 
 
 /**
  * The roadmap, as it is written: "Popups a year: ordinary lives p90 3, max 5; $50M lives p90 4, max 6; tycoon mean 4 plus one 'Your companies'
- * card; a tycoon's visible log lines from 12.5 to 8". A popup is what the player sees in a year, the outcome of their own answer included: that
- * is how the audit counted (its 1.8, 5.4 and 8 a year are the popups a played year hands over, "two popups per event"), so it is how this does.
- * The year card is not in the count: the audit had none, and the roadmap adds it to the tycoon's four. Every closed year of a life is counted,
+ * card; a tycoon's visible log lines from 12.5 to 8". The thresholds are the roadmap's and are never loosened to fit a number.
+ *
+ * What a "popup" is has two readings, and the lead decides which one the roadmap means (decision D32, R3-Q13 report), so both are asserted:
+ *
+ *   - AUDIT: every popup the player sees in a year, the outcome of their own answer included. This is how the audit counted its 1.8, 5.4 and 8
+ *     a year ("two popups per event"), and how test/text-metrics.ts counts. Every choice then brings an outcome with it.
+ *   - ARRIVE: only the popups that arrive by themselves (PlayedPopup.passive), which is what the year close can budget. The close keeps 3
+ *     unrequested choices and 3 notices a year (the owner's budget, YEAR_LIMITS), so on this reading a tycoon's mean of 4 is the budget's own
+ *     arithmetic; on the AUDIT reading the same budget gives 3 choices and their 3 outcomes before a single notice.
+ *
+ * The year card is in neither count: the audit had none, and the roadmap adds it to the tycoon's four. Every closed year of a life is counted,
  * from age 1.
  */
 const ROADMAP = { ordinary: { p90: 3, max: 5 }, rich: { p90: 4, max: 6 }, founder: { mean: 4, companiesCard: 0.9 }, visibleLog: 8 } as const
 
 type Spread = ReturnType<typeof spread>
 
+const MEASURES = [
+  { id: 'audit', asked: true, what: 'every popup the player sees, the outcome of their own answers included' },
+  { id: 'arrive', asked: false, what: 'only the popups that arrive by themselves, which is what the close budgets' },
+] as const
+
 const closedYears = (lives: readonly Life[]): PlayedYear[] => lives.flatMap((l) => l.years.filter((y) => y.closed !== undefined))
-const popups = (lives: readonly Life[]): Spread => spread(popupsPerYear(closedYears(lives), { cards: false }))
+const popups = (lives: readonly Life[], asked: boolean): Spread => spread(popupsPerYear(closedYears(lives), { cards: false, asked }))
 const show = (s: Spread): string => `mean ${s.mean.toFixed(2)}, p90 ${s.p90}, max ${s.max}`
 
-describe('the popups a year of the roadmap', () => {
-  it('ordinary lives: p90 at most 3 and max at most 5', () => {
-    const s = popups(livesOf('ordinary'))
-    const misses = [...(s.p90 > ROADMAP.ordinary.p90 ? [`p90 ${s.p90} is over ${ROADMAP.ordinary.p90}`] : []), ...(s.max > ROADMAP.ordinary.max ? [`max ${s.max} is over ${ROADMAP.ordinary.max}`] : [])]
-    expect(misses, `ordinary lives, popups a year: ${show(s)}`).toEqual([])
-  })
+for (const measure of MEASURES) {
+  describe(`the popups a year of the roadmap, counted as ${measure.id}: ${measure.what}`, () => {
+    it('ordinary lives: p90 at most 3 and max at most 5', () => {
+      const s = popups(livesOf('ordinary'), measure.asked)
+      const misses = [...(s.p90 > ROADMAP.ordinary.p90 ? [`p90 ${s.p90} is over ${ROADMAP.ordinary.p90}`] : []), ...(s.max > ROADMAP.ordinary.max ? [`max ${s.max} is over ${ROADMAP.ordinary.max}`] : [])]
+      expect(misses, `ordinary lives, popups a year (${measure.id}): ${show(s)}`).toEqual([])
+    })
 
-  it('$50M lives: p90 at most 4 and max at most 6', () => {
-    const s = popups(livesOf('rich'))
-    const misses = [...(s.p90 > ROADMAP.rich.p90 ? [`p90 ${s.p90} is over ${ROADMAP.rich.p90}`] : []), ...(s.max > ROADMAP.rich.max ? [`max ${s.max} is over ${ROADMAP.rich.max}`] : [])]
-    expect(misses, `rich lives, popups a year: ${show(s)}`).toEqual([])
-  })
+    it('$50M lives: p90 at most 4 and max at most 6', () => {
+      const s = popups(livesOf('rich'), measure.asked)
+      const misses = [...(s.p90 > ROADMAP.rich.p90 ? [`p90 ${s.p90} is over ${ROADMAP.rich.p90}`] : []), ...(s.max > ROADMAP.rich.max ? [`max ${s.max} is over ${ROADMAP.rich.max}`] : [])]
+      expect(misses, `rich lives, popups a year (${measure.id}): ${show(s)}`).toEqual([])
+    })
 
-  it('tycoons: a mean of at most 4 popups, and the year card carries the companies group', () => {
-    const lives = livesOf('founder')
-    const s = popups(lives)
-    const years = closedYears(lives)
-    const withCompanies = years.filter((y) => y.closed!.card?.groups.some((g) => g.k === 'companies')).length
-    const misses = [
-      ...(s.mean > ROADMAP.founder.mean ? [`mean ${s.mean.toFixed(2)} is over ${ROADMAP.founder.mean}`] : []),
-      ...(withCompanies < years.length * ROADMAP.founder.companiesCard ? [`${withCompanies} of ${years.length} cards carry a companies group, under ${ROADMAP.founder.companiesCard * 100}%`] : []),
-    ]
-    expect(misses, `tycoons, popups a year: ${show(s)}; companies on ${withCompanies} of ${years.length} cards`).toEqual([])
+    it('tycoons: a mean of at most 4 popups, and the year card carries the companies group', () => {
+      const lives = livesOf('founder')
+      const s = popups(lives, measure.asked)
+      const years = closedYears(lives)
+      const withCompanies = years.filter((y) => y.closed!.card?.groups.some((g) => g.k === 'companies')).length
+      const misses = [
+        ...(s.mean > ROADMAP.founder.mean ? [`mean ${s.mean.toFixed(2)} is over ${ROADMAP.founder.mean}`] : []),
+        ...(withCompanies < years.length * ROADMAP.founder.companiesCard ? [`${withCompanies} of ${years.length} cards carry a companies group, under ${ROADMAP.founder.companiesCard * 100}%`] : []),
+      ]
+      expect(misses, `tycoons, popups a year (${measure.id}): ${show(s)}; companies on ${withCompanies} of ${years.length} cards`).toEqual([])
+    })
   })
+}
 
+describe('the log a tycoon sees', () => {
   it('a tycoon sees at most 8 lines of the log a year, from the 12.5 the audit found: every year, and on average', () => {
     const years = closedYears(livesOf('founder'))
     const shown = years.map((y) => viewYearLog(y.closed!.entries).shown.length)
