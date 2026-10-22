@@ -41,7 +41,7 @@ import {
 } from './economy'
 import { declareBankruptcy, familyNote, ipoThreshold, leaveListedCompany } from './exit'
 import { leaveListedGroup } from './conglomerate-actions'
-import { eventStrength, MARKET_EVENTS, marketEventImpacts } from '../history/market-events'
+import { eventStrength, eventWords, MARKET_EVENTS, marketEventImpacts } from '../history/market-events'
 import { marketDef } from './competition-data'
 import { groupsOf, liveGroup, sharePriceOf } from './conglomerate-state'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
@@ -221,7 +221,7 @@ function marketNote(g: GameState, b: BizState, lastCycle: number): string {
   else if (e.demandMult > 0 && e.demandMult <= 0.7) parts.push(`Demand in the ${v.noun} market here is thin.`)
   parts.push(`Locals typically pay about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)} per ${def.unitOne}.`)
   if (m.inflation >= 0.15) parts.push(`Inflation runs ${Math.round(m.inflation * 100)}% a year: reprice every year or your prices go stale.`)
-  for (const x of marketEventImpacts(b.industry, b.countryId, b.last?.year ?? g.year - 1, v.scope === 'world').slice(0, 2)) parts.push(`${x.event.name}: ${x.text.charAt(0).toLowerCase() + x.text.slice(1)}`)
+  for (const x of marketEventImpacts(b.industry, b.countryId, b.last?.year ?? g.year - 1, v.scope === 'world').slice(0, 2)) parts.push(`${eventWords(x.event, b.countryId, b.last?.year ?? g.year - 1).name}: ${x.text.charAt(0).toLowerCase() + x.text.slice(1)}`)
   // One tech-wave line, after the events and on the same year basis (the note is cut at 520 characters on screen).
   parts.push(...waveLines(g, b, b.last?.year ?? g.year - 1).slice(0, 1))
   if (v.booked && v.share > 0 && (v.scope === 'world' || v.share >= 0.005)) {
@@ -504,7 +504,9 @@ function announceMarketEvents(g: GameState, list: Asset[]): void {
     const impacts = hit.slice(0, 6).map(({ a, b }) => ({ a, impact: marketEventImpacts(b.industry, b.countryId, g.year, marketDef(b.industry).scope === 'world').find((x) => x.event.id === e.id) }))
     const lines = impacts.map(({ a, impact }) => `${a.name}: ${impact ? impact.text.charAt(0).toLowerCase() + impact.text.slice(1) : 'barely touched.'}`)
     const good = impacts.filter(({ impact }) => impact && impact.value >= 1 && impact.demand >= 1).length > impacts.length / 2
-    g.queue.push({ kind: 'notice', id: `mkt-${e.id}-${g.generation}-${g.year}`, title: e.name, emoji: e.emoji, text: `${e.text} Your companies: ${lines.join(' ')}${hit.length > 6 ? ` (and ${hit.length - 6} more)` : ''} Market & Competition shows the details.`, tone: good ? 'good' : 'bad' })
+    // The words follow the first company's country: a boom about the internet reads plainly where it hasn't arrived.
+    const words = eventWords(e, hit[0].b.countryId, g.year)
+    g.queue.push({ kind: 'notice', id: `mkt-${e.id}-${g.generation}-${g.year}`, title: words.name, emoji: e.emoji, text: `${words.text} Your companies: ${lines.join(' ')}${hit.length > 6 ? ` (and ${hit.length - 6} more)` : ''} Market & Competition shows the details.`, tone: good ? 'good' : 'bad' })
   }
   if (changed) g.flags['market.events'] = [...seen]
 }

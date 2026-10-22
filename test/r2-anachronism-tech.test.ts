@@ -4,11 +4,12 @@
 //       internet reached 2% of Portugal (the hasTech bar). The trade itself stays open (antivirus floppies,
 //       and test/deeptech.test.ts founds it in India and Nigeria in 2000); its pitch waits for the internet.
 //   (d) the dot-com boom notice ("...internet and chip companies...") reached a Brazilian company in
-//       1998, where the internet isn't there yet. Gate: the event needs the internet in the country.
+//       1998, where the internet isn't there yet. The markets still move (the boom was worldwide); the
+//       words are plain there (eventWords).
 import { describe, expect, it } from 'vitest'
 import { anachronismsIn } from '../src/game/events/era'
 import { techAdoption } from '../src/game/history/timeline'
-import { activeMarketEvents, eventStrength, MARKET_EVENTS } from '../src/game/history/market-events'
+import { activeMarketEvents, eventStrength, eventWords, MARKET_EVENTS } from '../src/game/history/market-events'
 import { industryEraBlock } from '../src/game/business/competition-data'
 import { createBusinessAsset, industryPitch, industryProblem, newBiz, startBusinessMenu } from '../src/game/business/founding'
 import { INDUSTRIES } from '../src/game/business/industries'
@@ -102,47 +103,55 @@ describe('(c) the cybersecurity pitch waits for the internet', () => {
   })
 })
 
-describe('(d) the dot-com boom and bust need the internet', () => {
-  it('Brazil had no internet in 1998 by the tech table, so the boom does not reach it; the US, UK and Portugal keep it', () => {
+describe('(d) the dot-com boom and bust read plainly where the internet has not arrived', () => {
+  const boom = MARKET_EVENTS.find((e) => e.id === 'dotcomBoom')!
+  const bust = MARKET_EVENTS.find((e) => e.id === 'dotcomCrash')!
+
+  it('the markets still move everywhere: Brazil feels the boom in 1998 at the abroad weight, like the UK and Portugal', () => {
     expect(hasNet('br', 1998)).toBe(false)
-    expect(eventStrength(MARKET_EVENTS.find((e) => e.id === 'dotcomBoom')!, 'br', 1998)).toBe(0)
-    expect(activeMarketEvents('br', 1998).map((x) => x.event.id)).not.toContain('dotcomBoom')
-    const boom = MARKET_EVENTS.find((e) => e.id === 'dotcomBoom')!
+    expect(eventStrength(boom, 'br', 1998)).toBeCloseTo(0.75 * 0.7, 9)
+    expect(activeMarketEvents('br', 1998).map((x) => x.event.id)).toContain('dotcomBoom')
     expect(eventStrength(boom, 'us', 1998)).toBeCloseTo(0.75, 9)
     expect(eventStrength(boom, 'gb', 1998)).toBeCloseTo(0.75 * 0.7, 9)
     expect(eventStrength(boom, 'pt', 1998)).toBeCloseTo(0.75 * 0.7, 9)
-    expect(activeMarketEvents('pt', 1998).map((x) => x.event.id)).toContain('dotcomBoom')
   })
 
-  it('a Brazilian company hears no dot-com boom notice in 1998, a US one still does (1997), and no market notice breaks an era rule', () => {
+  it('Brazil in 1998 gets the plain words; the US, UK and Portugal keep the dot-com words', () => {
+    expect(eventWords(boom, 'br', 1998)).toEqual(boom.plain)
+    for (const c of ['us', 'gb', 'pt']) expect(eventWords(boom, c, 1998)).toEqual({ name: boom.name, text: boom.text })
+    expect(eventWords(bust, 'in', 2001)).toEqual(bust.plain)
+    expect(eventWords(bust, 'us', 2001)).toEqual({ name: bust.name, text: bust.text })
+  })
+
+  it('a Brazilian company hears the boom in 1998 in plain words, a US one hears the dot-com words (1997), and no market notice breaks an era rule', () => {
     const br = withCompany(41, 'br', 1998)
     yearlyBusinessImpl(br)
-    expect(marketNotices(br).map(([id]) => id)).not.toContain('dotcomBoom')
+    const brBoom = marketNotices(br).find(([id]) => id === 'dotcomBoom')
+    expect(brBoom?.[1]).toContain(boom.plain!.text)
     for (const [id, text] of marketNotices(br)) expect(anachronismsIn(text, br.year, ['br']), id).toEqual([])
     const us = withCompany(42, 'us', 1997)
     yearlyBusinessImpl(us)
-    const boom = marketNotices(us).find(([id]) => id === 'dotcomBoom')
-    expect(boom?.[1]).toMatch(/internet and chip companies/)
+    expect(marketNotices(us).find(([id]) => id === 'dotcomBoom')?.[1]).toMatch(/internet and chip companies/)
   })
 
-  it('the bust has the same text and the same gate: India (no internet in 2001) hears none, the US still does (2000)', () => {
+  it('the bust: India (no internet in 2001) hears it in plain words, the US hears the dot-com words (2000)', () => {
     expect(hasNet('in', 2001)).toBe(false)
     const india = withCompany(43, 'in', 2001)
     yearlyBusinessImpl(india)
-    expect(marketNotices(india).map(([id]) => id)).not.toContain('dotcomCrash')
     for (const [id, text] of marketNotices(india)) expect(anachronismsIn(text, india.year, ['in']), id).toEqual([])
     const us = withCompany(44, 'us', 2000)
     yearlyBusinessImpl(us)
-    expect(marketNotices(us).map(([id]) => id)).toContain('dotcomCrash')
+    expect(marketNotices(us).find(([id]) => id === 'dotcomCrash')?.[1]).toMatch(/internet start-ups/)
   })
 
-  it('wherever and whenever either event is at work, its text is not ahead of the internet (every country, 1990-2010)', () => {
+  it('wherever and whenever either event is at work, the words it shows are not ahead of the internet (every country, 1990-2010)', () => {
     const bad: string[] = []
     for (const c of COUNTRIES) {
       for (let y = 1990; y <= 2010; y++) {
         for (const { event } of activeMarketEvents(c.id, y)) {
           if (event.id !== 'dotcomBoom' && event.id !== 'dotcomCrash') continue
-          if (anachronismsIn(event.text, y, [c.id]).length) bad.push(`${c.id} ${y}: ${event.id}`)
+          const words = eventWords(event, c.id, y)
+          if (anachronismsIn(`${words.name}. ${words.text}`, y, [c.id]).length) bad.push(`${c.id} ${y}: ${event.id}`)
         }
       }
     }

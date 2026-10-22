@@ -53,11 +53,13 @@ export interface MarketEvent {
   home?: readonly string[]
   abroad?: number
   /**
-   * The technology the story is about. Where it hasn't arrived yet (under 2% adoption, the same bar as
-   * hasTech) the event doesn't reach the country at all, so no announcement, market line or valuation
-   * move talks about the internet in a country that has none.
+   * The technology the story is about. The markets still move everywhere (the boom was worldwide), but
+   * where the technology hasn't arrived (under 2% adoption, the hasTech bar) every line uses `plain`
+   * instead, so no notice or market line talks about the internet in a country that has none.
    */
   needs?: TechId
+  /** The name and text where `needs` hasn't arrived yet. */
+  plain?: { name: string; text: string }
   /** What every company feels. */
   everyone: Effect
   /** The last year `everyone` applies (the AI boom's broad lift is history, not the present). */
@@ -115,6 +117,7 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
     everyone: { demand: 0.01, value: 0.12 },
     markets: { internet: { demand: 0.15, value: 1.1 }, chips: { demand: 0.12, value: 0.8 }, ai: { value: 0.3 }, investing: { demand: 0.1, value: 0.2 } },
     text: 'Investors pour money into anything with ".com" in its name: internet and chip companies trade at sky-high valuations.',
+    plain: { name: 'The tech share boom', text: 'Investors abroad bid up technology shares, and the rally lifts stock markets here too.' },
   },
   {
     id: 'asia1997', name: 'The Asian financial crisis', emoji: '\u{1F4B1}',
@@ -129,6 +132,7 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
     everyone: { demand: -0.02, value: -0.12 },
     markets: { internet: { demand: -0.2, value: -0.55 }, chips: { demand: -0.2, value: -0.5 }, ai: { value: -0.3 }, investing: { demand: -0.15, value: -0.3 } },
     text: 'The dot-com bubble bursts: internet start-ups run out of cash, tech shares lose most of their value and advertising budgets are slashed.',
+    plain: { name: 'The tech share crash', text: 'Technology shares abroad lose most of their value, and stock markets here fall with them.' },
   },
   {
     id: 'housing2008', name: 'The housing crash and financial crisis', emoji: '\u{1F3DA}\u{FE0F}',
@@ -287,8 +291,13 @@ export function carriedMarketNews(g: Pick<GameState, 'flags'>): Json[] | null {
 export function eventStrength(e: MarketEvent, country: string, year: number): number {
   const i = e.years[Math.round(year)] ?? 0
   if (!i) return 0
-  if (e.needs && techAdoption(country, e.needs, year) < 0.02) return 0
   return e.home ? i * (e.home.includes(country) ? 1 : (e.abroad ?? 0)) : i
+}
+
+/** The words for an event in a country and year: its own, or `plain` before the technology it is about arrives. */
+export function eventWords(e: MarketEvent, country: string, year: number): { name: string; text: string } {
+  if (e.needs && e.plain && techAdoption(country, e.needs, year) < 0.02) return e.plain
+  return { name: e.name, text: e.text }
 }
 
 /** The events at work in a country's markets this year, strongest first. */
