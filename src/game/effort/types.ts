@@ -139,7 +139,10 @@ export interface Quote {
   spend: number
   /** 1.15 when pushing (overtime), else 1. */
   payrollX: number
-  /** The labelled lines; they sum to `round(p * 100) - round(base * 100)`. */
+  /**
+   * The labelled lines: the caller's own `baseTerms` first (passed through), then the engine's, which sum to
+   * `round(p * 100) - round(base * 100)`. A line that comes to 0 is left out.
+   */
   reasons: Reason[]
   effort: { crew: number; tools: number; rho: number; phi: number; speed: number }
   /** Risks of a bold plan, reported and not rolled. */

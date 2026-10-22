@@ -13,6 +13,8 @@
 // is left after investors are paid back. BizState.pref therefore stays 0 for deep-tech companies
 // (setting it too would charge the preference twice in exit.ts).
 import { DEEP_TECH_IDS, type Industry } from '../data/markets'
+import { normalizeFx } from '../effort/fx'
+import type { Fx } from '../effort/types'
 import type { Json } from '../types'
 import { CAP_IDS, isCapId, type CapMap } from './ai-bench-data'
 import { CHIP_LANES } from './silicon-data'
@@ -70,6 +72,12 @@ export interface TechProgram {
   spent: number
   /** What it works on (a drug id for clinical trials), '' for none. */
   target: string
+  /**
+   * What the program has learned about its own effort (effort/fx.ts, nine bounded numbers); only its `fatigue` is kept here: the
+   * strain of the pace it ran at (R3-M5). Written only while the program is tired, so a program at the default pace saves exactly
+   * as it did in v5.0.0; missing on old saves.
+   */
+  fx?: Fx
 }
 
 export interface RoundRec {
@@ -328,9 +336,22 @@ function uniqueLast<T>(rows: T[], key: (row: T) => string): T[] {
   return out.reverse()
 }
 
+/**
+ * A program's stored effort record: `normalizeFx` of a record (every number cut to its cap), or nothing. A value that is not a record
+ * and a record that carries nothing (no progress, setback, spend, insight or tiredness; a bare year stamp is not worth a key) are
+ * damaged or empty and are dropped, never repaired, so a program that was never tired saves without the key.
+ */
+function readProgramFx(raw: Json | undefined): Fx | undefined {
+  if (!rec(raw)) return undefined
+  const fx = normalizeFx(raw)
+  const carries = fx.progress !== 0 || fx.quality !== 0 || fx.spent !== 0 || fx.hours !== 0 || fx.setbacks !== 0 || fx.insight !== 0 || fx.fatigue !== 0
+  return carries ? fx : undefined
+}
+
 function readProgram(x: Record<string, Json>): TechProgram | null {
   const id = str(x.id)
   if (!id) return null
+  const fx = readProgramFx(x.fx)
   return {
     id,
     key: str(x.key, id),
@@ -343,6 +364,7 @@ function readProgram(x: Record<string, Json>): TechProgram | null {
     started: Math.round(num(x.started)),
     spent: Math.max(0, num(x.spent)),
     target: str(x.target),
+    ...(fx !== undefined ? { fx } : {}),
   }
 }
 

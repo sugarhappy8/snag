@@ -2,6 +2,7 @@
 // talent hints and menu purity.
 import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
+import { neutralAmbition } from './effort-parity-kit'
 import { counter, netWorth } from '../src/game/core'
 import { anachronismsIn } from '../src/game/events/era'
 import { brandById } from '../src/game/data/brands'
@@ -18,7 +19,7 @@ import { SPECIAL_TALENTS } from '../src/game/talents'
 import { TALENTS } from '../src/game/life'
 import type { ChoiceModal, GameState, MenuAction, MenuNode } from '../src/game/types'
 import { ALL_IDEAS, CATEGORIES, HISTORY, IDEAS, catalogIdea } from '../src/game/workshop/catalog'
-import { APPROACHES, brainstorm, brainstormOdds, buildCost, buildOdds, buildLimit, resolveBuild, skillGain, startBuild, type Approach } from '../src/game/workshop/build'
+import { APPROACHES, MAX_OVERTIME_BUILDS, brainstorm, brainstormOdds, buildCost, buildOdds, buildLimit, resolveBuild, skillGain, startBuild, type Approach } from '../src/game/workshop/build'
 import {
   benchFor, benchHint, crowdBlock, dealsLeft, filePatent, giveAway, launchBlock, license, makeInCompany, patentBlock, pitch, routeQuotes, runCrowd, sellStream, shopRights, subjectOf,
 } from '../src/game/workshop/launch'
@@ -190,16 +191,16 @@ describe('building prototypes', () => {
     expect(bold.hint).toContain(`${Math.round(o.master * 100)}%`)
   })
 
-  it('grows skill with diminishing returns, twice as fast for a genius, and limits builds per year', () => {
+  it('grows skill with diminishing returns, twice as fast for a genius, and limits builds per year to the limit and two overtime builds', () => {
     const g = inventor()
     expect(skillGain(g, 0, 3, 'works')).toBeGreaterThan(skillGain(g, 50, 3, 'works'))
     expect(skillGain(g, 50, 3, 'works')).toBeGreaterThan(skillGain(g, 90, 3, 'works'))
     expect(skillGain(inventor({ genius: true }), 40, 3, 'works')).toBeCloseTo(skillGain(g, 40, 3, 'works') * 2)
     give(g, 'pocket-tool', 0)
-    for (let i = 0; i < buildLimit(g); i++) expect(resolveBuild(g, idea('pocket-tool'), 'cheap')).not.toBeNull()
+    for (let i = 0; i < buildLimit(g) + MAX_OVERTIME_BUILDS; i++) expect(resolveBuild(g, idea('pocket-tool'), 'cheap')).not.toBeNull()
     expect(resolveBuild(g, idea('pocket-tool'), 'cheap')).toBeNull()
     expect(readWorkshop(g).skill).toBeGreaterThan(0)
-    expect(counter(g, 'prototypes')).toBe(3)
+    expect(counter(g, 'prototypes')).toBe(5)
     expect(buildLimit(inventor({ genius: true }))).toBe(5)
   })
 
@@ -210,6 +211,10 @@ describe('building prototypes', () => {
     expect(buildCost(kid, catalogIdea('flying-car')!, 'safe')).toBeGreaterThan(100_000)
     expect(resolveBuild(kid, idea('pizza-scissors'), 'safe')).not.toBeNull()
     const normal = inventor(), genius = inventor({ genius: true })
+    // Both at ambition 50 (R3-M8): the engine's boldness term reads ambition, and the Inventor talent adds 4 of its own.
+    neutralAmbition(normal)
+    genius.character.hidden.willpower = 50
+    genius.character.hidden.discipline = 50
     const def = catalogIdea('robot-mower')!
     const n = buildOdds(normal, readWorkshop(normal), def, 0, 'safe'), x = buildOdds(genius, readWorkshop(genius), def, 0, 'safe')
     expect(x.low - n.low).toBeCloseTo(20)

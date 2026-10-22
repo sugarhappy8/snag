@@ -205,10 +205,18 @@ function readScheme(x: Json | undefined): Scheme | null {
   return { kind, since: Math.round(num(d.since)), taken: Math.max(0, num(d.taken)) }
 }
 
+/**
+ * The mandate a stored value stands for: a known id, else growth for a deep-tech company and balanced for the rest. A pure read
+ * (boardOf writes the board it normalizes, so a menu or a quote must not call it just to read the mandate).
+ */
+export function mandateOf(raw: Json | undefined, deepTech = false): Mandate {
+  return MANDATES.find((m) => m.id === raw)?.id ?? (deepTech ? 'growth' : 'balanced')
+}
+
 /** A complete, sane board state from whatever is stored (old saves have none). */
 export function readBoard(v: Json | undefined, deepTech = false): BoardState {
   const d = rec(v) ?? {}
-  const mandate = MANDATES.find((m) => m.id === d.mandate)?.id ?? (deepTech ? 'growth' : 'balanced')
+  const mandate = mandateOf(d.mandate, deepTech)
   const memberKeys = new Set<number>()
   const members = (Array.isArray(d.members) ? d.members.map(readDirector).filter((x): x is Director => x !== null) : [])
     .filter(x => !memberKeys.has(x.key) && !!memberKeys.add(x.key)).slice(0, 31)

@@ -1,7 +1,7 @@
 {
   "v": 1,
-  "base": "28dcaf7+dirty",
-  "aging": ["history","digest","household","relationships","sharedProjects","givingFund","background","royalty","royalCareers","health","education","professions","career","special","nation","workshop","corruption","business","techWaves","development","investments","hedge","shops","computer","finance","wealth","familyUse","nepo","willFeuds","immigration","assets","crime","underworld","advisors","milestones","knowledge.core","world"],
+  "base": "a6eca0c+dirty",
+  "aging": ["history","digest","household","effort.you","relationships","sharedProjects","givingFund","background","royalty","royalCareers","health","education","professions","career","special","nation","workshop","corruption","business","techWaves","development","investments","hedge","shops","computer","finance","wealth","familyUse","nepo","willFeuds","immigration","assets","crime","underworld","advisors","milestones","knowledge.core","world"],
   "special": ["military","actor","music","sports","gamedev","author","model","politics","astronaut","careers2","hustler","social","fame"],
   "lives": {
     "traces": [
@@ -156,11 +156,11 @@
       ["e85d7b9b","feca1c17","1b95399a","9d185f72","66e2ef5a","5a908d5c","83226740","bd4d2d81","abbf5b8c","f0dbf2e9","741638a5","7446686a"]
     ],
     "hooks": {
-      "b1960-rich": {"n":2000,"h":"47f5cc4d"},
-      "b2000-rich": {"n":2000,"h":"47f5cc4d"},
-      "f1950-1x25": {"n":1250,"h":"cb045c51"},
-      "f1990-3x25": {"n":850,"h":"dcd2e251"},
-      "v1": {"n":250,"h":"5209bb51"}
+      "b1960-rich": {"n":2040,"h":"c1877ce5"},
+      "b2000-rich": {"n":2040,"h":"c1877ce5"},
+      "f1950-1x25": {"n":1275,"h":"a1e3d346"},
+      "f1990-3x25": {"n":867,"h":"b175122e"},
+      "v1": {"n":255,"h":"d9945b0a"}
     }
   },
   "menus": {
@@ -193,7 +193,7 @@
       "activities/sweepstakes": {"n":1,"h":"6905ffd6"},
       "activities/vacation": {"n":1,"h":"4b3a7895"},
       "activities/will": {"n":1,"h":"e85b23e4"},
-      "activities/workshop": {"n":4,"h":"38cd0dac"},
+      "activities/workshop": {"n":5,"h":"e6993590"},
       "activities/zoo": {"n":3,"h":"0b3c6a95"},
       "assets/businesses": {"n":3,"h":"0083ac8c"},
       "assets/carDealers": {"n":1,"h":"81267270"},
@@ -231,7 +231,7 @@
       "activities/identity": {"n":11,"h":"8d68eebf"},
       "activities/lawsuit": {"n":1,"h":"92dde125"},
       "activities/licenses": {"n":9,"h":"032e2dbf"},
-      "activities/lifePriorities": {"n":6,"h":"1fde4167"},
+      "activities/lifePriorities": {"n":9,"h":"090eaf8a"},
       "activities/lottery": {"n":14,"h":"84dbb07b"},
       "activities/love": {"n":13,"h":"01042267"},
       "activities/mindBody": {"n":80,"h":"b4e4cf9e"},
@@ -250,7 +250,7 @@
       "activities/sweepstakes": {"n":1,"h":"6905ffd6"},
       "activities/vacation": {"n":61,"h":"ffe7989e"},
       "activities/will": {"n":6,"h":"809b80dd"},
-      "activities/workshop": {"n":4,"h":"38cd0dac"},
+      "activities/workshop": {"n":5,"h":"e6993590"},
       "activities/zoo": {"n":7,"h":"4396dadd"},
       "assets/asset-a15": {"n":40,"h":"3ed6486c"},
       "assets/banking": {"n":7,"h":"aeca9b02"},
@@ -310,7 +310,7 @@
       "activities/identity": {"n":11,"h":"8d68eebf"},
       "activities/lawsuit": {"n":1,"h":"92dde125"},
       "activities/licenses": {"n":9,"h":"032e2dbf"},
-      "activities/lifePriorities": {"n":6,"h":"1fde4167"},
+      "activities/lifePriorities": {"n":9,"h":"090eaf8a"},
       "activities/lottery": {"n":14,"h":"84dbb07b"},
       "activities/love": {"n":14,"h":"5f6ea424"},
       "activities/mindBody": {"n":81,"h":"e4f4116f"},
@@ -329,7 +329,7 @@
       "activities/sweepstakes": {"n":1,"h":"6905ffd6"},
       "activities/vacation": {"n":61,"h":"a03c2aea"},
       "activities/will": {"n":7,"h":"ebe73e02"},
-      "activities/workshop": {"n":4,"h":"38cd0dac"},
+      "activities/workshop": {"n":5,"h":"e6993590"},
       "activities/zoo": {"n":8,"h":"d5d04748"},
       "assets/asset-a19": {"n":41,"h":"7a6a1e2b"},
       "assets/asset-biz25": {"n":239,"h":"bb33a70e"},
@@ -388,7 +388,7 @@
       "activities/identity": {"n":11,"h":"8d68eebf"},
       "activities/lawsuit": {"n":1,"h":"92dde125"},
       "activities/licenses": {"n":9,"h":"032e2dbf"},
-      "activities/lifePriorities": {"n":6,"h":"1fde4167"},
+      "activities/lifePriorities": {"n":9,"h":"090eaf8a"},
       "activities/lottery": {"n":14,"h":"84dbb07b"},
       "activities/love": {"n":11,"h":"fbf967cd"},
       "activities/mindBody": {"n":77,"h":"678e2d02"},
@@ -407,7 +407,7 @@
       "activities/sweepstakes": {"n":1,"h":"6905ffd6"},
       "activities/vacation": {"n":61,"h":"9bdac9da"},
       "activities/will": {"n":4,"h":"18e08ee6"},
-      "activities/workshop": {"n":4,"h":"38cd0dac"},
+      "activities/workshop": {"n":5,"h":"e6993590"},
       "activities/zoo": {"n":4,"h":"179a8785"},
       "assets/banking": {"n":7,"h":"aeca9b02"},
       "assets/businesses": {"n":62,"h":"5fef49d0"},

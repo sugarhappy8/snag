@@ -1,4 +1,6 @@
 // Durable, plain-JSON engine IP. Kept independent of business actions for save readers.
+import { normalizeFx } from '../effort/fx'
+import type { Fx } from '../effort/types'
 import { engineDef, isEngine, type EngineDef, type EngineId } from '../special/gamedev-data'
 import type { Json } from '../types'
 
@@ -45,6 +47,11 @@ export interface StudioEngine {
   lastRevenue: number
   earned: number
   soldFor: number
+  /**
+   * The effort record of the build (effort/fx.ts: nine bounded numbers), kept only when it carries something: an engine that was set
+   * back under a push, or one that was booked at its end with that record. Missing on old saves and on every engine that never needed one.
+   */
+  fx?: Fx
 }
 
 function record(v: Json | undefined): Record<string, Json> {
@@ -53,6 +60,18 @@ function record(v: Json | undefined): Record<string, Json> {
 
 function number(v: Json | undefined, fallback = 0, max = 1e15): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : fallback
+}
+
+/**
+ * An engine's stored effort record: the engine's `normalizeFx` of a record (every number cut to its cap), or nothing. A value that is not
+ * a record, and a record that carries nothing (every number at its fresh value: no progress, no setback, no stamp), is damaged or empty
+ * and is dropped, never repaired, so an engine that never needed one saves without the key.
+ */
+function readEngineFx(raw: Json | undefined): Fx | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const fx = normalizeFx(raw)
+  const carries = fx.progress !== 0 || fx.quality !== 0 || fx.spent !== 0 || fx.hours !== 0 || fx.setbacks !== 0 || fx.insight !== 0 || fx.fatigue !== 0 || fx.last !== -1
+  return carries ? fx : undefined
 }
 
 export function isStudioEngineId(v: unknown): v is StudioEngineId {
@@ -80,6 +99,7 @@ export function normalizeEngines(v: Json | undefined): StudioEngine[] {
       licenses.push({ id, start, until, terms: l.terms, fee: Math.round(number(l.fee)), royalty: number(l.royalty, 0, .1), sales: number(l.sales) })
       if (licenses.length >= 200) break
     }
+    const fx = readEngineFx(x.fx)
     out.push({
       id: x.id as StudioEngine['id'], name: x.name.trim().slice(0, 48), tier: engineTier(String(x.tier)).id,
       stage, progress: stage === 'dev' ? number(x.progress, 0, 100) : 100, quality: number(x.quality, 50, 100),
@@ -89,6 +109,7 @@ export function normalizeEngines(v: Json | undefined): StudioEngine[] {
       licenses: stage === 'ready' ? licenses : [], licenseSeq: Math.max(Math.round(number(x.licenseSeq)), ...licenses.map((l) => l.id)),
       lastYear: Math.round(number(x.lastYear, 0, 100_000)), lastRevenue: Math.round(number(x.lastRevenue)),
       earned: Math.round(number(x.earned)), soldFor: Math.round(number(x.soldFor)),
+      ...(fx !== undefined ? { fx } : {}),
     })
     if (out.length >= 32) break
   }

@@ -162,6 +162,16 @@ export const STREAM_SLICES: Readonly<Record<string, StreamRow>> = {
     year: 0,
     driven: true,
   },
+  'effort.risk': {
+    slices: ['assets', 'character', 'economy', 'text'],
+    why: 'R3-M7 simulateStudioEngines draws a pushing year\'s setback from outcomeStream(g, "effort.risk", year, "studio:<engine>"); it cuts the gain of an engine in development (assets), which moves the studio\'s costs and cash, so the owner\'s pay and net worth (character), the company\'s investment (economy) and the report line (text), and no played life pushes an engine yet',
+    driven: true,
+  },
+  frontier: {
+    slices: ['world', 'flagsPersonal', 'text'],
+    why: 'R3-F1 applyDisclosure draws a disclosure\'s luck from outcomeStream(g, "frontier", year, ...); the shard feeds the Workshop race year, which drops an idea from the notebook flag and logs it, and no played life writes a disclosure yet',
+    driven: true,
+  },
   'intel.risk': {
     slices: ['character', 'flagsPersonal', 'text'],
     why: 'R3-H4 the yearly roll of the illegal-intel heat (knowledge/risk.ts); a hit writes a criminal record, wanted level, notoriety and karma (character), the heat and its year stamp in flags.know (flagsPersonal), and a notice and a log line (text); only a life that bought from an informant or a hacker has heat, so no played life rolls it',

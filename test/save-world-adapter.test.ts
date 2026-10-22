@@ -23,7 +23,7 @@ function read(world: unknown): Rec {
 
 describe('the slice table and the world hub', () => {
   it('registers every shard of the hub when the table is imported alone', () => {
-    expect(shardNames()).toEqual(['facts', 'firms', 'holdings', 'homes', 'ledger', 'lod', 'people'])
+    expect(shardNames()).toEqual(['facts', 'firms', 'frontier', 'holdings', 'homes', 'ledger', 'lod', 'people'])
   })
 
   it('keeps a registered shard of a saved world as it was, and drops a name nobody registered', () => {

@@ -38,7 +38,9 @@ import { opsProgram } from './lab-data'
 import { bestLabMove } from './lab-rules'
 import { LAB_SAY } from './lab-text'
 import { fileLabPatent, startOps } from './lab-year'
-import { bestRdIdea, pullValue, rdOf, retireLines, retireOrder } from './rd'
+import { bestRdIdea, pullValue, rdOf, rdProjects, researchState, retireLines, retireOrder } from './rd'
+import { topCeoPts } from './ceo-edge'
+import { readLab } from './lab-state'
 import { fieldFor, lineInfo, productPull } from './product-market'
 import { bestRole, hireValue, interviewFee, maxKeyStaff } from './staff'
 import { sectorTurn } from './sector-ceo'
@@ -721,8 +723,22 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   refreshValue(a, b)
   const def = industryDef(b.industry)
   t.lines.push(`Next year, ${units(plan.production)} ${plan.production === 1 ? def.unitOne : def.unit} at ${unitMoney(plan.price)} each.`)
+  // J.8: a top CEO's steadiness shows in the letter, right after the skill and the forecast lines (past the memo's 12 it would be cut).
+  const steady = steadyLetterLine(g, b)
+  if (steady !== null) t.lines.splice(2, 0, steady)
   const big = t.big && t.moved >= Math.max(5_000, startCash * 0.1, b.valuation * 0.02)
   ceoLetter(g, a, b, t.lines, big)
+}
+
+/**
+ * The letter's line about the lab (J.8): what a top hired CEO's steadiness is worth to the research, in whole odds points, when the
+ * company has research going (a product project, or a program in the lab). Null with no edge, with one under half a point, and with
+ * nothing in the lab. A read: the points are the ones the quotes carry (research-effort.ts withCeoEdge).
+ */
+export function steadyLetterLine(g: GameState, b: BizState): string | null {
+  const pts = Math.round(topCeoPts(researchState(g, b).steady ?? 0))
+  if (pts < 1 || (rdProjects(b).length === 0 && readLab(b).programs.length === 0)) return null
+  return `Kept the lab steady. Research odds run ${plural(pts, 'point')} better.`
 }
 
 /** True when this company's CEO is a hired one who runs it like a real executive. */

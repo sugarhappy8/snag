@@ -47,6 +47,7 @@ const HUBS: readonly (readonly [string, () => Promise<object>])[] = [
   ['events/helpers', () => import('../src/game/events/helpers')],
   ['kernel/registry', () => import('../src/game/kernel/registry')],
   ['modules/index', () => import('../src/game/modules/index')],
+  ['effort/module', () => import('../src/game/effort/module')],
   ['world/facts', () => import('../src/game/world/facts')],
   ['fog/hint/lens', () => import('../src/game/fog/hint/lens')],
   ['knowledge/module', () => import('../src/game/knowledge/module')],
