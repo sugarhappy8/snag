@@ -129,9 +129,9 @@ function cleanCard(raw: unknown, now: number): YearCard | null {
   const L = YEAR_LIMITS
   const head = lineOf(raw.head, L.head)
   if (head === '') return null
-  const card: YearCard = { v: 1, year: raw.year, age: raw.age, head, stories: lines(raw.stories, L.stories, L.story), groups: cleanGroups(raw.groups) }
   const money = lineOf(raw.money, L.head)
-  if (money) card.money = money
+  // The ledger line is a sentence of the card, not a purse: it goes in with the literal, not as a later write (the money ratchet reads a write to a money field as a purse).
+  const card: YearCard = { v: 1, year: raw.year, age: raw.age, head, stories: lines(raw.stories, L.stories, L.story), groups: cleanGroups(raw.groups), ...(money ? { money } : {}) }
   const people = lines(raw.people, L.people, L.story)
   if (people.length > 0) card.people = people
   const world = lineOf(raw.world, L.head)

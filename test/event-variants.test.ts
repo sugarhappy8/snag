@@ -34,6 +34,10 @@ interface Ctx {
   country?: string
 }
 
+// The fixed states of the single-event cases, as a tuple (test/seed-pins.test.ts): the text stream is keyed by the life, and these only
+// need a state of their own, not a life with a property. [the eligibility scan, the scene draw, the bag, the memory key]
+const [SCAN_SEED, SCENE_SEED, BAG_SEED, KEY_SEED] = [3, 5, 9, 4] as const
+
 function life(ev: EventDef, o: Ctx): GameState {
   const g = makeTestGame(o.seed, { age: o.age, money: 25_000, gender: 'male' })
   // The text stream is keyed by the life, so a state per seed needs its own life id (as every real life has).
@@ -97,7 +101,7 @@ function findContext(ev: EventDef): Ctx | null {
     for (const year of years) {
       for (const country of countries) {
         for (const alt of [false, true]) {
-          const c: Ctx = { age, seed: 3, alt, year, country }
+          const c: Ctx = { age, seed: SCAN_SEED, alt, year, country }
           const g = life(ev, c)
           if (eventEligible(g, ev) && ev.setup(g)) return c
         }
@@ -281,7 +285,7 @@ describe('the wrapper', () => {
 
   it('a scene is drawn from the text stream: the cursor moves, the rng does not', () => {
     const ev = getEventDef('adult.powerOutage')!
-    const g = life(unvaried(ev), { age: 30, seed: 5 })
+    const g = life(unvaried(ev), { age: 30, seed: SCENE_SEED })
     const rng = g.rng
     const before = textCursor(g).n
     ev.setup(g)
@@ -292,7 +296,7 @@ describe('the wrapper', () => {
   it('the pool has a stable key: an event with a constant text runs through every opening before one repeats', () => {
     const ev = getEventDef('adult.powerOutage')!
     const base = unvaried(ev)
-    const g = life(base, { age: 30, seed: 9 })
+    const g = life(base, { age: 30, seed: BAG_SEED })
     const pool = 1 + VARIANTS['adult.powerOutage'].scenes.length
     const seen: string[] = []
     for (let i = 0; i < pool; i++) seen.push(ev.setup(g)!.text)
@@ -304,7 +308,7 @@ describe('the wrapper', () => {
   it('the memory key does not depend on the person: the same event with another name still uses one pool', () => {
     const ev = getEventDef('friend.advice')!
     const base = unvaried(ev)
-    const g = life(base, { age: 30, seed: 4 })
+    const g = life(base, { age: 30, seed: KEY_SEED })
     const keys = () => Object.keys((g.flags.textMem as { p?: Record<string, string> } | undefined)?.p ?? {})
     for (let i = 0; i < 12; i++) ev.setup(g)
     // The original text holds the friend's name, so a pool keyed by its lines would be a new pool per name.
@@ -325,7 +329,7 @@ describe('the wrapper', () => {
       for (const year of years) {
         for (const country of countries) {
           for (const age of [Math.min(base.maxAge, Math.max(base.minAge, 30)), base.minAge, base.maxAge]) {
-            const g = life(base, { age, seed: 3, year, country })
+            const g = life(base, { age, seed: SCAN_SEED, year, country })
             if (!eventEligible(g, base)) continue
             const s = base.setup(g)
             if (!s) continue

@@ -19,6 +19,7 @@ import { deepFreeze } from './fuzz-kit'
 import { makeTestGame } from './helpers'
 import { playLife } from './play-kit'
 import { probeLife } from './probe-life'
+import { findSeed } from './seed-kit'
 import { agingNames, withAging } from './kernel-kit'
 
 /** The probe life: seed and birth year. The same life as the first of the conservation probe's forty (LEDGER_SEEDS[4]). */
@@ -377,8 +378,14 @@ describe('a lived life: a rich family from birth, every year end', () => {
   it('stays inside the budget and keeps the world sound, from birth to seventy', () => {
     const over: string[] = []
     let peak = 0
+    // The life is found, not pinned: the merge of the quiet track moved the event picks, and the one born rich in 1990 from LIFE[0] now
+    // dies at 36, before the forty the test asks of a life. The first seed from there on that reaches forty is the life of this test.
+    const seed = findSeed((s) => playLife({ seed: s, birthYear: 1990, untilAge: 40, rich: true }).g.character.age >= 40, {
+      from: LIFE[0],
+      label: 'a rich family born 1990 that reaches forty',
+    })
     const { g } = playLife({
-      seed: LIFE[0],
+      seed,
       birthYear: 1990,
       untilAge: 70,
       rich: true,
