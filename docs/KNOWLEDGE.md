@@ -195,7 +195,7 @@ or not. `hazardOf(g)` is the pure read, `settleHazard(g)` the yearly step, idemp
 - A menu row in the slot `assets.money` at order 45, between the Money Team and Banking: the Intelligence Briefing (`intelBriefingMenu`,
   id `intel.briefing`).
 - A sink bound to the Effort track's reveal hook at load. When research finishes, `applyReveals` gives a `lab` reading to each stored row
-  whose key kind lists the researched field in `revealedBy`, at most 12 rows a call, never in Exact mode, once a year per key.
+  whose key kind lists the researched field in `revealedBy`, at most 12 rows a call, never in Exact mode, once a year per key. The game's own kinds that name research: `riv` (a rival's quality, technology and lines: the `rd.<family>` of each family it sells, the `dt.<trade>` of a deep-tech trade, `studio.engine` for a studio) and `mkt` (a market's size and shares: the same fields over the families sold in it). The other kinds (`scn`, `val`, `sec`, `odds`) have no research that bears on them, so no `revealedBy`.
 
 ### Standing orders
 
