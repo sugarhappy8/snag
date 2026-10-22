@@ -22,6 +22,7 @@ import type { Industry } from '../src/game/data/markets'
 import { chance, nextRandom } from '../src/game/rng'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
+import { neutralAmbition } from './effort-parity-kit'
 import { deepFreeze, labGame, noDraw, patchLab } from './lab-kit'
 import { allNodes, nextYear } from './market-kit'
 
@@ -370,6 +371,8 @@ describe('the year end', () => {
   it('a flop loses the price and leaves the program available; a win starts a 3-year cooldown', () => {
     const flop = labGame(12, 'restaurant', { country: 'ca' })
     const { g, a, b } = flop
+    // R3-M4: an owner-run company is the player's own work and reads their ambition (a one-year program is a one-year program at 50).
+    neutralAmbition(g)
     const price = opsPrice(b, 1)
     expect(startOps(g, a, b, 'ops.cost.1', true)).not.toBeNull()
     const fiscal = g.year
@@ -395,6 +398,7 @@ describe('the year end', () => {
     expect(g.log.at(-1)!.entries.at(-1)!.text).toBe(`${a.name}'s Time-and-Motion Study didn't work.`)
 
     const win = labGame(13, 'restaurant', { country: 'ca' })
+    neutralAmbition(win.g)
     expect(startOps(win.g, win.a, win.b, 'ops.cost.1', true)).not.toBeNull()
     const f2 = win.g.year
     win.g.year += 1
@@ -466,6 +470,8 @@ describe('starting a program', () => {
 
   it('startOps takes the price once and pay false takes nothing', () => {
     const { g, a, b } = labGame(23, 'restaurant', { country: 'ca' })
+    // R3-M4: the program's years are the engine's, at the player's ambition; this test is told at the default actor, 50.
+    neutralAmbition(g)
     const price = opsPrice(b, 1)
     const cash = b.cash
     const costs = b.yearCosts
@@ -707,6 +713,7 @@ describe('the Research & Operations screen', () => {
 
   it('plays through the real year end', () => {
     const { g, a, b } = labGame(34, 'restaurant', { country: 'ca' })
+    neutralAmbition(g)
     expect(startOps(g, a, b, 'ops.cost.1', true)).not.toBeNull()
     const fiscal = g.year
     nextYear(g)

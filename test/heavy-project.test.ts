@@ -35,6 +35,7 @@ import { needsVote } from '../src/game/business/board'
 import { money } from '../src/game/business/util'
 import { chance, rand } from '../src/game/rng'
 import type { Asset, GameState, Json, MenuAction, MenuNode } from '../src/game/types'
+import { neutralAmbition } from './effort-parity-kit'
 import { adult, allNodes, company, nextYear, renderAll } from './market-kit'
 
 const NAMES = breakthroughsFor('restaurant').map((x) => x.name)
@@ -126,6 +127,8 @@ describe('what a breakthrough costs, how long it takes, how likely it is', () =>
   it('has odds of 55% of a normal launch, between 8% and 60%', () => {
     for (let seed = 1; seed <= 6; seed++) {
       const { g, b } = biz(seed)
+      // An owner-run company is the player's own work (R3-M3): the odds are the legacy ones at the default actor, ambition 50.
+      neutralAmbition(g)
       const odds = heavyOdds(g, b)
       expect(odds).toBeCloseTo(Math.min(0.6, Math.max(0.08, 0.55 * launchP(g, b))), 12)
       expect(odds).toBeGreaterThanOrEqual(0.08)

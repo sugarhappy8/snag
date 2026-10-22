@@ -84,7 +84,7 @@ import { booksMenu } from './books-menu'
 import { complexityShare, productIdeas } from './products'
 import { bestRdBudget, bestRdIdea, ordinaryProjects, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
 import { rdOddsLine } from './rd-effort'
-import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOdds, heavyOf, heavyOffers, heavyYears, startHeavy } from './heavy-rd'
+import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOf, heavyOffers, heavyQuote, heavyWhyLine, startHeavy } from './heavy-rd'
 import type { Breakthrough } from './heavy-data'
 import { heavyStartsWave, INSIDER_WARNING } from './tech-wave-data'
 import { readMarketNews } from '../history/market-events'
@@ -569,10 +569,13 @@ function leadOf(family: string, field: Field, year: number): number | undefined 
 
 /** One breakthrough row: what it costs, how long, the odds, and when rivals could follow. */
 function heavyAction(a: Asset, x: Breakthrough): MenuAction {
+  // The engine's quote for this company (the asset is passed in: the menu reads a copy of the state, which no asset owns).
   const quote = (g: GameState) => {
-    const b = readBiz(g, live(g, a))
-    const years = heavyYears(b)
-    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(heavyOdds(g, b) * 100), lead: heavyLead({ year: g.year + years, years }), wave: heavyStartsWave(b.industry, x, g.year + years) }
+    const cur = live(g, a)
+    const b = readBiz(g, cur)
+    const q = heavyQuote(g, b, x.name, cur)
+    const years = q.years
+    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(q.p * 100), lead: heavyLead({ year: g.year + years, years }), wave: heavyStartsWave(b.industry, x, g.year + years) }
   }
   return act(a, `heavy.${x.name}`, x.name, '\u{1F52C}', {
     subtitle: (g) => {
@@ -581,7 +584,8 @@ function heavyAction(a: Asset, x: Breakthrough): MenuAction {
     },
     confirm: (g) => {
       const q = quote(g)
-      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone.${q.wave ? ` ${INSIDER_WARNING}` : ''}`
+      const cur = live(g, a)
+      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone. ${heavyWhyLine(g, readBiz(g, cur), x.name, cur)}.${q.wave ? ` ${INSIDER_WARNING}` : ''}`
     },
     disabled: (g, bb) => heavyBlock(g, bb, x.name, a.id),
     run: (gg, cur, bb) => {

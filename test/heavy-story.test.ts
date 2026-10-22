@@ -21,6 +21,7 @@ import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import type { Industry } from '../src/game/data/markets'
 import { readMarketNews } from '../src/game/history/market-events'
 import type { Asset, GameState, MenuAction, MenuNode } from '../src/game/types'
+import { neutralAmbition } from './effort-parity-kit'
 import { adult, allNodes, company, drain, nextYear } from './market-kit'
 
 interface Case {
@@ -132,6 +133,8 @@ function withoutBreakthrough(world: GameState, p: Play): GameState {
 /** A grown-up with plenty of cash, six sites and three lines on sale, one year booked. */
 function setup(c: Case, seed: number): { g: GameState; a: Asset } {
   const g = adult(seed, 2030, 'us')
+  // R3-M3: an owner-run company is the player's own work and reads their ambition; the stories are told at the default actor, 50.
+  neutralAmbition(g)
   const a = company(g, c.trade, { cash: 400_000_000, outlets: 6 })
   nextYear(g)
   g.queue = []

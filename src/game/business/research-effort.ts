@@ -8,7 +8,9 @@
 //
 //   launchSkill, launchTeam   the two parts of rd.ts `launchP`: the manager and the quality staff, and the research team
 //   researchPeople            the crew as the engine counts it: the CEO or owner, the quality staff, each scientist
-//   researchActor             who is doing the work: the player (an owner-run company) or nobody in particular (a hired CEO, an NPC)
+//   researchActor             who is doing the work: the player (an owner-run company) or nobody in particular (a hired CEO, an NPC),
+//                             and, for a hired CEO of the player's own company, the steady CEO's line of the odds (ceo-edge.ts, J.8)
+//   withCeoEdge               puts that line into an input: a labelled base term and its points in the base (the one place J.8 acts)
 //   researchInputs            the EffortInput of one run: budget, crew, tools, the company's know-how in the field, the frontier
 //   frontierFieldOf/Inputs    the world's public research and rival pressure for a trade or an AI capability (the only caller of
 //                             frontierTerms in R3, D37): zero while no one has pushed the field
@@ -22,15 +24,17 @@
 // Nothing here draws a number or books a dollar, and every function that reads is a read: it writes nothing. `bookResearch` is the
 // one writer, and it writes the company's `knowHow` only when a run banked something, so a default life saves what v5.0.0 saved.
 // A module-level const here is a literal (rule (d) of the layer ratchet).
+import { K_MAX, K_MIN } from '../effort/limits'
 import { ambitionOf, fatigueOf, postureOf } from '../effort/persona'
 import { knowHowOf } from '../effort/knowhow'
 import { clampNum } from '../effort/num'
 import { step } from '../effort/step'
-import type { EffortInput, Fx, Outcome, Posture, StepCtx, StepResult, Task, Worker } from '../effort/types'
+import type { EffortInput, Fx, Outcome, Posture, Reason, StepCtx, StepResult, Task, Worker } from '../effort/types'
 import type { Asset, GameState } from '../types'
 import { fieldOfCap, fieldOfTrade, type FieldId } from '../world/frontier-fields'
 import { frontierTerms } from '../world/frontier-terms'
 import type { Mandate } from './board-state'
+import { topCeoPts } from './ceo-edge'
 import { TEAM_ODDS } from './lab-data'
 import { LAB_LIMITS, teamPower } from './lab-state'
 import { bizOf, type BizState } from './state'
@@ -52,6 +56,12 @@ export interface ResearchSnap {
   managerSkill: number
   morale: number
   mandate: Mandate
+  /**
+   * How steady a hired CEO keeps the research, 0 to 1 (ceo-edge.ts topCeoSteady of the best hired CEO's skill: the company's own
+   * manager, or the autonomous group CEO's over it). Read by `researchState` (rd.ts) because the group is a member of the cycle.
+   * 0 or absent for an owner-run company and for a CEO rated 90 or less.
+   */
+  steady?: number
 }
 
 /** The skill a research scientist counts for in the crew (a competent professional: the stored team keeps hire years only). */
@@ -107,6 +117,8 @@ export interface ResearchActor {
   /** 0 to 100. */
   fatigue: number
   people: Worker[]
+  /** The steady CEO's line of the odds (J.8), or null: only a hired CEO of the player's own company has one. */
+  ceo: Reason | null
 }
 
 /**
@@ -123,8 +135,36 @@ export function researchActor(g: GameState, s: ResearchSnap, a: Asset | null): R
  */
 export function researchActorOf(g: GameState, s: ResearchSnap, own: boolean): ResearchActor {
   const people = researchPeople(s)
-  if (own && !s.managed) return { you: true, posture: postureOf(g), ambition: ambitionOf(g), fatigue: fatigueOf(g), people }
-  return { you: false, posture: 'steady', ambition: 50, fatigue: 0, people }
+  if (own && !s.managed) return { you: true, posture: postureOf(g), ambition: ambitionOf(g), fatigue: fatigueOf(g), people, ceo: null }
+  return { you: false, posture: 'steady', ambition: 50, fatigue: 0, people, ceo: own ? ceoTerm(s) : null }
+}
+
+/**
+ * The steady CEO's line (J.8): `TOP_CEO_MAX_PTS` times how steady the hired CEO keeps the lab, as a labelled term of the odds. Null
+ * for no edge (an owner-run company, a CEO rated 90 or less). The points are exact (a CEO rated 95 is 1.5): the odds line rounds them
+ * to read. Pure, and not for an NPC company (the caller leaves it out, see `researchActorOf`).
+ */
+function ceoTerm(s: ResearchSnap): Reason | null {
+  const pts = topCeoPts(clampNum(s.steady, 0, 1, 0))
+  return pts > 0 ? { key: 'ceo', label: 'steady CEO', pts } : null
+}
+
+/**
+ * Puts the steady CEO's edge into the input of one quote, as the last of its base terms and as odds in its base: at a budget of one
+ * the base moves by exactly the line's points, and at another budget by those points times `k` to the task's odds exponent, so
+ * the odds the quote gives move by the line and money does not widen it (the engine's money curve would otherwise stretch a
+ * point at a small budget). The base is the task's `p0` when the input has none. The price, the years and the quality are not
+ * touched, the odds stay inside the task's own clamp, and no money moves. An input with no edge is returned as it is; with one, a
+ * copy is. `own` is whether the company is the player's: an NPC company's research is not lifted.
+ */
+export function withCeoEdge(input: EffortInput, s: ResearchSnap, own: boolean, task: Pick<Task, 'p0' | 'oddsExp' | 'kmax'>): EffortInput {
+  const term = own && s.managed ? ceoTerm(s) : null
+  if (term === null) return input
+  const top = Math.max(K_MIN, Math.min(task.kmax, K_MAX))
+  const k = Math.min(top, Math.max(K_MIN, clampNum(input.k, -Infinity, Infinity, 1)))
+  const base = clampNum(input.base, 0, 1, task.p0)
+  const moved = (term.pts / 100) * Math.pow(k, task.oddsExp)
+  return { ...input, base: Math.min(1, base + moved), baseTerms: [...(input.baseTerms ?? []), term] }
 }
 
 /**

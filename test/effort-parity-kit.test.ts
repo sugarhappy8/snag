@@ -43,6 +43,7 @@ import {
   type SystemId,
 } from './effort-parity-kit'
 import { ambitionOf } from '../src/game/effort/persona'
+import { ceoSlack } from './ceo-edge-kit'
 import { makeTestGame } from './helpers'
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..')
@@ -244,8 +245,10 @@ describe('today\'s code against the file', () => {
     const a = probed(s)
     expect(a.length).toBeGreaterThan(20)
     expect(probe(s)).toEqual(a)
-    expect(parityDiff(s, a)).toEqual([])
-    expectParity(s)
+    // J.8: a hired manager rated 90 or more may sit above the oracle by TOL.topCeoSlack odds points in the three systems that carry the edge.
+    const slack = s === 'rd' || s === 'heavy' || s === 'ops' ? ceoSlack : undefined
+    expect(parityDiff(s, a, TOL, slack)).toEqual([])
+    expectParity(s, undefined, TOL, slack)
   })
 
   it.each(SYSTEMS)('%s: the scripted lifecycle leaves g.rng and what it made as recorded (run twice, the same)', { timeout: TIMEOUT }, (s) => {
