@@ -535,6 +535,48 @@ describe('the log a tycoon sees', () => {
     expect(Math.max(...shown)).toBeLessThanOrEqual(LOG_VISIBLE)
     expect(mean(shown)).toBeLessThanOrEqual(ROADMAP.visibleLog)
   })
+
+  it('the lines in view are the lines written less the lines folded, in every year, and the busy years are folded and not merely cut', () => {
+    const years = closedYears(livesOf('founder'))
+    const busy = years.filter((y) => y.closed!.entries.length > ROADMAP.visibleLog)
+    // A check that never meets a busy year proves nothing: the tycoons must write more than 8 lines in some years.
+    expect(busy.length, 'tycoon years that wrote more than 8 lines').toBeGreaterThan(0)
+    for (const y of years) {
+      const entries = y.closed!.entries
+      const view = viewYearLog(entries)
+      const folded = view.collapsed.reduce((n, row) => n + row.n, 0)
+      expect(view.shown.length, `year ${y.year}: lines in view`).toBe(entries.length - folded)
+      expect(view.shown.length, `year ${y.year}: lines in view`).toBeLessThanOrEqual(ROADMAP.visibleLog)
+    }
+    // In a busy year the lines over the room went into folded rows: the year is no shorter on the log, it is shorter on the screen.
+    for (const y of busy) {
+      const entries = y.closed!.entries
+      const view = viewYearLog(entries)
+      expect(view.collapsed.length, `year ${y.year}: folded rows of ${entries.length} lines`).toBeGreaterThan(0)
+      expect(view.shown.length + view.collapsed.reduce((n, row) => n + row.lines.length, 0)).toBe(entries.length)
+    }
+  }, TIMEOUT)
+
+  it('the check can fail: a busy year of unweighted lines shows every line (over the 8), and a busy year of weighted lines folds to the room and loses none', () => {
+    const line = (i: number, w?: number) => ({ id: `l${i}`, s: 'work', ...(w === undefined ? {} : { w }) })
+    const inView = (entries: readonly { id: string; s?: unknown; w?: unknown }[]) => {
+      const view = viewYearLog(entries)
+      return { shown: view.shown.length, folded: view.collapsed.reduce((n, row) => n + row.n, 0), ids: view.shown.map((e) => e.id) }
+    }
+    // Twelve lines and none has a weight (an older save, or a writer that forgot): nothing folds, so twelve are in view and the roadmap's 8 is broken.
+    const bare = inView(Array.from({ length: 12 }, (_, i) => line(i)))
+    expect(bare).toMatchObject({ shown: 12, folded: 0 })
+    expect(bare.shown).toBeGreaterThan(ROADMAP.visibleLog)
+    // The same twelve with weights: the room is 8, the rest fold, the lowest weight first and among equals the oldest, and none is lost.
+    const weights = [3, 1, 2, 2, 0, 3, 2, 1, 2, 3, 2, 2]
+    const weighed = inView(weights.map((w, i) => line(i, w)))
+    expect(weighed.shown).toBe(ROADMAP.visibleLog)
+    expect(weighed.shown + weighed.folded).toBe(weights.length)
+    // Kept: the three of weight 3 (lines 0, 5, 9) and the five newest of weight 2 (lines 11, 10, 8, 6, 3), shown in the order of the log.
+    expect(weighed.ids).toEqual(['l0', 'l3', 'l5', 'l6', 'l8', 'l9', 'l10', 'l11'])
+    // A year of 5 lines or fewer is shown whole whatever its weights.
+    expect(inView([0, 1, 2, 3, 0].map((w, i) => line(i, w)))).toMatchObject({ shown: 5, folded: 0 })
+  })
 })
 
 // ---------------------------------------------------------------------------------------------------------------
