@@ -82,7 +82,7 @@ A baseline can only shrink. Never edit one by hand; a stale entry or a new one f
 |---|---|
 | L0 kernel | `src/game/kernel/**`, and the root files `types`, `rng`, `core`, `scripts`, `talents`, `assetHooks`, `flags`, `world-flags`, `notice-weights`, `timeMachine` |
 | L1 data | `src/game/data/**`, `history/**`, `text/**`, `world.ts` |
-| L2 world | `src/game/economy/**`, `world/**`, and `nation/state.ts`, `effects.ts`, `trade-policy.ts` |
+| L2 world | `src/game/economy/**`, `world/**`, `effort/**`, and `nation/state.ts`, `effects.ts`, `trade-policy.ts` |
 | L3 domains | everything else under `src/game` |
 | L4 assembly | `src/game/modules/**`, `hubs/**`, and the root files `aging`, `menus`, `life`, the save files, `snapshot-codec`, `offline`, `birth-background`, `life-series`, `inbox`, `notice-policy` |
 | L5 ui | `src/ui/**` and the shell files of `src` |
