@@ -357,7 +357,13 @@ describe('old saves and history: nothing exists until a push', () => {
   })
 
   it('leaves a plain life from 1990 to 2026 without a frontier', () => {
-    const g = playLife({ seed: LEDGER_SEEDS[1]!, birthYear: 1990, untilAge: 36 }).g
+    // R3-G12: the first of the kit's seeds whose life reaches 36. On the merged tree the life of the second seed ends at 28 (the event picks
+    // moved with Quiet years and Effort), so a fixed index would test a shorter life than the one this case is about.
+    let g!: GameState
+    for (const seed of LEDGER_SEEDS) {
+      g = playLife({ seed, birthYear: 1990, untilAge: 36 }).g
+      if (g.character.alive && g.character.age >= 36) break
+    }
     expect(g.year).toBeLessThanOrEqual(2026)
     expect(g.year).toBeGreaterThanOrEqual(2020)
     expect(hasFrontier(g)).toBe(false)

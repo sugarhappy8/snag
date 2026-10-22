@@ -10,7 +10,7 @@
 // truths are a pure function of the key (registerTestKinds, testTruth), a step of the clock (nextYear) and the JSON size of a record.
 import { hashKey, streamKey, streamUnit } from '../src/game/kernel/streams'
 import { ruleOf } from '../src/game/knowledge/keys'
-import { registerKeyKind } from '../src/game/knowledge/kinds'
+import { overrideKeyKind } from '../src/game/knowledge/kinds'
 import { withInfoMode } from '../src/game/knowledge/mode'
 import type { Estimate } from '../src/game/knowledge/types'
 import type { GameState } from '../src/game/types'
@@ -128,12 +128,14 @@ export function testTruth(key: string): number {
 }
 
 /**
- * Register a key kind for each name, the way an owner (the Fog track) does at module load: a label, a truth that is a pure read
- * (testTruth) and a tier 1 scope in the US. The same call twice is fine (registerKeyKind accepts the same def).
+ * Hold a key kind for each name, the way an owner (the Fog track) does at module load: a label, a truth that is a pure read
+ * (testTruth) and a tier 1 scope in the US. R3-G12: it overrides (overrideKeyKind), because the Fog track owns the real mkt, riv,
+ * val, sec and cmp kinds and registers them when the game loads; the registry is one module graph, which is one test file, so the
+ * synthetic truths never reach another file. The same call twice is fine.
  */
 export function registerTestKinds(kinds: readonly string[], truth: (key: string) => number | null = testTruth): void {
   for (const kind of kinds) {
-    registerKeyKind({
+    overrideKeyKind({
       kind,
       label: (_g, key) => `${kind} ${key.split(':')[1]}`,
       truth: (_g, key) => truth(key),
