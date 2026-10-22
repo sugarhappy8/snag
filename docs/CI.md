@@ -89,7 +89,10 @@ on the pull request, and the failure says where. `test/golden-digest.test.ts` pl
 (a birth life of 1950 to age 20, a rich life of 1990 to age 32, a 1975 founder with 2 companies for 20 years) and takes a
 digest at years 5, 10 and 20 and at the end. A digest is one canonical-JSON FNV hash per slice of the state
 (`test/golden-kit.ts`): `rng`, `character`, `people`, `assets`, `world`, `economy`, `flagsWorld`, `flagsPersonal` and
-`text`. The file is `test/fixtures/golden-digests.json`, and the test has one case per slice.
+`text`. The file is `test/fixtures/golden-digests.json`, and the test has one case per slice. A number that is not an
+integer is digested rounded to 9 significant digits (an integer exactly), because `Math.log`, `Math.exp` and `Math.pow`
+differ in the last bit between CPUs and Node majors (measured: macOS arm64 against Linux x64, Node 22 against 24) and the
+engine keeps a few unrounded floats; nine digits drop that noise and keep every real move.
 
 A failure names the slice, the first life and checkpoint it moved at, the two digests and the Node major of the file
 against the running one. It means a draw moved, was added or was removed, or a rule that reads state changed. The slice is
@@ -106,9 +109,9 @@ nothing. Otherwise it records `{ at, plan, reason, moved }` in the file's `histo
 paste into the commit message, `Golden: moved <slices>: <reason>`. Those lines are the release's written list of every
 seeded number that moved and why.
 
-Run `update` under Node 22, the version CI uses. Floating-point results can differ between Node majors (Node 24 moves one
-float of a 1990 life by one unit in the last place, which moves its `people` digest), so the file records the major and
-`update` refuses another one without `--allow-node`.
+Run `update` under Node 22, the version CI uses. The 9-digit rule above makes the file the same on every CPU, but the file
+still records the Node major and `update` refuses another one without `--allow-node`, so a digest is never written by a
+runtime CI does not use.
 
 Never merge the file by hand. It is one line per life and checkpoint, so two branches that move different lives do not
 conflict, but two that move the same line do, and a hand-picked line is a digest nobody played. After a rebase, take the
@@ -118,6 +121,28 @@ The `deep` plan (eight birth lives to age 90 and four founders for 60 years, wit
 on a pull request. `GOLDEN_DEEP=1 npx vitest run test/golden-digest.test.ts` or `node scripts/golden.mjs check --plan deep`
 plays it (about 30 seconds); the nightly deep tier is meant to set it. A pull request that moves a digest regenerates both
 plans with the default `update`, so the nightly does not fail on what the pull request already explained.
+
+### The tables a track adds a row to
+
+Three data tables keep the golden digests, the stream test and the ceiling probes true as the game grows. A change that adds
+the thing a table names adds its row in the same commit, and the guard test of each table says what is missing.
+
+| Table | File | A row is added when | Guard |
+|---|---|---|---|
+| `TOP_KEYS` | `test/golden-kit.ts` | `GameState` gets a new top-level key (it says which of the nine slices holds it) | `test/golden-kit.test.ts` |
+| `STREAM_SLICES` | `test/stream-tap.ts` | a module calls `stream(g, 'tag', ...)` or `outcomeStream(g, 'tag', ...)` (the tag is a string literal; the row names the slices one extra draw may move) | `test/stream-isolation.test.ts` |
+| `CEILING_PROBES` | `test/ceiling-kit.ts` | `test/ceiling-list.json` gets an entry (one probe row, or an exemption with a reason, at most 3 and none today) | `test/ceiling-probe.test.ts` |
+
+A stream row has two optional marks. `driven` is for a stream that a module draws from but no played life reaches yet (the
+`lod` stream of `seededEntity` in R2): the isolation test calls the module's entry point itself, in the tapped year, and the
+row says which slices the stream may move once the module writes what it draws. `idle` is for a tag nothing draws from at all,
+and the guard fails the day a caller appears. A leak outside a row is a bug in the module, never a reason to widen the row.
+
+The ceiling list has 17 entries: ten from R0 and R1 (the podcast audience, the fame ledger, pay, endorsements, the Olympic
+bonus, adaptation fees and royalties, the studio tail and copies) and seven from the ledger and the world (R2): `mint-caps`,
+`burn-caps`, `ledger-caps`, `pool-spreads`, `bond-par`, `transaction-levy` and `lod-caps`. The world rows run at scales 1 and
+100 on a pull request and up to 1000 in the nightly (`CEILING_PROBE=deep`); `lod-caps` walks at most 1,000 ids through
+`promote` (it rewrites a shard on every call) and feeds the rest of its `scale * 400` rows to the readers as a hostile save.
 
 ## The nightly deep tier
 
@@ -139,7 +164,7 @@ default branch. To run the full size earlier, land that one file on `main` first
 | ceiling | shards x lives x years | 4 x 6 x 20 at 100x | 4 x 2 x 2 at 100x | founders with a hundred times the money, 3 to 12 companies: the richest net worth and the growth over the start |
 | anachronism | lives in slices | 400 in 8 | 16 in 8 | `test/anachronism.test.ts`, one job per slice, then `anachronism-merge` checks the union |
 | text | probe lives | 20 | 2 | `test/text-repeat.test.ts` and `test/text-kit.test.ts`; the repeat probe plays its fixed 13 lives today, so this size is passed as `TEXT_PROBE_LIVES` and read when it learns to |
-| old saves | years, reseeds | 20, 8 | 3, 2 | `test/old-saves.test.ts`: every `save-*.json.gz` fixture migrates and runs, once per reseed |
+| old saves | years, reseeds | 20, 8 | 3, 2 | `test/old-saves.test.ts`: every `save-*.json.gz` fixture migrates and runs, once per reseed; it invents no world, plays a first year with balanced books, and reads back from the save store (a chunked save v3) with the same digests |
 
 Two jobs have no size of their own. `deep` runs the table's `text` and `old saves` rows and two more files:
 `test/ceiling-probe.test.ts` with `CEILING_PROBE=deep` (scales 1, 10, 100 and 1000) and `test/golden-digest.test.ts` with
