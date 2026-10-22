@@ -655,7 +655,7 @@ defineScript(BUDGET_SCRIPT, (g, choice, data) => {
   while (tier > 0 && g.character.money < o.budgets[tier]) tier--
   if (String(tier) !== choice && Number(choice) > 0) note = ` You couldn't afford that much, so you scaled back to ${tier === 0 ? 'a grassroots campaign' : money(o.budgets[tier])}.`
   const own = o.budgets[tier]
-  spend(g, own)
+  spend(g, own, 'purchase')
   const fame = fameOf(g)
   const donations = Math.round((o.budgets[1] * party.donors * (0.3 + rand(g) * 0.7) * (1 + fame / 50)) / 100) * 100
   const job = politicianJob(g)
@@ -1145,7 +1145,7 @@ const rallyAction: MenuAction = {
     if (!job) return
     if (!useYearAction(g, 'pol.rally', 2)) return tell(g, 'Rally', "You've already held two rallies this year. The venue stopped returning your calls.", '\u{1F4E3}')
     const cost = rallyCost(job)
-    if (!spend(g, cost)) {
+    if (!spend(g, cost, 'purchase')) {
       g.yearActions['pol.rally'] = Math.max(0, (g.yearActions['pol.rally'] ?? 1) - 1)
       return tell(g, 'Rally', `You can't afford the ${money(cost)} it costs to stage a rally.`, '\u{1F4B8}')
     }
@@ -2430,7 +2430,7 @@ defineScript(INSIDER_SCRIPT, (g, choice, data) => {
   const owed = Math.max(0, Math.min(profit, HELD_MAX) - (cs.held ?? 0))
   const seized = Math.floor(Math.min(owed, Math.max(0, Math.floor(c.money))))
   if (seized > 0) {
-    addMoney(g, -seized)
+    addMoney(g, -seized, 'fine')
     cs.held = (cs.held ?? 0) + seized
   }
   const froze = frozen > 0 ? `froze ${money(frozen)} of open bets` : ''
@@ -2477,7 +2477,7 @@ function giveBack(g: GameState, cs: InsiderCase): void {
   const held = cs.held ?? 0
   delete cs.held
   if (!(held > 0)) return
-  addMoney(g, held)
+  addMoney(g, held, 'fine')
   log(g, `I got back the ${money(held)} held in my case.`, 'good')
 }
 
@@ -2762,7 +2762,7 @@ export function yearlyPolitics(g: GameState): void {
   // Former heads of government collect a pension.
   if (p0?.formerLeader && !job && !c.prison) {
     const pension = Math.round((200_000 * Math.max(0.3, getCountry(c.countryId).wealth || 1)) / 100) * 100
-    earnIncome(g, pension)
+    earnIncome(g, pension, 'pension')
     if (chance(g, 0.15)) addFame(g, 1)
   }
   // Insider trades can surface years later, in or out of office.
@@ -2772,7 +2772,7 @@ export function yearlyPolitics(g: GameState): void {
   syncTenure(g, job)
   const d = pdata(job)
   const o = officeOf(d.office)
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   d.hot = hotIssues(g)
   d.bills = newBills(g, o.id)
   // Approval drifts toward 50 with noise.

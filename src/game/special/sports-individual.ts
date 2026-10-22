@@ -8,7 +8,7 @@
 // Players can enter the marquee events of the calendar themselves (with a decisive-moment
 // choice); everything they skip is simulated at the end of the season.
 import { hasTech } from '../history/timeline'
-import { addHidden, addStat, aThing, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, addStat, aThing, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { chance, pick, rand, randInt, bell } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
@@ -372,7 +372,7 @@ function playEvent(g: GameState, sport: IndSport, job: Job, rec: IndRecord, ev: 
 function bookResult(g: GameState, sport: IndSport, job: Job, rec: IndRecord, ev: { id: string; tier: IndEvent['tier'] }, name: string, o: Outcome, auto: boolean, year = g.year): string {
   const d = jd(job)
   if (o.prize > 0) {
-    earnIncome(g, o.prize)
+    earnIncome(g, o.prize, 'prize')
     d.earned += o.prize
     rec.earnings += o.prize
   }
@@ -1035,7 +1035,7 @@ function simulateRestOfSeason(g: GameState, sport: IndSport, job: Job, rec: IndR
     if (!r.outcome) continue
     const o = r.outcome
     if (o.prize > 0) {
-      earnIncome(g, o.prize)
+      earnIncome(g, o.prize, 'prize')
       d.earned += o.prize
       rec.earnings += o.prize
     }
@@ -1107,7 +1107,7 @@ export function yearlyIndividual(g: GameState): void {
     const payer = payFee(g, costs)
     if (!payer) {
       // Spend what you have on the half-season you can afford.
-      if (c.money > 0) c.money = 0
+      if (c.money > 0) addMoney(g, -c.money, 'purchase')
       scale = 0.5
       log(g, "I couldn't afford a full season of travel, so I skipped half the schedule.", 'bad')
     } else if (payer === 'parent') log(g, 'My parents paid for my season on tour.')
@@ -1123,7 +1123,7 @@ export function yearlyIndividual(g: GameState): void {
   const rankNow = d.rank
   if (sport.stipend && rankNow !== null && rankNow <= 60) pay += tidy(sport.stipend * Math.max(0.3, wealth(g)))
   if (sport.appearance && c.hidden.fame >= 20 && d.injured === 0) pay += tidy((c.hidden.fame / 100) ** 2 * sport.appearance * (0.7 + rand(g) * 0.6))
-  if (pay > 0) earnIncome(g, pay)
+  if (pay > 0) earnIncome(g, pay, 'wage')
 
   // Standings / ranking.
   let summary: string

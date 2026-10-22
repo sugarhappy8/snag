@@ -899,7 +899,7 @@ const bribeScript = defineScript('special.athlete.bribe', (g, choice, data) => {
   const amount = Number((data as { amount?: number } | undefined)?.amount ?? 0)
   const p = athleteProfile(g)
   if (choice === 'accept') {
-    addMoney(g, amount)
+    addMoney(g, amount, 'bribe')
     addHidden(g, 'karma', -10)
     log(g, 'I took a bribe to throw a game.', 'bad')
     if (chance(g, 0.3)) {
@@ -1016,7 +1016,7 @@ export function yearlyAthlete(g: GameState): void {
   d.standings = table.slice(0, 5).map((t, i) => ({ team: t.team, strength: Math.round(t.strength), rank: i + 1 }))
   const rank = table.findIndex((t) => t.team === d.team) + 1
   d.champion = table[0].team
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   addStat(g, 'health', -randInt(g, 0, 3))
   // Collision sports add up: every season of tackles and checks leaves a mark.
   const knocks: Record<string, number> = { football: 2.5, hockey: 1.2, rugby: 1.8, aussie: 1.5, soccer: 0.3 }

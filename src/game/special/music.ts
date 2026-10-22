@@ -448,7 +448,7 @@ const concertScript = defineScript('special.music.concert', (g, choice) => {
   const ticket = 10 + Math.round(d.popularity * 1.2)
   const gross = Math.round(attendance * ticket * 0.35 * (0.6 + performance / 200))
   const share = d.mode === 'band' ? Math.round(gross / Math.max(1, d.members)) : gross
-  earnIncome(g, share)
+  earnIncome(g, share, 'wage')
   musicProfile(g).concerts += 1
   if (venue.name === 'a hoedown') g.flags['special.music.hoedown'] = true
   const good = performance >= 55
@@ -803,7 +803,7 @@ export function yearlyMusic(g: GameState): void {
       } else r.royalty = 0
     }
     if (royalties > 0) {
-      earnIncome(g, royalties)
+      earnIncome(g, royalties, 'royalty')
       log(g, `My records earned ${money(royalties)} in royalties.`)
     }
   }
@@ -819,7 +819,7 @@ export function yearlyMusic(g: GameState): void {
   const sim = musicStore.peek(g)?.migrated === true
   if (d.mode === 'solo') {
     if (!sim && d.contractYears > 0) {
-      earnIncome(g, d.advancePerYear)
+      earnIncome(g, d.advancePerYear, 'royalty')
       d.contractYears -= 1
       if (d.contractYears === 0) {
         if (d.popularity >= 35) {
@@ -848,7 +848,7 @@ export function yearlyMusic(g: GameState): void {
   } else {
     const gross = Math.round(d.popularity ** 2 * randInt(g, 15, 40))
     const share = Math.round(gross / Math.max(1, d.members))
-    if (share > 0) earnIncome(g, share)
+    if (share > 0) earnIncome(g, share, 'wage')
     job.salary = share
     if (chance(g, 0.04) && avgBandRelationship(g, job) < 45) {
       const name = d.bandName

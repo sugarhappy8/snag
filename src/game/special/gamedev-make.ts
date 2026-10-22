@@ -13,7 +13,7 @@ import { practice } from '../computer/dev-learn'
 import { buildProject, PROJECT_KINDS } from '../computer/dev-projects'
 import { localFee, niceAmount, onlinePrice, wealthOf } from '../computer/dev-state'
 import { bestLanguageFor, codingSkill } from '../computer/skills'
-import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { pick, rand, randFloat, randInt, shuffle } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
@@ -493,7 +493,7 @@ function devlog(g: GameState, id: string, paid: boolean): void {
     const fromBudget = Math.min(pr.budget, cost)
     if (g.character.money < cost - fromBudget) return tell(g, "Can't Afford It", `A proper trailer costs ${money(cost)}.`, '\u{1F4B8}')
     pr.budget -= fromBudget
-    g.character.money -= cost - fromBudget
+    addMoney(g, -(cost - fromBudget), 'purchase')
     pr.spent += cost - fromBudget
   } else {
     useComputer(g, 1)
@@ -527,7 +527,7 @@ function contractor(g: GameState, id: string, delta: number): void {
     if (g.character.money + pr.budget < cost) return tell(g, "Can't Afford It", `A freelance artist or composer costs about ${money(cost)} a year, paid up front. You have ${money(Math.max(0, g.character.money))}${pr.budget > 0 ? ` plus ${money(pr.budget)} in the project budget` : ''}.`, '\u{1F4B8}')
     const fromBudget = Math.min(pr.budget, cost)
     pr.budget -= fromBudget
-    g.character.money -= cost - fromBudget
+    addMoney(g, -(cost - fromBudget), 'purchase')
     pr.spent += cost - fromBudget
     pr.contractorsPaid = next
     charged = cost
@@ -778,7 +778,7 @@ export function releaseGame(g: GameState, id: string): GdCredit | null {
       return null
     }
     pr.budget -= fromBudget
-    c.money -= cert - fromBudget
+    addMoney(g, -(cert - fromBudget), 'purchase')
     pr.spent += cert - fromBudget
   }
   const unfinished = Math.max(0, 100 - pr.progress)
@@ -1054,7 +1054,7 @@ function study(g: GameState, kind: 'videos' | 'course' | 'draw' | 'artClass'): v
   const cost = kind === 'course' ? onlinePrice(g, 300) : kind === 'artClass' ? localFee(g, 400) : 0
   if (cost > 0) {
     if (g.character.money < cost) return tell(g, "Can't Afford It", `That costs ${money(cost)}. You have ${money(Math.max(0, g.character.money))}.`, '\u{1F4B8}')
-    g.character.money -= cost
+    addMoney(g, -cost, 'tuition')
   }
   let gain = 0
   let text = ''
@@ -1135,7 +1135,7 @@ export function yearlyMakeGames(g: GameState): MakeYear {
       const due = keep * each
       const fromBudget = Math.min(pr.budget, due)
       pr.budget -= fromBudget
-      c.money -= due - fromBudget
+      addMoney(g, -(due - fromBudget), 'purchase')
       pr.spent += due - fromBudget
       if (keep < pr.contractors) log(g, `I couldn't afford to renew ${pr.contractors - keep === 1 ? 'a freelancer' : `${pr.contractors - keep} freelancers`} on "${pr.title}", so they moved on.`, 'bad')
       pr.contractors = keep
@@ -1166,7 +1166,7 @@ export function yearlyMakeGames(g: GameState): MakeYear {
   }
   tidy(p)
   if (out.paid > 0) {
-    earnIncome(g, out.paid)
+    earnIncome(g, out.paid, 'royalty')
     count(g, 'gameRoyalties', out.paid)
     log(g, `My games sold ${copiesLabel(out.sold)} this year and made me ${money(out.paid)}.`, 'good')
   } else if (out.sold > 0) {

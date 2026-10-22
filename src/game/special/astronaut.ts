@@ -678,7 +678,7 @@ function arrive(g: GameState, destId: string, hull: number, prefix: string, paid
   count(g, 'spaceMissions')
   // Paid flights (the Flight Board) were already paid through the ledger: no bonus, and the draw is skipped.
   const bonus = paid ? 0 : Math.round((job.salary * dest.bonus * (0.8 + rand(g) * 0.5)) / 100) * 100
-  if (!paid) earnIncome(g, bonus)
+  if (!paid) earnIncome(g, bonus, 'wage')
   bump(job, randInt(g, 8, 15) - (hull < 50 ? 5 : 0))
   addFame(g, dest.fame)
   addStat(g, 'happiness', randInt(g, 10, 18))
@@ -944,7 +944,7 @@ function masterTraining(g: GameState, d: { training: number }): void {
 
 function yearlyCadet(g: GameState, job: Job): void {
   syncTenure(g, job)
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   const d = cdata(job)
   masterTraining(g, d)
   d.training = clamp100(d.training + randInt(g, 1, 5))
@@ -1000,7 +1000,7 @@ export function yearlyAstronaut(g: GameState): void {
   const d = adata(job)
   const agency = agencyOf(d.agency, g)
   const p = astroProfile(g)
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   const flew = d.lastMissionAge === c.age - 1
   // Administrators (rank 6 and 7 of a corps record) fly nothing by design: the no-flight penalty and the performance firing are not theirs.
   const admin = astronautStore.has(g) && job.level >= 6

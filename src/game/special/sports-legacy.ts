@@ -312,7 +312,7 @@ export function yearlyLegacy(g: GameState): void {
     syncTenure(g, coach)
     const d = cj(coach)
     d.seasons += 1
-    earnIncome(g, coach.salary)
+    earnIncome(g, coach.salary, 'wage')
     const perf = coach.performance + randInt(g, -15, 15)
     const won = perf >= 85 && chance(g, 0.3 + d.level * 0.05)
     if (won) {
@@ -346,7 +346,7 @@ export function yearlyLegacy(g: GameState): void {
   if (pundit) {
     syncTenure(g, pundit)
     const d = pj(pundit)
-    earnIncome(g, pundit.salary)
+    earnIncome(g, pundit.salary, 'wage')
     if (pundit.performance < 30) d.bad += 1
     else d.bad = 0
     if (d.bad >= 2) {

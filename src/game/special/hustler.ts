@@ -456,7 +456,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
     }
     case 'cop.pay': {
       const fine = randInt(g, 1, 4) * 75
-      if (!spend(g, fine)) {
+      if (!spend(g, fine, 'fine')) {
         addHidden(g, 'notoriety', 1)
         return say(g, 'Busted', `The fine was ${money(fine)} and you couldn't pay. The officer confiscated your gear instead and told you to get lost.`, '\u{1F46E}', 'bad')
       }
@@ -472,7 +472,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
         return arrestPlayer(g, 'Fraud', 1, { evidence: 0.7 })
       }
       const fine = randInt(g, 1, 3) * 50
-      const paid = spend(g, fine)
+      const paid = spend(g, fine, 'fine')
       return say(g, 'Fined', paid ? `The officer didn't buy it and wrote you a ${money(fine)} ticket.` : "The officer didn't buy it and confiscated your gear.", '\u{1F46E}', 'bad')
     }
     case 'cop.run': {
@@ -492,7 +492,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
     case 'gang.pay': {
       const cut = Math.max(20, Math.round(d.earnedYear * 0.3))
       const paid = Math.min(cut, Math.max(0, c.money))
-      if (paid > 0) addMoney(g, -paid)
+      if (paid > 0) addMoney(g, -paid, 'crime.take')
       d.police = Math.max(1, d.police - 1)
       log(g, `I paid a street gang ${money(paid)} for protection.`, 'bad')
       return say(g, 'Protection', `You handed over ${money(paid)}. In return, the gang promised nobody would bother you. Including, apparently, the cops.`, '\u{1F4B8}')
@@ -502,7 +502,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
         addStat(g, 'health', -randInt(g, 8, 18))
         addStat(g, 'happiness', -8)
         const lost = Math.min(Math.max(0, c.money), randInt(g, 20, 200))
-        if (lost > 0) addMoney(g, -lost)
+        if (lost > 0) addMoney(g, -lost, 'crime.take')
         log(g, 'A street gang roughed me up.', 'bad')
         return say(g, 'Roughed Up', `The gang roughed you up and took ${money(lost)} from your pockets.`, '\u{1F915}', 'bad')
       }
@@ -511,7 +511,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
     }
     case 'tourist.charge': {
       const fee = randInt(g, 5, 40)
-      addMoney(g, fee)
+      addMoney(g, fee, 'crime.take')
       d.earnedYear += fee
       return say(g, 'Photo Op', `You charged ${money(fee)} for the photo. They paid without blinking. Tourists!`, '\u{1F4B0}', 'good')
     }
@@ -589,7 +589,7 @@ function workStreet(g: GameState): void {
   }
   // The acts are priced in US 2020s dollars. Scale the take to the era and the country.
   take = Math.max(0, Math.round(take * payScale(g)))
-  addMoney(g, take)
+  addMoney(g, take, 'crime.take')
   d.earnedYear += take
   p.totalEarned += take
   if (take > p.bestDay) p.bestDay = take

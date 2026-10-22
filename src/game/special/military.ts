@@ -346,7 +346,7 @@ const medalScript = defineScript('special.mil.medal', (g, choice, raw) => {
     remember(g, `Awarded the ${medal.name}.`)
     say(g, medal.name, `You proudly pinned the ${medal.name} to your uniform.`, '\u{1F396}\u{FE0F}', 'good')
   } else if (choice === 'pawn') {
-    addMoney(g, medal.value)
+    addMoney(g, medal.value, 'asset.sell')
     addHidden(g, 'karma', -2)
     log(g, `I pawned my ${medal.name} for ${money(medal.value)}.`)
     say(g, medal.name, `You pawned your ${medal.name} for ${money(medal.value)}. The pawn shop owner saluted you sarcastically.`, '\u{1F4B0}')
@@ -570,7 +570,7 @@ export function yearlyMilitary(g: GameState): void {
   const md = data(job)
   const b = branchOf(md.branch)
   syncTenure(g, job)
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   // A war this country is fighting right now (never in the present or the future).
   const war = isHistorical(g.year) ? (warsAt(c.countryId, g.year).find((w) => (w.fronts && Object.keys(w.fronts).length > 0)) ?? null) : null
 
