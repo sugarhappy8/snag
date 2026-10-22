@@ -125,6 +125,17 @@ export function readYou(g: GameState): EffortYou {
   return cleanYou(owner, isRecord(raw) && raw.owner === owner ? raw : null)
 }
 
+/** Whether this life holds a record of its own (the key is there, stamped for this character). A read: it writes nothing. */
+export function hasYou(g: GameState): boolean {
+  const raw = g.flags[YOU_KEY]
+  return isRecord(raw) && raw.owner === ownerOf(g)
+}
+
+/** The record of a life that never touched it: what `readYou` returns when there is none. Used to tell a record that carries nothing. */
+export function blankYou(g: GameState): EffortYou {
+  return cleanYou(ownerOf(g), null)
+}
+
 /**
  * Stores the record, cut to its ranges and stamped with this life as the owner. A record that equals the defaults stores nothing and
  * removes the key, so a life that is back to untouched is byte for byte what it was before it ever looked.

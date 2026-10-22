@@ -143,7 +143,7 @@ describe('school progression', () => {
 })
 
 describe('school actions', () => {
-  it('limits Study Harder per year and raises grades', () => {
+  it('raises grades, runs the fourth Study Harder at half value, and refuses the 25th week of the year (the focus pool)', () => {
     const g = makeTestGame(13, { age: 4 })
     ageTo(g, 7)
     const cur = g.character.education.current!
@@ -153,10 +153,15 @@ describe('school actions', () => {
     study.run(g)
     study.run(g)
     expect(cur.grades).toBeGreaterThan(50)
+    expect(g.counters.studied).toBe(3)
     const before = g.queue.length
     study.run(g)
     expect(g.queue.length).toBe(before + 1)
-    expect(g.counters.studied).toBe(3)
+    expect(g.counters.studied).toBe(4)
+    for (let i = 4; i < 24; i++) study.run(g)
+    expect(g.counters.studied).toBe(24)
+    study.run(g)
+    expect(g.counters.studied).toBe(24)
   })
 
   it('only allows dropping out at the legal age', () => {

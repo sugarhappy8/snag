@@ -7,12 +7,14 @@
 // test/kernel-registry.test.ts fails on an unsorted or repeated id. R2-K7 added the fact recorder; R2-K9 added the yearly hooks of
 // ageUp (yearly-aging.ts, one module per hook, itself sorted by id); R2-K10 to R2-K12 convert the special careers, the menus and
 // the company view.
+import { effortModule } from '../effort/module'
 import { registerModules, type ModuleDef } from '../kernel/registry'
 import { factsModule } from '../world/facts'
 import { MENU_MODULES } from './menus-core'
 import { YEARLY_AGING } from './yearly-aging'
 
 export const MODULES: readonly ModuleDef[] = [
+  effortModule, // the player's effort: the yearly settle of posture, overtime, fading know-how and burnout (R3-E6)
   ...MENU_MODULES, // the rows of the Assets, Shopping and Activities menus (menus.ts imports this file for them)
   factsModule,
   ...YEARLY_AGING,
