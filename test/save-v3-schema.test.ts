@@ -11,6 +11,7 @@
 //   save-v4.1.1-heavy.json.gz v4.1.1, a 20-year life with four companies, schema 2
 //   tm-v4.1.1.json.gz         v4.1.1 Time Machine: its index, its backend entries and the state at each of four snapshots
 //   idb-v4.1.1.json.gz        v4.1.1 as IndexedDB held it: the gz2 record, the localStorage marker and the plain JSON
+//   save-v5.0.0-heavy.json.gz v5.0.0 (the first schema 3 writer), a 20-year life with four companies, the inline v3 form
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
@@ -116,6 +117,16 @@ describe('the fixtures load and run five years', () => {
     const world = game.flags.worldEconomy as { previous: Record<string, unknown> }
     expect(Object.keys(world.previous)).toContain(game.character.countryId)
     expect(Object.keys(world.previous).length).toBeLessThan(40)
+    expectPlayable(game, game.year)
+  })
+
+  // The schema v5.0.0 wrote, as a literal: SAVE_SCHEMA moves on in a later release, this fixture's record does not.
+  it('the v5.0.0 save is schema 3, needs no step, and plays', () => {
+    const raw = load('save-v5.0.0-heavy.json.gz')
+    expect(raw.schemaVersion).toBe(3)
+    expect(raw).toHaveProperty('world')
+    const { game, from } = ready(raw)
+    expect(from).toBe(3)
     expectPlayable(game, game.year)
   })
 
