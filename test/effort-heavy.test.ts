@@ -18,6 +18,7 @@
 //
 // No pinned seed: a life is the kit's own, with a tuple of arguments, and the one flop is found with findSeed.
 import { describe, expect, it, vi } from 'vitest'
+import { TOP_CEO_MAX_PTS, topCeoSteady } from '../src/game/business/ceo-edge'
 import { advanceRd } from '../src/game/business/rd'
 import { quote } from '../src/game/effort/engine'
 import { newFx } from '../src/game/effort/fx'
@@ -46,7 +47,8 @@ import { launchP, rdQuality } from '../src/game/business/rd'
 import type { BizState, RdProject } from '../src/game/business/state'
 import type { Asset, GameState, MenuAction, MenuNode } from '../src/game/types'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
-import { expectLifecycle, expectParity, neutralAmbition, setCompany, tradeFixture, type Point } from './effort-parity-kit'
+import { expectLifecycle, expectParity, neutralAmbition, setCompany, TOL, tradeFixture, type Point } from './effort-parity-kit'
+import { ceoSlack } from './ceo-edge-kit'
 import { deepFreeze } from './fuzz-kit'
 import { labGame, noDraw } from './lab-kit'
 import { allNodes } from './market-kit'
@@ -155,11 +157,11 @@ describe('every read of a breakthrough goes through the engine', () => {
 
 describe('parity with v5.0.0: odds and quality within 1 point, years and price exact', () => {
   it('the legacy names give the recorded grid', () => {
-    expectParity('heavy')
+    expectParity('heavy', undefined, TOL, ceoSlack)
   })
 
   it('the engine’s own quote gives the recorded grid (odds, years, quality, and spend equal to the price)', () => {
-    expectParity('heavy', engineMeasure)
+    expectParity('heavy', engineMeasure, TOL, ceoSlack)
   })
 
   it('the scripted lifecycle is byte for byte the recorded one (g.rng, the line on sale, the record, the news)', () => {
@@ -172,7 +174,8 @@ describe('parity with v5.0.0: odds and quality within 1 point, years and price e
     for (const skill of [0, 20, 50, 80, 100]) {
       for (const scientists of [0, 1, 4, 6]) {
         setCompany(f.g, f.b, { manager: skill, quality: 50, scientists, staff: 0, projects: 0 })
-        const want = Math.min(0.6, Math.max(0.08, 0.55 * launchP(f.g, f.b)))
+        // J.8: a hired manager rated 90 or more adds up to 3 points (ceo-edge.ts), kept under the legacy ceiling.
+        const want = Math.min(0.6, Math.max(0.08, 0.55 * launchP(f.g, f.b)) + (TOP_CEO_MAX_PTS * topCeoSteady(skill)) / 100)
         expect(heavyOdds(f.g, f.b, NAME), `${skill}/${scientists}`).toBeCloseTo(want, 12)
         n++
       }

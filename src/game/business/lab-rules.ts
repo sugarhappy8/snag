@@ -21,7 +21,7 @@ import { LAB_LABEL, LAB_SAY } from './lab-text'
 import { fieldFor, fieldOf, infoOf, productPull, type FieldMarket } from './product-market'
 import { productIdeas } from './products'
 import { baseYears, bestRdIdea, DISCOUNT, HORIZON, launchP, pullValue, rdCost, rdProjects, rdReserve, rdSiteScale, RD_BASE, researchState, roundBudget } from './rd'
-import { researchInputs } from './research-effort'
+import { researchInputs, withCeoEdge } from './research-effort'
 import { MAX_STORED_PROJECTS, type BizState } from './state'
 import { clampN, money } from './util'
 
@@ -64,9 +64,10 @@ export function labAsset(g: GameState, b: BizState): Asset | null {
 export function opsSetup(g: GameState, b: BizState, rung: 1 | 2 | 3, track?: LabTrack, a?: Asset | null, terms = true): { task: Task; input: EffortInput } {
   const s = researchState(g, b)
   const task = opsTaskOf({ track, rung, tier: labTierOf(b.industry), cost: opsPrice(b, rung), baseYears: baseYears(b.industry), launch: launchP(g, b) })
-  const input = researchInputs(g, s, a === undefined ? labAsset(g, b) : a, opsField(track), 1)
+  const asset = a === undefined ? labAsset(g, b) : a
+  const input = researchInputs(g, s, asset, opsField(track), 1)
   if (terms) input.baseTerms = [...(input.baseTerms ?? []), ...opsTerms(s)]
-  return { task, input }
+  return { task, input: withCeoEdge(input, s, asset !== null, task) }
 }
 
 /** The Task a program is for the engine (cost the fixed price, odds and years calibrated to this company). Pure. */

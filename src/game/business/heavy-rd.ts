@@ -31,7 +31,7 @@ import type { DemandLevel } from './product-data'
 import { fieldFor, fieldOf, hashOf, mix, productPull } from './product-market'
 import { classicIdeas } from './products'
 import { baseYears, DISCOUNT, HORIZON, launchP, projectQuality, pullValue, rdCost, rdOf, rdProjects, rdQuality, rdReserve, researchState, retiredReason, roundBudget } from './rd'
-import { bookResearch, frontierFieldOf, researchInputs, type BookCtx } from './research-effort'
+import { bookResearch, frontierFieldOf, researchInputs, withCeoEdge, type BookCtx } from './research-effort'
 import { findBusiness, MAX_STORED_PROJECTS, readBiz, retiredOf, type BizState, type Product, type RdProject } from './state'
 import { heavyStartsWave, heavyWaveFor } from './tech-wave-data'
 import { announceWave } from './tech-waves'
@@ -342,10 +342,11 @@ function heavySetup(g: GameState, b: BizState, name: string | undefined, a: Asse
   const s = researchState(g, b)
   const field = heavyField(name)
   const task = heavyTaskOf({ field, cost: heavyCost(g, b) ?? HEAVY_NOMINAL_COST, baseYears: baseYears(b.industry), launch: launchP(g, b) })
-  const input = researchInputs(g, s, a === undefined ? assetOf(g, b) : a, field, 1, 0, frontierFieldOf(b.industry))
+  const asset = a === undefined ? assetOf(g, b) : a
+  const input = researchInputs(g, s, asset, field, 1, 0, frontierFieldOf(b.industry))
   input.quality0 = rdQuality(g, b, HEAVY_QUALITY_K) + HEAVY_QUALITY_PLUS
   if (terms) input.baseTerms = [...(input.baseTerms ?? []), ...heavyTerms(s)]
-  return { task, input }
+  return { task, input: withCeoEdge(input, s, asset !== null, task) }
 }
 
 /** The Task a breakthrough is for the engine (cost the fixed price, odds and years calibrated to this company). Pure. */

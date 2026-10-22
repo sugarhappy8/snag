@@ -33,7 +33,9 @@ import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, ki
 import { complexityShare } from './products'
 import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
 import { rdAfterword, rdBase, rdInputs, rdResolve, rdStartFx, rdTask } from './rd-effort'
-import { bookResearch, ownerRuns, type ResearchSnap } from './research-effort'
+import { bookResearch, ownerRuns, withCeoEdge, type ResearchSnap } from './research-effort'
+import { topCeoSteady } from './ceo-edge'
+import { readMembership } from './conglomerate-state'
 import { clampN, money, plural, rec } from './util'
 
 /**
@@ -61,7 +63,21 @@ export function researchState(g: GameState, b: BizState): ResearchSnap {
     managerSkill: b.manager ? b.manager.skill : 0,
     morale: b.morale,
     mandate: mandateOf(rec(b.board)?.mandate, isDeepTech(b)),
+    steady: steadyOf(b),
   }
+}
+
+/**
+ * How steady a hired CEO keeps the company's research, 0 to 1 (ceo-edge.ts, J.8): the rating of the better of the company's own hired
+ * manager and, when the company belongs to a group whose hired CEO manages the divisions on their own (autonomous), the group CEO's. A
+ * company the owner runs gets none, whatever manager it has on file, and neither does one under a group CEO who has been told to wait:
+ * the same test as the rule R0-3 removed. A read.
+ */
+function steadyOf(b: BizState): number {
+  if (b.ceo !== 'manager' || !b.manager) return 0
+  const core = readMembership(b.group, b.share)?.core
+  const over = core !== undefined && core.ceo === 'manager' && core.autonomous !== false && core.manager ? core.manager.skill : 0
+  return topCeoSteady(Math.max(b.manager.skill, over))
 }
 
 /** A hit (15% of the products that work) launches 10 quality points better and adds 8 brand instead of 3. */
@@ -189,7 +205,7 @@ function rdRun(g: GameState, b: BizState, family: string, cost: number, k: numbe
   const s = researchState(g, b)
   const task = rdTask(cost, baseYears(b.industry), family, RD_MAX, rdBase(s))
   const quality0 = 0.5 * b.quality + 30 + 0.1 * (s.skill - 50) + 6 * s.qualityStaff + talentQuality(g, b)
-  return { task, q: quote(g, task, rdInputs(g, s, b.knowHow, family, k, quality0)) }
+  return { task, q: quote(g, task, withCeoEdge(rdInputs(g, s, b.knowHow, family, k, quality0), s, true, task)) }
 }
 
 export interface RdQuote {

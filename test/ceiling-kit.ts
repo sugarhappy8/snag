@@ -8,6 +8,11 @@
 // `limit`. `at` says which case that was ("ng in 1950"), so a failure points at the input and not only at the term.
 //
 // To cover a new cap: add the entry to test/ceiling-list.json and a row here in the same commit.
+import { TOP_CEO_MAX_PTS } from '../src/game/business/ceo-edge'
+import { heavyOdds, heavyQuote } from '../src/game/business/heavy-rd'
+import { opsOdds, opsQuote } from '../src/game/business/lab-rules'
+import { classicIdeas } from '../src/game/business/products'
+import { rdCost, rdQuote } from '../src/game/business/rd'
 import { ECONOMY_VERSION, initialCountry } from '../src/game/economy/model'
 import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
 import { realWealthFactor } from '../src/game/history/events-people'
@@ -33,6 +38,7 @@ import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod
 import { readPeople } from '../src/game/world/people'
 import '../src/game/world/shards'
 import { makeTestGame } from './helpers'
+import { labGame, patchLab } from './lab-kit'
 import { flowTotal } from './ledger-kit'
 
 export interface CeilingProbe {
@@ -185,6 +191,35 @@ const LIFE_ROWS: readonly CeilingProbe[] = [
         }
         return t.result()
       }),
+  },
+  {
+    id: 'top-ceo-edge',
+    cap: "a top hired CEO adds at most 3 odds points to a company's research and moves no money (R3, J.8)",
+    run: (scale) => {
+      const t = tightest()
+      // A company of a hundred times the cash, the value, the head count and the rating a life reaches, and a budget a hundred times the cost.
+      const f = labGame(11, 'restaurant', { year: 2030, cash: 80_000_000 * scale })
+      const { g, b } = f
+      b.valuation *= scale
+      patchLab(b, (d) => {
+        d.team = Array.from({ length: 3 * scale }, () => g.year - 1)
+      })
+      const idea = classicIdeas(g, b)[0]!
+      for (const skill of [89, 90, 95, 100, 100 * scale]) {
+        b.ceo = 'manager'
+        b.manager = { firstName: 'Ada', lastName: 'Grid', gender: 'female', skill, salary: 100_000, since: g.year - 1 }
+        const at = `skill ${skill}`
+        t.add(heavyQuote(g, b).reasons.find((x) => x.key === 'ceo')?.pts ?? 0, TOP_CEO_MAX_PTS, `a breakthrough at ${at}`)
+        t.add(opsQuote(g, b, 3, 'cost').reasons.find((x) => x.key === 'ceo')?.pts ?? 0, TOP_CEO_MAX_PTS, `an Operations program at ${at}`)
+        const r = rdQuote(g, b, idea, rdCost(b, idea) * 100 * scale)
+        t.add(r.why.find((x) => x.key === 'ceo')?.pts ?? 0, TOP_CEO_MAX_PTS, `a product at ${at}`)
+        // The odds stay under the legacy clamp of each system: .6, .92, .95.
+        t.add(heavyOdds(g, b), 0.6, `breakthrough odds at ${at}`)
+        t.add(opsOdds(g, b, 1), 0.92, `program odds at ${at}`)
+        t.add(r.odds, 0.95, `product odds at ${at}`)
+      }
+      return t.result()
+    },
   },
   {
     id: 'endorsement-deal',

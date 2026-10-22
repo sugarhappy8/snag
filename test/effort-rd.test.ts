@@ -38,7 +38,8 @@ import { advanceRd, bestRdIdea, HIT_P, HIT_QUALITY, launchP, QUALITY_SPREAD, rdC
 import { rdField, rdOddsLine, rdTask } from '../src/game/business/rd-effort'
 import { normalizeBiz, type BizState, type RdProject } from '../src/game/business/state'
 import { cycleComponents, readImportGraph } from './arch-kit'
-import { expectLifecycle, expectParity, setCompany, tradeFixture } from './effort-parity-kit'
+import { expectLifecycle, expectParity, setCompany, TOL, tradeFixture } from './effort-parity-kit'
+import { ceoSlack } from './ceo-edge-kit'
 import { deepFreeze } from './fuzz-kit'
 import { noDraw } from './lab-kit'
 import { allNodes } from './market-kit'
@@ -183,7 +184,7 @@ describe('rdQuote is the engine', () => {
 
 describe('parity with v5.0.0 at the default actor', () => {
   it('every row of the rd grid of the oracle holds within a point, with the years and the price exact', () => {
-    expectParity('rd')
+    expectParity('rd', undefined, TOL, ceoSlack)
   })
 
   it('three projects played to their end leave the same lines, brand, years and g.rng', () => {

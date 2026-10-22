@@ -26,6 +26,7 @@ import { applyWin, LAB_TRACKS, readLab, teamPower, type LabProgram, type LabTrac
 import { advanceLab, startOps } from '../src/game/business/lab-year'
 import { bizWorth } from '../src/game/business/economy'
 import { productIdeas } from '../src/game/business/products'
+import { TOP_CEO_MAX_PTS, topCeoSteady } from '../src/game/business/ceo-edge'
 import { advanceRd, bestRdIdea, launchP, rdReserve } from '../src/game/business/rd'
 import { launchTeam } from '../src/game/business/research-effort'
 import { readBiz, type BizState } from '../src/game/business/state'
@@ -37,7 +38,8 @@ import { ambitionOf, readYou, writeYou } from '../src/game/effort/persona'
 import { isField } from '../src/game/effort/task'
 import { rand } from '../src/game/rng'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
-import { expectLifecycle, expectParity, setCompany, tradeFixture, type Input, type Point } from './effort-parity-kit'
+import { expectLifecycle, expectParity, setCompany, TOL, tradeFixture, type Input, type Point } from './effort-parity-kit'
+import { ceoSlack } from './ceo-edge-kit'
 import { deepFreeze } from './fuzz-kit'
 import { noDraw, patchLab } from './lab-kit'
 import { findSeed } from './seed-kit'
@@ -154,11 +156,11 @@ describe('every read of a program goes through the engine', () => {
 
 describe('parity with v5.0.0: odds within 1 point, years and price exact', () => {
   it('the legacy names give the recorded grid', () => {
-    expectParity('ops')
+    expectParity('ops', undefined, TOL, ceoSlack)
   })
 
   it('the engine’s own quote gives the recorded grid (odds, years, and spend equal to the price)', () => {
-    expectParity('ops', engineMeasure)
+    expectParity('ops', engineMeasure, TOL, ceoSlack)
   })
 
   it('the scripted lifecycle is byte for byte the recorded one (g.rng, the levels, the cooldowns, the grant)', () => {
@@ -173,7 +175,8 @@ describe('parity with v5.0.0: odds within 1 point, years and price exact', () =>
         for (const scientists of [0, 1, 4, 6]) {
           setCompany(f.g, f.b, { manager: skill, quality: 50, scientists, staff: 0, projects: 0 })
           for (const rung of RUNGS) {
-            const want = clampN(0.9 * launchP(f.g, f.b) + OPS_TIER[tier].odds - RUNG_PENALTY[rung - 1], 0.15, 0.92)
+            // J.8: a hired manager rated 90 or more adds up to 3 points (ceo-edge.ts), kept under the legacy ceiling.
+            const want = Math.min(0.92, clampN(0.9 * launchP(f.g, f.b) + OPS_TIER[tier].odds - RUNG_PENALTY[rung - 1], 0.15, 0.92) + (TOP_CEO_MAX_PTS * topCeoSteady(skill)) / 100)
             expect(opsOdds(f.g, f.b, rung), `${tier}/${skill}/${scientists}/${rung}`).toBeCloseTo(want, 12)
             expect(opsQuote(f.g, f.b, rung).spend).toBe(opsPrice(f.b, rung))
             n++
