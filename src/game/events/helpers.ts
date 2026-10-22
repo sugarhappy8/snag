@@ -23,6 +23,7 @@ import { killCharacter } from '../death'
 import { applyEffects } from '../effects'
 import { notePerson } from '../people'
 import { fillLocal, locale, localTerm, type LocaleProfile } from '../data/locales'
+import { noticeWeightOf } from '../notice-weights'
 import { pick, randInt, rand } from '../rng'
 import { pickLine } from '../text/pick'
 import type { Reason } from '../kernel/reasons'
@@ -276,9 +277,23 @@ export function res(g: GameState, ctx: Ctx | null, r: Res): void {
   const c = g.character
   if (!c.alive) return
   const tone: Tone = r.tone ?? 'neutral'
-  notice(g, v(g, r.t), v(g, r.x), { emoji: r.e ?? x?.ev.emoji, tone, support: r.support })
-  if (r.l) log(g, v(g, r.l), tone)
+  const title = v(g, r.t)
+  const body = v(g, r.x)
+  // The money the outcome moves, as applyFx will book it (a loss stops at the cash on hand), and the weight of the title. They go on
+  // the popup and the log line so the year close can rank and sum them (R3, E.D1). Neither reads or draws anything.
+  const a = outcomeAmount(g, r.fx)
+  const w = noticeWeightOf(title)
+  notice(g, title, body, { emoji: r.e ?? x?.ev.emoji, tone, support: r.support, a })
+  if (r.l) log(g, v(g, r.l), tone, undefined, a === undefined && w === undefined ? undefined : { a, w })
   if (r.fx) applyFx(g, x, r.fx)
+}
+
+/** The size of an effect bundle's money in dollars as applyFx books it, or undefined when it moves none. */
+function outcomeAmount(g: GameState, fx: Fx | undefined): number | undefined {
+  const m = fx?.money
+  if (typeof m !== 'number' || !Number.isFinite(m) || m === 0) return undefined
+  const size = m > 0 ? m : Math.min(Math.max(0, g.character.money), -m)
+  return size > 0 ? size : undefined
 }
 
 /** Apply an effect bundle (stats are capped by applyEffects). */

@@ -8,7 +8,7 @@
 import { yearlyEntries } from './kernel/registry'
 import './modules'
 import { erodeCash } from './cash'
-import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi } from './core'
+import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi, sourceOf, withQueueSource } from './core'
 import { economyOf, ensureEconomy, yearlyEconomy } from './economy'
 import { settleIncomeTax } from './finance'
 import { checkDeath } from './health'
@@ -45,8 +45,9 @@ export function ageUp(g: GameState): void {
   erodeCash(g, economyOf(g).inflation)
 
   // The life series keeps one row for each age lived, the year of death included (src/game/life-series.ts).
+  // Each hook runs under its name, so the lines and popups it makes carry it as `s` (core.ts withLogSource, R3 E.D1).
   for (const e of yearlyEntries('aging')) {
-    e.run(g)
+    withQueueSource(g, sourceOf(e.id), () => e.run(g))
     if (!c.alive) {
       writeLifeRow(g)
       return
