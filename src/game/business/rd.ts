@@ -18,17 +18,42 @@ import { industryDef } from './industries'
 import { demandSize } from './product-data'
 import { advanceHeavy, heavyArrivals, heavyOf, type HeavyRecord } from './heavy-rd'
 import { breakthroughByName } from './heavy-data'
-import { TEAM_ODDS } from './lab-data'
-import { readLab, teamPower, teamSlots } from './lab-state'
+import { mandateOf } from './board-state'
+import { isDeepTech } from './deeptech-state'
+import { readLab, teamSlots } from './lab-state'
 import { advanceLab } from './lab-year'
 import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, kindLevel, kindTrend, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
 import { complexityShare } from './products'
 import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
-import { clampN, money, plural } from './util'
+import { launchSkill, launchTeam, ownerRuns, type ResearchSnap } from './research-effort'
+import { clampN, money, plural, rec } from './util'
 
-/** Chance a project at a normal budget works: whoever runs it, quality, the quality team, the research team (lab-state.ts teamPower). */
+/**
+ * Chance a project at a normal budget works: whoever runs it, quality, the quality team, the research team (lab-state.ts teamPower).
+ * Two parts (research-effort.ts): the skill part and the research team's part, so the Effort engine can name them.
+ */
 export function launchP(g: GameState, b: BizState): number {
-  return clampN(0.25 + ceoSkill(g, b) / 250 + b.quality / 300 + 0.1 * staffPower(b, 'quality') + TEAM_ODDS * teamPower(readLab(b).team.length), 0.1, 0.9)
+  const s = researchState(g, b)
+  return clampN(launchSkill(s) + launchTeam(s.scientists), 0.1, 0.9)
+}
+
+/**
+ * What a company's research comes to in numbers: the CEO's skill and the quality staff (the cycle members, read here and handed to
+ * the leaf research-effort.ts), the quality, the research team, the hired manager and the board's mandate. A read: it writes nothing
+ * and draws nothing (the mandate is read raw, as boardOf would store it, without storing it).
+ */
+export function researchState(g: GameState, b: BizState): ResearchSnap {
+  return {
+    year: g.year,
+    skill: ceoSkill(g, b),
+    quality: b.quality,
+    qualityStaff: staffPower(b, 'quality'),
+    scientists: readLab(b).team.length,
+    managed: !ownerRuns(g, b),
+    managerSkill: b.manager ? b.manager.skill : 0,
+    morale: b.morale,
+    mandate: mandateOf(rec(b.board)?.mandate, isDeepTech(b)),
+  }
 }
 
 /** A hit (15% of the products that work) launches 10 quality points better and adds 8 brand instead of 3. */
