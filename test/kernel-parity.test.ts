@@ -213,7 +213,8 @@ describe('kernel parity: the yearly lists', () => {
     expect(f.aging.length).toBeGreaterThanOrEqual(35)
     expect(f.special).toHaveLength(13)
     expect(new Set(f.aging).size).toBe(f.aging.length)
-    expect(f.aging.slice(0, 3)).toEqual(['history', 'digest', 'household'])
+    expect(f.aging.filter((n) => !n.includes('.')).slice(0, 3)).toEqual(['history', 'digest', 'household'])
+    expect(f.aging[0]).toBe('world.frontier')   // R3-F2: the frontier phase runs before the life phase
   })
 })
 

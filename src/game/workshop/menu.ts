@@ -14,7 +14,7 @@ import {
   benchFor, benchHint, companyLaunchBlock, crowdBlock, dealsLeft, filePatent, giveAway, isFirst, launchBlock, launchLimit, license, licenseQuote, makeInCompany, patentBlock, patentCost,
   pitch, pitchBlock, pitchVenue, routeQuotes, scrapIdea, sellBlock, sellStream, shopRights, startCrowd, streamSaleBlock, subjectOf, LAUNCH_MIN, PATENT_MIN, type Bench, type RouteQuote,
 } from './launch'
-import { patentActive, pitchOdds, raceYear, trueAppeal } from './market'
+import { patentActive, pitchOdds, raceShift, raceYear, trueAppeal } from './market'
 import { blurbOf, findInvention, fittingCompanies, historyOpen, inventions, isGenius, MIN_AGE, readWorkshop, toolsFrom, type Owned } from './notebook'
 import { NOTEBOOK_MAX, noteDef, rankOf, type Inv, type NoteIdea, type Workshop } from './state'
 
@@ -138,6 +138,8 @@ function ideaNode(g: GameState, idea: NoteIdea): MenuGroup {
         { type: 'info', id: `ws.idea.q.${idea.id}`, emoji: '\u{1F529}', text: qualityLine(cur) },
       ]
       if (isFirst(gg, def)) nodes.push({ type: 'info', id: `ws.idea.race.${idea.id}`, emoji: '\u{23F3}', text: def.future ? `Future race: rivals are close. Get it on the market by ${raceYear(gg, def)} and it's yours.` : `History race: get it on the market by ${def.real} and the world will remember you.` })
+      const pulled = isFirst(gg, def) ? raceShift(gg, def) : 0
+      if (pulled > 0) nodes.push({ type: 'info', id: `ws.idea.race.shift.${idea.id}`, emoji: '\u{23F3}', text: `Recent leaps pulled this race in by ${pulled} year${pulled === 1 ? '' : 's'}.` })
       // Patent and launch rows appear once they can matter; until then the quality line says how to unlock them.
       nodes.push(buildAction(t, def), whyRow(gg, t, def, cur.builds), ...(cur.q >= PATENT_MIN ? patentActions(t, def.name, true) : []), ...(cur.q >= LAUNCH_MIN ? [launchMenu(t, def.name)] : []), {
         type: 'action', id: `ws.scrap.${idea.id}`, label: 'Scrap This Idea', emoji: '\u{1F5D1}\u{FE0F}', subtitle: 'Frees a page in your notebook',

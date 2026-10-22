@@ -57,7 +57,7 @@ describe('ceiling probes: the real rows', () => {
 
   it('presses on the cap where the scaled input must reach it: these rows touch their limit at 100 times', () => {
     // If a probe stopped scaling its input, its value would fall back to the 1x value and the row would pass for no reason.
-    const touching = ['pay-scale', 'olympic-bonus', 'studio-tail', 'podcast-audience', 'fame-ledger', 'mint-caps', 'burn-caps', 'ledger-caps', 'pool-spreads', 'bond-par', 'transaction-levy', 'lod-caps']
+    const touching = ['pay-scale', 'olympic-bonus', 'studio-tail', 'podcast-audience', 'fame-ledger', 'mint-caps', 'burn-caps', 'ledger-caps', 'pool-spreads', 'bond-par', 'transaction-levy', 'lod-caps', 'frontier-caps', 'waves-per-year']
     for (const id of touching) {
       const p = CEILING_PROBES.find((x) => x.id === id)
       expect(p, id).toBeDefined()

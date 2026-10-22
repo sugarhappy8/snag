@@ -13,6 +13,8 @@ import { heavyOdds, heavyQuote } from '../src/game/business/heavy-rd'
 import { opsOdds, opsQuote } from '../src/game/business/lab-rules'
 import { classicIdeas } from '../src/game/business/products'
 import { rdCost, rdQuote } from '../src/game/business/rd'
+import { WAVE_KINDS, type WaveKind } from '../src/game/business/tech-wave-data'
+import { announceWave, readTechWaves, type WaveInput } from '../src/game/business/tech-waves'
 import { ECONOMY_VERSION, initialCountry } from '../src/game/economy/model'
 import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
 import { realWealthFactor } from '../src/game/history/events-people'
@@ -36,6 +38,9 @@ import type { GameState } from '../src/game/types'
 import { COUNTRIES } from '../src/game/world'
 import { readFirms } from '../src/game/world/firms'
 import { readHomes } from '../src/game/world/homes'
+import { FRONTIER_CAPS } from '../src/game/world/caps'
+import { applyDisclosure, frontierLead, frontierRows, readFrontier } from '../src/game/world/frontier'
+import { FIELD_IDS, FIELDS, fieldOfKind } from '../src/game/world/frontier-fields'
 import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod'
 import { readPeople } from '../src/game/world/people'
 import { APPROACHES, MAX_OVERTIME_BUILDS, buildLimit, resolveBuild } from '../src/game/workshop/build'
@@ -571,6 +576,65 @@ const WORLD_ROWS: readonly CeilingProbe[] = [
         const flood = lodFlood(kind, ids)
         t.add(flood.read, READ_CAP[kind], `a save with ${ids} ${kind} rows, as the reader keeps it`)
         t.add(flood.after, SWEEP_CAP[kind], `a save with ${ids} ${kind} rows, after the yearly sweep`)
+      }
+      return t.result()
+    },
+  },
+  {
+    id: 'frontier-caps',
+    cap: 'a research field is at most 12 years ahead of the calendar and gains at most 2 of them in a year, public research stops at 18 points and one disclosure adds at most 6, and a field keeps at most 24 rows (R3-F1)',
+    // 20 x scale disclosures of size 1 and shield open (the most spill), by both sides, across `scale` years: 20 a year over the 12 lead
+    // fields, six markets, far more than the 2 or 3 a life writes. Every year each field's lead is read against 12 years, its gain
+    // of the year against 2, its public research against 18 points, the spill of one disclosure against 6 and its rows against 24.
+    run: (scale) => {
+      const t = tightest()
+      const g = lifeIn('us', 2027)
+      const leads = FIELD_IDS.filter((f) => FIELDS[f].lead)
+      const leadMax = FRONTIER_CAPS.leadYears
+      const rowsMax = FRONTIER_CAPS.rowsPerMarket * FRONTIER_CAPS.marketsPerField
+      for (let i = 0; i < scale; i++) {
+        const year = 2027 + i
+        g.year = year
+        const before = leads.map((f) => frontierLead(g, f))
+        for (let k = 0; k < 20; k++) {
+          const field = leads[k % leads.length]!
+          const r = applyDisclosure(g, { field, year, size: 1, origin: `ceil|${year}|${k}`, by: k % 2 === 0 ? 'you' : 'rival', market: `m${k % 6}`, shield: 'open' })
+          if (r.applied) t.add(r.spill, FRONTIER_CAPS.spillPerDisclosure * 10, `one disclosure of size 1, shield open, in ${field}, tenths of a point`)
+          else t.add(1, 0, `a disclosure of ${field} in ${year} was refused: ${r.why}`)
+        }
+        leads.forEach((f, j) => {
+          const lead = frontierLead(g, f)
+          t.add(lead, leadMax, `${f} after ${i + 1} years of 20 disclosures a year`)
+          t.add(Math.round((lead - before[j]!) * 100) / 100, FRONTIER_CAPS.yearYears, `${f} in year ${i + 1} of the run`) // the lead is in whole centi-years, so cents are exact
+          t.add((readFrontier(g).f[f]?.pub ?? 0) / 10, FRONTIER_CAPS.spillPoints, `${f} public research after ${i + 1} years`)
+          t.add(frontierRows(g, f).length, rowsMax, `${f} rows after ${i + 1} years`)
+        })
+      }
+      return t.result()
+    },
+  },
+  {
+    id: 'waves-per-year',
+    cap: "at most 2 tech waves a year come from the player's side, whatever the source and however many are announced (R3-F3)",
+    // 2 x scale distinct waves from the player's side in one year, for each source in turn and then all the sources mixed, over the
+    // 12 future-facing kinds. The stored waves of that year that are not a rival's are read against 2.
+    run: (scale) => {
+      const t = tightest()
+      const kinds = (Object.keys(WAVE_KINDS) as WaveKind[]).filter((k) => fieldOfKind(k) !== null)
+      const sources = ['deeptech', 'heavy', 'workshop', 'race', 'effort'] as const
+      const announce = (source: (typeof sources)[number], i: number): WaveInput => ({
+        kind: kinds[i % kinds.length]!,
+        source,
+        origin: source === 'heavy' ? `energy|world#ceil ${i}` : `ceil ${source} ${i}`,
+        name: 'Probe wave',
+        size: 0.5,
+        market: 'world',
+      })
+      for (const only of [...sources, 'mixed'] as const) {
+        const g = lifeIn('us', 2030)
+        for (let i = 0; i < 2 * scale; i++) announceWave(g, announce(only === 'mixed' ? sources[i % sources.length]! : only, i))
+        const stored = readTechWaves(g).filter((w) => w.source !== 'rival' && w.year === 2030).length
+        t.add(stored, 2, `${2 * scale} ${only} waves announced in one year`)
       }
       return t.result()
     },
