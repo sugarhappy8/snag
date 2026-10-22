@@ -14,10 +14,12 @@
 // diminishing bit of fame, never cash. No family use for a minor player, in prison, after dying,
 // or in the year of an emigration; family who live abroad aren't around to use anything.
 import { findAsset, isHeirloom } from '../assets'
+import { personCash } from '../cash'
 import { addHidden, addMoney, addStat, canAfford, count, formatMoney, getPerson, inPrison, log, notice, pronouns, relationLabel, scriptChoice, shortMoney, spend } from '../core'
 import { addEntitlement, allowanceNorm, entitlement, gratitude, isAbroad, isDescendant, isParent, isPartner, isSibling, traitIn } from '../events/wealth-core'
 import { isEstranged } from '../events/will-core'
 import { hasTech } from '../history/timeline'
+import type { Reason } from '../kernel/reasons'
 import { chance, pick, randInt } from '../rng'
 import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
@@ -361,9 +363,9 @@ function repairBill(g: GameState, a: Asset, share: number): number {
 }
 
 /** Pay a bill if the player can; returns what was paid. */
-function pay(g: GameState, amount: number): number {
+function pay(g: GameState, amount: number, reason: Reason = 'purchase'): number {
   const due = Math.min(Math.max(0, amount), Math.max(0, g.character.money))
-  if (due > 0) addMoney(g, -due)
+  if (due > 0) addMoney(g, -due, reason)
   return due
 }
 
@@ -388,7 +390,7 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
   }
   if (choice === 'claim' && insuredNow(a)) {
     const deduct = Math.min(deductibleOf(a), bill)
-    if (!spend(g, deduct)) return unrepaired(short(deduct))
+    if (!spend(g, deduct, 'premium')) return unrepaired(short(deduct))
     a.condition = Math.min(100, a.condition + 20)
     syncValue(a)
     p.relationship = Math.min(100, p.relationship + 1)
@@ -398,8 +400,9 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
   }
   if (choice === 'split') {
     const share = Math.min(Math.round(bill * 0.3), Math.max(0, p.money))
-    if (!spend(g, bill - share)) return unrepaired(short(bill - share))
-    p.money = Math.max(0, p.money - share)
+    if (!spend(g, bill - share, 'purchase')) return unrepaired(short(bill - share))
+    // The family member chips in: the repair shop is paid by both, and the floor is the line's own.
+    personCash(g, p, Math.max(0, p.money - share) - p.money, 'purchase', 0)
     a.condition = Math.min(100, a.condition + 30)
     syncValue(a)
     p.relationship = Math.max(0, p.relationship - 3)
@@ -412,7 +415,7 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
     for (const x of g.assets) if (hasAccess(g, x, p)) writeAccess(g, x, accessOf(g, x).filter((id) => id !== p.id))
     p.relationship = Math.max(0, p.relationship - 6)
     if (isDescendant(p)) addEntitlement(p, -2)
-    const repaired = spend(g, bill)
+    const repaired = spend(g, bill, 'purchase')
     if (repaired) {
       a.condition = Math.min(100, a.condition + 25)
       syncValue(a)
@@ -422,7 +425,7 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
     return
   }
   // pay, or let it slide
-  if (!spend(g, bill)) return unrepaired(short(bill))
+  if (!spend(g, bill, 'purchase')) return unrepaired(short(bill))
   a.condition = Math.min(100, a.condition + 28)
   syncValue(a)
   if (isDescendant(p)) addEntitlement(p, choice === 'slide' ? 3 : 1)
@@ -457,7 +460,7 @@ const PAWN = defineScript('luxury.family.pawn', (g, choice, data) => {
       notice(g, 'Too Late', `You could not raise ${formatMoney(cost)} in time. The pawnbroker sold it that afternoon.`, { emoji: '🕰️', tone: 'bad' })
       return
     }
-    addMoney(g, -cost)
+    addMoney(g, -cost, 'asset.buy')
     const copy = JSON.parse(JSON.stringify(raw)) as Asset
     copy.details.fam = []
     delete copy.details.fam
@@ -572,7 +575,7 @@ export function yearlyFamilyUse(g: GameState): void {
         const insured = insuredNow(cur)
         const payout = insured ? claimPayout(cur) : 0
         g.assets = g.assets.filter((x) => x.id !== cur.id)
-        if (payout > 0) addMoney(g, payout)
+        if (payout > 0) addMoney(g, payout, 'claim')
         fuBad(p, g)
         p.relationship = Math.max(0, p.relationship - 3)
         log(g, `${p.firstName} lost my ${cur.name}.`, 'bad')
@@ -626,7 +629,7 @@ export function yearlyFamilyUse(g: GameState): void {
       spoilBy(g, p, cur, spoil)
     } else if (use === 'fly') {
       const trip = num(cur.details.tripCost) || Math.round(marketValue(cur) * 0.006)
-      const cost = pay(g, trip + Math.round(trip * 0.25))
+      const cost = pay(g, trip + Math.round(trip * 0.25), 'leisure')
       warmth(p, 5)
       cur.condition = Math.max(0, cur.condition - randInt(g, 0, 2))
       syncValue(cur)

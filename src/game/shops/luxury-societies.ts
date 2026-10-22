@@ -358,7 +358,7 @@ const INITIATE = defineScript('luxury.society.initiate', (g, choice, data) => {
 
 /** Pay the fee and become a member (initiation already passed). Returns false when broke. */
 export function joinSociety(g: GameState, s: Society): boolean {
-  if (!spend(g, s.fee)) {
+  if (!spend(g, s.fee, 'leisure')) {
     cantAfford(g, s.fee, `the ${s.name} initiation fee`)
     return false
   }
@@ -484,7 +484,7 @@ function applyPerk(g: GameState, s: Society, m: Membership, scale: number, taxNo
     case 'deals':
     case 'tips': {
       const amount = nicePrice(dealValue(g, s, m, scale) * randInt(g, s.perk === 'tips' ? 40 : 60, s.perk === 'tips' ? 260 : 200) / 100)
-      earnIncome(g, amount)
+      earnIncome(g, amount, 'sales')
       if (taxNow) taxAdditionalIncome(g, amount)
       count(g, 'societyIncome', amount)
       log(g, s.perk === 'tips' ? `A tip from ${s.name} earned me ${formatMoney(amount)}.` : `Fellow members of ${s.name} sent a deal my way worth ${formatMoney(amount)}.`, 'good')
@@ -605,7 +605,7 @@ export function yearlySocieties(g: GameState, budget: PopupBudget): void {
     expelFromSociety(g, `You couldn't pay this year's ${formatMoney(s.dues)} in dues.`)
     return
   }
-  spend(g, s.dues)
+  spend(g, s.dues, 'leisure')
   count(g, 'societyDues', s.dues)
   log(g, `I paid ${formatMoney(s.dues)} in dues to a club that does not exist.`)
   m.years += 1

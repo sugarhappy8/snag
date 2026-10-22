@@ -228,7 +228,7 @@ export function yearlyProjects(g: GameState): number {
   }
   saveDev(g, s)
   if (total > 0) {
-    earnIncome(g, total)
+    earnIncome(g, total, 'royalty')
     const earners = s.projects.filter((p) => p.earned > 0).length
     log(g, earners === 1 ? `My side project brought in ${formatMoney(total)} this year.` : `My side projects brought in ${formatMoney(total)} this year.`, 'good')
   }

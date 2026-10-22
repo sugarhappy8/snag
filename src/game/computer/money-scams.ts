@@ -292,7 +292,7 @@ function runScam(g: GameState, def: ScamDef): void {
   const banPenalty = 1 / (1 + 0.1 * st.bans)
   const take = dollars(randInt(g, def.take[0], def.take[1]) * scale(g) * reachFactor(g, def.reach) * ageF * diminish * banPenalty)
   const sizeLog = Math.log10(1 + take / Math.max(0.25, scale(g)) / 1_000)
-  addMoney(g, take)
+  addMoney(g, take, 'crime.take')
   count(g, 'moneyStolen', take)
   count(g, 'thefts')
   st.scamTake += take
@@ -313,7 +313,7 @@ function runScam(g: GameState, def: ScamDef): void {
   if (chance(g, 0.07)) {
     const lost = Math.min(dollars(c.money), dollars(take * (0.3 + rand(g) * 0.5)))
     if (lost > 0) {
-      addMoney(g, -lost)
+      addMoney(g, -lost, 'crime.cost')
       kept -= lost
       parts.push(`Then you bought a "Get Rich Scamming" course for ${formatMoney(lost)}. It was a PDF of a cat. Karma has a sense of humor.`)
     }
@@ -330,7 +330,7 @@ function runScam(g: GameState, def: ScamDef): void {
     let home = minorBusted(g, 'running online scams')
     const refund = c.age < 18 ? Math.min(dollars(c.money), kept) : 0
     if (refund > 0) {
-      addMoney(g, -refund)
+      addMoney(g, -refund, 'crime.cost')
       addHidden(g, 'karma', 3)
       home += ` They made you refund ${formatMoney(refund)} to ${victim.first}.`
     }
@@ -343,7 +343,7 @@ function runScam(g: GameState, def: ScamDef): void {
     parts.push(parentsCatch(g, 'running online scams', randInt(g, 1, 3), 12))
     const refund = Math.min(dollars(c.money), kept)
     if (refund > 0) {
-      addMoney(g, -refund)
+      addMoney(g, -refund, 'crime.cost')
       addHidden(g, 'karma', 3)
       parts.push(`They made you refund ${formatMoney(refund)} to ${victim.first} and write an apology letter. By hand.`)
     }

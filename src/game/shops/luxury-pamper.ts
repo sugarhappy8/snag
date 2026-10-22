@@ -135,7 +135,7 @@ export function haveTreatment(g: GameState, id: string): boolean {
     return false
   }
   useYearAction(g, 'luxury.spa', SPA_PER_YEAR)
-  addMoney(g, -price)
+  addMoney(g, -price, 'leisure')
   count(g, 'spaVisits')
   if (chance(g, 0.07)) {
     addStat(g, t.oopsStat, -randInt(g, 1, 3))
@@ -249,7 +249,7 @@ export function attendLuxuryExperience(g: GameState, id: LuxuryExperienceId): bo
     return false
   }
   if (!useYearAction(g, 'luxury.experience', LUXURY_EXPERIENCES_PER_YEAR)) return false
-  addMoney(g, -price)
+  addMoney(g, -price, 'leisure')
   count(g, 'luxuryExperiences')
 
   if (id === 'familyRetreat') {
@@ -401,7 +401,7 @@ export function attendVipEvent(g: GameState, id: VipEventId, pledge = 'table'): 
     return false
   }
   useYearAction(g, eventKey(e.id), 1)
-  addMoney(g, -price)
+  addMoney(g, -price, 'leisure')
   count(g, 'vipEvents')
 
   if (id === 'gala') {

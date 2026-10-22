@@ -182,7 +182,7 @@ export function hireStaff(g: GameState, id: StaffRoleId, candidate: StaffMember)
     return false
   }
   const wage = staffWage(g, role, candidate.skill)
-  if (!spend(g, wage)) {
+  if (!spend(g, wage, 'wage')) {
     cantAfford(g, wage, `a year of a ${role.label.toLowerCase()}'s wages`)
     return false
   }
@@ -314,7 +314,7 @@ const POACHED = defineScript('luxury.staff.poached', (g, choice, data) => {
   if (!entry) return
   const { role, member } = entry
   if (choice === 'match') {
-    if (!spend(g, raise)) {
+    if (!spend(g, raise, 'wage')) {
       setStaff(g, id, null)
       log(g, `My ${role.label.toLowerCase()}, ${member.name}, was poached by a rival billionaire.`, 'bad')
       notice(g, 'Poached', `You couldn't scrape together ${formatMoney(raise)}, so ${member.name} took the rival's offer. The farewell hug was brief and businesslike.`, { emoji: role.emoji, tone: 'bad' })
@@ -346,7 +346,7 @@ export function yearlyStaff(g: GameState, budget: PopupBudget): void {
   const quit: string[] = []
   for (const { role, member } of roster) {
     const wage = staffWage(g, role, member.skill)
-    if (!spend(g, wage)) {
+    if (!spend(g, wage, 'wage')) {
       quit.push(`${member.name} (${role.label.toLowerCase()})`)
       setStaff(g, role.id, null)
       continue
@@ -358,7 +358,7 @@ export function yearlyStaff(g: GameState, budget: PopupBudget): void {
       const upkeep = g.assets.reduce((sum, asset) => sum + Math.max(0, asset.upkeep || 0), 0)
       const saved = nicePrice(Math.min(wage * 0.5, upkeep * (0.06 + member.skill * 0.02)))
       if (saved > 0) {
-        addMoney(g, saved)
+        addMoney(g, saved, 'living')
         count(g, 'estateManagementSavings', saved)
         log(g, `${member.name}, my estate manager, negotiated ${formatMoney(saved)} off this year's household and property bills.`, 'good')
       }

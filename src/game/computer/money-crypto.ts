@@ -2,6 +2,7 @@
 // then dump it or rug-pull it) and the other side of the trade, aping into a coin someone else
 // is shilling. Dumping on your own holders costs karma and draws angry holders, online sleuths,
 // lawsuits and, sometimes years later, the local securities regulator. Rug pulls are crimes.
+import { personCash } from '../cash'
 import { arrestPlayer } from '../crime'
 import { addHidden, addMoney, addRelationship, addStat, canAfford, count, formatMoney, log, notice, parents, relationLabel, remember, scriptChoice, scriptInput, shortMoney, spend, useYearAction } from '../core'
 import { localPick } from '../data/locales'
@@ -215,7 +216,7 @@ defineScript(NAME_SCRIPT, (g, value, data) => {
   if (!isRecord(data) || !canAct(g) || coinReason(g)) return
   const fee = dollars(num(data.fee))
   const name = cleanCoinName(value) || cleanCoinName(str(data.idea)) || 'MoonCoin'
-  if (!spend(g, fee)) {
+  if (!spend(g, fee, 'trade.buy')) {
     notice(g, 'Not Enough Money', `You can't cover the ${formatMoney(fee)} launch fee anymore.`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -271,7 +272,7 @@ defineScript(HYPE_SCRIPT, (g, choice, data) => {
   run.promos.push(choice)
   let text: string
   if (choice === 'shill') {
-    spend(g, shillCost(g))
+    spend(g, shillCost(g), 'marketing')
     run.cost += shillCost(g)
     const flagged = chance(g, 0.12)
     run.hype += flagged ? randInt(g, 5, 10) : randInt(g, 12, 20)
@@ -279,7 +280,7 @@ defineScript(HYPE_SCRIPT, (g, choice, data) => {
       ? `You paid for an army of "investor" accounts. Halfway through the campaign the platform banned most of them for all posting the exact same rocket emoji at 4:02 a.m.`
       : `You paid for an army of accounts with names like "CryptoKing" and "Satoshi's Cousin." By morning $${run.ticker} was trending in three group chats you've never heard of.`
   } else if (choice === 'celeb') {
-    spend(g, celebCost(g))
+    spend(g, celebCost(g), 'marketing')
     run.cost += celebCost(g)
     const celeb = pick(g, CELEB_POSTERS)
     const oops = chance(g, 0.15)
@@ -409,7 +410,7 @@ function finishCoin(g: GameState, run: CoinRun, outcome: CoinRecord['outcome'], 
   let recordIndex = -1
 
   if (outcome === 'rugged') {
-    addMoney(g, realized)
+    addMoney(g, realized, 'crime.take')
     count(g, 'moneyStolen', realized)
     count(g, 'thefts')
     count(g, 'rugPulls')
@@ -447,7 +448,7 @@ function finishCoin(g: GameState, run: CoinRun, outcome: CoinRecord['outcome'], 
   if (exposed && outcome !== 'dumpedOn' && c.age >= 18 && size >= 20_000) {
     const bill = dollars(realized * (0.2 + rand(g) * 0.25))
     const lender = 'Settlement Express Loans'
-    const financed = payOrBorrow(g, bill, lender)
+    const financed = payOrBorrow(g, bill, lender, 'legal')
     count(g, 'lawsuitsLost')
     parts.push(`Then ${holders(g, run.pool).toLocaleString('en-US')} angry holders filed a class action. You settled for ${paidText(bill, financed, lender)}.`)
   }
@@ -494,7 +495,7 @@ function finishCoin(g: GameState, run: CoinRun, outcome: CoinRecord['outcome'], 
       if (outcome === 'rugged') {
         const refund = Math.min(dollars(g.character.money), dollars(realized * (0.5 + rand(g) * 0.5)))
         if (refund > 0) {
-          addMoney(g, -refund)
+          addMoney(g, -refund, 'crime.cost')
           addHidden(g, 'karma', 5)
           parts.push(`They also made you send ${formatMoney(refund)} back to the holders you could find.`)
         }
@@ -584,7 +585,7 @@ defineScript(APE_SCRIPT, (g, choice, data) => {
   addScreenTime(g, 1)
   const r = apeMultiple(g, md.mania, md.winter)
   const payout = dollars(Math.min(amount * r.mult, amount + local(g, 250_000)))
-  addMoney(g, -amount)
+  addMoney(g, -amount, 'trade.buy')
   const tax = bankGain(g, st, payout - amount, payout, true)
   const net = payout - amount
   st.apes += 1
@@ -692,13 +693,13 @@ export function coinProbeNews(g: GameState, st: MoneyState): News | null {
         const ps = parents(gg)
         const payer = [...ps].sort((a, b) => b.money - a.money)[0]
         const fromKid = Math.min(dollars(cc.money), bill)
-        if (fromKid > 0) addMoney(gg, -fromKid)
-        if (payer && bill > fromKid) payer.money = Math.max(0, Math.round(payer.money - (bill - fromKid)))
+        if (fromKid > 0) addMoney(gg, -fromKid, 'fine')
+        if (payer && bill > fromKid) personCash(gg, payer, Math.max(0, Math.round(payer.money - (bill - fromKid))) - payer.money, 'fine', 0)
         how = `${payer ? `Your ${relationLabel(payer).toLowerCase()} had to cover what you couldn't.` : ''} ${parentsCatch(gg, 'the subject of a securities investigation', 2, 15)}`
       } else {
         // Loan screens and finance popups print the lender at the start of sentences too.
         const lender = cap(reg)
-        const financed = payOrBorrow(gg, bill, lender)
+        const financed = payOrBorrow(gg, bill, lender, 'fine')
         how = `You paid ${paidText(bill, financed, lender)}.`
       }
       addHidden(gg, 'notoriety', randInt(gg, 3, 8))

@@ -3,6 +3,7 @@
 // and invented music festivals) and theme parks. Each category has a seeded per-year line-up; a
 // ticket is a one-off purchase (no asset): pick a seat tier, maybe bring someone, and see what
 // happens. Per-year limits stop spam; kids go with a parent, who usually pays.
+import { personCash } from '../cash'
 import { hasTech } from '../history/timeline'
 import { anachronistic, common } from '../events/era'
 import { addCondition, companionCandidates, payingParents } from '../activities/common'
@@ -1234,8 +1235,8 @@ export function goToEvent(g: GameState, ev: TicketEvent, tierIndex: number, comp
   if (c.age < 18 && tierIndex <= 1) {
     paidBy = payingParents(g).filter((p) => p.money >= cost * 2).sort((a, b) => b.relationship - a.relationship)[0] ?? null
   }
-  if (paidBy) paidBy.money = Math.max(0, Math.round(paidBy.money - cost))
-  else if (!spend(g, cost)) {
+  if (paidBy) personCash(g, paidBy, Math.max(0, Math.round(paidBy.money - cost)) - paidBy.money, 'leisure', 0)
+  else if (!spend(g, cost, 'leisure')) {
     notice(g, 'Insufficient Funds', `${tickets === 2 ? 'Two' : 'A'} ${tier.label.toLowerCase()} ticket${tickets === 2 ? 's' : ''} for ${ev.title} cost${tickets === 2 ? '' : 's'} ${formatMoney(cost)}. You have ${formatMoney(Math.max(0, c.money))}.`, { emoji: '💸', tone: 'bad' })
     return false
   }

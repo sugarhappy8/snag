@@ -43,13 +43,14 @@ export function settleCharter(g: GameState, a: Asset): void {
   const luxuryCrew = a.details.luxury === 'jet' || a.details.luxury === 'megayacht'
   const operating = Math.round(weekly * weeks * .35 * e.sectors.energy.costs + a.value * (luxuryCrew ? .001 : .003) + (p.insured ? a.value * .002 : 0))
   if (g.character.money < operating) { save(a, p); log(g, `I paused charters of ${a.name}: operating cash was insufficient.`, 'bad'); return }
-  spend(g, operating)
+  spend(g, operating, 'purchase')
   const commission = Math.round(gross * .2), incident = weeks > 0 && chance(g, .025 + (100 - a.condition) / 1000)
   const repair = incident ? Math.round(a.value * .015 * (p.insured ? .2 : 1)) : 0
   // Crew/fuel are paid up front; fees and insured excess are settled from receipts.
-  addMoney(g, gross - commission - repair)
+  addMoney(g, gross - commission - repair, 'sales')
   p.gross = gross; p.expenses = operating + commission + repair; p.net = gross - p.expenses; p.booked = weeks
-  if (p.net > 0) { addMoney(g, -p.net); earnIncome(g, p.net) }
+  // The pair makes the net taxable without moving it: two rows that cancel in the player's cash.
+  if (p.net > 0) { addMoney(g, -p.net, 'purchase'); earnIncome(g, p.net, 'royalty') }
   a.condition = Math.max(0, a.condition - weeks * .2 - (incident ? 7 : 0))
   count(g, 'charterIncome', Math.max(0, p.net)); save(a, p)
   log(g, `${a.name}: ${weeks} charter weeks, ${formatMoney(gross)} gross, ${formatMoney(p.expenses)} operating costs, ${formatMoney(p.net)} net before ordinary upkeep.${incident ? ' An incident required repairs.' : ''}`, p.net > 0 ? 'good' : 'bad')

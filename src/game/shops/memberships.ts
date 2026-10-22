@@ -254,7 +254,7 @@ export function joinMembership(g: GameState, planId: string, tierId: string): As
     }
   }
   const total = fee + initiation
-  if (!spend(g, total)) {
+  if (!spend(g, total, 'leisure')) {
     notice(g, 'Insufficient Funds', `Joining ${name} costs ${formatMoney(total)}${initiation ? ` (${formatMoney(initiation)} initiation fee + ${formatMoney(fee)} for the first year)` : ' for the first year'}. You have ${formatMoney(Math.max(0, c.money))}.`, { emoji: '💸', tone: 'bad' })
     return null
   }
@@ -303,7 +303,7 @@ export function changeTier(g: GameState, assetId: string, tierId: string): boole
   const newFee = planFee(g, plan, to)
   if (newFee > oldFee) {
     const diff = newFee - oldFee
-    if (!spend(g, diff)) {
+    if (!spend(g, diff, 'leisure')) {
       notice(g, 'Insufficient Funds', `Upgrading to ${to.label} costs ${formatMoney(diff)} now. You have ${formatMoney(Math.max(0, g.character.money))}.`, { emoji: '💸', tone: 'bad' })
       return false
     }
@@ -859,7 +859,7 @@ export function yearlyMemberships(g: GameState): void {
       if (living > 0) {
         const saved = Math.round(living * (str(a.details.tier) === 'executive' ? 0.05 : 0.035))
         if (saved > 0) {
-          addMoney(g, saved)
+          addMoney(g, saved, 'living')
           if (chance(g, 0.4)) log(g, `Buying in bulk at ${a.name} saved me about ${formatMoney(saved)} on groceries this year.`, 'good')
         }
       }

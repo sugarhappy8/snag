@@ -140,7 +140,7 @@ export function buyLot(g: GameState, lot: Lot): Asset | null {
     notice(g, 'Sold', 'The hammer already fell on that lot.', { emoji: '🔨' })
     return null
   }
-  if (!spend(g, lot.price)) {
+  if (!spend(g, lot.price, 'asset.buy')) {
     cantAfford(g, lot.price, lot.title)
     return null
   }
@@ -332,7 +332,7 @@ const BOOK_TRIP = defineScript('luxury.trip.book', (g, choice, data) => {
       notice(g, 'Fully Rested', 'You have already had two grand stays this year. The concierge suggests your own bed.', { emoji: '🏨' })
       return
     }
-    if (!spend(g, cost)) {
+    if (!spend(g, cost, 'leisure')) {
       cantAfford(g, cost, `${nights} nights at ${s.name}`)
       g.yearActions[tripKey('stay')] = Math.max(0, (g.yearActions[tripKey('stay')] ?? 1) - 1)
       return
@@ -347,7 +347,7 @@ const BOOK_TRIP = defineScript('luxury.trip.book', (g, choice, data) => {
     notice(g, 'Frequent Flyer', 'Two grand journeys is plenty for a year. The luggage needs a rest too.', { emoji: '✈️' })
     return
   }
-  if (!spend(g, cost)) {
+  if (!spend(g, cost, 'leisure')) {
     cantAfford(g, cost, v.label)
     g.yearActions[tripKey('fly')] = Math.max(0, (g.yearActions[tripKey('fly')] ?? 1) - 1)
     return
