@@ -164,7 +164,7 @@ export const STREAM_SLICES: Readonly<Record<string, StreamRow>> = {
   },
   frontier: {
     slices: ['world', 'flagsPersonal', 'text'],
-    why: 'R3-F1 applyDisclosure draws a disclosure\'s luck from outcomeStream(g, "frontier", year, ...); the shard feeds the Workshop race year, which drops an idea from the notebook flag and logs it, and no played life writes a disclosure yet',
+    why: 'R3-F1 applyDisclosure draws a disclosure\'s luck, and R3-F2 stepFrontier a rival\'s follow, from outcomeStream(g, "frontier", year, ...); the shard feeds the Workshop race year, which drops an idea from the notebook flag and logs it, and no played life writes a disclosure yet, so the yearly step finds no shard and draws nothing',
     driven: true,
   },
 }
