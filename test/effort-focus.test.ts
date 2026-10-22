@@ -742,8 +742,10 @@ describe('the Profile row', () => {
   it('shows the ambition as a word at 18 and nothing at 17', async () => {
     const store = await import('../src/ui/store')
     const { ProfileSheet, ambitionRows } = await import('../src/ui/components/ProfileSheet')
+    // The store life is a shell that the game under test replaces at once: a tuple, not a pinned seed (test/seed-pins.test.ts).
+    const SHELL = [3, 2026] as const
     const render = (g: GameState): string => {
-      store.startNewLife({ seed: 3, year: 2026 })
+      store.startNewLife({ seed: SHELL[0], year: SHELL[1] })
       store.act((draft) => Object.assign(draft, structuredClone(g)))
       return renderToStaticMarkup(createElement(ProfileSheet, { onClose: () => {} }))
     }
