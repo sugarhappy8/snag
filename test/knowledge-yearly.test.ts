@@ -15,7 +15,7 @@ import type { Reveal } from '../src/game/effort/types'
 import { checkLedger } from '../src/game/kernel/ledger'
 import { learn, readKnow, storedEstimates, takeReading } from '../src/game/knowledge/contract'
 import { buyIntel } from '../src/game/knowledge/intel'
-import { registerKeyKind } from '../src/game/knowledge/kinds'
+import { overrideKeyKind } from '../src/game/knowledge/kinds'
 import { applyReveals, yearlyKnowledge } from '../src/game/knowledge/module'
 import { HAZARD_CRIME, hazardOf } from '../src/game/knowledge/risk'
 import { LAPSE_LINES, STANDING_LINES, ordersFor, quoteOrders, setDial } from '../src/game/knowledge/standing'
@@ -27,7 +27,7 @@ import { flowTotal } from './ledger-kit'
 const TRUTH = new Map<string, number>()
 const REVEALED = new Map<string, string[]>()
 for (const kind of ['mkt', 'riv', 'cand']) {
-  registerKeyKind({
+  overrideKeyKind({
     kind,
     label: (_g, key) => `Number ${key.split(':')[1]}`,
     truth: (_g, key) => TRUTH.get(key) ?? null,

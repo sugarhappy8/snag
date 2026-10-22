@@ -4,7 +4,7 @@ Since R3 (v5.1.0) the game stops handing the player every hidden number. A marke
 odds of a vote, what a private company is worth: each is something the player estimates, and a better source narrows the estimate for
 a price. This page is the model, the rules, the vocabulary and the recipes for the next author. The code is `src/game/knowledge/`
 (a layer 3 domain with one door, `knowledge/contract.ts`), the Settings card is `src/ui/components/InfoSettings.tsx`, and the guards
-are listed at the end.
+are listed at the end. The screens that call it, which numbers they fog and which stay exact are in `docs/FOG.md`.
 
 Three promises hold everywhere, and the tests check each one.
 
@@ -230,8 +230,9 @@ that changes the floors of another is a decision for the owner.
 `knowledge/contract.ts` is the one door. Another domain (the Fog track, the Effort migration, the UI) imports this file and nothing else
 of the folder; an import of `knowledge/mode.ts` or `knowledge/estimate.ts` from outside fails `layers-domains`. It exports:
 
-- the estimate core: `know`, `estimate`, `readValue`, `mergeReadings`, `agedSd`, `BAND_Z`, `SD_MIN`, and the types `Estimate`, `EstimateOpts`,
-  `Ladder`, `StoredRow` and `Unit`;
+- the estimate core: `know`, `estimate`, `readValue`, `mergeReadings`, `agedSd`, `wordsFor` (the one formatter, for a band a screen derives from
+  an estimate, such as a stake as a share of a valuation), `BAND_Z`, `SD_MIN`, and the types `Estimate`, `EstimateOpts`, `Ladder`, `StoredRow` and
+  `Unit`;
 - the mode: `infoMode`, `isExact`, `setInfoOverride`, `withInfoMode` and the type `InfoMode`;
 - the record: `KNOW_FLAG`, `KNOW_LIMITS`, `readKnow`, `storedEstimates`, `learn`, `widen`, `forget` and the type `KnowRec`;
 - the sources: `buyIntel`, `takeReading`, `ingestSignal`, `offersFor` and the types `Offer`, `Scope` and `SourceId`;

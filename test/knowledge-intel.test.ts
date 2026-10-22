@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 import { checkLedger } from '../src/game/kernel/ledger'
 import { KNOW_LIMITS, forget, readKnow, storedEstimates, know } from '../src/game/knowledge/contract'
 import { LOG_POOLS, MAX_KEYS, buyIntel, ingestSignal, offersFor, takeReading } from '../src/game/knowledge/intel'
-import { registerKeyKind } from '../src/game/knowledge/kinds'
+import { overrideKeyKind } from '../src/game/knowledge/kinds'
 import { HAZARD_CRIME, HEAT_MAX, HIT_LOGS, HIT_NOTES, hazardOf, hazardP, hazardRoll, settleHazard } from '../src/game/knowledge/risk'
 import { SOURCES, priceOf } from '../src/game/knowledge/sources'
 import { withInfoMode } from '../src/game/knowledge/mode'
@@ -28,7 +28,7 @@ import { acctOf, flowTotal } from './ledger-kit'
 const TRUTH = new Map<string, number>()
 const SCOPE = new Map<string, { tier: 1 | 2 | 3; country?: string; countries?: number; deal?: number }>()
 for (const kind of ['mkt', 'riv', 'val', 'cand', 'ppl', 'eco']) {
-  registerKeyKind({
+  overrideKeyKind({
     kind,
     label: (_g, key) => `the ${key}`,
     truth: (_g, key) => TRUTH.get(key) ?? null,
@@ -353,7 +353,7 @@ describe('buyIntel: the refusals write nothing', () => {
   })
 
   it('a provider that throws is a key with no truth', () => {
-    registerKeyKind({ kind: 'cmp', label: () => 'x', truth: () => { throw new Error('boom') } })
+    overrideKeyKind({ kind: 'cmp', label: () => 'x', truth: () => { throw new Error('boom') } })
     const g = life()
     const json = snap(g)
     expect(buy(g, 'report', ['cmp:a:score']).ok).toBe(false)

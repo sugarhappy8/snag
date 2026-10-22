@@ -64,7 +64,7 @@ import { MAX_SERIES, SERIES, milestoneListingBlock, timesDone, type Drug, type T
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
 import { CHIP_LANES, laneOpen, type ChipLane } from './silicon-data'
-import { laneSubtitle, policySubtitle, siliconRows } from './silicon-text'
+import { laneSubtitle, policySubtitle, siliconBoard } from './silicon-text'
 import { bizOf, findBusiness, readBiz, runsIt, type BizState } from './state'
 import { deepWaveIf, INSIDER_WARNING } from './tech-wave-data'
 import { clampN, money, num, pct, plural, rec, str, toJson, unitMoney, units } from './util'
@@ -508,8 +508,8 @@ function fundingMenu(a: Asset): MenuGroup {
 // ---------------------------------------------------------------------------
 // Industry screens
 
-function infoNode(a: Asset, key: string, text: string, emoji: string): MenuNode {
-  return { type: 'info', id: `dt.i.${key}.${a.id}`, text, emoji }
+function infoNode(a: Asset, key: string, text: string, emoji: string, conf?: 0 | 1 | 2 | 3): MenuNode {
+  return { type: 'info', id: `dt.i.${key}.${a.id}`, text, emoji, ...(conf !== undefined ? { conf } : {}) }
 }
 
 /**
@@ -582,11 +582,11 @@ function chipsNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode
   if (t.deal) nodes.push(infoNode(a, 'deal', `${t.deal.name}: ${money(t.deal.perYear)}/yr for ${plural(t.deal.years, 'more year')}`, '\u{1F91D}'))
   // Silicon 2.0, from stage 2: goodwill and where the chips stand, then one price row per open extra lane and the pricing policy.
   if (t.stage >= 2) {
-    const rows = siliconRows(g, b, t)
+    const { rows, conf } = siliconBoard(g, b, t)
     nodes.push(
       infoNode(a, 'goodwill', rows.goodwill, '\u{1F91D}'),
-      infoNode(a, 'perf', rows.perf, '\u{1F4CA}'),
-      infoNode(a, 'quality', rows.quality, '\u{1F4CA}'),
+      infoNode(a, 'perf', rows.perf, '\u{1F4CA}', conf.perf),
+      infoNode(a, 'quality', rows.quality, '\u{1F4CA}', conf.quality),
       infoNode(a, 'price', rows.price, '\u{1F4CA}'),
       infoNode(a, 'share', rows.share, '\u{1F4CA}'),
     )

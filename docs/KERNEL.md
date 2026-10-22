@@ -71,6 +71,7 @@ When a domain needs another domain, it imports that domain's `contract.ts`, or d
 | `business.discloseResearch` | `business/contract.ts` | `business/tech-waves.ts` |
 | `computer.gameMakingMenu` | `computer/contract.ts` | `special/gamedev-make.ts` |
 | `activities.relocate` | `activities/contract.ts` | `activities/immigration-move.ts` |
+| `talents.hintLens` | `talents.ts` | `fog/hint/lens.ts` |
 | `workplace.ordinaryJobs` | `workplace/contract.ts` | `careers.ts` |
 
 An unbound port degrades quietly (an empty menu row, a skipped revaluation), so `test/hub-entry.test.ts` checks that every port is bound after entering through `aging` and `menus`. A test that fails only because a provider is not loaded gets a side-effect import of the provider, never a changed assertion.

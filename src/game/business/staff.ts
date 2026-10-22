@@ -2,6 +2,7 @@
 // hired to match the production plan automatically; you control their pay policy and morale.
 import { firmCash } from '../cash'
 import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
+import { isExact } from '../knowledge/contract'
 import { bell, chance, rand, randInt, uid, weightedPick } from '../rng'
 import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
@@ -15,6 +16,7 @@ import { manageBlock, noCash, tooBusy } from './gate'
 import { familyStaffLine } from './nepo-staff-line'
 import { industryDef, type RoleDef } from './industries'
 import { sectorRoleBlurb } from './sector-data'
+import { CAND_MAX, candidateLabel, candidateLine, candidateRead, dropVet, hireFooter, hireLookRow, shortlistId, takeVet, validId, vetChoice, vetFee, type Vet } from './staff-fog'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
 import { clampN, markBest, money, num, rec, str, toJson } from './util'
 import { leadershipPower, leadershipSummary, LEADERSHIP } from './leadership'
@@ -119,14 +121,83 @@ export function bestRole(g: GameState, b: BizState): { role: RoleDef; value: num
   return best
 }
 
+/** A candidate as the popup data holds it (the true values), read the way the hire below reads it; null for anything that is not an object. */
+function asCandidate(v: Json | undefined): Candidate | null {
+  const raw = rec(v)
+  if (!raw) return null
+  return {
+    firstName: str(raw.firstName, 'Alex'),
+    lastName: str(raw.lastName, 'Lee'),
+    gender: raw.gender === 'female' ? 'female' : 'male',
+    age: num(raw.age, 35),
+    skill: clampN(num(raw.skill, 50), 0, 100),
+    salary: Math.max(0, num(raw.salary)),
+    trait: str(raw.trait, 'steady'),
+  }
+}
+
+/**
+ * Put a shortlist in front of the player. `id` names it (shortlistId) and `vet` says a background check has been paid for. Exact mode
+ * prints what it always printed, with the data as it was; Realistic shows ranges and an unclear trait, offers the check before
+ * "Hire nobody" (which stays last) when the company can pay for it, and records the name and the check in the data.
+ */
+function openShortlist(g: GameState, a: Asset, b: BizState, role: RoleDef, list: Candidate[], id: string, vet: Vet): void {
+  const exact = isExact()
+  const reads = list.map((c, i) => candidateRead(g, id, i, c, vet))
+  const lines = list.map((c, i) => candidateLine(c, reads[i], formatMoney(c.salary)))
+  const fee = vetFee(b, role)
+  const canVet = !exact && vet === 0 && b.cash >= fee
+  const choices: ChoiceOption[] = [
+    ...list.map((c, i) => ({ id: `c${i}`, label: candidateLabel(c, reads[i], money(c.salary)), emoji: c.gender === 'female' ? '\u{1F469}' : '\u{1F468}' })),
+    ...(canVet ? [vetChoice(fee)] : []),
+    { id: 'none', label: 'Hire nobody', emoji: '\u{2716}\u{FE0F}' },
+  ]
+  if (hasTalent(g, 'Business')) {
+    const w = bizWorth(g, b)
+    const values = list.map((c) => hireValue(g, b, w, role.focus, c))
+    markBest(g, choices, (cid) => (cid === 'none' ? 0 : cid === 'vet' ? null : (values[Number(cid.slice(1))] ?? null)), (cid, margin) =>
+      cid === 'none' ? 'Best move: none of them would earn their salary' : `Best hire: worth about ${money(values[Number(cid.slice(1))] / LASTING_YEARS)} a year after pay${margin < 500 ? ' (a close call)' : ''}`,
+    )
+  }
+  const title = roleTitle(g, b.countryId, role.title)
+  scriptChoice(g, HIRE, `Hiring a ${title}`, `You interviewed ${list.length} candidates in ${b.city}:\n${lines.join('\n')}${hireFooter(reads, vet, canVet || vet === 1 ? fee : null)}`, choices, {
+    emoji: '\u{1F4BC}',
+    data: { assetId: a.id, role: title, focus: role.focus, candidates: toJson(list), ...(exact ? {} : { ck: id, vet }) },
+  })
+}
+
 const HIRE = defineScript('business.hire', (g, choice, data) => {
   const d = rec(data)
+  // A settled shortlist (hired, or nobody) forgets its background checks; the choice to check keeps them.
+  if (d && choice !== 'vet') {
+    const id = validId(d.ck)
+    if (id) dropVet(g, id, Array.isArray(d.candidates) ? d.candidates.length : 0)
+  }
   const a = findBusiness(g, str(d?.assetId))
   if (!a || !d || choice === 'none' || manageBlock(g, a)) return
   const b = bizOf(g, a)
   const requested = str(d.role)
   const role = industryDef(b.industry).roles.find((r) => sameRole(requested, r.title) || sameRole(requested, roleTitle(g, b.countryId, r.title)))
   if (!role || b.staff.some((s) => sameRole(s.role, role.title))) return
+  if (choice === 'vet') {
+    // A background check: the fee once, one diligence reading per candidate, then the same shortlist again with the traits named.
+    const id = validId(d.ck)
+    const cands = (Array.isArray(d.candidates) ? d.candidates : []).slice(0, CAND_MAX).map(asCandidate)
+    const known = cands.filter((c): c is Candidate => c !== null)
+    if (isExact() || !id || known.length === 0 || known.length !== cands.length) return
+    const fee = vetFee(b, role)
+    if (b.cash < fee) {
+      noCash(g, a, fee, 'background checks')
+      openShortlist(g, a, b, role, known, id, 0)
+      return
+    }
+    if (takeVet(g, id, known)) {
+      firmCash(g, b, -fee, 'inputs', a.id)
+      b.yearCosts += fee
+    }
+    openShortlist(g, a, b, role, known, id, 1)
+    return
+  }
   const list = Array.isArray(d.candidates) ? d.candidates : []
   const raw = rec(list[Number(choice.replace('c', ''))] as Json)
   if (!raw) return
@@ -198,29 +269,13 @@ function interviewAction(a: Asset, role: RoleDef, g0: GameState): MenuAction {
       const b = bizOf(g, cur)
       if (b.staff.length >= maxKeyStaff(b) || b.staff.some((s) => sameRole(s.role, role.title))) return
       // No calendar cap: every round costs a headhunter's fee, dearer each time this year.
-      const fee = interviewFee(b, role, yearActionsUsed(g, `biz.interview.${a.id}`))
+      const round = yearActionsUsed(g, `biz.interview.${a.id}`)
+      const fee = interviewFee(b, role, round)
       if (b.cash < fee) return noCash(g, cur, fee, 'a headhunter')
       useYearAction(g, `biz.interview.${a.id}`, Number.MAX_SAFE_INTEGER)
       firmCash(g, b, -fee, 'inputs', cur.id)
       b.yearCosts += fee
-      const list = candidatesFor(g, b, role)
-      const lines = list.map((c) => `• ${c.firstName} ${c.lastName}, ${c.age}: skill ${c.skill}/100, asks ${formatMoney(c.salary)}, ${traitOf(c.trait).label.toLowerCase()}.`)
-      const choices: ChoiceOption[] = [
-        ...list.map((c, i) => ({ id: `c${i}`, label: `${c.firstName} ${c.lastName} · ${c.skill}/100 · ${money(c.salary)}`, emoji: c.gender === 'female' ? '\u{1F469}' : '\u{1F468}' })),
-        { id: 'none', label: 'Hire nobody', emoji: '\u{2716}\u{FE0F}' },
-      ]
-      if (hasTalent(g, 'Business')) {
-        const w = bizWorth(g, b)
-        const values = list.map((c) => hireValue(g, b, w, role.focus, c))
-        markBest(g, choices, (id) => (id === 'none' ? 0 : (values[Number(id.slice(1))] ?? null)), (id, margin) =>
-          id === 'none' ? 'Best move: none of them would earn their salary' : `Best hire: worth about ${money(values[Number(id.slice(1))] / LASTING_YEARS)} a year after pay${margin < 500 ? ' (a close call)' : ''}`,
-        )
-      }
-      const title = roleTitle(g, b.countryId, role.title)
-      scriptChoice(g, HIRE, `Hiring a ${title}`, `You interviewed ${list.length} candidates in ${b.city}:\n${lines.join('\n')}`, choices, {
-        emoji: '\u{1F4BC}',
-        data: { assetId: cur.id, role: title, focus: role.focus, candidates: toJson(list) },
-      })
+      openShortlist(g, cur, b, role, candidatesFor(g, b, role), shortlistId(cur.id, g.year, round, role.title), 0)
     },
   }
 }
@@ -251,7 +306,8 @@ export function hireMenu(a: Asset): MenuGroup {
     },
     children: (g) => {
       const b = readBiz(g, a)
-      return industryDef(b.industry).roles.map((r) => interviewAction(a, r, g))
+      const look = hireLookRow(a.id)
+      return [...industryDef(b.industry).roles.map((r) => interviewAction(a, r, g)), ...(look ? [look] : [])]
     },
   }
 }

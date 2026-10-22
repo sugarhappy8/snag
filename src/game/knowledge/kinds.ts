@@ -38,14 +38,19 @@ function fingerprint(def: KeyKind): string {
   }).join('\u0001')
 }
 
-/** Register how to find the truth of a key kind. Throws for a kind that cannot start a key, a def without its two functions, or a different def for a taken kind. */
-export function registerKeyKind(def: KeyKind): void {
+/** A def that can be held: a kind that can start a key, a label and a truth, and optional hooks that are functions. Throws otherwise. */
+function checked(def: KeyKind): void {
   if (typeof def !== 'object' || def === null) throw new Error('registerKeyKind: the def is not an object')
   if (!isKindName(def.kind)) throw new Error(`registerKeyKind: ${String(def.kind)} cannot start a key`)
   if (typeof def.label !== 'function' || typeof def.truth !== 'function') throw new Error(`registerKeyKind: ${def.kind} needs a label and a truth`)
   for (const h of ['scope', 'scale', 'revealedBy'] as const) {
     if (def[h] !== undefined && typeof def[h] !== 'function') throw new Error(`registerKeyKind: ${def.kind} ${h} is not a function`)
   }
+}
+
+/** Register how to find the truth of a key kind. Throws for a kind that cannot start a key, a def without its two functions, or a different def for a taken kind. */
+export function registerKeyKind(def: KeyKind): void {
+  checked(def)
   const held = registry.get(def.kind)
   if (held === undefined) {
     registry.set(def.kind, def)
@@ -53,6 +58,16 @@ export function registerKeyKind(def: KeyKind): void {
   }
   if (held === def || fingerprint(held) === fingerprint(def)) return
   throw new Error(`registerKeyKind: ${def.kind} is already registered with a different def`)
+}
+
+/**
+ * For tests: hold this def for its kind whatever the game registered, so a test can read a kind (mkt, riv, cmp) through truths of its
+ * own. The game never calls this (it registers, and a clash throws). The registry lives in one module graph, which is one test file,
+ * so an override never reaches another file; it is how a Knowledge test keeps synthetic keys while the Fog track owns the real kinds.
+ */
+export function overrideKeyKind(def: KeyKind): void {
+  checked(def)
+  registry.set(def.kind, def)
 }
 
 /** The def registered for a kind, or null. */

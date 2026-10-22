@@ -7,7 +7,7 @@ import { economyOf } from '../economy'
 import { chance } from '../rng'
 import { defineScript } from '../scripts'
 import { readBiz } from '../business/state'
-import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
+import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
 import {
   BUDGET, BUDGET_LINES, GROUP_IDS, GROUPS, INPUT_LABEL, LEGAL, LEGAL_IDS, NEW_TAXES, NEW_TAX_IDS, SECTOR_LABEL, STATE_SECTORS, TARGET_INDUSTRIES, TAXES, TAX_IDS, TRADE_INPUT_IDS,
@@ -16,14 +16,21 @@ import {
 } from './data'
 import { sharedBloc } from '../business/market-trade'
 import { chargeChance, exposureChance, coupChance } from './consequences'
+import { isExact } from '../knowledge/contract'
 import { approvalTarget, openReport, ratingFor } from './yearly'
 import { governmentSeats, legislatureOf } from './legislature'
 import { legalBase } from './laws'
 import { measureBlock, partnersOf, previewOf, propose, currentOf, decreeRule, type Measure } from './govern'
 import { officeView, powerFor, powerLine, PORTFOLIO_TITLE, PORTFOLIOS, setPortfolio, type OfficeView, type Portfolio } from './office'
-import { editMe, meView, policyOf, writeMe } from './state'
+import { editMe, meView, policyOf, writeMe, type CaseFile } from './state'
 import { bringHome, homeCap, launder, launderFronts, launderQuote, moveOffshore, offshoreCaught, OFFSHORE_FEE, runScheme, schemeBlock, schemeQuote, SCHEMES, steerBlock, steerContract, steerQuote, steerTargets } from './graft'
 import { persecute, persecuteBlock, persecuteOdds, REGIME, REGIME_IDS, regimeBlock, regimeOdds, rivalTargets, takeStep, mediaCost, securityCost, voteCost } from './regime'
+import {
+  CASES_SHOWN, GUILE, POWER, SCHEME_GREED,
+  cabinetKey, cabinetOdds, chanceText, chargeKey, coupKey, dashKeys, dirtyKeys, exileKey, flaggedKey, governKeys, jailKey, keepKeys, launderKey, offshoreKey, openCases, pocketKeys, proof, proofKey, regimeKey, riskBriefing, steerKey, surfaceKey, traceKey,
+} from './odds-read'
+
+export { cabinetOdds }
 
 const pct = (n: number, d = 0) => `${(n * 100).toFixed(d)}%`
 const signed = (n: number, unit: string) => `${n > 0 ? '+' : ''}${n}${unit}`
@@ -301,14 +308,6 @@ function lawsMenu(): MenuGroup {
 
 const CABINET_SCRIPT = 'nation.cabinet'
 
-/** Odds the head of government gives you a portfolio (pure). */
-export function cabinetOdds(g: GameState, v: OfficeView): number {
-  const leg = legislatureOf(g, g.character.countryId)
-  if (!leg.gov.includes(v.party)) return 0
-  const me = meView(g)
-  return Math.max(.05, Math.min(.85, .15 + (v.approval - 50) / 120 + me.capital / 250 + (v.terms - 1) * .08))
-}
-
 defineScript(CABINET_SCRIPT, (g, choice) => {
   const v = officeView(g)
   if (!v || !v.legislator && !v.regionalHead || v.portfolio || !(PORTFOLIOS as string[]).includes(choice)) return
@@ -329,7 +328,7 @@ function cabinetAction(): MenuAction {
   return {
     type: 'action', id: 'nation.cabinet', label: 'Seek a Cabinet Post', emoji: '🎖️',
     visible: (g) => { const v = v0(g); return !!v && (v.legislator || v.regionalHead) && !v.portfolio },
-    subtitle: (g) => { const v = v0(g); return v ? `Odds ${pct(cabinetOdds(g, v))} · costs 10 capital` : '' },
+    subtitle: (g) => { const v = v0(g); return v ? `Odds ${chanceText(g, cabinetKey(g), cabinetOdds(g, v), POWER)} · costs 10 capital` : '' },
     disabledReason: (g) => {
       const v = v0(g)
       if (!v) return 'You need to hold office.'
@@ -353,14 +352,65 @@ export function governMenu(): MenuGroup {
     visible: (g) => { const v = v0(g); return !!v && v.rank >= 1 },
     subtitle: (g) => { const v = v0(g); return v ? powerLine(v).slice(0, 90) : '' },
     header: (g) => { const v = v0(g); return v ? `${powerLine(v)}${decreeRule(g) ? ' You rule by decree: no votes needed.' : ''}` : '' },
-    children: () => [taxesMenu(), budgetMenu(), tradeMenu(), lawsMenu(), cabinetAction(),
-      { type: 'action', id: 'nation.report', label: 'State of the Nation', emoji: '📰', subtitle: 'This year\'s report card', visible: (g) => (v0(g)?.rank ?? 0) >= 2, run: (g) => openReport(g) }],
+    children: (g) => {
+      const rows: MenuNode[] = [taxesMenu(), budgetMenu(), tradeMenu(), lawsMenu(), cabinetAction(),
+        { type: 'action', id: 'nation.report', label: 'State of the Nation', emoji: '📰', subtitle: 'This year\'s report card', visible: (gg) => (v0(gg)?.rank ?? 0) >= 2, run: (gg) => openReport(gg) }]
+      const look = riskBriefing(g, 'nation.govern', governKeys(g))
+      return look ? [...rows, look] : rows
+    },
   }
 }
 
 function regimeLabel(g: GameState): string {
   const r = policyOf(g, g.character.countryId).institutions.regime
   return r === 'authoritarian' ? 'Rule by decree' : r === 'hybrid' ? 'Eroding democracy' : 'Democracy'
+}
+
+/** A case file on the dashboard: what is known, and how likely it is to hurt (a word in Realistic mode, today's percent in Exact). */
+function caseRow(g: GameState, cs: CaseFile): string {
+  const head = `${cs.label} (${cs.year}) · `
+  if (cs.status === 'pending') {
+    const p = chanceText(g, chargeKey(cs), chargeChance(g, cs), GUILE)
+    return isExact() ? `${head}public, under investigation · ${p} a year they charge you once nothing protects you` : `${head}public, under investigation · the chance they charge you each year, once nothing protects you: ${p}`
+  }
+  const e = proof(g, proofKey(cs), cs.evidence, GUILE)
+  const p = chanceText(g, surfaceKey(cs), exposureChance(g, cs, true, false), GUILE)
+  return isExact() ? `${head}evidence ${e} · ${p} chance a year it surfaces` : `${head}evidence ${e} · chance it surfaces in a year: ${p}`
+}
+
+/** The preview of a scheme at `size`: what it takes, how likely the auditors are to flag it, how much evidence it leaves. */
+function schemePreview(g: GameState, v: OfficeView, def: (typeof SCHEMES)[number], size: number): string {
+  const q = schemeQuote(g, v, def, size)
+  const base = schemeQuote(g, v, def, SCHEME_GREED)
+  const caught = chanceText(g, flaggedKey(def.id), q.caught, GUILE, { base: base.caught })
+  const trace = proof(g, traceKey(def.id), q.evidence, GUILE, base.evidence)
+  return isExact() ? `Take ${formatMoney(q.take)} · ${caught} chance an auditor flags it this year · leaves evidence ${trace}` : `Take ${formatMoney(q.take)} · chance an auditor flags it this year: ${caught} · evidence it leaves: ${trace}`
+}
+
+/** A contract steered to your own company: the money, and how likely the press is to notice. */
+function steerLine(g: GameState, a: Asset, q: ReturnType<typeof steerQuote>): string {
+  const p = chanceText(g, steerKey(a.id), q.caught, GUILE)
+  const head = `${formatMoney(q.value)} contract · ${formatMoney(q.markup)} markup`
+  return isExact() ? `${head} · ${p} chance reporters notice` : `${head} · chance reporters notice: ${p}`
+}
+
+/** Dirty money run through a company's books: what goes in, what comes out, and how likely it is to be caught. */
+function launderLine(g: GameState, a: Asset, q: ReturnType<typeof launderQuote>): string {
+  const p = chanceText(g, launderKey(a.id), q.caught, GUILE)
+  const head = `Run ${formatMoney(q.amount)} through ${readBiz(g, a).industry} books · ${formatMoney(q.kept)} arrives`
+  return isExact() ? `${head} · ${p} risk` : `${head} · risk of being caught: ${p}`
+}
+
+/** The offshore wire: the published fee, and how likely the wire is to be stopped. */
+function offshoreLine(g: GameState): string {
+  const p = chanceText(g, offshoreKey(g), offshoreCaught(g), GUILE)
+  return isExact() ? `${pct(OFFSHORE_FEE)} fee · ${p} risk the wire is stopped` : `${pct(OFFSHORE_FEE)} fee · chance the wire is stopped: ${p}`
+}
+
+/** Jailing or exiling a rival: how likely it is to work. */
+function rivalLine(g: GameState, exile: boolean): string {
+  const p = chanceText(g, exile ? exileKey(g) : jailKey(g), persecuteOdds(g, exile), POWER)
+  return isExact() ? `${p} ${exile ? 'they flee' : 'the charges stick'}` : `Chance ${exile ? 'they flee' : 'the charges stick'}: ${p}`
 }
 
 export function dashboardMenu(): MenuGroup {
@@ -406,16 +456,14 @@ export function dashboardMenu(): MenuGroup {
       const inst = p.institutions
       const instBits = [inst.courtPacked > 0 ? `courts ${pct(inst.courtPacked)} loyal` : '', inst.mediaControl > 0 ? `media ${pct(inst.mediaControl)} friendly` : '', inst.extraTerms ? (inst.extraTerms >= 99 ? 'no term limit' : `+${inst.extraTerms} term${inst.extraTerms === 1 ? '' : 's'} allowed`) : '', inst.emergencyUntil >= g.year ? `emergency until ${inst.emergencyUntil}` : '', inst.postponedUntil > g.year ? `election postponed to ${inst.postponedUntil}` : ''].filter(Boolean)
       if (instBits.length) info('institutions', '🏛️', instBits.join(' · '))
-      if (v.leader) info('coup', '🪖', `Coup risk this year: ${pct(coupChance(g, v), 1)}`)
+      if (v.leader) info('coup', '🪖', `Coup risk this year: ${chanceText(g, coupKey(g), coupChance(g, v), POWER, { digits: 1 })}`)
       const bills = Array.isArray(g.character.job?.data.bills) ? (g.character.job!.data.bills as unknown[]).length : 0
       info('bills', '📝', `${bills} bill${bills === 1 ? '' : 's'} waiting on your desk`)
       rows.push({ type: 'heading', id: 'nation.dash.h.danger', label: 'Scandals and investigations' })
-      const open = me.cases.filter(c => c.status !== 'closed').sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.evidence - a.evidence)
+      const open = openCases(me)
       if (!open.length) info('cases', '😇', 'No open case files. Keep it that way.')
-      for (const cs of open.slice(0, 4)) info(`case.${cs.id}`, cs.status === 'pending' ? '🚨' : '🗂️', cs.status === 'pending'
-        ? `${cs.label} (${cs.year}) · public, under investigation · ${pct(chargeChance(g, cs))} a year they charge you once nothing protects you`
-        : `${cs.label} (${cs.year}) · evidence ${pct(cs.evidence)} · ${pct(exposureChance(g, cs, true, false))} chance a year it surfaces`)
-      if (open.length > 4) info('cases.more', '🗂️', `…and ${open.length - 4} more`)
+      for (const cs of open.slice(0, CASES_SHOWN)) info(`case.${cs.id}`, cs.status === 'pending' ? '🚨' : '🗂️', caseRow(g, cs))
+      if (open.length > CASES_SHOWN) info('cases.more', '🗂️', `…and ${open.length - CASES_SHOWN} more`)
       if (me.dirty || me.offshore || me.taken) info('money', '💼', `Slush fund ${formatMoney(me.dirty)} · offshore ${formatMoney(me.offshore)} · taken so far ${formatMoney(me.taken)} · seized ${formatMoney(me.seized)}`)
       const rivals = me.rivals.slice(0, 4)
       if (rivals.length) {
@@ -427,6 +475,8 @@ export function dashboardMenu(): MenuGroup {
         info('report', '📰', `Last report (${last.year}): growth ${pct(last.growth, 1)}, unemployment ${pct(last.unemployment, 1)}, debt ${pct(last.debt)}`)
       }
       if (v.rank >= 2) rows.push({ type: 'action', id: 'nation.dash.open', label: 'Open the State of the Nation', emoji: '📰', run: (gg) => openReport(gg) })
+      const look = riskBriefing(g, 'nation.dash', dashKeys(g))
+      if (look) rows.push(look)
       return rows
     },
   }
@@ -448,7 +498,7 @@ function pocketsMenu(): MenuGroup {
         subtitle: def.blurb,
         disabledReason: (gg) => schemeBlock(gg, def),
         input: { kind: 'slider', label: 'How greedy?', min: 10, max: 100, step: 10, unit: '%', defaultValue: () => '30',
-          preview: (gg, value) => { const vv = officeView(gg); if (!vv) return ''; const q = schemeQuote(gg, vv, def, value / 100); return `Take ${formatMoney(q.take)} · ${pct(q.caught)} chance an auditor flags it this year · leaves evidence ${pct(q.evidence)}` } },
+          preview: (gg, value) => { const vv = officeView(gg); return vv ? schemePreview(gg, vv, def, value / 100) : '' } },
         run: (gg, input) => { runScheme(gg, def.id, Number(input) / 100) },
       }))
       nodes.push({
@@ -459,11 +509,13 @@ function pocketsMenu(): MenuGroup {
           if (!vv) return []
           return steerTargets(gg).map((a): MenuAction => {
             const q = steerQuote(gg, vv, a)
-            return { type: 'action', id: `nation.steer.${a.id}`, label: a.name, emoji: '🏢', subtitle: `${formatMoney(q.value)} contract · ${formatMoney(q.markup)} markup · ${pct(q.caught)} chance reporters notice`, disabledReason: (x) => steerBlock(x), run: (x) => { steerContract(x, a.id) } }
+            return { type: 'action', id: `nation.steer.${a.id}`, label: a.name, emoji: '🏢', subtitle: steerLine(gg, a, q), disabledReason: (x) => steerBlock(x), run: (x) => { steerContract(x, a.id) } }
           })
         },
       })
       nodes.push(dirtyMoneyMenu())
+      const look = riskBriefing(g, 'nation.pockets', pocketKeys(g))
+      if (look) nodes.push(look)
       return nodes
     },
   }
@@ -482,12 +534,12 @@ function dirtyMoneyMenu(): MenuGroup {
         disabledReason: (gg) => (meView(gg).dirty < 100 ? 'The slush fund is empty.' : !launderFronts(gg).length ? 'You need a company you control with sales last year.' : (gg.yearActions['graft.launder'] ?? 0) >= 2 ? 'Twice a year at most.' : null),
         children: (gg) => launderFronts(gg).map((a): MenuAction => {
           const q = launderQuote(gg, a)
-          return { type: 'action', id: `nation.launder.${a.id}`, label: a.name, emoji: '🏢', subtitle: `Run ${formatMoney(q.amount)} through ${readBiz(gg, a).industry} books · ${formatMoney(q.kept)} arrives · ${pct(q.caught)} risk`, disabledReason: (x) => (launderQuote(x, a).amount < 100 ? 'Nothing to launder.' : null), run: (x) => { launder(x, a.id) } }
+          return { type: 'action', id: `nation.launder.${a.id}`, label: a.name, emoji: '🏢', subtitle: launderLine(gg, a, q), disabledReason: (x) => (launderQuote(x, a).amount < 100 ? 'Nothing to launder.' : null), run: (x) => { launder(x, a.id) } }
         }),
       })
       nodes.push({
         type: 'action', id: 'nation.offshore', label: 'Move money offshore', emoji: '🏝️',
-        subtitle: `${pct(OFFSHORE_FEE)} fee · ${pct(offshoreCaught(g))} risk the wire is stopped`,
+        subtitle: offshoreLine(g),
         disabledReason: (gg) => (meView(gg).dirty < 100 ? 'The slush fund is empty.' : gg.yearActions['graft.offshore'] ? 'Once a year.' : null),
         input: { kind: 'slider', label: 'How much', money: true, min: 100, max: Math.max(100, me.dirty), step: 100, defaultValue: () => String(Math.max(100, meView(g).dirty)) },
         run: (gg, input) => { moveOffshore(gg, Number(input)) },
@@ -499,9 +551,17 @@ function dirtyMoneyMenu(): MenuGroup {
         input: { kind: 'slider', label: 'How much', money: true, min: 100, max: Math.max(100, Math.min(me.offshore, homeCap(g))), step: 100, defaultValue: () => String(Math.max(100, Math.min(meView(g).offshore, homeCap(g)))) },
         run: (gg, input) => { bringHome(gg, Number(input)) },
       })
+      const look = riskBriefing(g, 'nation.dirty', dirtyKeys(g))
+      if (look) nodes.push(look)
       return nodes
     },
   }
+}
+
+/** How likely a power grab is to work: today's "Works 58%." in Exact mode, a word or a percent in Realistic. */
+function regimeWorks(g: GameState, id: (typeof REGIME_IDS)[number]): string {
+  const p = chanceText(g, regimeKey(id), regimeOdds(g, id), POWER)
+  return isExact() ? `Works ${p}.` : `Chance it works: ${p}.`
 }
 
 function powerMenu(): MenuGroup {
@@ -516,17 +576,19 @@ function powerMenu(): MenuGroup {
         const def = REGIME[id]
         const cost = id === 'buyMedia' ? mediaCost(g, v) : id === 'security' ? securityCost(g) : id === 'buyVotes' ? voteCost(g) : 0
         return { type: 'action', id: `nation.regime.${id}`, label: def.label, emoji: def.emoji,
-          subtitle: (gg) => `${def.blurb}${cost ? ` ${formatMoney(cost)}.` : ''} ${regimeBlock(gg, id) ? '' : `Works ${pct(regimeOdds(gg, id))}.`}`.trim(),
+          subtitle: (gg) => `${def.blurb}${cost ? ` ${formatMoney(cost)}.` : ''} ${regimeBlock(gg, id) ? '' : regimeWorks(gg, id)}`.trim(),
           disabledReason: (gg) => regimeBlock(gg, id), confirm: () => `${def.label}? Legitimacy ${def.legitimacy || 0}.`, run: (gg) => { takeStep(gg, id) } }
       })
       nodes.push({
         type: 'menu', id: 'nation.rivals', label: 'Deal with a rival', emoji: '⛓️',
         disabledReason: (gg) => persecuteBlock(gg, false),
         children: (gg) => rivalTargets(gg).flatMap((r): MenuAction[] => [
-          { type: 'action', id: `nation.jail.${r.id}`, label: `Jail ${r.name}`, emoji: '⛓️', subtitle: `${pct(persecuteOdds(gg, false))} the charges stick`, disabledReason: (x) => persecuteBlock(x, false), run: (x) => { persecute(x, r.id, false) } },
-          { type: 'action', id: `nation.exile.${r.id}`, label: `Drive ${r.name} into exile`, emoji: '✈️', subtitle: `${pct(persecuteOdds(gg, true))} they flee`, disabledReason: (x) => persecuteBlock(x, true), run: (x) => { persecute(x, r.id, true) } },
+          { type: 'action', id: `nation.jail.${r.id}`, label: `Jail ${r.name}`, emoji: '⛓️', subtitle: rivalLine(gg, false), disabledReason: (x) => persecuteBlock(x, false), run: (x) => { persecute(x, r.id, false) } },
+          { type: 'action', id: `nation.exile.${r.id}`, label: `Drive ${r.name} into exile`, emoji: '✈️', subtitle: rivalLine(gg, true), disabledReason: (x) => persecuteBlock(x, true), run: (x) => { persecute(x, r.id, true) } },
         ]),
       })
+      const look = riskBriefing(g, 'nation.keep', keepKeys(g))
+      if (look) nodes.push(look)
       return nodes
     },
   }

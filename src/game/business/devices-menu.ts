@@ -8,6 +8,7 @@ import { marketCtxFor, osStrength } from './economy'
 import { manageBlock } from './gate'
 import { chipResultFor, chipRows } from './group-services'
 import { infoOf } from './product-market'
+import { rankText, readRow } from './scorecard'
 import { findBusiness, readBiz, type BizState } from './state'
 import { aPct, money, pct, plural } from './util'
 
@@ -70,7 +71,7 @@ function familyMenu(a: Asset, family: string): MenuGroup {
       const s = find(g)
       if (!s) return ''
       const perf = Math.round(s.perf.mine)
-      return s.perf.of > 1 ? `Performance ${perf} · rank ${s.perf.rank} of ${s.perf.of}` : `Performance ${perf} · the market has no figures`
+      return s.perf.of > 1 ? `Performance ${perf} · ${rankText(s.perf, s.fog?.perf)}` : `Performance ${perf} · the market has no figures`
     },
     header: (g) => {
       const s = find(g)
@@ -80,11 +81,14 @@ function familyMenu(a: Asset, family: string): MenuGroup {
       const s = find(g)
       if (!s) return []
       const ids = ['perf', 'quality', 'price']
-      const lines = specLines(s).map((text, i): MenuNode => ({ type: 'info', id: `biz.devices.spec.${a.id}.${slug(family)}.${ids[i]}`, emoji: '\u{1F4CA}', text }))
+      // R3-G5: in Realistic mode the performance and quality rows carry the confidence chip; the price row is a posted price.
+      const conf = [s.fog?.perf.conf, s.fog?.quality.conf]
+      const lines = specLines(s).map((text, i): MenuNode => ({ type: 'info', id: `biz.devices.spec.${a.id}.${slug(family)}.${ids[i]}`, emoji: '\u{1F4CA}', text, ...(conf[i] !== undefined ? { conf: conf[i] } : {}) }))
       // Price has a negative scale, so the chart holds performance and quality; the price stays a text row (R1-C14).
       lines.push(...chartInfo(`biz.devices.spec.chart.${a.id}.${slug(family)}`, '\u{1F4CA}', (_g, spec) => spec?.summary ?? '', (gg) => {
         const sheet = find(gg)
-        return sheet ? scorecardSpec(`${family} against the market`, [sheet.perf, sheet.quality]) : null
+        // The chart draws what the player reads (the middle of each band), never the true market and best.
+        return sheet ? scorecardSpec(`${family} against the market`, [readRow(sheet.perf, sheet.fog?.perf), readRow(sheet.quality, sheet.fog?.quality)]) : null
       }))
       return lines
     },

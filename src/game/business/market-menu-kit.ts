@@ -2,8 +2,9 @@
 // what-ifs run the planner; nothing here is ever stored in state), the live-asset lookup, the
 // Business talent gate and the action builder every move on the screen uses. Pure: building a menu
 // never touches the game state or its dice.
+import { isExact, lookCloser } from '../knowledge/contract'
 import { hasTalent } from '../talents'
-import type { Asset, GameState, MenuAction } from '../types'
+import type { Asset, GameState, MenuAction, MenuNode } from '../types'
 import { manageBlock } from './gate'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
 import { priceCapOf } from './util'
@@ -71,4 +72,16 @@ export function mAct(a: Asset, key: string, label: string, emoji: string, opts: 
       opts.run(g, cur, b)
     },
   }
+}
+
+/**
+ * The "Look closer" row a screen of fogged numbers ends with (R3-G3): one group of sources the player can pay to sharpen `keys`,
+ * or nothing. Nothing in Exact mode (every number is shown as it is), for no keys, for keys no owner can read, and when every
+ * source is blocked; Knowledge's lookCloser decides all of that. `id` names the screen; the group's own id adds the company, so one
+ * company's screens never clash with another's (`look.biz.mkt.look.<id>.<asset>`). Pure: building it prices the offers and writes nothing.
+ */
+export function lookFor(g: GameState, a: Asset, id: string, keys: readonly string[]): MenuNode[] {
+  if (isExact() || keys.length === 0) return []
+  const row = lookCloser(g, { id: `biz.mkt.look.${id}.${a.id}`, keys })
+  return row ? [row] : []
 }

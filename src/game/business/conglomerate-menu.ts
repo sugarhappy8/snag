@@ -54,6 +54,8 @@ import { spinHint } from './conglomerate-division'
 import { captureOf, groupAcquireBlock, groupCeoValue, joinValue, ownerCapture, sectorList, synergyPlan, DEAL_YEARS, type DivisionInput } from './conglomerate-econ'
 import { groupById, groupsOf, groupStake, groupValue, inGroup, sharePriceOf, type Group } from './conglomerate-state'
 import { oddsText } from './board-vote'
+import { oddsKey, oddsShown } from '../fog/odds/contract'
+import { hashKey } from '../kernel/streams'
 import { industryDef } from './industries'
 import { isFinanceFirm } from './finance-firm-state'
 import { businessScreen, shopCompany } from './manage'
@@ -68,6 +70,7 @@ import { treasurySpare } from './group-treasury'
 import { manageBlock, tooBusy } from './gate'
 import { bizOf, businessAssets, findBusiness, readBiz, stakeValue } from './state'
 import { clampN, money, pct, plural } from './util'
+import { valueChip, valueText, valuesLook } from './valuation-fog'
 
 const PICK = 'biz.groupPick'
 
@@ -82,6 +85,8 @@ function hinting(g: GameState): boolean {
 /** A group action that re-reads the live group before running. */
 function gAct(groupId: string, key: string, label: string, emoji: string, opts: {
   subtitle?: string | ((g: GameState) => string)
+  /** The confidence of an estimate the subtitle prints (R3, valuation-fog.ts); `{}` or left out for an exact subtitle. */
+  chip?: Pick<MenuAction, 'conf' | 'asOf'>
   hint?: (g: GameState, grp: Group) => string | null
   disabled?: (g: GameState, grp: Group) => string | null
   confirm?: (g: GameState, grp: Group) => string | null
@@ -95,6 +100,7 @@ function gAct(groupId: string, key: string, label: string, emoji: string, opts: 
     label,
     emoji,
     subtitle: opts.subtitle,
+    ...(opts.chip ?? {}),
     ...(opts.hint
       ? {
           hint: (g: GameState) => {
@@ -141,10 +147,21 @@ function info(id: string, text: string, emoji: string): MenuNode {
   return { type: 'info', id, text, emoji }
 }
 
-/** ' · 🔮 about 70% to pass' when the group board votes (only with the Business talent). */
+/** The knowledge key of one kind of vote of a group's board (`odds:<core id>:g-<kind>:p`). */
+function groupOddsKey(grp: Group, kind: string): string {
+  return oddsKey(grp.core.id, `g-${kind}`)
+}
+
+/** The key of the merger vote of a group that is not formed yet: one reading for each combination of companies. */
+function formOddsKey(ids: readonly string[]): string {
+  return oddsKey('form', `g-merge${(hashKey(ids.join(',')) >>> 0).toString(36)}`)
+}
+
+/** ' · 🔮 about 70% to pass' when the group board votes (with the Business talent, or after a read of the vote). */
 function boardOdds(g: GameState, grp: Group, p: Proposal): string {
   if (!groupNeedsVote(g, grp, p)) return ''
-  return ` \u{00B7} the group board votes${hasTalent(g, 'Business') ? ` (\u{1F52E} ${oddsText(groupPassOdds(g, grp, p))} to pass)` : ''}`
+  const shown = oddsShown(g, groupOddsKey(grp, p.kind), () => groupPassOdds(g, grp, p))
+  return ` \u{00B7} the group board votes${shown ? ` (${shown} to pass)` : ''}`
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +186,7 @@ function setPicked(g: GameState, ids: string[]): void {
 
 function companyLine(g: GameState, a: Asset): string {
   const b = readBiz(g, a)
-  return `${industryDef(b.industry).label} \u{00B7} ${b.city} \u{00B7} worth ${money(b.valuation)}${b.share < 0.999 ? ` \u{00B7} you own ${pct(b.share)}` : ''}${b.public ? ` \u{00B7} listed on the ${b.exchange}` : ''}`
+  return `${industryDef(b.industry).label} \u{00B7} ${b.city} \u{00B7} ${valueText(g, a, b, 'worth')}${b.share < 0.999 ? ` \u{00B7} you own ${pct(b.share)}` : ''}${b.public ? ` \u{00B7} listed on the ${b.exchange}` : ''}`
 }
 
 /** The Business talent's best fit among `options` for a set of picks (value over DEAL_YEARS). */
@@ -199,6 +216,7 @@ function toggleRow(g: GameState, a: Asset, on: boolean, fitId: string | null, fi
     label: a.name,
     emoji: on ? '\u{2705}' : '\u{2B1C}',
     subtitle: companyLine(g, a),
+    ...valueChip(g, a, readBiz(g, a)),
     ...(fitId === a.id && fit ? { hint: (gg: GameState) => (hinting(gg) ? fitText(gg, fit, 'Best fit with your picks') : null) } : {}),
     disabledReason: (gg) => groupBlock(gg) ?? (on ? null : joinBlock(gg, a)),
     stayOpen: true,
@@ -230,6 +248,7 @@ export const formGroupMenu: MenuGroup = {
     const fit = hasTalent(g, 'Business') && picks.length >= 1 && free.length ? bestFit(g, null, picks, free) : null
     const nodes: MenuNode[] = [{ type: 'heading', id: 'biz.group.form.pickH', label: 'Pick the Companies' }]
     for (const a of list) nodes.push(toggleRow(g, a, ids.includes(a.id), fit?.id ?? null, fit))
+    nodes.push(...valuesLook(g, 'form', list.map((a) => ({ a, b: readBiz(g, a) }))))
     nodes.push({ type: 'heading', id: 'biz.group.form.dealH', label: 'The Deal' })
     if (picks.length < 2) {
       nodes.push(info('biz.group.form.need', 'Pick at least two companies.', '\u{261D}\u{FE0F}'))
@@ -254,7 +273,7 @@ export const formGroupMenu: MenuGroup = {
         const p = planJoin(gg, null, picked(gg))
         const odds = p.votes.length ? mergeOdds(gg, p) : 1
         const head = p.value > 0 ? `A sound deal: about ${money(p.yearly)} a year in synergies, worth about ${money(p.value)} over ${DEAL_YEARS} years after fees, integration and any conglomerate discount` : `A costly deal: about ${money(-p.value)} lost over ${DEAL_YEARS} years once fees, integration and the conglomerate discount are counted`
-        return talentHint(gg, 'Business', `${head}${p.votes.length ? `; the boards: ${oddsText(odds)} to approve` : ''}`)
+        return talentHint(gg, 'Business', `${head}${p.votes.length ? `; the boards: ${oddsText(odds, gg, formOddsKey(picked(gg).map((a) => a.id)))} to approve` : ''}`)
       },
       disabledReason: (gg) => {
         const block = groupBlock(gg)
@@ -630,8 +649,9 @@ function addMenu(groupId: string): MenuGroup {
       if (!list.length) return [info(`biz.group.addNone.${groupId}`, 'None of your other companies stands alone. Start or buy one first.', '\u{1F937}')]
       const options = list.filter((a) => !joinBlock(g, a))
       const fit = hasTalent(g, 'Business') && options.length ? bestFit(g, grp, [], options) : null
-      return list.map((a) =>
+      const rows = list.map((a) =>
         gAct(groupId, `add.${a.id}`, a.name, a.emoji, {
+          chip: valueChip(g, a, readBiz(g, a)),
           subtitle: (gg) => {
             const cur = groupById(gg, groupId)
             if (!cur) return ''
@@ -642,13 +662,15 @@ function addMenu(groupId: string): MenuGroup {
           disabled: (gg, cur) => planJoin(gg, cur, [a]).block,
           confirm: (gg, cur) => {
             const p = planJoin(gg, cur, [a])
-            return `Bring ${a.name} into ${cur.core.name}? Fees: ${money(p.fees)}${p.shortfall > 0 ? ` (${money(p.shortfall)} from your pocket)` : ''}. You'd own ${pct(p.share, 1)} of the group.${p.votes.length ? ` Votes: ${p.votes.join(', ')}${hasTalent(gg, 'Business') ? ` (\u{1F52E} ${oddsText(mergeOdds(gg, p, cur))} to pass)` : ''}.` : ''}`
+            const shown = p.votes.length ? oddsShown(gg, groupOddsKey(cur, 'merge'), () => mergeOdds(gg, p, cur)) : null
+            return `Bring ${a.name} into ${cur.core.name}? Fees: ${money(p.fees)}${p.shortfall > 0 ? ` (${money(p.shortfall)} from your pocket)` : ''}. You'd own ${pct(p.share, 1)} of the group.${p.votes.length ? ` Votes: ${p.votes.join(', ')}${shown ? ` (${shown} to pass)` : ''}.` : ''}`
           },
           run: (gg, cur) => {
             addToGroup(gg, cur.core.id, a.id)
           },
         }),
       )
+      return [...rows, ...valuesLook(g, `add.${groupId}`, list.map((a) => ({ a, b: readBiz(g, a) })))]
     },
   }
 }
@@ -665,13 +687,14 @@ function spinMenu(groupId: string): MenuGroup {
     children: (g) => {
       const grp = groupById(g, groupId)
       if (!grp) return []
-      return grp.members.map((x) =>
+      const rows = grp.members.map((x) =>
         gAct(groupId, `spin.${x.a.id}`, `Spin Off ${x.a.name}`, x.a.emoji, {
+          chip: valueChip(g, x.a, x.b),
           subtitle: (gg) => {
             const cur = groupById(gg, groupId)
             if (!cur) return ''
             const p = spinPlan(gg, cur, x.a.id)
-            return `${industryDef(x.b.industry).label} \u{00B7} worth ${money(x.b.valuation)} \u{00B7} fees ${money(p.fee)}${boardOdds(gg, cur, { kind: 'merge', by: 'owner', merit: 0, label: '' })}`
+            return `${industryDef(x.b.industry).label} \u{00B7} ${valueText(gg, x.a, x.b, 'worth')} \u{00B7} fees ${money(p.fee)}${boardOdds(gg, cur, { kind: 'merge', by: 'owner', merit: 0, label: '' })}`
           },
           hint: (gg, cur) => spinHint(gg, cur, x.a.id),
           disabled: (gg, cur) => spinPlan(gg, cur, x.a.id).block,
@@ -681,6 +704,7 @@ function spinMenu(groupId: string): MenuGroup {
           },
         }),
       )
+      return [...rows, ...valuesLook(g, `spin.${groupId}`, grp.members)]
     },
   }
 }
@@ -697,9 +721,10 @@ function sellMenu(groupId: string): MenuGroup {
     children: (g) => {
       const grp = groupById(g, groupId)
       if (!grp) return []
-      return grp.members.map((x) =>
+      const rows = grp.members.map((x) =>
         gAct(groupId, `sell.${x.a.id}`, `Sell ${x.a.name}`, x.a.emoji, {
-          subtitle: `Valued at about ${money(x.b.valuation)} \u{00B7} your share ${pct(x.b.share, 1)}`,
+          chip: valueChip(g, x.a, x.b),
+          subtitle: `${valueText(g, x.a, x.b, 'Valued at', { about: true })} \u{00B7} your share ${pct(x.b.share, 1)}`,
           disabled: (gg) => {
             const cur = findBusiness(gg, x.a.id)
             return cur ? manageBlock(gg, cur) : 'You no longer own this business.'
@@ -710,6 +735,7 @@ function sellMenu(groupId: string): MenuGroup {
           },
         }),
       )
+      return [...rows, ...valuesLook(g, `sell.${groupId}`, grp.members)]
     },
   }
 }
@@ -773,7 +799,7 @@ function marketNodes(groupId: string, grp: Group): MenuNode[] {
         const l = cur.core.listing
         if (!l) return null
         const p: Proposal = { kind: 'sell', by: 'owner', amount: Math.round(groupValue(cur) * 1.25), label: '' }
-        const odds = groupNeedsVote(g, cur, p) ? oddsText(groupPassOdds(g, cur, p)) : null
+        const odds = groupNeedsVote(g, cur, p) ? oddsText(groupPassOdds(g, cur, p), g, groupOddsKey(cur, 'sell')) : null
         const plan = delistPlan(g, cur)
         const effect = delistEffect(g, cur)
         const premium = money((plan.cost * DELIST_PREMIUM) / (1 + DELIST_PREMIUM) + plan.fees)

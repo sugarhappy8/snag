@@ -9,6 +9,7 @@
 // and tests flip the mode for one call with withInfoMode (never setInfoMode: the suite override beats the player's setting).
 export type { Estimate, EstimateOpts, Ladder, StoredRow, Unit } from './types'
 export { BAND_Z, SD_MIN, agedSd, estimate, know, mergeReadings, readValue } from './estimate'
+export { wordsFor } from './format'
 export { infoMode, isExact, setInfoOverride, withInfoMode } from './mode'
 export type { InfoMode } from './mode'
 export { KNOW_FLAG, KNOW_LIMITS, forget, learn, readKnow, storedEstimates, widen } from './record'

@@ -7,16 +7,16 @@
 import { chartInfo, marketLadderSpec, marketSizeSpec, shareSpec } from '../charts'
 import type { ChartSpec } from '../charts/spec'
 import { eraOf } from '../history/timeline'
+import { registerKeyKind } from '../knowledge/contract'
 import { talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
-import { marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING } from './competition-core'
+import { marketStateOf, PRICE_POWER, SCALE_SAVING } from './competition-core'
 import { mergerLimit, TIERS, type Regime } from './competition-data'
 import { marketOwner, marketViewOf, shareText, type MarketView, type RivalView } from './competition'
 import { acquireRival, acquisitionGains, acquisitionQuote, offensiveValue, OFFENSIVE_EDGE, raidValue } from './competition-moves'
-import { rivalLines } from './product-market'
 import { industryDef } from './industries'
-import { shieldsOf } from './lab-state'
-import { cached, hinting, live, mAct } from './market-menu-kit'
+import { antitrustRead, countryKeys, demandRead, exactProfit, fogOn, forecastScale, LINES_SHOWN, localKeys, LOOK_RIVALS, profitRead, rivalDetailKeys, rivalLine, rivalLinesOf, rivalListKeys, rivalStars, scenarioKey, scenarioScope, shareBand, unknownMarket, weakest, type Conf, type Fogged, type MarketFog } from './market-fog'
+import { cached, hinting, live, lookFor, mAct } from './market-menu-kit'
 import { continentOf } from './market-regional'
 import { demandWeights, hasSupplyChain, MODE_LABEL, MODE_TERM } from './market-reach'
 import { placeFlag, placeName } from './market-places'
@@ -30,10 +30,10 @@ import {
   type CountryDetail, type LocalField,
 } from './market-view'
 import { bizWorth } from './economy'
-import { readBiz, type BizState } from './state'
+import { businessAssets, readBiz, type BizState } from './state'
 import { waveLines } from './tech-waves'
 import { isDeepTech } from './deeptech-state'
-import { money, pct, plural, stars } from './util'
+import { money, pct, plural } from './util'
 
 const MAX_ROWS = 12
 
@@ -50,8 +50,9 @@ function slice(w: number): string {
   return pct(w, w < 0.01 ? 1 : 0)
 }
 
-function info(id: string, text: string, emoji: string): MenuInfo {
-  return { type: 'info', id, text, emoji }
+/** An info row. A row built from an estimate carries its confidence (and the year of an old reading) for the chip. */
+function info(id: string, text: string, emoji: string, conf?: Conf, asOf?: number): MenuInfo {
+  return { type: 'info', id, text, emoji, ...(conf !== undefined ? { conf } : {}), ...(asOf !== undefined ? { asOf } : {}) }
 }
 
 /**
@@ -118,13 +119,18 @@ export function overviewMenu(a: Asset): MenuGroup {
       if (v.dominance > 0) rows.push(info(`biz.mkt.ov.dom.${a.id}`, `Dominance: ${pct(SCALE_SAVING * v.dominance)} lower unit costs from sheer scale${v.scope === 'national' ? `, and customers accept ${pct(PRICE_POWER * v.dominance)} higher prices` : '; customers stay even when you charge more'}`, '\u{1F451}'))
       const at = v.antitrust
       const lobbied = (marketStateOf(b)?.antitrust.lobbyUntil ?? 0) >= g.year
+      // The chance of a case is a hidden number: a word, and a percent only with the Business talent or a read (the size at which
+      // regulators start looking is a published rule, so the "no risk" line stays as it is).
+      const odds = at.label === 'none' ? null : antitrustRead(g, scenarioScope(cur), at.p)
       rows.push(
         info(
           `biz.mkt.ov.anti.${a.id}`,
           at.label === 'none'
             ? `Antitrust: no risk at your size (regulators here only go after companies with more than about ${at.acquisitions >= 2 ? '30' : '35'}% of a market)`
-            : `Antitrust risk: ${at.label} (about ${pct(at.p)} a year) · ${at.regime.name}${lobbied ? ' (lobbied)' : ''}${at.regime.breakUp ? ' · can break companies up' : ''}${at.acquisitions > 0 ? ` · ${at.acquisitions} buy-out${at.acquisitions === 1 ? '' : 's'} in the last 8 years add to it` : ''}${at.regional.length ? ` · also watched in ${at.regional.map((r) => placeName(r.country)).join(', ')}` : ''}`,
+            : `Antitrust risk: ${odds ? odds.text : `${at.label} (about ${pct(at.p)} a year)`} · ${at.regime.name}${lobbied ? ' (lobbied)' : ''}${at.regime.breakUp ? ' · can break companies up' : ''}${at.acquisitions > 0 ? ` · ${at.acquisitions} buy-out${at.acquisitions === 1 ? '' : 's'} in the last 8 years add to it` : ''}${at.regional.length ? ` · also watched in ${at.regional.map((r) => placeName(r.country)).join(', ')}` : ''}`,
           '\u{1F3DB}\u{FE0F}',
+          odds?.conf,
+          odds?.asOf,
         ),
       )
       // At most three tech-wave rows (the history table can have several live in one trade).
@@ -207,28 +213,57 @@ export function segmentsMenu(a: Asset): MenuGroup {
 // ---------------------------------------------------------------------------
 // Regions and countries
 
-function countryRows(a: Asset, d: CountryDetail): MenuNode[] {
+/**
+ * The rows of one country of a world market. `fog` is present for a market the player does not know (knownMarket): its demand,
+ * its leader's share and its champions' shares then read as estimates, with a chip. Without it, or in Exact mode, the rows are
+ * today's text.
+ */
+export function countryRows(a: Asset, d: CountryDetail, fog?: MarketFog): MenuNode[] {
   const id = d.row.id
   const k = (s: string) => `biz.mkt.c.${a.id}.${id}.${s}`
   const rows: MenuNode[] = []
-  rows.push(info(k('size'), `Local demand: about ${money(d.row.demand)} a year (${slice(d.row.weight)} of the world) · appetite ${d.appetite >= 1.5 ? 'hungry' : d.appetite >= 0.8 ? 'typical' : 'small'}`, '\u{1F4B0}'))
+  const appetite = d.appetite >= 1.5 ? 'hungry' : d.appetite >= 0.8 ? 'typical' : 'small'
+  const dem = fog ? demandRead(fog.g, fog, id, d.row.demand) : null
+  if (dem && dem.conf !== undefined) rows.push(info(k('size'), `Local demand: ${dem.text} a year · appetite ${appetite}`, '\u{1F4B0}', dem.conf, dem.asOf))
+  else rows.push(info(k('size'), `Local demand: about ${money(d.row.demand)} a year (${slice(d.row.weight)} of the world) · appetite ${appetite}`, '\u{1F4B0}'))
   rows.push(info(k('me'), `Your share there: ${d.row.me > 0 ? shareText(d.row.me) : 'none'}${d.entered ? ` · ${MODE_LABEL[d.entered.mode as keyof typeof MODE_LABEL]?.toLowerCase() ?? d.entered.mode} since ${d.entered.year}` : d.row.presence > 0.3 ? ' · you have outlets there' : ' · you do not sell there directly'}`, '\u{1F4CD}'))
-  rows.push(info(k('lead'), d.row.leader ? `Leader there: ${d.row.leader.name} (${placeName(d.row.leader.hq)}) with ${shareText(d.row.leader.share)}` : 'Nobody dominates it', '\u{1F947}'))
-  if (d.champions.length) rows.push(info(k('champs'), `Local champions: ${d.champions.map((c) => `${c.name} ${shareText(c.share)}`).join(' · ')}`, '\u{1F3E0}'))
+  const lead = d.row.leader
+  const leadShare = lead ? readShare(fog, id, lead.share, lead.name) : null
+  rows.push(info(k('lead'), lead && leadShare ? `Leader there: ${lead.name} (${placeName(lead.hq)}) with ${leadShare.text}` : 'Nobody dominates it', '\u{1F947}', leadShare?.conf, leadShare?.asOf))
+  if (d.champions.length) {
+    const shares = d.champions.map((c) => readShare(fog, id, c.share, c.name))
+    const w = weakest(shares)
+    rows.push(info(k('champs'), `Local champions: ${d.champions.map((c, i) => `${c.name} ${shares[i]!.text}`).join(' · ')}`, '\u{1F3E0}', w.conf, w.asOf))
+  }
   rows.push(info(k('trade'), d.barriers.bloc ? `Trade: no tariffs between you and ${placeName(id)} (same bloc)` : `Trade: ${pct(d.barriers.tariff)} tariff on goods${d.barriers.effective < d.barriers.tariff * 0.5 ? ' (little of this business is physical goods)' : ''} · other barriers ${d.barriers.other < 0.25 ? 'light' : d.barriers.other < 0.5 ? 'moderate' : 'heavy'} · ${d.barriers.label}`, '\u{1F6C3}'))
   rows.push(info(k('fx'), d.fx.shared ? `Currency: the same currency as your home market (${d.fx.code})` : d.fx.label === 'none' ? 'Currency: your home currency' : `Currency exposure: ${d.fx.label} (${d.fx.code}; about ${pct(d.fx.swing)} a year of swings recently)`, '\u{1F4B1}'))
   rows.push(info(k('reg'), `Regulators: ${d.regime.name} · ${strictWord(d.regime)}${d.regime.breakUp ? ' · can break companies up' : ''} · merger limit about ${pct(d.mergerLimit)} combined share · cases start above about 35% local share${d.caseChance > 0 ? ` (yours: about ${pct(d.caseChance)} a year)` : ''}`, '\u{1F3DB}\u{FE0F}'))
+  // A market the player does not know ends with a way to look closer (the home market and any market of the player's industry has nothing to).
+  if (fog) rows.push(...lookFor(fog.g, a, `country.${id}`, countryKeys(fog.industry, id, lead, d.champions)))
   return rows
 }
 
-function localRows(a: Asset, f: LocalField, v: MarketView): MenuNode[] {
+/** A share as a row says it: the number in a market the player knows, an estimate (with its chip) in one it does not. */
+function readShare(fog: MarketFog | undefined, countryId: string, share: number, who: string): Fogged {
+  return fog ? shareBand(fog.g, fog, countryId, share, who) : { text: shareText(share) }
+}
+
+/** The rows of one national market (the same trade in another country). `fog` as in countryRows. */
+export function localRows(a: Asset, f: LocalField, v: MarketView, fog?: MarketFog): MenuNode[] {
   const k = (s: string) => `biz.mkt.l.${a.id}.${f.id}.${s}`
   const rows: MenuNode[] = []
-  rows.push(info(k('size'), `Local market: roughly ${money(f.demand)} a year · appetite ${f.appetite >= 1.5 ? 'hungry' : f.appetite >= 0.8 ? 'typical' : 'small'}${f.outlets > 0 ? ` · you have ${f.outlets} outlet${f.outlets === 1 ? '' : 's'} there` : ''}`, '\u{1F4B0}'))
+  const dem = fog ? demandRead(fog.g, fog, f.id, f.demand) : null
+  const outlets = f.outlets > 0 ? ` · you have ${f.outlets} outlet${f.outlets === 1 ? '' : 's'} there` : ''
+  const appetite = f.appetite >= 1.5 ? 'hungry' : f.appetite >= 0.8 ? 'typical' : 'small'
+  rows.push(info(k('size'), `Local market: ${dem && dem.conf !== undefined ? dem.text : `roughly ${money(f.demand)}`} a year · appetite ${appetite}${outlets}`, '\u{1F4B0}', dem?.conf, dem?.asOf))
   if (!f.top.length) rows.push(info(k('none'), 'No big names yet: a field of independents.', '\u{1F3DC}\u{FE0F}'))
-  f.top.forEach((t, i) => rows.push(info(k(`t${i}`), `${t.name} (${placeName(t.hq)}) · about ${shareText(t.share)}${t.real ? '' : ' · local challenger'}`, placeFlag(t.hq))))
+  f.top.forEach((t, i) => {
+    const s = readShare(fog, f.id, t.share, t.name)
+    rows.push(info(k(`t${i}`), `${t.name} (${placeName(t.hq)}) · ${s.conf !== undefined ? s.text : `about ${s.text}`}${t.real ? '' : ' · local challenger'}`, placeFlag(t.hq), s.conf, s.asOf))
+  })
   rows.push(info(k('tail'), `Independents hold about ${pct(f.fringe)} of customers, in thousands of small shops.`, '\u{1F465}'))
   rows.push(info(k('reg'), `Regulators: ${f.regime.name} · ${strictWord(f.regime)}${f.regime.breakUp ? ' · can break companies up' : ''} · merger limit about ${pct(mergerLimit(f.regime))}`, '\u{1F3DB}\u{FE0F}'))
+  if (fog) rows.push(...lookFor(fog.g, a, `local.${f.id}`, localKeys(fog.industry, f.id, f.top)))
   void v
   return rows
 }
@@ -275,7 +310,7 @@ export function regionsMenu(a: Asset): MenuGroup {
               const b3 = readBiz(g3, live(g3, a))
               const v3 = marketViewOf(g3, b3)
               const d = countryDetail(g3, b3, v3, c.id)
-              return d ? countryRows(a, d) : []
+              return d ? countryRows(a, d, unknownMarket(g3, b3, c.id)) : []
             },
           }))
           if (list.length > shown.length) nodes.push(info(`biz.mkt.region.more.${a.id}.${r.name}`, `…and ${list.length - shown.length} smaller markets, together ${slice(list.slice(shown.length).reduce((t, c) => t + c.weight, 0))} of demand.`, '\u{1F4C9}'))
@@ -305,7 +340,7 @@ function nationalRegions(g: GameState, a: Asset, b: BizState, v: MarketView): Me
       children: (gg) => {
         const bb = readBiz(gg, live(gg, a))
         const vv = marketViewOf(gg, bb)
-        return localRows(a, localField(gg, bb, vv, c), vv)
+        return localRows(a, localField(gg, bb, vv, c), vv, unknownMarket(gg, bb, c))
       },
     })
   }
@@ -379,18 +414,23 @@ export function rivalsMenu(a: Asset): MenuGroup {
         children: (gg) => rivalRows(gg, a, r.id),
       }))
       if (v.rivals.length > top.length) nodes.push(info(`biz.mkt.rivals.more.${a.id}`, `…and ${v.rivals.length - top.length} smaller named players.`, '\u{1F465}'))
+      // The strengths of the biggest players are estimates: one row to pay for a sharper read of them.
+      if (fogOn()) nodes.push(...lookFor(g, a, 'rivals', rivalListKeys(readBiz(g, live(g, a)), v.rivals)))
       return nodes
     },
   }
 }
 
-/** What a rival sells, best-selling kinds first, with its quality in each: 'Sells: Street Lighting (64) · Hydro Dam (58)'. */
-function productsLine(g: GameState, b: BizState, r: RivalView): string {
-  // A kind one of the company's patents holds isn't sold by anyone yet (lab-state.ts shieldsOf).
-  const lines = rivalLines(r, b.industry, marketKey(b), g.year, shieldsOf(b))
-  if (!lines.length) return 'Sells: its basic range (no product lines of note yet)'
-  const shown = lines.slice(0, 4).map((l) => `${l.family} (${l.quality})`)
-  return `Sells: ${shown.join(' \u{00B7} ')}${lines.length > 4 ? ` \u{00B7} +${lines.length - 4} more` : ''}`
+/**
+ * What a rival sells, best-selling kinds first, with its quality in each: 'Sells: Street Lighting (64) · Hydro Dam (58)'. In
+ * Realistic mode the quality is an estimate ('Street Lighting (45 to 85)') and the row carries the weakest confidence shown.
+ */
+function productsLine(g: GameState, b: BizState, r: RivalView): Fogged {
+  const lines = rivalLinesOf(g, b, r)
+  if (!lines.length) return { text: 'Sells: its basic range (no product lines of note yet)' }
+  const shown = lines.slice(0, LINES_SHOWN).map((l) => ({ family: l.family, read: rivalLine(g, b, r.id, l.family, l.quality) }))
+  const text = `Sells: ${shown.map((x) => `${x.family} (${x.read.text})`).join(' \u{00B7} ')}${lines.length > LINES_SHOWN ? ` \u{00B7} +${lines.length - LINES_SHOWN} more` : ''}`
+  return { text, ...weakest(shown.map((x) => x.read)) }
 }
 
 function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
@@ -401,14 +441,19 @@ function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
   if (!p) return [info(`biz.mkt.rp.gone.${a.id}.${rivalId}`, 'This company has left the market.', '\u{1F44B}')]
   const r = p.rival
   const k = (s: string) => `biz.mkt.rp.${a.id}.${rivalId}.${s}`
+  // What the player cannot see of a rival is read through the estimate core (market-fog.ts); Exact mode keeps today's text.
+  const fq = rivalStars(g, b, r, 'quality')
+  const ft = rivalStars(g, b, r, 'tech')
+  const sold = productsLine(g, b, r)
+  const strong = weakest([fq, ft])
   const nodes: MenuNode[] = [
     info(k('who'), `${r.real ? 'A real company' : r.extra === 'spinoff' ? 'Your old spin-off' : r.extra === 'entrant' ? 'A newcomer drawn by your profits' : 'A fictional local challenger'} · founded ${r.founded} (${p.age} years) · based in ${placeName(r.hq)}`, placeFlag(r.hq)),
     info(k('size'), `Size: ${r.legacy ? 'state-backed' : r.tier} · ${shareText(r.share)} of the market ${trendArrow(r.trend)} · segment ${p.segment}${r.seg ? '' : ''}`, '\u{1F4CF}'),
-    info(k('str'), `Strengths${r.real ? ' (modeled)' : ''}: quality ${stars(r.real ? Math.max(3, r.quality / 20) : r.quality / 20)} · technology ${stars(r.real ? Math.max(3, r.tech / 20) : r.tech / 20)} · prices ${p.strengths.priceEdge === 'cheaper' ? 'below yours' : p.strengths.priceEdge === 'pricier' ? 'above yours' : 'like yours'}`, '\u{1F4AA}'),
+    info(k('str'), `Strengths${fogOn() ? ' (estimated)' : r.real ? ' (modeled)' : ''}: quality ${fq.text} · technology ${ft.text} · prices ${p.strengths.priceEdge === 'cheaper' ? 'below yours' : p.strengths.priceEdge === 'pricier' ? 'above yours' : 'like yours'}`, '\u{1F4AA}', strong.conf, strong.asOf),
     info(k('where'), `Plays in: ${p.places.join(', ')}`, '\u{1F5FA}\u{FE0F}'),
-    info(k('lines'), productsLine(g, b, r), '\u{1F4E6}'),
+    info(k('lines'), sold.text, '\u{1F4E6}', sold.conf, sold.asOf),
     ...p.recent.slice(0, 4).map((t, i) => info(k(`rec${i}`), t, '\u{1F4F0}')),
-    info(k('next'), `Likely next: ${p.next}`, '\u{1F52E}'),
+    info(k('next'), `Likely next${fogOn() ? ' (our guess)' : ''}: ${p.next}`, '\u{1F52E}'),
   ]
   if (!r.legacy) {
     nodes.push(
@@ -438,6 +483,8 @@ function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
       }),
     )
   }
+  // Its strengths and product lines are estimates: one row to pay for a sharper read of them.
+  if (fogOn()) nodes.push(...lookFor(g, a, `rival.${rivalId}`, rivalDetailKeys(g, b, r)))
   return nodes
 }
 
@@ -728,18 +775,89 @@ export function scenarioRows(g: GameState, a: Asset): ScenarioRow[] {
   })
 }
 
-/** "If you cut prices hard: share unchanged, about +$32M profit (15% off for the year, …)." */
-export function scenarioLine(r: ScenarioRow): string {
+/**
+ * "If you cut prices hard: share unchanged, about +$32M profit (15% off for the year, …)." In Realistic mode (when the state and
+ * the company are given) the profit is the forecast the player may read: a range, 'about' one number, or a word, with the chip
+ * its confidence earns. The share change and the cost are the model's and the player's own numbers and keep their digits.
+ */
+export function scenarioRead(r: ScenarioRow, g?: GameState, a?: Asset): Fogged {
+  if (r.block) return { text: `If you ${r.ask}: not possible right now. ${r.block}` }
   const parts: string[] = []
   if (r.shareDelta !== null) {
-    const a = Math.abs(r.shareDelta * 100)
-    parts.push(!(a >= 0.005) ? 'share unchanged' : `share ${r.shareDelta >= 0 ? 'up' : 'down'} ${a.toFixed(a < 0.1 ? 2 : 1)} pts`)
+    const x = Math.abs(r.shareDelta * 100)
+    parts.push(!(x >= 0.005) ? 'share unchanged' : `share ${r.shareDelta >= 0 ? 'up' : 'down'} ${x.toFixed(x < 0.1 ? 2 : 1)} pts`)
   }
-  if (r.value !== null) parts.push(`about ${r.value >= 0 ? '+' : '-'}${money(Math.abs(r.value))} profit`)
+  let profit: Fogged | null = null
+  if (r.value !== null) {
+    profit = g && a ? profitRead(g, readBiz(g, live(g, a)), scenarioScope(a), r.id, r.value) : null
+    parts.push(profit ? profit.text : exactProfit(r.value))
+  }
   if (r.cost !== null) parts.push(`costs ${money(r.cost)}`)
-  if (r.block) return `If you ${r.ask}: not possible right now. ${r.block}`
-  return `If you ${r.ask}: ${parts.join(', ')} (${r.note}).`
+  const text = `If you ${r.ask}: ${parts.join(', ')} (${r.note}).`
+  return profit && profit.conf !== undefined ? { text, conf: profit.conf, ...(profit.asOf !== undefined ? { asOf: profit.asOf } : {}) } : { text }
 }
+
+export function scenarioLine(r: ScenarioRow, g?: GameState, a?: Asset): string {
+  return scenarioRead(r, g, a).text
+}
+
+/** The true profit behind a scn: key, found through the companies the player owns (null when none matches, or the move is not on offer). */
+export function scenarioTruth(g: GameState, key: string): number | null {
+  const p = key.split(':')
+  if (p[0] !== 'scn' || p.length !== 4 || p[3] !== 'value') return null
+  for (const a of businessAssets(g)) if (scenarioScope(a) === p[1]) return scenarioRows(g, a).find((r) => r.id === p[2])?.value ?? null
+  return null
+}
+
+/** How many forecasts the scenarios screen reads at once (the first ones on the list). */
+export const LOOK_SCENARIOS = 3
+/** How many keys the hub (the Market & Competition screen itself) reads at once: the rivals first, then the forecasts. */
+export const LOOK_HUB = 6
+
+/** The keys the scenarios screen reads: the profit forecast of the first moves on the list that carry one. */
+export function scenarioKeys(g: GameState, a: Asset): string[] {
+  return scenarioRows(g, a)
+    .filter((r) => r.value !== null && !r.block)
+    .slice(0, LOOK_SCENARIOS)
+    .map((r) => scenarioKey(scenarioScope(a), r.id))
+}
+
+/** The keys the screen that holds all the sections reads: the rivals' qualities and the first forecasts, the first six. */
+export function hubKeys(g: GameState, a: Asset): string[] {
+  const b = readBiz(g, live(g, a))
+  return [...rivalListKeys(b, marketViewOf(g, b).rivals, LOOK_RIVALS), ...scenarioKeys(g, a)].slice(0, LOOK_HUB)
+}
+
+/** The move a scn: key names, found through the companies the player owns (null when none matches, or the move is not on offer). */
+function scenarioHit(g: GameState, key: string): { a: Asset; row: ScenarioRow } | null {
+  const p = key.split(':')
+  if (p[0] !== 'scn' || p.length !== 4 || p[3] !== 'value') return null
+  for (const a of businessAssets(g)) {
+    if (scenarioScope(a) !== p[1]) continue
+    const row = scenarioRows(g, a).find((r) => r.id === p[2])
+    return row ? { a, row } : null
+  }
+  return null
+}
+
+registerKeyKind({
+  kind: 'scn',
+  label: (g, key) => {
+    const h = scenarioHit(g, key)
+    return h ? `${h.row.label} profit` : key
+  },
+  truth: scenarioTruth,
+  // A move is about one company: a business.
+  scope: (g, key) => {
+    const h = scenarioHit(g, key)
+    return h ? { tier: 1, country: readBiz(g, live(g, h.a)).countryId } : { tier: 1 }
+  },
+  // The same ruler the screen reads a forecast with, so a bought reading and the passive one agree on how wide a band is.
+  scale: (g, key) => {
+    const h = scenarioHit(g, key)
+    return h && h.row.value !== null ? forecastScale(readBiz(g, live(g, h.a)), h.row.value) : null
+  },
+})
 
 export function scenariosMenu(a: Asset): MenuGroup {
   return {
@@ -750,14 +868,13 @@ export function scenariosMenu(a: Asset): MenuGroup {
     subtitle: 'What each move should do to your share and profit',
     header: () => 'Rough estimates from the same model that books your year: the most share each move could add, and about how much it should make you after its costs. If you already sell all you can make, extra customers add nothing.',
     children: (g) => {
-      const rows = scenarioRows(g, a)
-      return rows.map((r) =>
-        info(
-          `biz.mkt.sc.${a.id}.${r.id}`,
-          scenarioLine(r),
-          r.emoji,
-        ),
-      )
+      const rows: MenuNode[] = scenarioRows(g, a).map((r) => {
+        const s = scenarioRead(r, g, a)
+        return info(`biz.mkt.sc.${a.id}.${r.id}`, s.text, r.emoji, s.conf, s.asOf)
+      })
+      // The forecasts are estimates: one row to pay for a sharper read of the first few.
+      if (fogOn()) rows.push(...lookFor(g, a, 'scenarios', scenarioKeys(g, a)))
+      return rows
     },
   }
 }
