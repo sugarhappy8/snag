@@ -6,6 +6,7 @@
 import { firmCash } from '../cash'
 import { earnIncome, formatMoney, log, notice } from '../core'
 import { payFamilyBusinessProceeds } from './dynasty-ownership'
+import { oddsLean, oddsShown } from '../fog/odds/contract'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuNode } from '../types'
 import {
@@ -27,7 +28,7 @@ import {
   type Limits,
   type Mandate,
 } from './board-state'
-import { boardAllows, capexBudget, capexLeft, needsVote, oddsText, passOdds, payableCash, payCap, payoutCash, refusedThisYear, reserveDollars, sustainablePayout, vote, type Proposal } from './board-vote'
+import { boardAllows, boardOddsKey, capexBudget, capexLeft, needsVote, oddsText, passOdds, payableCash, payCap, payoutCash, refusedThisYear, reserveDollars, sustainablePayout, vote, type Proposal } from './board-vote'
 import { bestMandate, limitsMerit, mandateMerit, outlook } from './board-ceo'
 import { ceoPayNorm, managerName, STYLE_INFO, styleOf } from './career'
 import { refreshValue, valuationOf } from './economy'
@@ -77,15 +78,17 @@ export function passHint(g: GameState, a: Asset, b: BizState, p: Proposal): stri
   if (!hinting(g, a) || !needsVote(g, a, b, p)) return null
   if (p.by === 'owner' && refusedThisYear(g, b, p.kind)) return talentHint(g, 'Business', 'The board already said no to this once this year: it will wait until next year')
   const odds = passOdds(g, a, b, p)
-  return talentHint(g, 'Business', odds >= 0.5 ? `The board will likely say yes (${oddsText(odds)})` : `The board will likely say no (${oddsText(odds)} to pass)`)
+  const key = boardOddsKey(a, p.kind)
+  const text = oddsText(odds, g, key)
+  return talentHint(g, 'Business', oddsLean(g, key, odds) ? `The board will likely say yes (${text})` : `The board will likely say no (${text} to pass)`)
 }
 
-/** ' · 🔮 passes about 70%' for a slider caption (only with the Business talent). */
+/** ' · 🔮 about 70% to pass' for a slider caption (with the Business talent, or after a read of that vote; the odds helper decides). */
 function oddsCaption(g: GameState, a: Asset, b: BizState, p: Proposal): string {
   if (!needsVote(g, a, b, p)) return ''
   if (p.by === 'owner' && refusedThisYear(g, b, p.kind)) return ' \u{00B7} the board already said no this year'
-  if (!hasTalent(g, 'Business')) return ''
-  return ` \u{00B7} \u{1F52E} ${oddsText(passOdds(g, a, b, p))} to pass`
+  const shown = oddsShown(g, boardOddsKey(a, p.kind), () => passOdds(g, a, b, p))
+  return shown ? ` \u{00B7} ${shown} to pass` : ''
 }
 
 /**
@@ -97,7 +100,8 @@ export function capexCaption(g: GameState, a: Asset, b: BizState, amount: number
   const p: Proposal = { kind: 'capex', by: 'owner', amount: Math.max(0, amount), gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: '' }
   if (!needsVote(g, a, b, p)) return ''
   if (refusedThisYear(g, b, 'capex')) return " \u{00B7} past this year's budget, and the board already said no to more this year"
-  return ` \u{00B7} past this year's budget: needs the board${hasTalent(g, 'Business') ? ` (\u{1F52E} ${oddsText(passOdds(g, a, b, p))} to pass)` : ''}`
+  const shown = oddsShown(g, boardOddsKey(a, p.kind), () => passOdds(g, a, b, p))
+  return ` \u{00B7} past this year's budget: needs the board${shown ? ` (${shown} to pass)` : ''}`
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +161,8 @@ function mandateAction(a: Asset, m: Mandate, viaBoard: boolean): MenuAction {
       const best = bestMandate(g, x.a, x.b) === m
       const odds = viaBoard && st.mandate !== m ? passOdds(g, x.a, x.b, proposal(g, x.a, x.b, st)) : null
       if (!best && odds === null) return null
-      const parts = [best ? (st.mandate === m ? 'Best mandate for this company now: keep it' : 'Best mandate for this company now') : '', odds !== null ? `${best ? 'the board' : 'The board'} ${odds >= 0.5 ? 'would likely approve' : 'would likely refuse'} (${oddsText(odds)})` : '']
+      const key = boardOddsKey(x.a, 'mandate')
+      const parts = [best ? (st.mandate === m ? 'Best mandate for this company now: keep it' : 'Best mandate for this company now') : '', odds !== null ? `${best ? 'the board' : 'The board'} ${oddsLean(g, key, odds) ? 'would likely approve' : 'would likely refuse'} (${oddsText(odds, g, key)})` : '']
       return talentHint(g, 'Business', parts.filter(Boolean).join('; '))
     },
     disabled: (g, b) => (boardView(g, a, b).mandate === m ? 'This is already the mandate.' : viaBoard && refusedThisYear(g, b, 'mandate') ? 'The board already turned down a new mandate this year. Try again next year.' : null),
@@ -221,7 +226,7 @@ function limitAction(a: Asset, key: keyof Limits, viaBoard: boolean): MenuAction
       }
       if (best === cur) return talentHint(g, 'Business', 'The budget already covers everything worth building right now')
       const odds = viaBoard ? passOdds(g, y.a, y.b, proposal(g, y.a, y.b, st, best)) : 1
-      return talentHint(g, 'Business', `Best budget: about ${best}% of the company's value a year${viaBoard ? ` (the board: ${oddsText(odds)} to pass)` : ''}`)
+      return talentHint(g, 'Business', `Best budget: about ${best}% of the company's value a year${viaBoard ? ` (the board: ${oddsText(odds, g, boardOddsKey(y.a, 'limits'))} to pass)` : ''}`)
     },
     input: {
       kind: 'slider',

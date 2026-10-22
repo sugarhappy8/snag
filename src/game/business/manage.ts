@@ -13,6 +13,7 @@ import { collectMenu, registerModules, type MenuEntry } from '../kernel/registry
 import { companyScreen } from '../hubs/company'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
+import { oddsShown } from '../fog/odds/contract'
 import { hasTalent, talentHint } from '../talents'
 import type { TechId } from '../history/timeline'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -70,7 +71,7 @@ import { afterSuccession, familyCandidates } from './nepo-succession'
 import { briefNodes, capexCaption, passHint, payDividend } from './board-menu'
 import { dividendMenu } from './dividend-menu'
 import { controlsBoard, boardView, mandateDef, ownerSeats } from './board-state'
-import { debtComfort, lowerFirst, oddsText, payableCash, payCap, payoutCash, refusedThisYear, sustainablePayout } from './board-vote'
+import { boardOddsKey, debtComfort, lowerFirst, oddsText, payableCash, payCap, payoutCash, refusedThisYear, sustainablePayout } from './board-vote'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
@@ -1540,10 +1541,11 @@ function maxPassing(g: GameState, a: Asset, b: BizState, make: (v: number) => Pr
   return Math.round(x)
 }
 
-/** ' · needs the board (🔮 about 70% to pass)' for a slider caption. */
+/** ' · needs the board (🔮 about 70% to pass)' for a slider caption (with the Business talent, or after a read of that vote). */
 function boardCaption(g: GameState, a: Asset, b: BizState, p: Proposal): string {
   if (!needsVote(g, a, b, p)) return ''
-  return ` \u{00B7} needs the board${hasTalent(g, 'Business') ? ` (\u{1F52E} ${oddsText(passOdds(g, a, b, p))} to pass)` : ''}`
+  const shown = oddsShown(g, boardOddsKey(a, p.kind), () => passOdds(g, a, b, p))
+  return ` \u{00B7} needs the board${shown ? ` (${shown} to pass)` : ''}`
 }
 
 function moneyNodes(a: Asset, g: GameState): MenuNode[] {
@@ -2060,7 +2062,7 @@ export function shopCompany(g: GameState, a: Asset, b: BizState): void {
     const sale = (amount: number) =>
       b.cooked > 0 ? (1 - SALE_COLLAPSE) * board(amount) * (amount - b.valuation) * b.share + SALE_COLLAPSE * fxValue(g, b, w, { brand: -15, arrest: 0.5 * 3 }) : board(amount) * (amount - b.valuation) * b.share
     markBest(g, choices, (id) => (id === 'keep' ? 0 : id.startsWith('o') ? sale(offers[Number(id.slice(1))]?.amount ?? 0) : null), (id) =>
-      id === 'keep' ? 'Best move: every offer is below what it is worth to you' : `Best offer: the most money above what the company is worth${hasBoard(g, b) ? ` (the board: ${oddsText(board(offers[Number(id.slice(1))]?.amount ?? 0))} to approve)` : ''}`,
+      id === 'keep' ? 'Best move: every offer is below what it is worth to you' : `Best offer: the most money above what the company is worth${hasBoard(g, b) ? ` (the board: ${oddsText(board(offers[Number(id.slice(1))]?.amount ?? 0), g, boardOddsKey(a, 'sell'))} to approve)` : ''}`,
     )
   }
   scriptChoice(
