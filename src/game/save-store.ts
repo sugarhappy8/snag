@@ -14,6 +14,9 @@
 // chunks ride beside it: a chunk the storage doesn't hold yet is written first, the head is the one commit point, and the chunks
 // the new head no longer names are swept after it, so a failed step never loses the save that was there. Everything that must
 // stand alone (the backup, the spill, what an asynchronous backend's reads answer) is the self-contained form of the same save.
+// Which chunks the storage holds is asked of the storage, not remembered: a second tab on the same storage sweeps what its own head
+// does not name, so just before a head is committed the store lists the chunk records again and puts back any the head names that
+// are gone (a page's own memory of what it wrote is only a hint, used to skip encoding chunks that are surely there).
 import { connectionLost, localSaveBackend, markIdbInUse, SAVE_KEY, type AsyncSaveBackend, type SaveBackend, type SyncSaveBackend } from './save-backends'
 import { assembleStored, type ChunkSource } from './save-chunk-read'
 import { isChunkedHead } from './save-codec'
@@ -91,7 +94,11 @@ interface State {
    * those three). A head that is not in here is a plain record, and its own text is its plain form.
    */
   extras: Map<string, Extra>
-  /** The chunk ids known to be in storage. Only meaningful once `primed`; cleared by a removal and by a change of backend. */
+  /**
+   * The chunk ids this page last saw in storage (a listing, plus what it put since). A HINT, not the truth: another tab sweeps and
+   * writes too, so a write lists storage again before its head is committed (a synchronous one at its start, an asynchronous one
+   * after its chunks are put) and works from that listing. Only meaningful once `primed`; cleared by a removal and by a change of backend.
+   */
   persisted: Set<string>
   /** `persisted` was read from storage (boot, or the first chunked save of the page). */
   primed: boolean
@@ -267,7 +274,7 @@ function chunkedFor(s: State, backend: SaveBackend, json: string): ChunkedWrite 
   return backend.chunks === undefined ? undefined : s.extras.get(json)?.write
 }
 
-/** The stored chunks that the head just written does not name (and that are ours: a chunk store lists only its own generation). */
+/** The chunks of the last listing (and our puts since) that the head just written does not name (and that are ours: a chunk store lists only its own generation). */
 function staleChunks(s: State, wanted: ReadonlyMap<string, string>): string[] {
   const stale: string[] = []
   for (const id of s.persisted) if (!wanted.has(id)) stale.push(id)
@@ -275,19 +282,19 @@ function staleChunks(s: State, wanted: ReadonlyMap<string, string>): string[] {
 }
 
 /**
- * One save onto a synchronous backend. A head with chunks: each chunk the storage doesn't have yet is put first (a refusal fails
- * the save and the head is not written, so the save that was there still has every chunk it names), then the head is written
- * (the commit), then the chunks nothing names any more are swept. Nothing else is touched while a newer version's record waits for
- * its copy. A plain record, and a backend with nowhere to put chunks, is one write of the self-contained text.
+ * One save onto a synchronous backend. A head with chunks: the storage is listed (another tab may have swept a chunk this page
+ * still thinks it stored), each chunk it doesn't have is put first (a refusal fails the save and the head is not written, so the
+ * save that was there still has every chunk it names), then the head is written (the commit), then the chunks nothing names any
+ * more are swept. Nothing else is touched while a newer version's record waits for its copy. A plain record, and a backend with
+ * nowhere to put chunks, is one write of the self-contained text.
  */
 function writeSync(s: State, backend: SyncSaveBackend, json: string): boolean {
   const chunked = chunkedFor(s, backend, json)
   const store = backend.chunks
   if (chunked === undefined || store === undefined) return backend.write(plainText(s, json))
-  if (!s.primed) {
-    s.persisted = new Set(store.ids())
-    s.primed = true
-  }
+  // Listed on every write, not once: the list and the puts below run in one task, so nothing can sweep between them.
+  s.persisted = new Set(store.ids())
+  s.primed = true
   for (const [id, text] of chunked.chunks) {
     if (s.persisted.has(id)) continue
     if (!store.put(id, text)) return false
@@ -696,10 +703,11 @@ async function writeQueued(s: State, json: string): Promise<void> {
 
 /**
  * The chunks of a head, then the head, onto IndexedDB. The ids it doesn't hold yet are encoded and put in one transaction, then
- * the head is encoded and written, each step under the watchdog and followed by the generation check (a removal came after this
- * save: null, and nothing more is written). Returns the sweep to run once the head is stored, which removes the chunks the head
- * doesn't name; a chunk put that fails throws, with the head not written. Coalescing is safe because every call sends the whole
- * set it names against what is known to be stored, never "what is new since the last encode".
+ * the head is encoded, the storage is listed once more and any chunk the head names that is gone (another tab's sweep, between
+ * the first listing or put and now) is put again, and the head is written, each step under the watchdog and followed by the
+ * generation check (a removal came after this save: null, and nothing more is written). Returns the sweep to run once the head is
+ * stored, which removes the chunks the head doesn't name; a chunk put that fails throws, with the head not written. Coalescing is
+ * safe because every call sends the whole set it names against what is stored, never "what is new since the last encode".
  */
 async function writeChunked(
   s: State,
@@ -715,17 +723,26 @@ async function writeChunked(
     s.persisted = new Set(ids)
     s.primed = true
   }
-  const entries: [id: string, record: string][] = []
-  for (const [id, text] of chunked.chunks) if (!s.persisted.has(id)) entries.push([id, await watched(s, encodeSnapshotRecord(text))])
-  if (!current()) return null
-  if (entries.length > 0) {
-    await watched(s, store.put(entries))
-    // The records landed, but this save may have been discarded meanwhile: then the removal after it lists them and takes them.
-    if (!current()) return null
-    for (const [id] of entries) s.persisted.add(id)
+  /** Puts the chunks the head names that `persisted` does not list; false when this save was discarded meanwhile. */
+  const putMissing = async (): Promise<boolean> => {
+    const entries: [id: string, record: string][] = []
+    for (const [id, text] of chunked.chunks) if (!s.persisted.has(id)) entries.push([id, await watched(s, encodeSnapshotRecord(text))])
+    if (!current()) return false
+    if (entries.length > 0) {
+      await watched(s, store.put(entries))
+      // The records landed, but this save may have been discarded meanwhile: then the removal after it lists them and takes them.
+      if (!current()) return false
+      for (const [id] of entries) s.persisted.add(id)
+    }
+    return true
   }
+  if (!(await putMissing())) return null
   const record = await watched(s, encodeSnapshotRecord(head))
   if (!current()) return null
+  // The commit point: ask the storage, not the page's memory, what it holds, so a head never names a chunk another tab swept.
+  s.persisted = new Set(await watched(s, store.ids()))
+  if (!current()) return null
+  if (!(await putMissing())) return null
   await watched(s, backend.write(record))
   return async () => {
     const stale = staleChunks(s, chunked.chunks)

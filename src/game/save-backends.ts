@@ -133,7 +133,8 @@ export function memorySaveBackend(initial?: string): SyncSaveBackend {
 
 /**
  * The chunks of the localStorage backend: one key each, `chunkKey(id)`. `ids()` walks every key of the
- * storage, so a caller asks for it once per page and never per tap. `evict` is the backend's own.
+ * storage (a few dozen: the head, the chunks, the quarantine slots, the Time Machine and the settings), and the store asks for
+ * it on every chunked save, to know which chunks another tab left or swept. `evict` is the backend's own.
  */
 function localChunkStore(evict: () => boolean): SyncChunkStore {
   return {

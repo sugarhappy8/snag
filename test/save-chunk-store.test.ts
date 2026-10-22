@@ -209,7 +209,8 @@ describe('a synchronous backend, chunked', () => {
     expect(backend.order).toEqual(['chunk', 'chunk', 'head'])
     const dropped = before.filter((id) => !after.includes(id))
     expect(kindsOf(dropped).sort()).toEqual(['log.1', 'world'])
-    expect(backend.removed).toEqual([dropped])
+    // One sweep call with exactly those ids (in the storage's listing order, not the head's).
+    expect(backend.removed.map((ids) => [...ids].sort())).toEqual([[...dropped].sort()])
     expect(backend.chunks!.ids()).toEqual([...after].sort())
     // The decade that did not change was not written again.
     expect(after.filter((id) => before.includes(id))).toHaveLength(1)
@@ -258,6 +259,38 @@ describe('a synchronous backend, chunked', () => {
     intact(backend)
     // Only what the new head names is left, though this save put nothing (the chunks were already there).
     expect(backend.chunks!.ids()).toEqual([...chunkIds(backend.read()!)].sort())
+  })
+
+  it('never writes a head that names a chunk another tab swept: the missing chunk is put again (the page cache is a hint, storage is the authority)', () => {
+    const backend = spiedMemory()
+    setSaveBackend(backend)
+    const g = life({ age: 15 })
+    expect(save.saveGame(g)).toBe(true)
+    const ids = chunkIds(backend.read()!)
+    // The other tab played a year on the same storage: its head named new chunks and its sweep took the ones this page still lists as stored.
+    const world = ids.find((id) => id.startsWith('world.'))!
+    const decade = ids.find((id) => id.startsWith('log.0.'))!
+    backend.chunks!.remove([world, decade])
+    backend.order.length = 0
+    // This page taps (no chunk changed, so it believes it has nothing to put) and writes its head.
+    expect(save.saveGame(tap(g))).toBe(true)
+    intact(backend)
+    expect(backend.order.filter((step) => step === 'chunk')).toHaveLength(2)
+    expect(backend.order.at(-1)).toBe('head')
+    expect(save.loadGame()?.flags.worldEconomy).toEqual(economy(1))
+    expect(save.loadGame()?.log[0]?.entries).toHaveLength(1)
+    expect(backend.chunks!.ids()).toEqual([...chunkIds(backend.read()!)].sort())
+  })
+
+  it('a localStorage chunk store gets the same: a swept chunk is put again before the head', () => {
+    setSaveBackend(localSaveBackend())
+    const g = life({ age: 15 })
+    expect(save.saveGame(g)).toBe(true)
+    const world = chunkIds(storage.data.get(SAVE_KEY)!).find((id) => id.startsWith('world.'))!
+    storage.data.delete(`${CHUNK_PREFIX}${world}`)
+    expect(save.saveGame(tap(g))).toBe(true)
+    expect(storage.data.has(`${CHUNK_PREFIX}${world}`)).toBe(true)
+    expect(save.loadGame()?.flags.worldEconomy).toEqual(economy(1))
   })
 
   it('never sweeps a chunk the stored head names, over a random run of saves, refusals and removals', () => {
@@ -601,6 +634,9 @@ function useChunked(initial?: string, chunks: Record<string, string> = {}): Chun
   return backend
 }
 
+/** The head text of `g` as the codec writes it. */
+const inlineHead = (g: GameState): string => encodeSave(g).head
+
 /** The chunk ids the head stored in the backend names, and the chunk ids the backend holds. */
 async function storedHead(backend: ChunkedBackend): Promise<Record<string, unknown>> {
   return JSON.parse(await decodeSnapshotRecord(backend.stored!)) as Record<string, unknown>
@@ -764,7 +800,7 @@ describe('an asynchronous backend, chunked', () => {
     expect(await settleAll(backend)).toBe(true)
   })
 
-  it('writes only the head for a save whose chunks are stored, and primes the ids it was told at boot', async () => {
+  it('writes only the head for a save whose chunks are stored, and uses the ids it was told at boot for its first look', async () => {
     const backend = useChunked()
     const g = life({ age: 15 })
     save.saveGame(g)
@@ -784,7 +820,56 @@ describe('an asynchronous backend, chunked', () => {
     save.saveGame(tap(g))
     expect(await settleAll(backend)).toBe(true)
     expect(backend.chunkPuts).toHaveLength(puts)
-    expect(ids2).not.toHaveBeenCalled()
+    // The told ids spare the listing before the chunks are put; the one listing left is the check just before the head is committed.
+    expect(ids2).toHaveBeenCalledTimes(1)
+    // And a save a page makes after that lists once too, whatever it remembers: the storage is the authority, not the page.
+    save.saveGame(tap(tap(g)))
+    expect(await settleAll(backend)).toBe(true)
+    expect(backend.chunkPuts).toHaveLength(puts)
+    expect(ids2).toHaveBeenCalledTimes(2)
+  })
+
+  it('lists the storage before the head is written and puts a chunk another tab swept: a stale page cache never commits a broken head', async () => {
+    const backend = useChunked()
+    const g = life({ age: 15 })
+    save.saveGame(g)
+    expect(await settleAll(backend)).toBe(true)
+    const puts = backend.chunkPuts.length
+    const world = chunkIds(inlineHead(g)).find((id) => id.startsWith('world.'))!
+    // Another tab swept the world chunk this page believes is stored; this page's tap changes no chunk.
+    backend.chunkData.delete(world)
+    save.saveGame(tap(g))
+    expect(await settleAll(backend)).toBe(true)
+    expect(backend.chunkPuts).toHaveLength(puts + 1)
+    expect(backend.chunkPuts[puts].map(([id]) => id)).toEqual([world])
+    const head = await storedHead(backend)
+    for (const id of neededChunkIds(head)) expect(backend.chunkData.has(id), id).toBe(true)
+  })
+
+  it('a chunk swept while this save is putting its own is put again before the head, not after', async () => {
+    const backend = useChunked()
+    const g = life({ age: 15 })
+    save.saveGame(g)
+    expect(await settleAll(backend)).toBe(true)
+    const puts = backend.chunkPuts.length
+    const writes = backend.writes.length
+    const second = nextYear(g, 2)
+    const kept = chunkIds(inlineHead(g)).filter((id) => chunkIds(inlineHead(second)).includes(id))
+    expect(kept).toHaveLength(1)
+    save.saveGame(second)
+    await putsReach(backend, puts + 1)
+    // The other tab's sweep lands while this page's new chunks are in flight: a chunk both heads name goes.
+    backend.chunkData.delete(kept[0])
+    backend.settleChunks(puts)
+    await putsReach(backend, puts + 2)
+    expect(backend.chunkPuts[puts + 1].map(([id]) => id)).toEqual(kept)
+    // The head waits for the repair.
+    for (let i = 0; i < 20; i++) await tick()
+    expect(backend.writes).toHaveLength(writes)
+    expect(await settleAll(backend)).toBe(true)
+    const head = await storedHead(backend)
+    for (const id of neededChunkIds(head)) expect(backend.chunkData.has(id), id).toBe(true)
+    expect(save.loadGame()?.character.age).toBe(16)
   })
 
   it('encodes a big chunk with gzip, and the record decodes to the chunk text', async () => {

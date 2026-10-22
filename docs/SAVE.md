@@ -49,6 +49,13 @@ generation of the format: a later format's chunks are never listed, and so never
 The write order is the whole safety story: chunks the storage does not hold yet, then the head (the one atomic commit), then a sweep
 of the chunks the new head no longer names. A failed step never loses the save that was there.
 
+Which chunks the storage holds is asked of the storage on every chunked save, not remembered: a second tab on the same storage plays
+a year, writes its own head and sweeps what that head does not name, so a page that trusted its memory would commit a head naming a
+chunk that is gone. A synchronous backend lists the chunk records at the start of the write (one key walk, a few dozen keys); IndexedDB
+lists them once more after the head is encoded and just before it is written, and puts back any chunk the head names that is missing.
+Two tabs still overwrite each other (the later head wins, as in v4.1.1), but neither leaves a head with a missing part. What is left
+is a window of one IndexedDB write between that listing and the head landing; closing it would take a lock across tabs.
+
 ## Slices
 
 A slice is one piece of saved state with a declared home (`src/game/kernel/slices.ts`, the table in `src/game/save-slices.ts`):
