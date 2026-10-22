@@ -42,4 +42,6 @@ defineSlice({
   normalize: (raw) => (isObject(raw) ? raw : undefined),
   migrate: dietEconomy,
   write: 'replace',
+  // A country, a sector row and a history point repeat their key names thousands of times: the shape table (R2-S11) writes them once.
+  pack: 'shapes',
 })

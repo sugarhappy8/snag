@@ -7,10 +7,15 @@
 // The core is the head of a save: every scalar below and every core slice, in the key order of GameState. The chunked slices
 // leave a placeholder string in it ("~flags.worldEconomy") and live in a chunk record beside it:
 //
-//   flags.worldEconomy  the world economy, replaced whole once a year (economy/model.ts storeEconomy): chunk `world`
+//   flags.worldEconomy  the world economy, replaced whole once a year (economy/model.ts storeEconomy): chunk `world`, with a shape table
 //   log                 completed life-log years in decade chunks `log.<n>`; the current year stays in the core
 //   world               the A.K2 world root (absent until Ledger-world lands): each own key is a `world.<name>` replace
-//                       sub-slice, except world.ledger, which every booking edits in place and so stays in the core
+//                       sub-slice, except world.ledger, which every booking edits in place and so stays in the core. Every
+//                       sub-slice takes the root's `pack: 'shapes'`
+//
+// `pack: 'shapes'` (kernel/shapes.ts, R2-S11) writes a value with its repeated object shapes in a table, so a country, a sector
+// row, a history point or a rival stores its values only. The codec writes the packed form only when a shape repeats, and reads
+// a plain value as it is, so a small state keeps the text it always had.
 //
 // Versions are 1 here, the shape v4.1.1 wrote, except `flags.worldEconomy`, which is 2 (the save diet: `previous` kept for the
 // countries a reader can name, 16 years of history; economy/slice.ts). A later release that changes a slice's shape bumps its
@@ -54,8 +59,9 @@ for (const [key, nodes, chars] of CORE_ROWS) {
   defineSlice({ key, version: 1, chunk: 'core', caps: { nodes, chars }, normalize: keep, write: 'inplace' })
 }
 
-// `flags.worldEconomy` (chunk `world`, write 'replace') is declared in economy/slice.ts, which the first import above runs. It is the
-// one slice past version 1 (A.K9, the save diet), so its row lives beside its migrate; its writer builds a new root every year.
+// `flags.worldEconomy` (chunk `world`, write 'replace', pack 'shapes') is declared in economy/slice.ts, which the first import above
+// runs. It is the one slice past version 1 (A.K9, the save diet), so its row lives beside its migrate; its writer builds a new root
+// every year.
 
 // Completed years never change (core.ts currentLogYear edits only the last one), so they are written once, by decade.
 defineSlice({
@@ -77,6 +83,7 @@ defineSlice({
   normalize: (raw) => plainOrAbsent(raw),
   write: 'replace',
   shape: 'subkeys',
+  pack: 'shapes',
 })
 
 // The ledger shard is edited in place by every booking, so it cannot be a frozen shared root and must not sit in the world

@@ -15,6 +15,7 @@ import { gunzipSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ageUp } from '../src/game/aging'
 import { economyState } from '../src/game/economy/model'
+import { unpackShapes } from '../src/game/kernel/shapes'
 import { LOG_GROUP_YEARS, LOG_TAIL, defineSlice, listSlices } from '../src/game/kernel/slices'
 import {
   CHUNK_ID_PATTERN,
@@ -667,12 +668,14 @@ describe('a 15-year life with two companies', () => {
     expect(e.head.length).toBeLessThan(inline.length / 3)
     expect(chunkNames(e)).toContain('world')
     expect(chunkNames(e).filter((n) => n.startsWith('log.')).length).toBeGreaterThan(0)
-    // Splitting adds only the manifest, the sv map, the placeholders and the chunk wrappers; nothing is duplicated.
-    // (The plan asked for fewer characters; chunking alone cannot do that. The diet and shape tables, R2-S10 and R2-S11, shrink it.)
-    expect(e.head.length + chunkTotal).toBeGreaterThan(inline.length)
-    expect(e.head.length + chunkTotal).toBeLessThan(inline.length + 4_000)
+    // Splitting alone adds only the manifest, the sv map, the placeholders and the chunk wrappers (at most 4,000 characters more than
+    // the inline record, as R2-S3 pinned it). R2-S11's shape tables take the key names out of the economy, which is most of this life:
+    // the parts are now about half of the inline record (0.54 measured), so the old "a little more than inline" bound moves, on purpose.
+    // Nothing is lost: the economy in the world chunk unpacks to the plain economy, and the reload tests below prove the whole record.
+    expect(e.head.length + chunkTotal).toBeLessThan(inline.length * 0.6)
     const world = JSON.parse(e.chunks.get(idOf(e, 'world'))!) as Rec
-    expect(world['flags.worldEconomy']).toEqual(JSON.parse(JSON.stringify(g.flags.worldEconomy)))
+    expect(Object.keys(world['flags.worldEconomy'] as Rec)).toEqual(['$s', '$v'])
+    expect(unpackShapes(world['flags.worldEconomy'])).toEqual(JSON.parse(JSON.stringify(g.flags.worldEconomy)))
     expect(((JSON.parse(e.head) as { flags: Rec }).flags).worldEconomy).toBe('~flags.worldEconomy')
     // Encoding it again costs no slice, and the second head is the first.
     const again = encodeSave(g)
