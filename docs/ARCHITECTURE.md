@@ -447,8 +447,9 @@ line tags. Every pool needs an untagged fallback, and a dated object needs both 
 gate when the technology or fashion later disappears.
 
 `history/digest-{prices,early,late}.ts` provides a culture line and approximate period prices for
-every year from 1900 through `PRESENT_YEAR`. `history/digest-menu.ts` exposes the read-only
-**This Year** card under Activities. Nominal price rows are converted to constant engine dollars
+every year from 1900 through `PRESENT_YEAR`. The yearly log line is the culture line alone, at most
+110 characters (`test/culture-lines.test.ts`); prices stay in the card. `history/digest-menu.ts`
+exposes the read-only **This Year** card under Activities. Nominal price rows are converted to constant engine dollars
 with `priceLevel`; display is the only place they become period money, and small values retain
 cents. `householdHas(g, tech)` makes a stable, per-life technology-adoption draw without consuming
 `g.rng`; `ownerPools` reserves first-person ownership lines for households that actually have the

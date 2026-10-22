@@ -23,6 +23,8 @@ import { recordRecent } from '../nav/prefs'
 import { placeOfLink, placeToReopen, type OpenablePlace } from '../nav/reopen'
 import { SHORTCUTS_OFF, useGlobalShortcuts } from '../nav/shortcuts'
 import { StatPanel } from '../components/StatPanel'
+import { YearCardInline } from '../components/YearCard'
+import { inlineCard } from '../components/yearCardModel'
 import { canOfferTimeMachine, TimeMachineButton, TimeMachineSheet, TimeTravelArrival } from '../components/TimeMachine'
 import { ageUpAction, clearReturnPoint, goTo, returnChipVisible, returnPointLive, setReturnPoint, useApp, type ReturnSheet } from '../store'
 import { DeathScreen } from './DeathScreen'
@@ -193,6 +195,8 @@ export function GameScreen({ initialSheet }: GameScreenProps) {
         </div>
       ) : (
         <>
+          {/* The year card of a year whose popup has been shown ten times (R3-Q6): above the log, gone with the year. */}
+          <YearCardInline card={inlineCard(g.flags.yearBook, g.year)} />
           <LifeLog key={g.lifeId} log={g.log} reserveBottom={target !== null || showTimeMachine} />
           <div className={showTimeMachine ? 'return-dock has-tm' : 'return-dock'}>
             {target ? <ReturnChip key={`${target.sheet}:${target.personId ?? ''}`} target={target} onReturn={goBackThere} onDismiss={clearReturnPoint} /> : null}
