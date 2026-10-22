@@ -9,8 +9,9 @@
 //   pure    nothing is written and g.rng is never read. The truth is an argument; nothing here reads a market, a roll or a year
 //           after g.year. In Exact mode, for an own: key and for a truth that cannot be fogged, the answer is the truth itself.
 //
-// A stored reading (a bought report, R3-H3) is passed as `row`. It ages with sqrt(sd^2 + drift^2 years) and is shown instead of
-// the passive read when its aged sd is the lower one. That choice looks at sd and never at the truth, so coverage holds.
+// A stored reading (a bought report, kept by record.ts) is passed as `row`; know() finds it in the record. It ages with
+// sqrt(sd^2 + drift^2 years) and is shown instead of the passive read when its aged sd is the lower one. That choice looks at sd
+// and never at the truth, so coverage holds.
 //
 // Scales. money, count and pct are noisy on a log scale (a relative sd, the band is a ratio); score (0..100), odds (0..1) and delta
 // (a signed amount, sd x scale) are additive. At the edge of a bounded scale the band is clipped, which only ever makes it hold
@@ -21,6 +22,7 @@ import { exactWords, wordsFor } from './format'
 import { isExactKey, ruleOf } from './keys'
 import { isExact } from './mode'
 import { zOf } from './normal'
+import { storedRow } from './rows'
 import type { Estimate, EstimateOpts, StoredRow, Unit } from './types'
 
 /** The half width of the 80% band in sd, for the unit-variance draw of normal.ts (the exact point is 1.2969). */
@@ -84,6 +86,17 @@ export function sharpFactor(g: GameState, key: string, role: 'passive' | 'source
   return sharp ? (role === 'passive' ? PASSIVE_TALENT : SOURCE_TALENT) : 1
 }
 
+/** The 80% band round a reading: +-BAND_Z sd in the scale of the unit, clipped to the range of a bounded unit. */
+function bandOf(unit: Unit, mid: number, sd: number, span: number): { lo: number; hi: number } {
+  const half = BAND_Z * sd
+  if (isLog(unit)) return { lo: mid * Math.exp(-half), hi: mid * Math.exp(half) }
+  const lo = mid - span * half
+  const hi = mid + span * half
+  if (unit === 'score') return { lo: clamp(lo, 0, 100), hi: clamp(hi, 0, 100) }
+  if (unit === 'odds') return { lo: clamp(lo, 0, 1), hi: clamp(hi, 0, 1) }
+  return { lo, hi }
+}
+
 const confOf = (sd: number): 0 | 1 | 2 | 3 => (sd <= 0.06 + EPS ? 3 : sd <= 0.15 + EPS ? 2 : sd <= 0.3 + EPS ? 1 : 0)
 
 /** The estimate of a number that is not fogged: the truth, with no band. */
@@ -101,7 +114,7 @@ function usableRow(g: GameState, row: StoredRow | null | undefined, log: boolean
 }
 
 /** The width of one unit of sd, in the unit of the truth; null when the truth cannot be read on this unit's scale. */
-function spanOf(unit: Unit, truth: number, scale: number | undefined): number | null {
+export function spanOf(unit: Unit, truth: number, scale: number | undefined): number | null {
   switch (unit) {
     case 'money':
     case 'count':
@@ -116,6 +129,19 @@ function spanOf(unit: Unit, truth: number, scale: number | undefined): number | 
       return s > 0 ? s : null
     }
   }
+}
+
+/**
+ * A reading of `truth`: the truth plus one unit-variance draw `z` of relative sd `sd`, on the scale of the unit (a ratio on a log
+ * unit, `span` hundredths on a bounded or signed one), kept inside the range of a bounded unit. The one place a noisy read is made:
+ * the passive read here and every purchased source (intel.ts) use it, so they cannot drift apart. `span` is spanOf(unit, ...).
+ */
+export function applyNoise(unit: Unit, truth: number, sd: number, z: number, span: number): number {
+  const noise = sd * z
+  if (isLog(unit)) return truth * Math.exp(noise)
+  const lo = unit === 'score' || unit === 'odds' ? 0 : Number.NEGATIVE_INFINITY
+  const hi = unit === 'score' ? 100 : unit === 'odds' ? 1 : Number.POSITIVE_INFINITY
+  return clamp(clamp(truth, lo, hi) + span * noise, lo, hi)
 }
 
 /**
@@ -149,20 +175,12 @@ export function estimate(g: GameState, key: string, truth: number, opts: Estimat
     src = row.src
     if (g.year - row.y >= 2) asOf = row.y
   } else {
-    const noise = sd * zOf(g, key, g.year, 'passive')
-    const t = bounded ? clamp(truth, bounded[0], bounded[1]) : truth
-    mid = log ? t * Math.exp(noise) : t + span * noise
+    mid = applyNoise(unit, truth, sd, zOf(g, key, g.year, 'passive'), span)
   }
 
   // A bounded scale keeps the reading inside its range; the band follows the kept reading and is clipped to the range.
   if (bounded) mid = clamp(mid, bounded[0], bounded[1])
-  const half = BAND_Z * sd
-  let lo = log ? mid * Math.exp(-half) : mid - span * half
-  let hi = log ? mid * Math.exp(half) : mid + span * half
-  if (bounded) {
-    lo = clamp(lo, bounded[0], bounded[1])
-    hi = clamp(hi, bounded[0], bounded[1])
-  }
+  const { lo, hi } = bandOf(unit, mid, sd, span)
   if (![mid, lo, hi, sd].every(Number.isFinite)) return exactEstimate(g, key, unit, truth)
 
   const conf = confOf(sd)
@@ -186,7 +204,40 @@ export function estimate(g: GameState, key: string, truth: number, opts: Estimat
  * key and for a truth that cannot be fogged, the Estimate is exact (`exact: true`) and the caller keeps its old text.
  */
 export function know(g: GameState, key: string, truth: number, opts: EstimateOpts = {}): Estimate {
-  return estimate(g, key, truth, opts)
+  // Exact mode and an own: key never show a stored reading, so the record is not even opened for them.
+  const row = isExact() || isExactKey(key) ? null : storedRow(g, key, opts.unit)
+  return estimate(g, key, truth, row ? { ...opts, row } : opts)
+}
+
+/**
+ * What a stored reading says on its own, aged to g.year, with no truth to compare it to (the Briefing hub lists these). Null when
+ * the key has no rule, no unit (a hint key without `opts.unit`), or the row cannot be used today. A delta is measured against
+ * `opts.scale`, else the size of the reading itself.
+ */
+export function rowEstimate(g: GameState, key: string, row: StoredRow, opts: EstimateOpts = {}): Estimate | null {
+  const rule = isExactKey(key) ? null : ruleOf(key)
+  const unit: Unit | null = rule ? (opts.unit ?? rule.unit) : null
+  if (!rule || unit === null || !usableRow(g, row, isLog(unit))) return null
+  const span = spanOf(unit, row.mid, opts.scale)
+  if (span === null) return null
+  const sd = Math.max(SD_MIN, agedSd(row.sd, rule.drift, g.year - row.y))
+  const mid = unit === 'score' ? clamp(row.mid, 0, 100) : unit === 'odds' ? clamp(row.mid, 0, 1) : row.mid
+  const { lo, hi } = bandOf(unit, mid, sd, span)
+  if (![mid, lo, hi, sd].every(Number.isFinite)) return null
+  const conf = confOf(sd)
+  return {
+    key,
+    mid,
+    lo,
+    hi,
+    sd,
+    conf,
+    y: row.y,
+    src: row.src,
+    exact: false,
+    ...(g.year - row.y >= 2 ? { asOf: row.y } : {}),
+    words: wordsFor(unit, { mid, lo, hi, conf }, opts.ladder),
+  }
 }
 
 /** know(...).mid: the number a hint helper ranks on. */

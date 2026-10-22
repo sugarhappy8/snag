@@ -154,6 +154,7 @@ const BUSINESS = {
   'firm.sale': same('other', 'a company sold'),
   inject: same('other', 'an owner puts cash into a firm (use moveCash)'),
   inputs: same('retail', 'supplies, rent and services of a firm'),
+  intel: same('other', 'reports, analysts and investigators'),
   marketing: same('other', 'advertising'),
   payroll: same('hh', 'wages and benefits paid to staff'),
   rnd: same('other', 'research and development'),

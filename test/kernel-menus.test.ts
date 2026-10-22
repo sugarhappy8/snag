@@ -22,6 +22,7 @@ import { doctorMenu } from '../src/game/health'
 import { thisYearMenu } from '../src/game/history/digest-menu'
 import { lifePrioritiesMenu } from '../src/game/household'
 import { investmentsMenu } from '../src/game/investments'
+import { intelBriefingMenu } from '../src/game/knowledge/contract'
 import { collectMenu, menuEntries } from '../src/game/kernel/registry'
 import { adoptionMenu, loveMenu, petsMenu } from '../src/game/love'
 import { activitiesMenu, assetsMenu, doAnythingAction, shoppingMenu } from '../src/game/menus'
@@ -64,7 +65,7 @@ const OLD_ACTIVITIES: readonly MenuNode[] = [
   ...miscActivities,
 ]
 
-const MONEY_MENUS: readonly MenuNode[] = [businessesMenu, investmentsMenu, moneyTeamMenu, bankingMenu, developmentMenu]
+const MONEY_MENUS: readonly MenuNode[] = [businessesMenu, investmentsMenu, moneyTeamMenu, intelBriefingMenu, bankingMenu, developmentMenu]
 const LIFESTYLE_MENUS: readonly MenuNode[] = [membershipsMenu, ticketsMenu, luxuryLifestyleMenu]
 
 function adult(): GameState {
@@ -86,11 +87,11 @@ describe('the slots hold the rows the old menus listed, in the old order', () =>
     expect(ids(collectMenu('activities.items', adult()))).toEqual(ids(OLD_ACTIVITIES))
   })
 
-  it('assets.money: the heading first, then the five money menus', () => {
+  it('assets.money: the heading first, then the six money menus (the Intelligence Briefing sits at 45)', () => {
     const nodes = collectMenu('assets.money', adult())
     expect(nodes[0]).toEqual({ type: 'heading', id: 'moneyHeading', label: 'Business & Investments' })
     expect(ids(nodes.slice(1))).toEqual(ids(MONEY_MENUS))
-    expect(menuEntries('assets.money').map((e) => e.order)).toEqual([10, 20, 30, 40, 50, 60])
+    expect(menuEntries('assets.money').map((e) => e.order)).toEqual([10, 20, 30, 40, 45, 50, 60])
   })
 
   it('assets.tail: the everyday stores, then memberships, tickets and the luxury lifestyle', () => {
