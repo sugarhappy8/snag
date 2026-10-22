@@ -162,6 +162,12 @@ the Look closer row (`ILLEGAL_CONFIRM`).
 - In Realistic only. Exact returns the text and the value untouched.
 - A figure that follows "about", "roughly", "around" or "~" (a money amount in the money the player reads, a percent, or "N years") becomes
   the talent's reading: a hashed draw through `know` on a `hint:` key, sharpened by the rule table (x.6 with the talent).
+- A percent that says it is a chance in its own words becomes the talent's reading too: "12% chance of an offer", "40% to fund", "70% they
+  say yes", "20% delivery trouble", "10% of getting some money back". "odds" is not on that list ("(62% odds" is the research chance, which
+  reads through the reveal policy), and neither is a rate or a share ("30% margin", "15% of the market"). A site whose words cannot say
+  it (an emoji list) writes `hintPct(p)` ("12%" in Exact, "about 12%" in Realistic) or `hintLead()` (the lead word alone), so the lens reads
+  it once and the Exact text is unchanged. `test/fog-hint-probability.test.ts` reads every `talentHint(` call in src and fails on a percent
+  the lens leaves exact unless the figure is on its short list of things that are not a chance.
 - The shape stays: the same currency and unit letter, at most three significant digits, a whole percent of 10 or more to the nearest 5.
 - A limit written without "about" (a cap, a year, a horizon, "quality ~4", a count of things) is left alone. The chance of a research
   project in a hint is written "about 62%" in Realistic (`hintOdds`), so the lens reads it once.

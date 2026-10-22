@@ -3,7 +3,8 @@
 //
 //   talentHint  (talents.ts) runs the text of a hint through the port talents.hintLens, which this file binds. In Realistic mode a
 //               number that follows "about", "roughly", "around" or "~" (a money amount in the money the player reads, a percent,
-//               or "N years") is replaced by what the talent reads for it: a hashed draw around the true figure, through
+//               or "N years"; and a percent that says it is a chance in words: "12% chance of ...", "40% to fund", "70% they say yes")
+//               is replaced by what the talent reads for it: a hashed draw around the true figure, through
 //               know() with a hint: key. The talent narrows the draw (Knowledge's rule table: x.6 with the talent, and Main
 //               Character has every talent), so a hint is closer than a guess and never exact.
 //   markBest    (business/util.ts) ranks its options by rankNoise, the same draw on each option's value, so a close call can flip.
@@ -56,6 +57,13 @@ const SCALE: Readonly<Record<string, number>> = Object.freeze({ '': 1, ...Object
 
 /** What can lead a figure: "about ", "roughly ", "around " (any case) or "~". */
 const LEAD = /(?<![A-Za-z0-9_$])(?:about|roughly|around)\s+|~\s?/gi
+/**
+ * A percent that names a chance without a lead word: what follows it says so ("12% chance of an offer", "40% to fund", "70% they say
+ * yes", "20% delivery trouble", "10% of getting some money back"). "odds" is not here: "(62% odds" is the research quote, which reads
+ * through the reveal policy (effort/why.ts), and a rate or a share ("15% of the market", "30% margin") is a figure, not a chance.
+ */
+const CHANCE_FIG = /(?<![A-Za-z0-9_.$])\d+(?:\.\d+)?%/g
+const CHANCE_TAIL = /^\s*(?:chance\b|to\s+(?:fund|win|beat|calm|work|pass|land|succeed)\b|they\s+say\b|delivery\s+trouble\b|of\s+getting\b)/i
 const PCT = new RegExp(`(an?\\s+)?(${SIGN}?)(\\d+(?:\\.\\d+)?)%`, 'y')
 const YEARS = /(\d+(?:\.\d+)?)(\s+)(years?)(?![A-Za-z0-9-])/y
 const DIGITS = /\d[\d,]*(?:\.\d+)?/g
@@ -215,15 +223,25 @@ function readAt(text: string, at: number): Hit | null {
   return readPercent(text, at) ?? readYears(text, at) ?? readMoney(text, at, moneyRes())
 }
 
+/** Where a figure to read starts: after each lead word, and at each percent that names a chance in words (the same place counts once). */
+function starts(text: string): number[] {
+  const out = new Set<number>()
+  for (const lead of text.matchAll(LEAD)) out.add((lead.index ?? 0) + lead[0].length)
+  for (const m of text.matchAll(CHANCE_FIG)) {
+    const at = m.index ?? 0
+    if (CHANCE_TAIL.test(text.slice(at + m[0].length))) out.add(at)
+  }
+  return [...out].sort((a, b) => a - b)
+}
+
 function rewrite(g: GameState, id: string, text: string): string {
-  const leads = [...text.matchAll(LEAD)]
-  if (leads.length === 0) return text
+  const froms = starts(text)
+  if (froms.length === 0) return text
   const key = `hint:${part(id)}:${hash36(maskFigures(text))}`
   let out = ''
   let cursor = 0
   let n = 0
-  for (const lead of leads) {
-    const from = (lead.index ?? 0) + lead[0].length
+  for (const from of froms) {
     if (from < cursor) continue
     const hit = readAt(text, from)
     if (!hit) continue
@@ -249,6 +267,20 @@ export function lensHint(g: GameState, id: string, text: string): string {
   } catch {
     return text
   }
+}
+
+/**
+ * "about " in Realistic and nothing in Exact: the lead a hint site writes before a figure its words cannot mark (an emoji list, "62%
+ * odds"), so the lens reads it and the Exact text is the text it always was.
+ */
+export function hintLead(): string {
+  return isExact() ? '' : 'about '
+}
+
+/** A chance, 0 to 1, as a hint site writes it: "12%" in Exact, "about 12%" in Realistic (read once by the lens). */
+export function hintPct(p: number): string {
+  const v = Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : 0
+  return `${hintLead()}${Math.round(v * 100)}%`
 }
 
 /**
