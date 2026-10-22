@@ -50,13 +50,15 @@ const HUBS: readonly (readonly [string, () => Promise<object>])[] = [
   ['effort/module', () => import('../src/game/effort/module')],
   ['world/facts', () => import('../src/game/world/facts')],
   ['knowledge/module', () => import('../src/game/knowledge/module')],
+  ['world/frontier', () => import('../src/game/world/frontier')],
+  ['world/frontier-step', () => import('../src/game/world/frontier-step')],
 ]
 
 /** A hub that legitimately exports undefined today: path -> the names, with the reason. None yet. */
 const UNDEFINED_OK: Readonly<Record<string, { names: readonly string[]; why: string }>> = {}
 
 /** The ports the game defines, by name. Each task that cuts an import with a port adds its name here. */
-const EXPECTED_PORTS: readonly string[] = ['activities.relocate', 'business.revalueCompany', 'computer.gameMakingMenu', 'workplace.ordinaryJobs']
+const EXPECTED_PORTS: readonly string[] = ['activities.relocate', 'business.discloseResearch', 'business.revalueCompany', 'computer.gameMakingMenu', 'workplace.ordinaryJobs']
 
 describe('enter the game through each hub, in a fresh module registry', () => {
   it('lists each hub once', () => {

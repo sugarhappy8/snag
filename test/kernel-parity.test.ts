@@ -203,7 +203,7 @@ describe('kernel parity: the yearly lists', () => {
     const f = loadFixture()
     const entries = yearlyEntries('aging')
     expect(entries).toHaveLength(f.aging.length)
-    // R3: a module of a later track (effort.you, R3-E6; knowledge.core, R3-H5) is recorded under its own id, with a dot; every R2 hook is yearly.<name>.
+    // R3: a module of a later track (effort.you, R3-E6; knowledge.core, R3-H5; world.frontier, R3-F2) is recorded under its own id, with a dot; every R2 hook is yearly.<name>.
     const idOf = (n: string): string => (n.includes('.') ? n : `yearly.${n}`)
     expect(entries.map((e) => e.id)).toEqual(f.aging.map(idOf))
   })
@@ -213,7 +213,8 @@ describe('kernel parity: the yearly lists', () => {
     expect(f.aging.length).toBeGreaterThanOrEqual(35)
     expect(f.special).toHaveLength(13)
     expect(new Set(f.aging).size).toBe(f.aging.length)
-    expect(f.aging.slice(0, 3)).toEqual(['history', 'digest', 'household'])
+    expect(f.aging.filter((n) => !n.includes('.')).slice(0, 3)).toEqual(['history', 'digest', 'household'])
+    expect(f.aging[0]).toBe('world.frontier')   // R3-F2: the frontier phase runs before the life phase
   })
 })
 

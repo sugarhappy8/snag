@@ -21,6 +21,8 @@ import { SLICES, explainMove, type SliceName } from './golden-kit'
 import { GOLDEN_PLANS, compareGolden, playGolden, type GoldenLife, type LifeDigests, type Moved } from './golden-run'
 import { K_ID, K_STR, closeParen, isId, isPunct, lineOf, loadSources, splitArgs, toSource, type SourceFile } from './scan-kit'
 import { hazardRoll } from '../src/game/knowledge/risk'
+import { gainLuck } from '../src/game/world/frontier'
+import { followDraw } from '../src/game/world/frontier-step'
 import { seededEntity } from '../src/game/world/lod'
 import { makeTestGame } from './helpers'
 import { STREAM_SLICES, tap, type StreamRow, type TapRule } from './stream-tap'
@@ -73,6 +75,10 @@ const DRIVERS: Readonly<Record<string, (g: GameState) => void>> = {
   lod: (g) => void seededEntity(g, 'person', 'probe', (rand) => rand()),
   // A played life has no heat, so the driver asks for the roll of a heat of 6 (a hacker's) in this year: a pure read of the stream.
   'intel.risk': (g) => void hazardRoll(g, 6),
+  frontier: (g) => {
+    void gainLuck(g, 'fusion', 'probe', g.year)
+    void followDraw(g, 'fusion', 'probe', g.year)
+  },
 }
 
 /** The hook of a row that is driven: calls its driver after the years the row taps at, in every life. Undefined for a row that is not. */

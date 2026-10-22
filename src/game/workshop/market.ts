@@ -5,6 +5,8 @@ import { economicRoll } from '../economy'
 import { realWealthFactor } from '../history/events-people'
 import type { GameState } from '../types'
 import { getCountry } from '../world'
+import { frontierLead, lastPush } from '../world/frontier'
+import type { FieldId } from '../world/frontier-fields'
 import { CATEGORIES, isHistory, type IdeaDef, type Level } from './catalog'
 import type { Inv, Patent, PatentScope } from './state'
 
@@ -57,14 +59,52 @@ export function familyOf(g: GameState): string {
 }
 
 /**
+ * The field of each future idea that starts a wave (WORKSHOP_WAVES in business/tech-wave-data.ts writes a 'race' wave of the same
+ * kind, and a wave kind and its field share an id). The four novelties write no wave, so the frontier never moves them.
+ */
+export const FUTURE_FIELD: Readonly<Record<string, FieldId>> = Object.freeze({
+  'fut-fusion-cell': 'fusion',
+  'fut-superwire': 'fusion',
+  'fut-dream-recorder': 'neuro',
+  'fut-pocket-quantum': 'quantum',
+  'fut-organ-printer': 'drug',
+  'fut-cold-cure': 'drug',
+  'fut-tooth-gel': 'drug',
+  'fut-plastic-bin': 'carbon',
+  'fut-robot-chef': 'automation',
+})
+
+/** The deadline the future race rolls before the frontier: 10-40 years after the idea opens, per family. */
+function futureBase(g: GameState, def: Pick<IdeaDef, 'id' | 'from'>): number {
+  return def.from + 10 + Math.floor(economicRoll(`${familyOf(g)}|ws-future|${def.id}`) * 31)
+}
+
+/**
+ * Whole years the frontier has taken off a future idea's rival deadline: 0 unless the idea has a field. A leap in the field pulls
+ * the rival in by the whole years of its lead (floor), but never below the era floor (`from + 10`, the old lower bound), never
+ * above the old deadline, and never before the year of the latest push, so a deadline cannot jump back over the year it was
+ * pulled in. History ideas are never touched (history before 2026 stays fixed). Pure: it reads the shard and rolls nothing.
+ */
+export function raceShift(g: GameState, def: Pick<IdeaDef, 'id' | 'from' | 'real' | 'future'>): number {
+  if (typeof def.real === 'number' || def.future !== true || !Object.hasOwn(FUTURE_FIELD, def.id)) return 0
+  const field = FUTURE_FIELD[def.id]!
+  const cut = Math.floor(frontierLead(g, field))
+  if (cut < 1) return 0
+  const base = futureBase(g, def)
+  const floor = Math.max(def.from + 10, Math.min(base, lastPush(g, field)))
+  return Math.max(0, Math.min(cut, base - floor))
+}
+
+/**
  * The year a race idea must reach the market by: the real year in the history race, or the year
  * a rival gets there in the future race (rolled per family, 10-40 years after it opens, so it is
- * the same for heirs and never a claim about the real future). null for everyday ideas. Pure.
+ * the same for heirs and never a claim about the real future, then pulled in by the frontier:
+ * see raceShift). null for everyday ideas. Pure.
  */
 export function raceYear(g: GameState, def: Pick<IdeaDef, 'id' | 'from' | 'real' | 'future'>): number | null {
   if (typeof def.real === 'number') return def.real
   if (def.future !== true) return null
-  return def.from + 10 + Math.floor(economicRoll(`${familyOf(g)}|ws-future|${def.id}`) * 31)
+  return futureBase(g, def) - raceShift(g, def)
 }
 
 /** A race idea can strike from 25 years before its deadline (never before its own era) until then. Pure. */

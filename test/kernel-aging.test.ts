@@ -67,8 +67,10 @@ describe('the aging hooks are modules in the pinned phases', () => {
     const all = yearlyEntries('aging').map((e) => e.id)
     // R3: a module of a later track sits among the hooks under its own id. effort.you (R3-E6) runs right after the household at order 35;
     // knowledge.core (R3-H5, close phase, order 20) sits between milestones and world. The 36 hooks of R2 keep their order and their ids.
+    // R3-F2: the frontier phase sits between the world and the society phases, so the world frontier's step runs before every life hook.
     const ran = all.filter((id) => id.startsWith('yearly.'))
     expect(ran).toEqual(TABLE.map(([name]) => `yearly.${name}`))
+    expect(all[0]).toBe('world.frontier')
     expect(all[all.indexOf('yearly.household') + 1]).toBe('effort.you')
     expect(all[all.indexOf('yearly.milestones') + 1]).toBe('knowledge.core')
     expect(all[all.indexOf('knowledge.core') + 1]).toBe('yearly.world')
@@ -108,7 +110,7 @@ describe('a track adds a hook by registering a module', () => {
     expect(trace.filter((id) => id === 'ext.k9between')).toHaveLength(1)
     const at = trace.indexOf('ext.k9between')
     expect(trace.slice(at - 1, at + 2)).toEqual(['yearly.relationships', 'ext.k9between', 'yearly.sharedProjects'])
-    expect(trace[0]).toBe('yearly.history')
+    expect(trace.slice(0, 2)).toEqual(['world.frontier', 'yearly.history'])
     expect(trace[trace.length - 1]).toBe('yearly.world')
   })
 
