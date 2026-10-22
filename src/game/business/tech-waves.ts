@@ -24,17 +24,18 @@ import { PRESENT_YEAR } from '../history/timeline'
 import { marketYearOf } from '../invest/clock'
 import { outcomeTag } from '../timeMachine'
 import type { GameState, Json } from '../types'
+import { isFieldId, type FieldId } from '../world/frontier-fields'
 import { marketKey, marketStateOf } from './competition-core'
 import { familyId } from './competition-roster'
 import { discloseResearch, type ResearchDisclosure } from './contract'
 import { isDeepTech } from './deeptech-state'
-import { kindOfField } from './frontier-waves'
+import { kindOfField, pushFromWave, pushResearch } from './frontier-waves'
 import { heavyLevel, readHeavy } from './heavy-rd'
 import { hashOf } from './product-market'
 import { businessAssets, isQuoted, readBiz, type BizState } from './state'
 import { isWaveKind, WAVE_KINDS, type WaveKind } from './tech-wave-data'
 import {
-  BASE_KEY, cleanWave, effectsOf, MAX_ID, MAX_WAVES, nextStepTag, noBase, readTechBase, readTechWaves, roleOf, STOCK_BETA, stockLevelFor, storedBase, storedWave, TRAIL_POINTS, waveFactorsFor, WAVES_KEY,
+  BASE_KEY, cleanWave, effectsOf, isWaveMarket, MAX_ID, MAX_WAVES, nextStepTag, noBase, readTechBase, readTechWaves, roleOf, STOCK_BETA, stockLevelFor, storedBase, storedWave, TRAIL_POINTS, waveFactorsFor, WAVES_KEY,
   type TechBase, type TechWave, type WaveSource,
 } from './tech-wave-factors'
 import { clampN } from './util'
@@ -62,6 +63,8 @@ export interface WaveInput {
   home?: string
   /** The asset id of the company that wrote this wave (a heavy launch or a deep-tech milestone), for the insider rule. Never stored on the wave. */
   by?: string
+  /** The research field the wave pushes in the world frontier when it is narrower than the kind's own (an `ai.<capability>`). Never stored on the wave. The writers leave it out. */
+  field?: FieldId
 }
 
 /** Always a NEW array of NEW objects: the read cache below is keyed on the array, so nothing is edited in place. */
@@ -121,7 +124,9 @@ export function entrantsDue(g: Pick<GameState, 'flags'>, trade: string, market: 
  * origin string, so a second call for the same milestone returns the stored wave and writes nothing
  * (a news id is no guard: the news list keeps only 20). Refuses (null) an unknown kind, a 65th wave,
  * a third non-rival wave in one year, and a heavy, workshop, race or effort wave of a kind a history
- * row already covers that year. Hype starts at 0.3 + 0.7 size, delivery at 0. Draws nothing.
+ * row already covers that year. Hype starts at 0.3 + 0.7 size, delivery at 0. A wave that is stored NEW also pushes the frontier
+ * (R3-F4, `pushFromWave`: the field of its kind, a `rival` row for a rival wave); a repeat, a refusal and a history kind push
+ * nothing, so no wave writer needs an edit. Draws nothing on `g.rng`.
  */
 export function announceWave(g: GameState, a: WaveInput): TechWave | null {
   if (!isWaveKind(a.kind)) return null
@@ -153,6 +158,8 @@ export function announceWave(g: GameState, a: WaveInput): TechWave | null {
   if (stored) announceWaveNews(g, stored, a.by)
   // A wave the player's own company wrote may be an insider case (a repeat returned above and never reaches here).
   if (stored && a.by) waveInsiderCases(g, stored, a.by)
+  // The research is out: the world frontier moves (a repeat returned above and never reaches here, so one wave is one push).
+  if (stored) pushFromWave(g, stored, a.field)
   return stored
 }
 
@@ -182,18 +189,27 @@ function announceWaveNews(g: GameState, w: TechWave, by?: string): void {
 }
 
 /**
- * Disclose research as a wave (R3-F3, spec 5.9): the port `business.discloseResearch` calls this. The field picks the kind
- * (`kindOfField`: the 12 future-facing kinds, `ai.<capability>` is `ai`); a field with no kind, a size under `EFFORT_WAVE_MIN`, a
- * missing origin or a damaged disclosure is null with no write and no throw. Otherwise it is `announceWave` with source `effort`, so
- * every wave rule holds unchanged: one wave per origin (a repeat is the stored wave), at most two non-rival waves a year, 64 stored,
- * and refused where a history row of the kind is live. Draws nothing.
+ * Disclose research (R3-F3, R3-F4, spec 5.9): the port `business.discloseResearch` calls this. The field picks the kind
+ * (`kindOfField`: the 12 future-facing kinds, `ai.<capability>` is `ai`); a field with no kind, a size that is not a number above 0, a
+ * missing origin or name, a market that is not 'world' or a country, or any other damaged disclosure is null with no write and no
+ * throw. Otherwise the research moves the world frontier exactly once: a size of `EFFORT_WAVE_MIN` or more is `announceWave` with
+ * source `effort`, so every wave rule holds unchanged (one wave per origin, at most two non-rival waves a year, 64 stored, refused
+ * where a history row of the kind is live) and the wave's own push is the disclosure's (its field narrows to the capability for an
+ * `ai.<capability>`); a smaller size, or a wave the rules refused, pushes by itself (`pushResearch`) and returns null. A repeat is the
+ * stored wave and pushes nothing, so a disclosure never counts twice. Draws nothing on `g.rng`.
  */
 export function announceResearch(g: GameState, d: ResearchDisclosure): TechWave | null {
   if (!d || typeof d !== 'object') return null
   const kind = kindOfField(d.field)
-  if (!kind || typeof d.size !== 'number' || !(d.size >= EFFORT_WAVE_MIN)) return null
-  if (typeof d.origin !== 'string' || !d.origin.trim()) return null
-  return announceWave(g, { kind, source: 'effort', origin: d.origin, name: d.name, size: d.size, market: d.market ?? 'world', home: d.home, by: d.by })
+  const market = d.market ?? 'world'
+  if (!kind || !isFieldId(d.field) || typeof d.size !== 'number' || !Number.isFinite(d.size) || !(d.size > 0)) return null
+  if (typeof d.origin !== 'string' || !d.origin.trim() || typeof d.name !== 'string' || !d.name.trim() || !isWaveMarket(market)) return null
+  if (d.size >= EFFORT_WAVE_MIN) {
+    const w = announceWave(g, { kind, source: 'effort', field: d.field, origin: d.origin, name: d.name, size: d.size, market, home: d.home, by: d.by })
+    if (w) return w
+  }
+  pushResearch(g, { field: d.field, size: d.size, origin: d.origin, market })
+  return null
 }
 
 /** The life-log line for a fast follower founded to chase a wave of this kind (the name is the new company's). Pure. */

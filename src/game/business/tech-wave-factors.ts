@@ -91,6 +91,8 @@ export interface TechBase {
 
 
 const COUNTRY_IDS: ReadonlySet<string> = new Set(COUNTRIES.map((c) => c.id))
+/** A market a wave can live in: 'world' or a country id. Own ids only, so a saved "constructor" is not one. */
+export const isWaveMarket = (x: unknown): x is string => typeof x === 'string' && (x === 'world' || COUNTRY_IDS.has(x))
 const TRADE_IDS: ReadonlySet<string> = new Set(INDUSTRY_IDS)
 /** A real trade id. Not `isIndustry`: that is an `in` test, so a saved "constructor" would pass it. */
 const isTrade = (x: unknown): x is Industry => typeof x === 'string' && TRADE_IDS.has(x)
@@ -138,7 +140,7 @@ export function cleanWave(x: unknown): TechWave | null {
   if (typeof id !== 'string' || !id.trim() || typeof name !== 'string' || !name.trim()) return null
   if (!isWaveKind(kind)) return null
   if (typeof source !== 'string' || !SOURCES.includes(source)) return null
-  if (typeof market !== 'string' || (market !== 'world' && !COUNTRY_IDS.has(market))) return null
+  if (!isWaveMarket(market)) return null
   if (typeof year !== 'number' || typeof size !== 'number' || typeof hype !== 'number' || typeof delivery !== 'number' || typeof last !== 'number') return null
   if (!Number.isFinite(year) || !Number.isFinite(size) || !Number.isFinite(hype) || !Number.isFinite(delivery) || !Number.isFinite(last)) return null
   const y = Math.round(clampN(year, 1800, 2300))

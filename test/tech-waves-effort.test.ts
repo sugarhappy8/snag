@@ -135,8 +135,11 @@ describe('announceResearch', () => {
     const g = at(3, 2031); const w = announceResearch(g, disclosure())!
     const rng = g.rng, nextId = g.nextId; deepFreeze(g)
     expect(announceResearch(g, disclosure())).toBe(readTechWaves(g)[0]); expect(readTechWaves(g)[0].id).toBe(w.id)
-    for (const d of [disclosure({ field: 'cloud' }), disclosure({ size: 0.19 }), disclosure({ field: '__proto__' })]) expect(announceResearch(g, d)).toBeNull()
+    // A size under 0.2 makes no wave but still moves the frontier (R3-F4), so it cannot be written on a frozen state: it is shown on an open one below.
+    for (const d of [disclosure({ field: 'cloud' }), disclosure({ field: '__proto__' })]) expect(announceResearch(g, d)).toBeNull()
     expect([g.rng, g.nextId]).toEqual([rng, nextId]); expect(readTechWaves(g)).toHaveLength(1)
+    const open = at(3, 2031)
+    expect(announceResearch(open, disclosure({ size: 0.19 }))).toBeNull(); expect(readTechWaves(open)).toEqual([]); expect(open.flags.techWaves).toBeUndefined()
   })
   it('draws nothing on the game random stream', () => {
     const g = at(3, 2031); const rng = g.rng, nextId = g.nextId
