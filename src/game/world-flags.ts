@@ -84,7 +84,7 @@ const PERSONAL: readonly string[] = [
   'history.covidVaccinated', 'history.done', 'history.polioVaccinated', 'history.raidYear', 'homelessLineAge',
   'homelessSince', 'household', 'identity.birthGender', 'identity.gender', 'identity.surgery', 'illegalImmigrant',
   'imm', 'inbox', 'inDenial', 'instruments', 'inventionImpact', 'investLossCarry', 'investmentsSettledYear',
-  'jobListingSeed', 'jobsRejected', 'knownAddictions', 'lastAdmissionsQ', 'lastBirthAge', 'lastCodedAge',
+  'jobListingSeed', 'jobsRejected', 'know', 'knownAddictions', 'lastAdmissionsQ', 'lastBirthAge', 'lastCodedAge',
   'lastGrades', 'lastInterviewQ', 'latentTalent', 'lawsuit.grievances', 'license.flightHours', 'lifeSeries',
   'livingLineAge', 'loanMisses', 'lowHealthWarned', 'lowHealthWarnedAge', 'lux.b', 'lux.fam.at', 'lux.heat',
   'lux.lots', 'lux.showN', 'luxury.bought', 'luxury.secretary', 'luxury.society', 'luxury.societyBanned',
