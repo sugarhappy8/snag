@@ -14,5 +14,6 @@
   { "id": "ledger-caps", "file": "src/game/kernel/ledger.ts", "token": "LEDGER_CAPS", "cap": "500 accounts, 480 flow rows, 1e15 per booking, 9e15 per balance (R2-L2)" },
   { "id": "pool-spreads", "file": "src/game/kernel/spreads.ts", "token": "SPREADS", "cap": "no pool round trip is free: a buy then a sale to the same pool loses the spread twice (R2-L2)" },
   { "id": "bond-par", "file": "src/game/investments.ts", "token": "BOND_PAR", "cap": "a bond redeems at its eroded face value, never at its marked price, and the face never passes three times the issue (F37, R2-L13)" },
-  { "id": "transaction-levy", "file": "src/game/nation/rates.ts", "token": "TRANSACTION_TAX_PER_LEVEL", "cap": "0.1 percent of a trade per level of the law, levels 0 to 3 (R2-L13)" }
+  { "id": "transaction-levy", "file": "src/game/nation/rates.ts", "token": "TRANSACTION_TAX_PER_LEVEL", "cap": "0.1 percent of a trade per level of the law, levels 0 to 3 (R2-L13)" },
+  { "id": "lod-caps", "file": "src/game/world/caps.ts", "token": "LOD_CAPS", "cap": "400 people (80 intimate), 60 firms (20 full), 150 homes, 600 job slots: no list of named entities grows past these (R2-L16)" }
 ]

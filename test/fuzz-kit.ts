@@ -23,7 +23,7 @@ import { ageUp } from '../src/game/aging'
 import { businessAssetView } from '../src/game/business'
 import { businessAssets } from '../src/game/business/state'
 import { addMoney, bindMoneyContext, netWorth } from '../src/game/core'
-import { acctBalance, flowsOf, ledgerProblems, peekLedger, playerAcct } from '../src/game/kernel/ledger'
+import { acctBalance, flowsOf, peekLedger, playerAcct } from '../src/game/kernel/ledger'
 import { continueAsChild, createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
 import { createPerson } from '../src/game/people'
@@ -35,6 +35,7 @@ import { arriveInPast, jumpsUsed, TIME_MACHINE_JUMPS } from '../src/game/timeMac
 import { INDUSTRY_IDS } from '../src/game/data/markets'
 import { COUNTRIES, getCountry } from '../src/game/world'
 import { ROYAL_RULES, royalRule } from '../src/game/royalty'
+import { worldProblems } from '../src/game/world/invariants'
 import { HIDDEN_KEYS, STAT_KEYS, type AnnualReportData, type GameState, type MenuAction, type MenuGroup, type MenuInput, type MenuNode, type MinigameModal, type ModalItem } from '../src/game/types'
 import { sliderOutput, sliderScale } from '../src/ui/components/menuModel'
 
@@ -570,9 +571,17 @@ function checkInvariants(ctx: Ctx, g: GameState, where: string): boolean {
     if (a.mortgage && !(a.mortgage.balance >= 0)) fail(`asset ${a.name} mortgage balance ${a.mortgage.balance}`)
   }
   for (const l of c.loans) if (!(Number.isFinite(l.balance) && l.balance >= -0.01)) fail(`loan ${l.kind} balance ${l.balance}`)
-  // The books: every account whole, the sum equal to mint less burn, every flow row netting to zero, every cap kept (R2-L5).
-  for (const p of ledgerProblems(g)) fail(`ledger: ${p}`)
+  // The books and the world's indexes (R2-L15). The index is only compared with the records at the hand-over to an heir, the one place
+  // where the check follows a sync directly: a later action in the same year (a house sold) may change a record under the index.
+  for (const p of worldProblems(g, { live: false })) fail(p)
   return ok
+}
+
+/** The invariant check on one state, alone: the failures it would record, one message each. For the tests of the checks themselves. */
+export function invariantFailures(g: GameState): string[] {
+  const log = new FailureLog()
+  checkInvariants(makeCtx(0, 0, g, log), g, 'check')
+  return log.list().map((f) => f.first.message)
 }
 
 /**
@@ -1128,6 +1137,8 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
           break
         }
         g = next
+        // Right after the hand-over the world was just synced: the index is compared with the records too.
+        for (const p of worldProblems(g, { live: true })) ctx.fail('invariant', new Error(p), 'heir hand-over')
       } catch (err) {
         ctx.fail('heir-throw', err, 'continueAsChild')
         break
