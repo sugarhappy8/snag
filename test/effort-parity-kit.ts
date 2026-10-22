@@ -15,7 +15,8 @@
 //   expectParity / parityDiff     the rows against the file; expectLifecycle the lifecycle against the file
 //   compareParity(old, new, tol, slack?)  the rule: see TOL. `slack` lets a row sit above the oracle by that many odds points (J.8)
 //   inputGrid, idOf, parseId, gridInputs, gridHash   the grid vocabulary (cartesian product, keys sorted, stable ids)
-//   neutralAmbition(g)            the default actor: willpower and discipline 55, which is ambition 50 once the engine reads them
+//   neutralAmbition(g)            the default actor: ambition 50 once the engine reads willpower, discipline and the talents (55 and 55, less
+//                                 willpower where a talent adds its points); probe() applies it at every point
 //
 // How the grids are built. Every point is a real state from the existing kits (labGame, adult, company, techLab, makeTestGame),
 // built once per trade and changed in place before each read: the hired manager's skill, the quality, the research team, the
@@ -59,6 +60,7 @@ import { bizOf, type BizState, type KeyStaff, type RdProject } from '../src/game
 import type { Industry } from '../src/game/data/markets'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 import { readMarketNews } from '../src/game/history/market-events'
+import { ambitionOf } from '../src/game/effort/persona'
 import { fnv1a } from '../src/game/text/hash'
 import type { Asset, GameState, Json } from '../src/game/types'
 import { getCountry } from '../src/game/world'
@@ -201,10 +203,16 @@ export function gridHash(system: SystemId, inputs: readonly Input[] = gridInputs
   return fnv1a(inputs.map(idOf).join('\n')).toString(16).padStart(8, '0')
 }
 
-/** The default actor: willpower and discipline 55, so ambition is 50 (the middle) once the engine derives it from them. */
+/**
+ * The default actor: ambition 50 (the middle) once the engine derives it from willpower, discipline, the talents and what results did.
+ * Willpower and discipline are 55 (which is 50 for a life with no talent); a talent adds to ambition (effort/persona.ts talentBonus), so
+ * willpower is lowered by what the talents and a shift add (half a point of ambition per point of willpower) and the actor stays at 50.
+ * The legacy research code reads no hidden trait, so the oracle's numbers do not depend on this.
+ */
 export function neutralAmbition(g: GameState): void {
   g.character.hidden.willpower = 55
   g.character.hidden.discipline = 55
+  g.character.hidden.willpower = Math.min(100, Math.max(0, 55 - (ambitionOf(g) - 50) / 0.5))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -598,6 +606,7 @@ export function probe(system: SystemId, measure?: Measure): ParityRow[] {
   const read = measure ?? bench.legacy
   return gridInputs(system).map((input) => {
     const pt = bench.at(input)
+    neutralAmbition(pt.g)
     const before = pt.g.rng
     const m = read(pt, input)
     if (pt.g.rng !== before) throw new Error(`${idOf(input)}: a read drew from g.rng`)

@@ -42,6 +42,7 @@ import {
   type ParityRow,
   type SystemId,
 } from './effort-parity-kit'
+import { ambitionOf } from '../src/game/effort/persona'
 import { makeTestGame } from './helpers'
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..')
@@ -90,6 +91,16 @@ describe('the grid vocabulary', () => {
     const before = { ...g.character.hidden }
     neutralAmbition(g)
     expect(g.character.hidden).toEqual({ ...before, willpower: 55, discipline: 55 })
+  })
+
+  it('neutralAmbition brings a life with talents to ambition 50 exactly, through willpower, and touches no other trait', () => {
+    for (const talents of [[], ['Business'], ['Business', 'Inventor'], ['Business', 'Inventor', 'Leadership', 'Academics', 'Athletics']]) {
+      const g = makeTestGame(1, { talents })
+      const before = { ...g.character.hidden }
+      neutralAmbition(g)
+      expect(ambitionOf(g), talents.join()).toBeCloseTo(50, 9)
+      expect(g.character.hidden, talents.join()).toEqual({ ...before, willpower: g.character.hidden.willpower, discipline: 55 })
+    }
   })
 
   it('every system has a grid of unique, parseable ids', () => {

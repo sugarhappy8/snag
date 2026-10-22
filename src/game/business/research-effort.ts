@@ -114,8 +114,16 @@ export interface ResearchActor {
  * A hired-CEO company and an NPC company (`a` is null) are steady, ambition 50, fatigue 0, whatever the board mandate says (D11).
  */
 export function researchActor(g: GameState, s: ResearchSnap, a: Asset | null): ResearchActor {
+  return researchActorOf(g, s, a !== null)
+}
+
+/**
+ * The actor of a company's research when the caller knows whether the company is the player's (`own`) but holds a copy of its state
+ * and not the asset (a menu reads `readBiz`, which is a copy, so no asset is at hand there). `researchActor` is this with `a !== null`.
+ */
+export function researchActorOf(g: GameState, s: ResearchSnap, own: boolean): ResearchActor {
   const people = researchPeople(s)
-  if (a !== null && !s.managed) return { you: true, posture: postureOf(g), ambition: ambitionOf(g), fatigue: fatigueOf(g), people }
+  if (own && !s.managed) return { you: true, posture: postureOf(g), ambition: ambitionOf(g), fatigue: fatigueOf(g), people }
   return { you: false, posture: 'steady', ambition: 50, fatigue: 0, people }
 }
 
@@ -144,8 +152,17 @@ export function frontierInputs(g: Pick<GameState, 'world' | 'year'>, field: Fiel
  * says steady, ambition 50 and fatigue 0 itself. It leaves the odds before the engine's terms (`base`) and the task to the caller.
  */
 export function researchInputs(g: GameState, s: ResearchSnap, a: Asset | null, field: string, k: number, tools = 0, front: FieldId | null = null): EffortInput {
-  const actor = researchActor(g, s, a)
   const map = a !== null ? (a.details.knowHow as unknown as Readonly<Record<string, number>> | undefined) : undefined
+  return researchInputsOf(g, s, a !== null, map, field, k, tools, front)
+}
+
+/**
+ * `researchInputs` for a caller that holds the company's state (its `knowHow` map) and not the asset: `own` says whether the company
+ * is the player's, `knowHow` is the company's map (undefined for none). The same inputs, bit for bit, as `researchInputs` gives.
+ */
+export function researchInputsOf(g: GameState, s: ResearchSnap, own: boolean, knowHow: Readonly<Record<string, number>> | undefined, field: string, k: number, tools = 0, front: FieldId | null = null): EffortInput {
+  const actor = researchActorOf(g, s, own)
+  const map = own ? knowHow : undefined
   const world = frontierInputs(g, front)
   const input: EffortInput = { k, people: actor.people, tools, knowledge: knowHowOf(map, field), spill: world.spill, rival: world.rival }
   if (actor.you) input.who = 'you'

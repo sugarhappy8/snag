@@ -83,6 +83,7 @@ import { economicReportMenu } from './economic-report'
 import { booksMenu } from './books-menu'
 import { complexityShare, productIdeas } from './products'
 import { bestRdBudget, bestRdIdea, ordinaryProjects, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
+import { rdOddsLine } from './rd-effort'
 import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOdds, heavyOf, heavyOffers, heavyYears, startHeavy } from './heavy-rd'
 import type { Breakthrough } from './heavy-data'
 import { heavyStartsWave, INSIDER_WARNING } from './tech-wave-data'
@@ -486,7 +487,7 @@ function rdPreview(g: GameState, a: Asset, idea: string, budget: number): string
   const b = readBiz(g, cur)
   const q = rdQuote(g, b, idea, budget)
   const total = rangeOf(g, cur).pull.total
-  const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, `${Math.round(q.odds * 100)}% odds`, `quality ~${q.quality} vs ${rivalsWord(q.offer, q.field)}`]
+  const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, rdOddsLine(g, q), `quality ~${q.quality} vs ${rivalsWord(q.offer, q.field)}`]
   if (q.lift > 0) parts.push(`about +${customersPct(q.lift / (1 + total))} customers at launch`)
   if (rdCrowding(b) > 1) parts.push(`the team is stretched: ${plural(ordinaryProjects(b).length, 'project')} already running`)
   if (budget > b.cash) parts.push(`${money(budget - Math.max(0, b.cash))} more than the company has`)
