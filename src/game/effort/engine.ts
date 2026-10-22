@@ -12,7 +12,9 @@
 //   1. the budget multiple k is cut to K_MIN..min(kmax, K_MAX): more than four times the normal budget buys nothing more
 //   2. money: `1 - (1 - base) * k^-oddsExp` (base is the caller's odds before the engine's terms, the task's p0 when left out)
 //   3. deviations, each in odds points and exactly 0 at the defaults (tools, crew, know-how, a hard field, rivals, public research,
-//      a bold plan, tiredness), applied in logit space so none can push the odds past the clamp
+//      a bold plan, tiredness): the shifts of tools, crew, a hard field, a bold plan and tiredness add up in logit space so none can
+//      push the odds past the clamp, and know-how, rivals and public research are then added in odds points, so each is worth exactly
+//      its capped points (15, -8, 18) in the final odds whatever the other terms did
 //   4. years: `baseYears / (k^yearsExp * speed)` with speed = crew * tools * ambition's pace * fatigue's pace * know-how's pace
 //   5. quality: a budget curve plus know-how, bent under the task's ceiling
 //   6. the lines: the caller's own terms (team, a steady CEO), then funding and the engine's terms, adding up to the odds

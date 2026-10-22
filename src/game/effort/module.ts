@@ -25,7 +25,9 @@ const BURNOUT_TEXT = "You pushed past your limit. You're easing off this year."
 export function yearlyEffort(g: GameState): void {
   if (!g.character.alive || !hasYou(g)) return
   const y = readYou(g)
-  if (y.last >= g.year) return
+  // Only this very year's stamp is a settle already made. A stamp from a later year can only come from a hand-edited save, and it must
+  // not freeze the settle for the rest of the life: the settle runs and writes this year over it.
+  if (y.last === g.year) return
   y.last = g.year
   y.effective = g.character.age >= AGE_REVEAL ? y.posture : 'steady'
   y.over = 0
