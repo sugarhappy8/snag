@@ -3,7 +3,7 @@
 import { knowHowOf } from '../effort/knowhow'
 import { resolve } from '../effort/step'
 import type { Outcome, Quote, Reason, StepResult, Task } from '../effort/types'
-import { causeLine, payoffLine } from '../effort/why'
+import { causeLine, oddsChip, payoffLine } from '../effort/why'
 import { rand } from '../rng'
 import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
@@ -464,11 +464,11 @@ export function bestTrial(b: BizState, t: TechState, funds: number): Drug | null
   return best
 }
 
-/** One line describing a running program. */
-export function programLine(p: TechProgram): string {
+/** One line describing a running program. With the game, the odds read as the research policy lets the player read them. */
+export function programLine(p: TechProgram, g?: GameState): string {
   const rest = Math.max(0, p.years - p.progress)
   const left = rest <= 1e-9 ? 0 : wholeYears(rest)
-  return `${Math.round(Math.min(1, p.progress / Math.max(0.01, p.years)) * 100)}% done · ${left <= 0 ? 'finishing' : `${left} yr${left === 1 ? '' : 's'} left at a steady pace`} · ${money(p.cost)}/yr · ${Math.round(p.odds * 100)}% base odds`
+  return `${Math.round(Math.min(1, p.progress / Math.max(0.01, p.years)) * 100)}% done · ${left <= 0 ? 'finishing' : `${left} yr${left === 1 ? '' : 's'} left at a steady pace`} · ${money(p.cost)}/yr · ${g !== undefined ? oddsChip(g, p.odds, 'base odds') : `${Math.round(p.odds * 100)}% base odds`}`
 }
 
 /** The deep-tech stage names, for summaries. */

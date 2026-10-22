@@ -2,6 +2,7 @@
 // probabilities the resolvers roll against, so the Inventor talent's purple hints are honest.
 import { addStat, count, formatMoney, log, notice, scriptChoice, spend, yearActionsUsed } from '../core'
 import { goodsMult } from '../assets'
+import { hintPct } from '../fog/hint/contract'
 import { FOCUS_WEEKS, focusLeft, focusPreview, focusReason, spendFocus } from '../effort/focus'
 import { newFx } from '../effort/fx'
 import { burnedOut } from '../effort/persona'
@@ -98,7 +99,6 @@ export function buildQuote(g: GameState, ws: Workshop, def: IdeaDef, builds: num
   return buildLineQuote(g, factsOf(g, ws, builds), def, APPROACHES[approach])
 }
 const round2 = (x: number) => Math.round(x * 10_000) / 10_000
-const pct = (x: number) => `${Math.round(x * 100)}%`
 
 /** Skill gained from one build: more from harder builds and from disasters; ×2 for a genius. */
 export function skillGain(g: GameState, skill: number, d: number, result: 'kaboom' | 'master' | 'works'): number {
@@ -155,7 +155,7 @@ export function startBuild(g: GameState, t: Target): void {
     const cost = buildCost(g, bench.def, id)
     if (g.character.money < cost) continue
     const o = buildOdds(g, ws, bench.def, bench.builds, id)
-    const hint = talentHint(g, 'Inventor', `\u{1F4A5} ${pct(o.kaboom)} · \u{1F31F} ${pct(o.master)} · quality ${Math.max(0, Math.round(o.low))}-${Math.min(100, Math.round(o.high))}`)
+    const hint = talentHint(g, 'Inventor', `\u{1F4A5} ${hintPct(o.kaboom)} · \u{1F31F} ${hintPct(o.master)} · quality ${Math.max(0, Math.round(o.low))}-${Math.min(100, Math.round(o.high))}`)
     choices.push({ id, label: `${APPROACHES[id].label} (${cost ? formatMoney(cost) : 'free'})`, emoji: APPROACHES[id].emoji, ...(hint ? { hint } : {}) })
   }
   if (!choices.length) {

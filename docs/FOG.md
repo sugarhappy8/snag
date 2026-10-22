@@ -51,7 +51,10 @@ Leadership for the political odds, Crime for the odds of being caught, Investing
 - **Published rules and the player's own CV.** Visa odds (`emigrate.ts`) and career interview odds (`careers.ts`). Published AI boards say
   "(published)" and stay exact. Research odds are Effort's: they print "Odds 62%: team +9, funding +7" from `quote`, with the reveal policy
   that `fog/odds/odds.ts` binds (`bindRevealPolicy`): the player's own terms always, the field, the rivals and the public pool only with the
-  talent or a read.
+  talent or a read. Every screen that repeats the chance prints it through that policy (`researchOdds`, `oddsChip` and `hintOdds` in
+  `effort/why.ts`): "62% odds" in Exact, "odds likely" or "odds about 60%" in Realistic, so a percent never sits next to "unknown factors"
+  (`test/research-odds-screens.test.ts` reads every research screen and notice). A stored read of research odds (`odds:rd:`) opens the
+  percent too; no screen sells one yet, so today the Business talent is the way in.
 - **What a deal runs on.** Offers to buy and every event still use the true valuation; a hire stores the true skill and trait; a roll uses
   the true chance. Fog changes what is shown and nothing else, which is why no golden digest moves.
 - **Posted quotes.** A listed company's market cap is a price, so it stays exact.
@@ -159,9 +162,15 @@ the Look closer row (`ILLEGAL_CONFIRM`).
 - In Realistic only. Exact returns the text and the value untouched.
 - A figure that follows "about", "roughly", "around" or "~" (a money amount in the money the player reads, a percent, or "N years") becomes
   the talent's reading: a hashed draw through `know` on a `hint:` key, sharpened by the rule table (x.6 with the talent).
+- A percent that says it is a chance in its own words becomes the talent's reading too: "12% chance of an offer", "40% to fund", "70% they
+  say yes", "20% delivery trouble", "10% of getting some money back". "odds" is not on that list ("(62% odds" is the research chance, which
+  reads through the reveal policy), and neither is a rate or a share ("30% margin", "15% of the market"). A site whose words cannot say
+  it (an emoji list) writes `hintPct(p)` ("12%" in Exact, "about 12%" in Realistic) or `hintLead()` (the lead word alone), so the lens reads
+  it once and the Exact text is unchanged. `test/fog-hint-probability.test.ts` reads every `talentHint(` call in src and fails on a percent
+  the lens leaves exact unless the figure is on its short list of things that are not a chance.
 - The shape stays: the same currency and unit letter, at most three significant digits, a whole percent of 10 or more to the nearest 5.
-- A limit written without "about" (a cap, a year, a horizon, "quality ~4", a count of things) and a quoted "(62% odds" from the research
-  `quote` are left alone.
+- A limit written without "about" (a cap, a year, a horizon, "quality ~4", a count of things) is left alone. The chance of a research
+  project in a hint is written "about 62%" in Realistic (`hintOdds`), so the lens reads it once.
 - The key hashes the words of the hint with every figure masked (`maskFigures`), so a figure that drifts inside a year moves the reading
   instead of re-rolling it; a new year reads a new number.
 - A number a screen already read through `know` must not go through a hint as well: it would be fogged twice.

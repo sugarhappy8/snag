@@ -77,7 +77,11 @@ against, and `talent` names the talent that sharpens a `hint:` key.
   `mid +- BAND_Z sd` holds the truth with probability .80 because the draw has the same distribution.
 - Money, count and pct live on a log scale (the sd is relative, the band is a ratio, the truth must be above 0). Score (0 to 100) and
   odds (0 to 1) are additive and clipped to their range; the sd is in hundredths of the range. A signed amount is additive with an
-  absolute sd of `sd x scale`.
+  absolute sd of `sd x scale`. The scale is the caller's ruler and is never the truth: the half-width of a band is `BAND_Z x sd x scale`,
+  so a scale that was the size of the truth would print the truth in the width of its own band. A signed amount with no usable scale is
+  not fogged (`spanOf` is null, so `know` is exact and a source refuses it). A what-if forecast is read against `forecastScale`: the move
+  rounded up on a 1-2-5 ladder (so the width says which step the move is in, and the band is never sharper than stated), at least a tenth
+  of last year's sales and at least `FORECAST_MIN` ($10,000). A stored reading is measured against the size of the reading itself.
 - The passive sd is `sd0 x talent x (1 - .4 exp)`, never below `SD_MIN = .03`. A talent in the row of the rule table sharpens the
   passive read by x.6 and a source by x.8; Main Character Syndrome sharpens every key.
 - A stored row ages: `agedSd(sd, drift, years)` is `sqrt(sd^2 + (drift sqrt(years))^2)`. The estimate shows whichever of the aged row and
@@ -151,7 +155,7 @@ refused, so nothing averages the noise away, and a different source helps only t
 | Id | Kind | Base sd | Floor | Price at tier 1 | Reads |
 |---|---|---|---|---|---|
 | `own` | free, 3 year actions | .45 x (1.5 - smarts / 100) | .25 | 0 | mkt, riv, cmp, eco, pol, sec, fund, odds, scn |
-| `news` | free, through `ingestSignal` | .30 | .20 | 0 | any |
+| `news` | free, through `ingestSignal` (no screen yet, see the note below) | .30 | .20 | 0 | any |
 | `press` | a year of a trade title | .30 | .20 | 1,200 | mkt, riv, cmp, eco, pol, sec, scn |
 | `report` | once | .18 | .12 | 9,000 | mkt, riv, cmp, eco, scn, odds |
 | `analyst` | engaged | .12 | .08 | 30,000 | mkt, riv, cmp, val, sec, fund, scn, odds |
@@ -162,6 +166,11 @@ refused, so nothing averages the noise away, and a different source helps only t
 | `desk` | standing orders only | .14 | .10 | .6 x analyst | as analyst |
 | `lab` | research results only, free | .20 | .15 | 0 | riv, mkt, cmp |
 
+- **Not wired in v5.1.0.** Two parts of the engine have tests and no screen that uses them. `ingestSignal`, the free `news` source, has no
+  caller in the game: no news item yet says something about a key. Exposure (`exp` in `EstimateOpts`, the player's own presence cutting the
+  passive sd by up to 40%) is passed by no screen: no company's presence yet tells more about a rival. Both are a design choice (which item
+  says what about which key, how much presence tells), so they are a follow-up, and `test/knowledge-unwired.test.ts` fails the day a
+  screen uses one, so this note changes with it.
 - **Price** is `round100(base x [1, 2.2, 4.5][tier - 1] x (1 + .25 (countries - 1)) x clamp(country wealth, .3, 1.5))`: the scope of the
   keys and the wealth of the country read, never the buyer's cash. A hundred times the money pays the same fee. A key kind says its scope
   (tier 1 a business or a street, 2 a country, 3 the world, how many countries, the deal size for diligence). The deal size is for a
@@ -197,7 +206,7 @@ or not. `hazardOf(g)` is the pure read, `settleHazard(g)` the yearly step, idemp
 - A menu row in the slot `assets.money` at order 45, between the Money Team and Banking: the Intelligence Briefing (`intelBriefingMenu`,
   id `intel.briefing`).
 - A sink bound to the Effort track's reveal hook at load. When research finishes, `applyReveals` gives a `lab` reading to each stored row
-  whose key kind lists the researched field in `revealedBy`, at most 12 rows a call, never in Exact mode, once a year per key.
+  whose key kind lists the researched field in `revealedBy`, at most 12 rows a call, never in Exact mode, once a year per key. The game's own kinds that name research: `riv` (a rival's quality, technology and lines: the `rd.<family>` of each family it sells, the `dt.<trade>` of a deep-tech trade, `studio.engine` for a studio) and `mkt` (a market's size and shares: the same fields over the families sold in it). The other kinds (`scn`, `val`, `sec`, `odds`) have no research that bears on them, so no `revealedBy`.
 
 ### Standing orders
 

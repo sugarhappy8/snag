@@ -32,8 +32,12 @@ import { isExact, know, registerKeyKind, type Estimate } from '../knowledge/cont
 import type { Asset, GameState } from '../types'
 import { marketViewOf, shareText, type RivalView } from './competition'
 import { marketKey } from './competition-core'
+import { isDeepTechIndustry } from './deeptech-state'
+import { programField } from './deeptech-effort'
 import { shieldsOf } from './lab-state'
+import { rdField } from './rd-effort'
 import { rivalLines } from './product-market'
+import { ENGINE_FIELD } from './studio-effort'
 import { countryDetail, localField } from './market-view'
 import { businessAssets, readBiz, type BizState } from './state'
 import { industryDef, isIndustry } from './industries'
@@ -195,6 +199,34 @@ export function rivalDetailKeys(g: GameState, b: BizState, r: Pick<RivalView, 'i
   return [rivalKey(b, r.id, 'quality'), rivalKey(b, r.id, 'tech'), ...rivalLinesOf(g, b, r).slice(0, LINES_SHOWN).map((l) => lineKey(b, r.id, l.family))]
 }
 
+/** The most research fields one key lists (the sink reads a plain array; a market with a hundred families still lists a few dozen). */
+const REVEAL_FIELDS = 40
+
+/**
+ * The research fields whose results sharpen what a market reads: the know-how key of each product family sold in it (`rd.<family>`,
+ * rd-effort.ts), of a deep-tech trade (`dt.<trade>`), and of a studio's engine (`studio.engine`). A pure read of this year's state.
+ */
+function marketResearch(b: Pick<BizState, 'industry'>, families: readonly string[], trade: boolean): string[] {
+  const out = new Set<string>(families.map(rdField))
+  if (trade && isDeepTechIndustry(b.industry)) out.add(programField(b.industry))
+  if (trade && b.industry === 'gameStudio') out.add(ENGINE_FIELD)
+  return [...out].slice(0, REVEAL_FIELDS)
+}
+
+/** The families one rival sells in the company's market, best-selling first (the lines a key may name). */
+const familiesOfRival = (g: GameState, b: BizState, r: Pick<RivalView, 'id' | 'tier' | 'quality'>): string[] => rivalLinesOf(g, b, r).map((l) => l.family)
+
+/** What a riv: key is revealed by: the research in the families that rival sells (one family for a line key), and the trade's own research. */
+function rivalRevealedBy(g: GameState, key: string): readonly string[] {
+  const h = rivalHit(g, key)
+  if (!h) return []
+  if (typeof h.what === 'object') {
+    const slug = h.what.slug
+    return marketResearch(h.b, familiesOfRival(g, h.b, h.r).filter((f) => familySlug(f) === slug), false)
+  }
+  return marketResearch(h.b, familiesOfRival(g, h.b, h.r), true)
+}
+
 registerKeyKind({
   kind: 'riv',
   label: rivalLabel,
@@ -204,6 +236,7 @@ registerKeyKind({
     const h = rivalHit(g, key)
     return h ? { tier: marketViewOf(g, h.b).scope === 'world' ? 3 : 2, country: h.b.countryId } : { tier: 2 }
   },
+  revealedBy: rivalRevealedBy,
 })
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -256,6 +289,8 @@ export function shareBand(g: GameState, fog: Pick<MarketFog, 'industry'>, countr
 
 /** What an mkt: key names: a market of one of the player's industries, and the thing read in it (a size, or a share: the leader's, or a named player's). */
 interface MarketHit {
+  /** The company of the player's through which the market is read. */
+  b: BizState
   industry: string
   country: string
   field: 'size' | 'share'
@@ -272,7 +307,7 @@ function marketHit(g: GameState, key: string): MarketHit | null {
   const [country, who] = where.split('.') as [string, string | undefined]
   if (field !== 'size' && field !== 'share') return null
   if (field === 'size' && who !== undefined) return null
-  const hit = (truth: number | null, name: string | null = null): MarketHit => ({ industry, country, field, truth, name })
+  const hit = (b: BizState, truth: number | null, name: string | null = null): MarketHit => ({ b, industry, country, field, truth, name })
   for (const a of businessAssets(g)) {
     const b = readBiz(g, a)
     if (b.industry !== industry) continue
@@ -280,17 +315,17 @@ function marketHit(g: GameState, key: string): MarketHit | null {
     if (v.scope === 'world') {
       const d = countryDetail(g, b, v, country)
       if (!d) continue
-      if (field === 'size') return hit(d.row.demand)
+      if (field === 'size') return hit(b, d.row.demand)
       const lead = d.row.leader
-      if (who === undefined) return hit(lead?.share ?? null, lead?.name ?? null)
+      if (who === undefined) return hit(b, lead?.share ?? null, lead?.name ?? null)
       // A named player is a local champion or the country's leader (a foreign company can lead a market it is not from).
       const named = [...(lead ? [lead] : []), ...d.champions].find((c) => part(c.name) === who)
-      return hit(named?.share ?? null, named?.name ?? null)
+      return hit(b, named?.share ?? null, named?.name ?? null)
     }
     const f = localField(g, b, v, country)
-    if (field === 'size') return hit(f.demand)
+    if (field === 'size') return hit(b, f.demand)
     const named = who === undefined ? f.top[0] : f.top.find((t) => part(t.name) === who)
-    return hit(named?.share ?? null, named?.name ?? null)
+    return hit(b, named?.share ?? null, named?.name ?? null)
   }
   return null
 }
@@ -331,6 +366,14 @@ registerKeyKind({
   truth: marketTruth,
   // One country's market: a country read, priced by that country's wealth.
   scope: (_g, key) => ({ tier: 2, country: key.split(':')[2]?.split('.')[0] }),
+  // What the families sold in the market teach about its size and who holds it.
+  revealedBy: (g, key) => {
+    const h = marketHit(g, key)
+    if (!h) return []
+    const families = new Set<string>()
+    for (const r of marketViewOf(g, h.b).rivals.slice(0, LOOK_RIVALS * 2)) for (const l of rivalLinesOf(g, h.b, r)) families.add(l.family)
+    return marketResearch(h.b, [...families], true)
+  },
 })
 
 /** The part of a key that names one company of the player: forecasts and odds are about that company, not about "offense". */
@@ -338,12 +381,32 @@ export const scenarioScope = (a: Pick<Asset, 'id'>): string => part(a.id)
 
 export const scenarioKey = (scope: string, scenarioId: string): string => `scn:${scope}:${scenarioId}:value`
 
-/** A forecast is read against the larger of its own size and this share of last year's sales, so a small move never reads as a rounding error of a big firm. */
+/** A forecast is read against at least this share of last year's sales, so a small move never reads as a rounding error of a big firm. */
 export const FORECAST_FLOOR = 0.1
 
-/** What a forecast is measured against: its own size, or the floor share of last year's sales when that is larger. */
+/** ...and at least this much money, for a company with no sales to read against (a band of a few dollars would say nothing). */
+export const FORECAST_MIN = 10_000
+
+/** The 1, 2, 5 ladder a forecast's size is rounded up on: a band says which step the move is in, and no more. */
+const LADDER = [1, 2, 5] as const
+
+/** The smallest step of the 1-2-5 ladder at or above `x` (0 for anything that is not a positive number). */
+function ladderUp(x: number): number {
+  if (!(x > 0) || !Number.isFinite(x)) return 0
+  const k = Math.floor(Math.log10(x))
+  for (const m of LADDER) if (m * 10 ** k >= x * (1 - 1e-12)) return m * 10 ** k
+  return 10 ** (k + 1)
+}
+
+/**
+ * What a forecast is measured against: the move's size rounded UP to a step of the 1-2-5 ladder, and never less than a tenth of last
+ * year's sales or FORECAST_MIN. It is a ruler, not the move: the half-width of a band is BAND_Z x sd x scale, so a scale that was the
+ * move itself would print the move in the width of its own band (hi - lo = 0.78 |truth|), a second and sharper reading than the stated
+ * 30%. On the ladder the width says which step the move is in (the words already say as much) and never makes the band sharper than
+ * stated: the scale is at least the move.
+ */
 export function forecastScale(b: Pick<BizState, 'last'>, truth: number): number {
-  return Math.max(Math.abs(truth), Math.max(0, b.last?.revenue ?? 0) * FORECAST_FLOOR)
+  return Math.max(ladderUp(Math.abs(truth)), Math.max(0, b.last?.revenue ?? 0) * FORECAST_FLOOR, FORECAST_MIN)
 }
 
 /** The estimate of what a what-if move should earn (a signed amount of money). */

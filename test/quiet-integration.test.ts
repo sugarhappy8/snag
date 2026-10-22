@@ -54,7 +54,8 @@ const { NoticeSettingsSection } = await import('../src/ui/components/NoticeSetti
 const ROOT = join(__dirname, '..')
 const src = (path: string): string => readFileSync(join(ROOT, path), 'utf8')
 const TIMEOUT = 300_000
-const DASH = /[–—]/
+// Built from char codes, so that this file carries neither character itself.
+const DASH = new RegExp(`[${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}]`)
 
 /** What React writes for a text node: the five characters it escapes. */
 const esc = (t: string): string => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;')

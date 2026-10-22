@@ -49,7 +49,9 @@ const WORD = new RegExp(`(${WORDS.join('|')})`)
 const EVIDENCE = /evidence (thin|some|solid|heavy)/
 const PERCENT = /\d+(\.\d+)?%/
 const ABOUT = /about (\d+)%/
-const DASH = /[–—]/
+// Built from char codes, so that this file carries neither character itself.
+const DASH = new RegExp(`[${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}]`)
+const DASH_ALL = new RegExp(`[${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}]`, 'g')
 const ASSET = 'ASSET'
 
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -608,7 +610,7 @@ describe('the sites are gone from the source', () => {
 
   it('the new text carries no em-dash or en-dash', () => {
     for (const file of ['src/game/nation/menu.ts', 'src/game/nation/odds-read.ts', 'src/game/fog/odds/odds.ts', 'src/game/fog/odds/contract.ts']) {
-      expect(read(file).match(/[–—]/g) ?? [], file).toEqual([])
+      expect(read(file).match(DASH_ALL) ?? [], file).toEqual([])
     }
   })
 })

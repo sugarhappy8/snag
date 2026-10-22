@@ -127,6 +127,34 @@ export function oddsLine(q: Quote, policy?: RevealPolicy): string {
   return head.slice(0, LINE_MAX)
 }
 
+/**
+ * The chance a piece of research works, written as the reveal policy writes it (the text that follows "Odds " in the odds line):
+ * "62%" in Exact mode, a word ("likely") or "about 60%" in a realistic one. The one rule for every screen that repeats the chance,
+ * so a notice, a subtitle or a confirm never hands back the figure the odds line hides: a percent next to "unknown factors" gives the
+ * hidden terms away by subtraction.
+ */
+export function researchOdds(g: GameState, p: number): string {
+  return revealPolicyOf(g).band(p)
+}
+
+/**
+ * The chance of research as a chip in a row or a subtitle: "62% odds" when every number shows (the row as it always read), "odds
+ * likely" or "odds about 60%" when it doesn't. `label` is the noun when it is not plain odds ("base odds").
+ */
+export function oddsChip(g: GameState, p: number, label: string = 'odds'): string {
+  const policy = revealPolicyOf(g)
+  return policy.exact ? `${policy.band(p)} ${label}` : `${label} ${policy.band(p)}`
+}
+
+/**
+ * The chance of research inside a purple hint: the exact percent when every number shows; otherwise "about N%", so the hint lens
+ * reads it as it reads every figure after "about" (a fallible reading in the talent's own sd) and the hint is fogged once, not twice.
+ */
+export function hintOdds(g: GameState, p: number): string {
+  const policy = revealPolicyOf(g)
+  return policy.exact ? policy.band(p) : `about ${EXACT_POLICY.band(p)}`
+}
+
 /** How a term is named in a sentence, for a gain and for a loss. */
 const SUBJECT: Readonly<Record<string, readonly [gain: string, loss: string]>> = {
   team: ['Your team', 'Your team'],

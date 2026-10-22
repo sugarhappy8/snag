@@ -9,6 +9,9 @@ import { CULTURE_LATE } from '../src/game/history/digest-late'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 import { makeTestGame } from './helpers'
 
+// Built from char codes, so that this file carries neither character itself.
+const DASH = new RegExp(`[${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}]`)
+
 const ALL: [number, string][] = [...Object.entries(CULTURE_EARLY), ...Object.entries(CULTURE_LATE)].map(([y, line]) => [Number(y), line])
 
 describe('the culture lines', () => {
@@ -37,7 +40,7 @@ describe('the culture lines', () => {
   })
 
   it('hold no em-dash and no en-dash', () => {
-    expect(ALL.filter(([, line]) => /[–—]/.test(line)).map(([y]) => y)).toEqual([])
+    expect(ALL.filter(([, line]) => DASH.test(line)).map(([y]) => y)).toEqual([])
   })
 
   it('have no unfilled tokens, doubled spaces or stray markup, and each year has its own', () => {

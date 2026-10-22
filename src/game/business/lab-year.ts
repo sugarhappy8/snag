@@ -9,7 +9,8 @@ import { log, notice } from '../core'
 import { quote } from '../effort/engine'
 import { causeOf } from '../effort/step'
 import type { Outcome, StepResult } from '../effort/types'
-import { causeLine, payoffLine } from '../effort/why'
+import { revealPolicyOf } from '../effort/hooks'
+import { causeLine, payoffLine, researchOdds } from '../effort/why'
 import type { Reason } from '../kernel/reasons'
 import { rand } from '../rng'
 import type { Asset, GameState } from '../types'
@@ -122,6 +123,12 @@ export function bookLabYear(g: GameState, a: Asset, b: BizState, fiscal: number)
   for (const x of firsts) log(g, LAB_LOG.royalty(a.name, money(x.amount), x.patent.family), 'good')
 }
 
+/** What the notice of a started program says: the percent when every number shows, else the policy's band ("likely", "about 60%"). */
+function startedSay(g: GameState, company: string, program: string, price: string, years: string, odds: number): string {
+  if (revealPolicyOf(g).exact) return LAB_SAY.started(company, program, price, years, String(Math.round(odds * 100)))
+  return LAB_SAY.startedWords(company, program, price, years, researchOdds(g, odds))
+}
+
 /**
  * Start an Operations R&D program: the price leaves company cash now (a cost of this year) unless `pay`
  * is false (the hired CEO's board budget already took it), a grant is worked out and stored with the
@@ -157,7 +164,7 @@ export function startOps(g: GameState, a: Asset, b: BizState, id: string, pay: b
   d.programs.push(program)
   saveLab(b, d)
   log(g, LAB_LOG.started(a.name, def.label))
-  if (pay && runsIt(g, a) && g.character.alive) notice(g, 'Operations R&D', LAB_SAY.started(a.name, def.label, money(price), plural(years, 'year'), String(Math.round(odds * 100))), { emoji: '\u{1F52C}' })
+  if (pay && runsIt(g, a) && g.character.alive) notice(g, 'Operations R&D', startedSay(g, a.name, def.label, money(price), plural(years, 'year'), odds), { emoji: '\u{1F52C}' })
   return program
 }
 

@@ -12,7 +12,7 @@ import { quote } from '../effort/engine'
 import { revealPolicyOf } from '../effort/hooks'
 import { causeOf } from '../effort/step'
 import type { EffortInput, Outcome, Quote, Reason, StepResult, Task } from '../effort/types'
-import { causeLine, oddsLine, payoffLine } from '../effort/why'
+import { causeLine, oddsChip, oddsLine, payoffLine, researchOdds } from '../effort/why'
 import { carriedMarketNews, pushMarketNews } from '../history/market-events'
 import { chance, rand, uid } from '../rng'
 import type { Asset, GameState, Json } from '../types'
@@ -463,6 +463,14 @@ export function heavyBlock(g: GameState, b: BizState, name: string, assetId?: st
 
 const round3 = (n: number): number => Math.round(n * 1000) / 1000
 
+/** What the notice of a started breakthrough says: the chance as the player may read it (a percent only when every number shows). */
+function heavyStarted(g: GameState, company: string, name: string, cost: string, odds: number, years: number): string {
+  const head = `${company} is developing ${name}. It costs ${cost}`
+  const tail = 'If it flops, the money is gone.'
+  if (revealPolicyOf(g).exact) return `${head} and has ${oddsChip(g, odds)} in about ${years} years. ${tail}`
+  return `${head} and takes about ${years} years. Odds ${researchOdds(g, odds)}. ${tail}`
+}
+
 /** Start a breakthrough: the whole cost leaves company cash now, like any project. Null (and a notice) when it can't start. */
 export function startHeavy(g: GameState, a: Asset, b: BizState, name: string): RdProject | null {
   const why = heavyBlock(g, b, name, a.id)
@@ -498,7 +506,7 @@ export function startHeavy(g: GameState, a: Asset, b: BizState, name: string): R
   notice(
     g,
     'R&D Underway',
-    `${a.name} is developing ${name}. It costs ${formatMoney(cost)} and has ${Math.round(odds * 100)}% odds in about ${years} years. If it flops, the money is gone.`,
+    heavyStarted(g, a.name, name, formatMoney(cost), odds, years),
     { emoji: '\u{1F9EA}' },
   )
   return p

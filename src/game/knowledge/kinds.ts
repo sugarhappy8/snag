@@ -7,7 +7,9 @@
 //   truth     the real value now, or null when there is nothing to read (a rival that left, a market that closed). It is a plain read of
 //             this year's state: nothing in here looks ahead of g.year, and it never draws.
 //   scope     tier 1 to 3 (a street, a country, the world), the country read, how many countries it spans, the deal size for diligence
-//   scale     what a `delta` key is measured against (the company's revenue); absent means the size of the truth itself
+//   scale     what a `delta` key is measured against, a ruler that is NOT the truth (the move rounded up on a ladder, a share of the
+//             company's revenue): a band's width is its sd times the scale, so the truth as a scale would print itself. A delta kind with
+//             no scale cannot be fogged or bought
 //   revealedBy  the Effort research fields whose results sharpen the key (R3-H5 binds the sink that reads it)
 //
 // The registry is a module-level table: it holds code, not the game, so nothing here is saved. Registering the same def twice is fine

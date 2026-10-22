@@ -17,7 +17,9 @@ import { formatMoney, log, notice } from '../core'
 import { hasTalent } from '../talents'
 import { rand, uid } from '../rng'
 import { quote } from '../effort/engine'
+import { revealPolicyOf } from '../effort/hooks'
 import type { Quote, Reason, Task } from '../effort/types'
+import { oddsChip, researchOdds } from '../effort/why'
 import type { Asset, GameState } from '../types'
 import { marketDemand, marketKey, marketStateOf, type MarketCtx } from './competition-core'
 import { bizWorth, ceoSkill, fxValue, localEcon, marketCtxFor, ownerTalent, staffPower, type Worth } from './economy'
@@ -406,6 +408,18 @@ export function rdBlock(b: BizState, idea: string, budget: number): string | nul
   return null
 }
 
+/**
+ * What the notice of a started project says. The chance is the research policy's: "about 62% odds it works" when every number shows,
+ * and in Realistic "Odds likely." (a word, or "about 60%" with the talent), so the notice never gives back a term the odds line hides.
+ */
+function rdStarted(g: GameState, company: string, idea: string, budget: string, q: { years: number; odds: number; quality: number; offer: number; field: number }, projects: string): string {
+  const ready = q.years === 1 ? 'about a year' : `about ${q.years} years`
+  const rivals = `rivals' versions: ${q.offer > 0.02 ? Math.round(q.field) : 'none yet'}`
+  const head = `${company}'s team is developing ${idea} on a ${budget} budget. It should be ready in ${ready}`
+  if (revealPolicyOf(g).exact) return `${head}, with about ${oddsChip(g, q.odds)} it works and a quality around ${q.quality} (${rivals}). ${projects} in development now.`
+  return `${head}, with a quality around ${q.quality} (${rivals}). Odds it works: ${researchOdds(g, q.odds)}. ${projects} in development now.`
+}
+
 /** Start a project: the whole budget comes out of company cash now (a cost of this year). */
 export function startRd(g: GameState, a: Asset, b: BizState, idea: string, budget: number): RdProject | null {
   const n = Math.round(Number.isFinite(budget) ? budget : 0)
@@ -442,7 +456,7 @@ export function startRd(g: GameState, a: Asset, b: BizState, idea: string, budge
   notice(
     g,
     'R&D Underway',
-    `${a.name}'s team is developing ${idea} on a ${formatMoney(n)} budget. It should be ready in ${q.years === 1 ? 'about a year' : `about ${q.years} years`}, with about ${Math.round(q.odds * 100)}% odds it works and a quality around ${q.quality} (rivals' versions: ${q.offer > 0.02 ? Math.round(q.field) : 'none yet'}). ${plural(rdProjects(b).length, 'project')} in development now.`,
+    rdStarted(g, a.name, idea, formatMoney(n), q, plural(rdProjects(b).length, 'project')),
     { emoji: '\u{1F9EA}' },
   )
   return p
