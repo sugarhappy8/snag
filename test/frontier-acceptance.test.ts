@@ -42,6 +42,7 @@ import { LEDGER_SEEDS } from './ledger-probe'
 import { adult, company } from './market-kit'
 import { playLife } from './play-kit'
 import { ROOT } from './scan-kit'
+import { findSeed } from './seed-kit'
 
 const START = 2027
 /** The most rival pressure one odds line shows, odds points (world/frontier-terms.ts RIVAL_MAX, and Effort's RIVAL_PTS). */
@@ -357,7 +358,13 @@ describe('old saves and history: nothing exists until a push', () => {
   })
 
   it('leaves a plain life from 1990 to 2026 without a frontier', () => {
-    const g = playLife({ seed: LEDGER_SEEDS[1]!, birthYear: 1990, untilAge: 36 }).g
+    // The life is found, not pinned: the merges of the quiet and knowledge tracks moved the event picks, and the one born 1990 from
+    // LEDGER_SEEDS[1] now dies at 28 (2018), before the 2020 the test asks of a life. The first seed from there on that reaches 36 is its life.
+    const seed = findSeed((s) => playLife({ seed: s, birthYear: 1990, untilAge: 36 }).g.character.age >= 36, {
+      from: LEDGER_SEEDS[1]!,
+      label: 'a life born 1990 that reaches thirty-six',
+    })
+    const g = playLife({ seed, birthYear: 1990, untilAge: 36 }).g
     expect(g.year).toBeLessThanOrEqual(2026)
     expect(g.year).toBeGreaterThanOrEqual(2020)
     expect(hasFrontier(g)).toBe(false)
