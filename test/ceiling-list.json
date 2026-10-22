@@ -23,5 +23,8 @@
   { "id": "effort-rho", "file": "src/game/effort/limits.ts", "token": "RHO_MAX", "cap": "the pace ambition buys is at most 1.25 times the steady pace, and pushing pays for it in fatigue (R3, D10)" },
   { "id": "effort-labor", "file": "src/game/effort/limits.ts", "token": "FTE_CAP_MAX", "cap": "a task uses at most 40 full-time people and labor saturates, so no crew is more than 4 times the reference crew (R3-E2, C.1)" },
   { "id": "effort-spill", "file": "src/game/effort/limits.ts", "token": "SPILL_TERM_MAX", "cap": "public research moves a quote by at most 18 odds points and rival pressure by at most 8 (R3, D9)" },
-  { "id": "effort-focus", "file": "src/game/effort/limits.ts", "token": "FOCUS_OVERTIME_MAX", "cap": "a year holds at most 24 focus weeks, 12 in the pool and 12 of overtime, and the next week is refused (R3-E6, D16)" }
+  { "id": "effort-focus", "file": "src/game/effort/limits.ts", "token": "FOCUS_OVERTIME_MAX", "cap": "a year holds at most 24 focus weeks, 12 in the pool and 12 of overtime, and the next week is refused (R3-E6, D16)" },
+  { "id": "intel-floors", "file": "src/game/knowledge/sources.ts", "token": "SOURCES", "cap": "no source reads sharper than its floor whatever the spend, the quality or the talent: press 20 percent, report 12, analyst 8, due diligence 3, an illegal source at least 5 (R3-H4)" },
+  { "id": "intel-price", "file": "src/game/knowledge/sources.ts", "token": "priceOf", "cap": "a fee follows the scope and the country's wealth, at most 4.5 x 2.75 x 1.5 times the base price, and never the buyer's cash or the wealth of the world; due diligence is the greater of 8,000 x wealth and 2 percent of the deal (R3-H4)" },
+  { "id": "know-keys", "file": "src/game/knowledge/rows.ts", "token": "KNOW_LIMITS", "cap": "the research record keeps at most 120 keys, however many a life reads (R3-H4)" }
 ]

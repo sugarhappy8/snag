@@ -203,7 +203,7 @@ describe('kernel parity: the yearly lists', () => {
     const f = loadFixture()
     const entries = yearlyEntries('aging')
     expect(entries).toHaveLength(f.aging.length)
-    // R3: a module of a later track (effort.you, R3-E6) is recorded under its own id, with a dot; every R2 hook is yearly.<name>.
+    // R3: a module of a later track (effort.you, R3-E6; knowledge.core, R3-H5) is recorded under its own id, with a dot; every R2 hook is yearly.<name>.
     const idOf = (n: string): string => (n.includes('.') ? n : `yearly.${n}`)
     expect(entries.map((e) => e.id)).toEqual(f.aging.map(idOf))
   })

@@ -54,6 +54,14 @@ merge and names the key. Locally, `SLICE=1/4 SLICE_DIR=$TMPDIR/s npx vitest run 
 A test file whose first 10 lines contain `// ci: fast` runs in the `fast` job and in no shard. Put it on guard tests,
 the ones that scan the source and finish in seconds.
 
+## Exact information mode
+
+Every test file starts in Exact information mode: `vite.config.ts` lists `test/setup-exact.ts` under `setupFiles`, and it calls
+`setInfoOverride('exact')` (`src/game/knowledge/mode.ts`). Players get Realistic by default (estimates, ranges and words); the
+suite stays Exact so the hint and menu tests that pin exact text pass unchanged. A test of the fog flips the mode for one call with
+`withInfoMode('realistic', fn)`, never with `setInfoMode`: the override beats the player's setting, so a file that imports the
+store (which applies the setting at load) is still Exact. The mode lives on `globalThis`, so `vi.resetModules()` does not lose it.
+
 ## Reading a run
 
 Open the run, then the summary: one table of wall time per shard and one of the 10 slowest files. The target is a

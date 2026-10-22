@@ -12,6 +12,8 @@ import { ECONOMY_VERSION, initialCountry } from '../src/game/economy/model'
 import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
 import { realWealthFactor } from '../src/game/history/events-people'
 import { buySecurity, investmentHoldings, investmentListing, yearlyInvestments } from '../src/game/investments'
+import { KNOW_LIMITS, learn, readKnow } from '../src/game/knowledge/contract'
+import { SOURCES, SOURCE_IDS, priceOf, readingSd } from '../src/game/knowledge/sources'
 import { BURNS, LEDGER_CAPS, MINTS, book, bookBurn, bookMint, checkLedger, peekLedger, playerAcct, type AcctRef } from '../src/game/kernel/ledger'
 import { REASONS, type BurnName, type MintName, type Reason } from '../src/game/kernel/reasons'
 import { SPREADS, ask, bid } from '../src/game/kernel/spreads'
@@ -483,5 +485,55 @@ const WORLD_ROWS: readonly CeilingProbe[] = [
   },
 ]
 
-/** Every row: the R0 and R1 growth terms, then the world rows, then the effort rows (R3-E9, test/effort-ceilings.ts). */
-export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS]
+// R3-H4: the Knowledge rows. A source never reads sharper than its floor; a fee follows the scope and the country, not the buyer; the
+// research record never keeps more than its cap of keys.
+const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
+  {
+    id: 'intel-floors',
+    cap: 'no source reads sharper than its floor whatever the spend, the quality or the talent: press 20 percent, report 12, analyst 8, due diligence 3, an illegal source at least 5 (R3-H4)',
+    run: (scale) => {
+      const t = tightest()
+      for (const id of SOURCE_IDS) {
+        for (const quality of [0, 0.5, 1, 5]) {
+          for (const talent of [false, true]) {
+            // `scale` times the ordinary spend: the term that could in principle make a read arbitrarily sharp.
+            t.add(SOURCES[id].floor, readingSd(id, { quality, talent, spend: 1e6 * scale, ref: 1 }), `${id} at quality ${quality}${talent ? ' with a talent' : ''}`)
+          }
+        }
+      }
+      return t.result()
+    },
+  },
+  {
+    id: 'intel-price',
+    cap: "a fee follows the scope and the country's wealth, at most 4.5 x 2.75 x 1.5 times the base price, and never the buyer's cash or the wealth of the world; due diligence is the greater of 8,000 x wealth and 2 percent of the deal (R3-H4)",
+    run: (scale) =>
+      withWealth(scale, () => {
+        const t = tightest()
+        for (const id of ['press', 'report', 'analyst', 'investigator', 'informant', 'hacker'] as const) {
+          for (const country of ['us', 'mc', 'ng', 'ch']) {
+            // The widest scope there is, `scale` times as many countries as a life spans (the term counts at most 8).
+            t.add(priceOf(id, { tier: 3, countries: 8 * scale, country }), SOURCES[id].price * 4.5 * 2.75 * 1.5 + 50, `${id} in ${country}`)
+          }
+        }
+        for (const country of ['us', 'mc', 'ng']) {
+          const deal = 5_000_000 * scale
+          t.add(priceOf('diligence', { tier: 3, countries: 8 * scale, country, deal }), Math.max(8_000 * 1.5, deal * 0.02) + 500, `diligence in ${country} on a deal of ${deal}`)
+        }
+        return t.result()
+      }),
+  },
+  {
+    id: 'know-keys',
+    cap: 'the research record keeps at most 120 keys, however many a life reads (R3-H4)',
+    run: (scale) => {
+      const g = lifeIn('us', 2026)
+      const n = KNOW_LIMITS.keys * scale
+      for (let i = 0; i < n; i++) learn(g, `mkt:c${i}:size`, { mid: 1e6 + i, sd: 0.2, src: 'press' })
+      return { value: Object.keys(readKnow(g)?.k ?? {}).length, limit: KNOW_LIMITS.keys, at: `${n} keys learned in one year` }
+    },
+  },
+]
+
+/** Every row: the R0 and R1 growth terms, the world rows, the effort rows (R3-E9, test/effort-ceilings.ts), then the Knowledge rows (R3-H4). */
+export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS, ...KNOWLEDGE_ROWS]
