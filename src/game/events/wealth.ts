@@ -316,8 +316,9 @@ export function requestCandidates(g: GameState, tier: number): Candidate[] {
   for (const def of askDefs()) {
     if (def.minTier > tier) continue
     if (prison && !def.prison) continue
-    // A kind of ask that was put to you within PACE.askGap years waits, unless a storyline holds it (events/ask-families.ts). It is
-    // asked before the weight and the people, so a held-back family costs no reads.
+    // A kind of ask that was put to you within PACE.askGap years waits, unless a storyline holds it (events/ask-families.ts), and one that
+    // was put to you PACE.askLife times in this life is over (both in askGapOk). It is asked before the weight and the people, so a
+    // held-back family costs no reads.
     if (!askGapOk(g, askPaceKey(def.id), askIsStoryline(def.id))) continue
     if (def.people) {
       for (const p of def.people(g)) {

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   TEXT_MEM_LIMITS,
   familyStats,
+  familyUses,
   noteFamily,
   readTextMem,
   recallPool,
@@ -192,6 +193,36 @@ describe('families', () => {
     expect(years).toHaveLength(12)
     expect(years).toEqual([...years].sort((a, b) => a - b))
     expect(years[11]).toBe(2037)
+  })
+
+  it('with lifetime it keeps the years 10 or more behind, still the newest 12 and none after the year (R3 decision L2: the ask families count their uses)', () => {
+    const g = game(2020)
+    for (const y of [2020, 2027, 2034, 2041]) {
+      g.year = y
+      noteFamily(g, 'asked', true)
+    }
+    expect(readTextMem(g).f.asked).toBe('2020,2027,2034,2041')
+    expect(familyUses(g, 'asked')).toBe(4)
+    // The same years, noted the way every other family is, leave the last two only.
+    g.year = 2020
+    for (const y of [2020, 2027, 2034, 2041]) {
+      g.year = y
+      noteFamily(g, 'weather')
+    }
+    expect(readTextMem(g).f.weather).toBe('2034,2041')
+    // A year after the clock is dropped when the next one is noted, as for any family.
+    g.flags.textMem = { v: 1, p: {}, f: { asked: '2020,2031,2033' }, r: {} }
+    g.year = 2030
+    noteFamily(g, 'asked', true)
+    expect(readTextMem(g).f.asked).toBe('2020,2030')
+    // The newest 12, however long the life.
+    for (let i = 0; i < 20; i++) {
+      g.year = 2031 + i * 3
+      noteFamily(g, 'asked', true)
+    }
+    const years = readTextMem(g).f.asked.split(',').map(Number)
+    expect(years).toHaveLength(12)
+    expect(years[11]).toBe(2088)
   })
 
   it('reports no use for a family that was never noted', () => {

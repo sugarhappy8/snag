@@ -83,10 +83,17 @@ family (`paceKey`: `pop.<engine>.<family>`, the engines are `ev`, `ask`, `biz` a
 
 - Events, company events and the career kit are weighted. A family that spoke within the last 5 years (`PACE.window`) weighs x0.25
   (`paceWeight`, `popupSeen`). A roll is unchanged: the weights move the pick, not the chance that something happens.
-- Asks wait. A family that spoke within the last 4 years (`PACE.askGap`) is not offered again, unless a storyline holds it
-  (`askGapOk`).
+- Asks wait, and they run out. A family that spoke within the last 4 years (`PACE.askGap`) is not offered again, unless a storyline
+  holds it, and a family that was offered 6 times in a life (`PACE.askLife`) is not offered again at all, a storyline included
+  (`askGapOk`, the one place: no ask site counts for itself). This is the roadmap's "a popup family at most 6 times a life" (lead
+  decision L2) for the ask families, which the gap alone did not hold in a rich life: one family came 15 times in 60 years, 4 years
+  apart. A family that has had its 6 is not asked about again that life, so a rich life gives away less once it has heard each family 6
+  times.
 - The memory is the text kit's family record (`flags.textMem.f`), so the rule adds no saved field, and every reader is pure: no draw,
-  no write, nothing after `g.year`. The engine calls `notePopup`, the one writer, where it presents.
+  no write, nothing after `g.year`. The engine calls `notePopup`, the one writer, where it presents. The record of an ask family keeps its
+  years for the whole life (`noteFamily` with `lifetime`; every other family forgets a year 10 behind), at most 12 of them, and
+  `familyUses` counts the ones not after `g.year`. A new life starts a new count: the text memory is a personal key, so an heir starts
+  clean.
 - The text memory holds 120 families in all, so the engines declare at most 60 families (`PACE.maxFamilies`) between them and leave
   the rest to the text pools. Today that is 32 event families, 14 ask families and the company and career ones.
 
@@ -122,12 +129,13 @@ equals the books, and nothing folded without a record. It also states the roadma
   `test/text-metrics.ts` compares it (lower case, every run of digits one `#`): repeated lines at most 5% (8% for a rich life), no line
   more than 3 times in a life, no line twice within 10 years, a state line once in 5 years. Popup scenes are not lines: they follow family
   pacing. Where the rule is a bar the case asserts it: the event library's popup titles at most 6 a life, as `test/pace-families.test.ts`
-  does, and an ask family at most once in 4 years (`PACE.askGap`, a storyline bar). Where the rule is a weight (events, company events,
-  the career kit) a family may come again within 5 years, and an ask family has no count of its own, so those readings are printed for
-  every engine and not asserted. On the 13 lives: events, one pace family 8 times in a life at most and two tellings as close as 1 year;
-  asks, one family 15 times in a 60-year rich life, never closer than 4 years. A popup family "at most 6 a life" is therefore held for
-  event titles and not for the ask families of a rich life: that wants a longer ask gap, which moves the money a rich life gives away, and
-  is the lead's call (R3 `00-crosscheck.md` L2).
+  does, an ask family at most once in 4 years (`PACE.askGap`, a storyline bar) and an ask family at most 6 times in a life (`PACE.askLife`,
+  rich lives included, a storyline family too). Where the rule is a weight (events, company events, the career kit) a family may come
+  again within 5 years, so those readings are printed for every engine and not asserted. On the 13 lives: events, one pace family 7 times
+  in a life at most and two tellings as close as 1 year; asks, no family more than 6 times in a life and never closer than 4 years (before
+  the cap one family came 15 times in a 60-year rich life, and 27 family-lives went over 6). A popup family "at most 6 a life" is held for
+  event titles and for the ask families (R3 `00-crosscheck.md` L2); the rich lives meet the cap (5 of the 6 have a family at exactly 6
+  tellings, and a family spends its 6 in 20 to 27 years).
 
 A threshold is never loosened to fit a number: a miss is fixed in the text it comes from.
 
