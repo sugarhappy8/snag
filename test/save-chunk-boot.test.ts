@@ -4,6 +4,7 @@
 // whose core is unreadable is quarantined whole, as before; a later version's head is never read further and its chunks are never
 // touched. The storage is the kit's: a localStorage in memory and a fake IndexedDB (a real one for the rows, wrappers for the
 // failures). The lives are made once; a test that needs them in storage saves them there with the real saveGame.
+import { pbkdf2 } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -162,12 +163,16 @@ function bomb(): string {
 /** The browser keeps its life in IndexedDB (the marker is set). */
 const idbMarkedNow = (): boolean => storage.data.get(IDB_MARKER_KEY) === '1'
 
-const real = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+/** The real setTimeout, taken before any test fakes it. */
+const realSetTimeout = globalThis.setTimeout
 
 /**
  * Runs a boot to its end under fake timers: the streams of the codec need the real rest of the clock, so it alternates with the fake
- * one. The fake clock runs ahead of the codec's real work, so the budget of the whole boot is lifted: these tests are about the
- * wait on one storage call (3000 ms), not the budget.
+ * one. Every round gives the codec 5 ms of the real clock and the boot 100 ms of the fake one, so the 3000 ms wait on one storage call
+ * costs about 150 ms. The bound is in real time, not in rounds: the codec's gzip runs on the libuv thread pool, a trip through a busy
+ * pool takes milliseconds (the CI runner's second worker keeps it busy), and a round that only yields to setImmediate takes
+ * microseconds, so 200 such rounds ended the boot before the pool answered. The fake clock still runs ahead of the codec's work, so
+ * the budget of the whole boot is lifted: these tests are about the wait on one storage call, not the budget.
  */
 async function bootUnderFakeTimers(opts: Parameters<typeof hydrateSaves>[0]): Promise<Awaited<ReturnType<typeof hydrateSaves>>> {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -175,8 +180,9 @@ async function bootUnderFakeTimers(opts: Parameters<typeof hydrateSaves>[0]): Pr
   void hydrateSaves({ budgetMs: 1_000_000, ...opts }).then((out) => {
     outcome = out
   })
-  for (let i = 0; i < 200 && outcome === undefined; i++) {
-    await real()
+  const giveUp = Date.now() + 10_000
+  while (outcome === undefined && Date.now() < giveUp) {
+    await new Promise<void>((resolve) => realSetTimeout(resolve, 5))
     await vi.advanceTimersByTimeAsync(100)
   }
   if (outcome === undefined) throw new Error('the boot did not end')
@@ -492,6 +498,21 @@ describe('a database that answers for the head and not for its chunks', () => {
     await saveInto(factory, life)
     const db = await idbSaveBackend(factory)
     const slow: AsyncSaveBackend = { ...db, chunks: { ...chunksOf(db), ids: () => new Promise<never>(() => undefined) } }
+
+    const outcome = await bootUnderFakeTimers({ backend: slow })
+    expect(outcome).toEqual({ backend: 'idb', source: 'idb', fellBack: false, imported: false })
+    expect(getSaveStatus().notices).toEqual([])
+    expect(JSON.stringify(save.loadGame())).toBe(JSON.stringify(life))
+  })
+
+  it('a busy thread pool does not end the wait early: the codec is waited for in real time, not in a count of rounds', async () => {
+    // The codec's gzip queues behind four hashes of tens of milliseconds each, as it does on a runner whose other worker keeps the pool
+    // busy. A harness that gave the boot 200 rounds of setImmediate ended it, with "the boot did not end", before the pool answered.
+    const factory = fakeIndexedDb()
+    await saveInto(factory, life)
+    const db = await idbSaveBackend(factory)
+    const slow: AsyncSaveBackend = { ...db, chunks: { ...chunksOf(db), ids: () => new Promise<never>(() => undefined) } }
+    for (let i = 0; i < 4; i++) pbkdf2('pool', 'busy', 400_000, 64, 'sha512', () => undefined)
 
     const outcome = await bootUnderFakeTimers({ backend: slow })
     expect(outcome).toEqual({ backend: 'idb', source: 'idb', fellBack: false, imported: false })
