@@ -105,6 +105,8 @@ const PERSONAL: readonly string[] = [
   'trainRobbed', 'triedSpicyDiet', 'valedictorian', 'visitedWinnipeg', 'walkHeartAttack', 'wealth.bound.door',
   'wealth.bound.strangers', 'wealth.cd', 'wealth.donated', 'wealth.pending', 'will.escrow', 'will.pot',
   'will.pressY', 'will.state', 'workshop',
+  // R3: the year card book (hubs/year-book.ts) holds the newest cards; the Life tab reads it by key (GameScreen).
+  'yearBook',
 ]
 
 // Keys built from a template or a helper. Each prefix here is a `flags[`prefix${x}`]` site in src/, bar heavy.,
