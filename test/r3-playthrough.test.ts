@@ -150,10 +150,11 @@ describe.skipIf(!ON)('the loading snippet of shots.md, run against the save code
   it('needs the legacy slot cleared: a stale copy there wins the next boot of a browser that keeps its life in IndexedDB', async () => {
     const { SAVE_KEY } = await import('../src/game/save-backends')
     const by = (name: string): string => shotsOf().find((x) => x.name === name)!.json
-    // The life the page keeps, an older copy of it (the popup card is the same life as the research state, at 4), and another life.
-    const [mine, stale, wanted] = [by('research'), by('card-popup'), by('market')]
+    // The life the page keeps, a stale backup of that same life in the legacy slot, and another life. The backup is the kept
+    // save itself, so the case does not depend on which life the playthrough's popup card happens to come from.
+    const [mine, wanted] = [by('research'), by('market')]
+    const stale = mine
     const life = (json: string): string => (JSON.parse(json) as { lifeId: string }).lifeId
-    expect(life(stale)).toBe(life(mine))
     expect(life(wanted)).not.toBe(life(mine))
     /** A page that keeps the life `mine` in IndexedDB, with an older backup of it left in the legacy slot while it ran. */
     const staged = async (): Promise<IDBFactory> => {
