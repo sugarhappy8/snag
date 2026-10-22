@@ -10,12 +10,15 @@
 // With `close: true` a year is played the way the store plays it with the year card on (ui/store.ts ageUpAction): ageUp, then closeYear,
 // then the popups are answered. `PlayedYear.closed` keeps what the close did (the queue before and after it, the year's log lines, the
 // cash on both sides, the card), which is what test/close-kit.ts checks. Off by default, so every other test sees the harness as before.
+// The store settles the outcome of an answered choice too (ui/store.ts chooseOption, src/game/hubs/year-outcomes.ts): a calm one goes to the
+// life log and is no popup. `close: true` does the same, and `PlayedYear.logged` counts them, so the popups of a year are what the player sees.
 //
 // No vitest imports here: the same helper runs under vitest and as a bundled node script, like test/fuzz-kit.ts and
 // test/probe-life.ts.
 import { ageUp } from '../src/game/aging'
 import { closeYear, type CloseReport } from '../src/game/hubs/year-close'
 import { readYearBook } from '../src/game/hubs/year-book'
+import { markAnswer, settleAnswer } from '../src/game/hubs/year-outcomes'
 import { acctBalance, playerAcct } from '../src/game/kernel/ledger'
 import { createNewLife } from '../src/game/life'
 // Script handlers register as an import side effect. test/simulate.test.ts loads menus, so a life played here must too,
@@ -41,6 +44,12 @@ export interface PlayOptions {
    * is the headless loop every other test relies on.
    */
   close?: boolean
+  /**
+   * With `close: true`: what becomes of the outcome of an answered choice. 'log' (the default) is the store: a calm outcome goes to the life log
+   * and is no popup (src/game/hubs/year-outcomes.ts). 'popup' is the flow before that rule, where every outcome pops up, kept so a measurement
+   * can put the two side by side. Without `close` it is not read: the headless loop never moves an outcome.
+   */
+  outcomes?: 'log' | 'popup'
   /** Stop once the character is this old (default 90). A life that ends sooner stops sooner. */
   untilAge?: number
   /** A measurement aid: money is set to 60,000,000 the year the character first reaches 25 (default false). */
@@ -121,6 +130,11 @@ export interface PlayedYear {
   lines: { text: string; tone: Tone }[]
   /** Set for every year after birth of a game played with `close: true`. */
   closed?: ClosedYear
+  /**
+   * With `close: true`: how many calm outcomes of the choices answered in this year went to the life log instead of a popup, the way the store
+   * does it. They are not in `popups`. Not set when the harness is not playing the store flow.
+   */
+  logged?: number
 }
 
 /** Tiny driver RNG, separate from the game's so the driver doesn't depend on engine rolls. */
@@ -195,7 +209,7 @@ function played(m: Exclude<ModalItem, { kind: 'aiTask' }>, passive: boolean): Pl
  * reaches the player. A popup that appears while a choice, input or minigame is being answered is an outcome. A
  * built-in task is never shown, and what its resolution queues counts as passive.
  */
-function drain(g: GameState, d: Driver, out: PlayedPopup[]): void {
+function drain(g: GameState, d: Driver, out: PlayedPopup[], store?: { logged: number; settle: boolean }): void {
   const outcomes = new Set<string>()
   for (let guard = 0; g.queue.length > 0; guard++) {
     if (guard > 300) throw new Error(`queue never drains; head: ${JSON.stringify(g.queue[0]).slice(0, 300)}`)
@@ -212,10 +226,13 @@ function drain(g: GameState, d: Driver, out: PlayedPopup[]): void {
         if (m.choices.length === 0) throw new Error(`choice "${m.title}" has no options`)
         const choice = d.pick(m.choices)
         answered = true
+        // The store flow settles what the answer queued: a calm outcome goes to the log (chooseOption in ui/store.ts).
+        const mark = store?.settle ? markAnswer(g) : null
         if (m.source === 'script') {
           if (!hasScript(m.scriptId!)) throw new Error(`missing script handler "${m.scriptId}" for choice "${m.title}"`)
           runScript(g, m.scriptId!, choice.id, m.data, m)
         } else applyFallback(g, { type: 'resolveChoice', event: m, choiceId: choice.id })
+        if (store && mark) store.logged += settleAnswer(g, mark)
         break
       }
       case 'input':
@@ -280,8 +297,9 @@ export function playLife(opts: PlayOptions): { g: GameState; years: PlayedYear[]
   let closed: ClosedYear | undefined
   const play = (): void => {
     const popups: PlayedPopup[] = []
-    drain(g, d, popups)
-    const year: PlayedYear = { age: g.character.age, year: g.year, popups, lines: yearLines(g) }
+    const store = opts.close ? { logged: 0, settle: opts.outcomes !== 'popup' } : undefined
+    drain(g, d, popups, store)
+    const year: PlayedYear = { age: g.character.age, year: g.year, popups, lines: yearLines(g), ...(store ? { logged: store.logged } : {}) }
     if (closed) {
       // The year is over: the lines now hold the player's answers as well. (A dead character's last year may have no log year at all.)
       closed.entries = yearEntries(g)
