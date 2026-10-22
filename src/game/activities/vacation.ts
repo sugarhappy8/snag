@@ -420,7 +420,7 @@ const WHO = defineScript('act.vacation.who', (g, choice, data) => {
     brokeNotice(g, cost, 'this trip')
     return
   }
-  addMoney(g, -cost)
+  addMoney(g, -cost, 'leisure')
   useYearAction(g, 'act.vacation', TRIPS_PER_YEAR)
   takeTrip(g, dest, cls, companions)
 })
@@ -637,7 +637,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
     }
     case 'robbed': {
       const lost = Math.min(Math.max(0, c.money), randInt(g, 100, 800))
-      addMoney(g, -lost)
+      addMoney(g, -lost, 'luck')
       addStat(g, 'happiness', -randInt(g, 2, 5))
       log(g, `I got pickpocketed in ${dest.name}.`, 'bad')
       result(g, title, `A pickpocket in ${dest.name} relieved you of ${lost > 0 ? money(lost) : 'your sunglasses'}. You still had a nice time, mostly.${companionLine}`, '\u{1F45B}', 'bad')

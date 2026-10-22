@@ -113,7 +113,7 @@ function takeClass(g: GameState, style: Style): void {
     return
   }
   const cost = c.age < 18 ? localPrice(g, 25) : localPrice(g, 40)
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'leisure')
   if (!paid) {
     brokeNotice(g, cost, `a ${style.name} class`)
     return

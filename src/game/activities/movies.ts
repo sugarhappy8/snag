@@ -237,7 +237,7 @@ function watchMovie(g: GameState, genre: GenreDef, companionId: string | null): 
   }
   const tickets = companion ? 2 : 1
   const cost = ticketPrice(g) * tickets
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'leisure')
   if (!paid) {
     brokeNotice(g, cost, tickets > 1 ? 'two movie tickets' : 'a movie ticket')
     return
@@ -363,7 +363,7 @@ function zooVisit(g: GameState, companionId: string | null): void {
     return
   }
   const cost = localPrice(g, 25) * (companion ? 2 : 1)
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'leisure')
   if (!paid) {
     brokeNotice(g, cost, companion ? 'two zoo tickets' : 'a zoo ticket')
     return

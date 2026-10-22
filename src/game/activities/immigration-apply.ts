@@ -2,7 +2,7 @@
 // overstaying a visit); exit visas and escapes from countries that won't let you leave; and the
 // decisions on applications that take years (resolved by the yearly clock). Mutates the draft.
 import { arrestPlayer } from '../crime'
-import { addStat, count, endJob, log, notice, scriptChoice } from '../core'
+import { addMoney, addStat, count, endJob, log, notice, scriptChoice } from '../core'
 import { borderControl, strictness, type InvestKind } from '../data/immigration'
 import { chance, randInt } from '../rng'
 import { pickLine } from '../text/pick'
@@ -78,7 +78,7 @@ export function applyRoute(g: GameState, dest: string, key: string): void {
     return
   }
   g.yearActions[applyKey(dest, r)] = 1
-  if (r.fee > 0) c.money = Math.round(c.money - r.fee)
+  if (r.fee > 0) addMoney(g, -r.fee, 'fee.gov')
   count(g, 'visaApplications')
 
   // Decided later: file it.
@@ -121,10 +121,11 @@ export function approve(g: GameState, r: RouteEval, feePaid: number): void {
   const reloc = relocationCost(g, country)
   const cash = Math.max(0, c.money)
   const invest = Math.min(r.invest, cash)
-  c.money = Math.round(c.money - invest)
+  // A stake that is locked away is bought (the lock sells it back); a plain fee goes to the state.
+  addMoney(g, -invest, r.investKind && r.investKind !== 'fee' ? 'trade.buy' : 'fee.gov')
   // The stake is yours from day one: it counts toward the exit tax on the way out, like the estimate said.
   const lock = invest > 0 && r.investKind && r.investKind !== 'fee' ? createLock(g, { program: r.program ?? r.key, name: `${r.label} stake`, emoji: r.emoji, kind: r.investKind, amount: invest, years: r.lockYears, country: r.dest }) : null
-  c.money = Math.round(c.money - Math.min(reloc, Math.max(0, c.money)))
+  addMoney(g, -Math.min(reloc, Math.max(0, c.money)), 'purchase')
   const paid = r.fee + feePaid + invest + reloc
   if (r.id === 'whv') updateImm(g, (s) => s.whvUsed.push(r.dest))
   relocate(g, r.dest, 'legal', arrivalOf(r), {
@@ -205,7 +206,7 @@ function cap(s: string): string {
 function arriveForAsylum(g: GameState, r: RouteEval): void {
   const country = getCountry(r.dest)
   const reloc = relocationCost(g, country)
-  g.character.money = Math.round(g.character.money - Math.min(reloc, Math.max(0, g.character.money)))
+  addMoney(g, -Math.min(reloc, Math.max(0, g.character.money)), 'purchase')
   const protectedNow = r.visa === 'protection'
   const decide = g.year + (protectedNow ? 0 : strictness(r.dest, g.year) > 0.6 ? 2 : 1)
   relocate(g, r.dest, 'asylum', { status: 'asylum', visa: protectedNow ? 'protection' : 'pending' }, {
@@ -433,6 +434,6 @@ export const APPROVED = defineScript('imm.approved', (g, choice, data) => {
     log(g, `I couldn't afford to use my visa to ${place(country)}.`, 'bad')
     return
   }
-  g.character.money = Math.round(g.character.money - fee)
+  addMoney(g, -fee, 'fee.gov')
   approve(g, { ...r, fee: 0 }, fee)
 })

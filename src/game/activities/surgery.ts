@@ -1,7 +1,7 @@
 // Plastic Surgery: pick a procedure, then one of two surgeons (pricier = better reputation).
 // Botched surgeries hurt looks/health/happiness, can rarely be fatal, and give you someone to sue.
 import { killCharacter } from '../death'
-import { addStat, count, log, notice, remember, scriptInput } from '../core'
+import { addMoney, addStat, count, log, notice, remember, scriptInput } from '../core'
 import { chance, randInt } from '../rng'
 import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
@@ -119,7 +119,7 @@ function operate(g: GameState, proc: Procedure, s: Surgeon): void {
     brokeNotice(g, s.price, `a ${proc.name.toLowerCase()} with ${s.name}`)
     return
   }
-  c.money -= s.price
+  addMoney(g, -s.price, 'health')
   count(g, 'surgeries')
   const counts = { ...flagRecord(g, COUNTS) }
   counts[proc.id] = recNumber(counts, proc.id) + 1

@@ -4,6 +4,7 @@
 // spoiled) and spoils a kid a little; a no stings (more when you're rich and it's small change);
 // boundaries stop the asking for a while at a smaller cost. Some kids respect a no.
 import { addHidden, addStat, count, getPerson, log, notice, scriptChoice, scriptInput, spend } from '../core'
+import type { Reason } from '../kernel/reasons'
 import { touch } from '../love'
 import { chance, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
@@ -12,6 +13,7 @@ import { talentHint } from '../talents'
 import { common } from './era'
 import { queueSecretaryRequest } from '../shops/luxury-secretary-state'
 import { askDef } from './wealth-catalog'
+import { payPersonWhole } from './purses'
 import { POCKET_SCRIPT, setAllowance } from './wealth-kids'
 import { whoOf, type Ask, type AskDef } from './wealth-ask'
 import {
@@ -207,13 +209,18 @@ function reactionLine(g: GameState, p: Person, full: boolean): string {
 
 type GiveKind = 'full' | 'alt' | 'less'
 
+/** What an ask costs the player: cash for the asker's own pocket is one booking between the two; anything else pays a bill or buys a thing. */
+function payAsk(g: GameState, def: AskDef | undefined, p: Person | undefined, amount: number, reason: Reason): boolean {
+  return p && def?.cash ? payPersonWhole(g, p, amount, reason) : spend(g, amount, 'purchase')
+}
+
 /** Pay for an ask (all of it, the cheaper alternative, or a chosen smaller amount). */
 export function giveFor(g: GameState, a: Ask, amount: number, kind: GiveKind): void {
   const def = askDef(a.k)
   const { ok, p } = liveAsker(g, a)
   if (!def || !ok) return gone(g, a)
   const amt = Math.max(0, Math.round(amount))
-  if (amt <= 0 || !spend(g, amt)) {
+  if (amt <= 0 || !payAsk(g, def, p, amt, 'gift')) {
     if (p) bumpRelationship(p, -1)
     notice(g, a.title, `You don't have ${money(amt)} in cash right now, so that settles that. ${p ? `${p.firstName} took it well, mostly.` : ''}`.trim(), { emoji: '\u{1F4B8}' })
     return
@@ -225,7 +232,6 @@ export function giveFor(g: GameState, a: Ask, amount: number, kind: GiveKind): v
   let rel = 0
   if (p) {
     touch(g, p)
-    if (def.cash) p.money = Math.round(p.money + amt)
     updateTies(g, p, (t) => {
       t.given += amt
     })
@@ -251,12 +257,11 @@ function lend(g: GameState, a: Ask): void {
   const def = askDef(a.k)
   const { ok, p } = liveAsker(g, a)
   if (!def || !ok || !p) return gone(g, a)
-  if (!spend(g, a.amt)) {
+  if (!payAsk(g, def, p, a.amt, 'support')) {
     notice(g, a.title, `You don't have ${money(a.amt)} to lend right now.`, { emoji: '\u{1F4B8}' })
     return
   }
   touch(g, p)
-  if (def.cash) p.money = Math.round(p.money + a.amt)
   updateTies(g, p, (t) => {
     if (t.owes <= 0) t.owesSince = g.year
     t.owes += a.amt
@@ -423,11 +428,10 @@ defineScript(BUNDLE_SCRIPT, (g, choice, data) => {
     const family = !!p && (isDescendant(p) || p.relation === 'spouse' || p.relation === 'partner' || p.relation === 'fiance')
     const yes = choice === 'all' || (choice === 'family' && family)
     const def = askDef(a.k)
-    if (yes && spend(g, a.amt)) {
+    if (yes && payAsk(g, def, p, a.amt, 'gift')) {
       paid.push(`${p ? p.firstName : a.name ?? 'someone'}: ${a.what}`)
       if (p) {
         touch(g, p)
-        if (def?.cash) p.money = Math.round(p.money + a.amt)
         updateTies(g, p, (t) => {
           t.given += a.amt
         })

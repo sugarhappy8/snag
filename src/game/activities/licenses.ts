@@ -1,7 +1,8 @@
 // Licenses: driver's license (country driving age), boating license, pilot license (after 40
 // hours of flight school) and firearm license (background check). Each test is a short quiz
 // played through popups; get every question right to pass.
-import { count, hasLicense, log, notice, remember, scriptChoice } from '../core'
+import { personCash } from '../cash'
+import { addMoney, count, hasLicense, log, notice, remember, scriptChoice } from '../core'
 import { masterFirstTime } from '../mastery'
 import { chance, pick, randInt, shuffle, uid } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
@@ -244,7 +245,7 @@ function maybeGiftCar(g: GameState): void {
   if (!parent || !chance(g, 0.35)) return
   const name = pick(g, GIFT_CARS)
   const value = localPrice(g, randInt(g, 4_000, 11_000))
-  parent.money = Math.max(0, parent.money - value)
+  personCash(g, parent, -value, 'asset.buy', 0)
   const asset: Asset = {
     id: uid(g, 'a'),
     kind: 'car',
@@ -281,7 +282,7 @@ function startTest(g: GameState, kind: LicenseKind, fee: number): void {
     brokeNotice(g, fee, `the ${NAMES[kind]} test`)
     return
   }
-  g.character.money -= fee
+  addMoney(g, -fee, 'fee.gov')
   g.yearActions[`act.license.${kind}`] = (g.yearActions[`act.license.${kind}`] ?? 0) + 1
   count(g, `${kind}Tests`)
   // Main Character Syndrome: the first time at the wheel (or the helm, or the yoke) is already mastery,
@@ -354,7 +355,7 @@ function flightLesson(g: GameState, hours: number, usd: number): void {
     brokeNotice(g, cost, `${hours} hours of flight school`)
     return
   }
-  c.money -= cost
+  addMoney(g, -cost, 'tuition')
   g.yearActions['act.flightHours'] = used + hours
   const total = flagNumber(g, FLIGHT_HOURS) + hours
   g.flags[FLIGHT_HOURS] = total
@@ -447,7 +448,7 @@ function applyFirearm(g: GameState): void {
   else if (mental) denial = 'Your background check flagged your mental health history.'
   else if (STRICT.includes(country.id) && !chance(g, 0.15)) denial = `Civilian firearm licenses are extremely restricted in ${country.name}. Your application was rejected.`
   if (denial) {
-    c.money -= fee
+    addMoney(g, -fee, 'fee.gov')
     g.yearActions['act.license.firearm'] = ATTEMPTS_PER_YEAR
     log(g, 'My firearm license application was denied.', 'bad')
     result(g, 'Application Denied', `${denial}

@@ -99,7 +99,7 @@ export function acquireCitizenship(g: GameState, dest: string): { lost: string[]
     lost.push(id)
     if (t.due > 0) {
       const paid = Math.min(t.due, Math.max(0, g.character.money))
-      if (paid > 0) spend(g, paid)
+      if (paid > 0) spend(g, paid, 'tax.capgains')
       tax += paid
       taxName = t.name
     }
@@ -166,7 +166,7 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
     if (t.due > 0) {
       const paid = Math.min(t.due, Math.max(0, c.money))
       if (paid > 0) {
-        spend(g, paid)
+        spend(g, paid, 'tax.capgains')
         lines.push(`${capital(t.name)} took ${money(paid)} on your way out.`)
         log(g, `I paid ${money(paid)} in exit tax leaving ${oldName}.`, 'bad')
       }

@@ -118,7 +118,7 @@ export function withdrawEarly(g: GameState, assetId: string): void {
   const back = Math.max(0, Math.round(a.value * share))
   const backed = backsCurrentVisa(g, a)
   g.assets = g.assets.filter((x) => x.id !== a.id)
-  addMoney(g, back)
+  addMoney(g, back, 'trade.sell')
   log(g, `I pulled ${money(back)} out of my ${a.name.toLowerCase()} early.`, backed ? 'bad' : 'neutral')
   notice(g, 'Money Out', `You pulled your money out early and got ${money(back)} back.${backed ? ' Immigration will notice: your visa will be revoked at the end of the year unless you have another way to stay.' : ''}`, { emoji: '\u{1F4B8}', tone: backed ? 'bad' : 'neutral' })
 }

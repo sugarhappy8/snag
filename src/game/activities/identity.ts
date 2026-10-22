@@ -2,7 +2,7 @@
 // Gender identity lives in g.flags['identity.gender'] ('cisgender' | 'transgender' |
 // 'nonbinary' | 'genderqueer') with the birth gender in g.flags['identity.birthGender'].
 // Transgender characters present as the other gender (character.gender flips).
-import { addRelationship, count, log, notice, remember, scriptInput } from '../core'
+import { addMoney, addRelationship, count, log, notice, remember, scriptInput } from '../core'
 import { notePerson } from '../people'
 import { chance, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
@@ -179,7 +179,7 @@ const LAST = defineScript('act.identity.last', (g, value, data) => {
     brokeNotice(g, fee, 'the name change filing fee')
     return
   }
-  c.money -= fee
+  addMoney(g, -fee, 'fee.gov')
   g.yearActions['act.identity.name'] = 1
   const pOk = c.criminalRecord.some((r) => r.convicted) ? 0.6 : 0.92
   if (!chance(g, pOk)) {

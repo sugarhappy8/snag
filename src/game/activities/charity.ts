@@ -61,7 +61,7 @@ function donate(g: GameState, ch: Charity, input: string | undefined): void {
     result(g, 'Donation', "You've donated plenty this year. The charities' thank-you letters are starting to pile up.", ch.emoji)
     return
   }
-  if (!spend(g, amount)) {
+  if (!spend(g, amount, 'donation')) {
     brokeNotice(g, amount, `a donation of ${money(amount)}`)
     return
   }

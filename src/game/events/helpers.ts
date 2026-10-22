@@ -18,15 +18,18 @@ import {
   remember,
   scriptChoice,
 } from '../core'
+import { moveCash, personPurse } from '../cash'
 import { killCharacter } from '../death'
 import { applyEffects } from '../effects'
 import { notePerson } from '../people'
 import { fillLocal, locale, localTerm, type LocaleProfile } from '../data/locales'
 import { pick, randInt, rand } from '../rng'
 import { pickLine } from '../text/pick'
+import type { Reason } from '../kernel/reasons'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import type { ChoiceOption, GameEffects, GameState, Gender, Job, Json, Person, Tone } from '../types'
 import { anachronistic, eraOk, eraStrip, venueExists } from './era'
+import { askedPurse } from './purses'
 
 export { venueExists }
 
@@ -299,8 +302,8 @@ export function applyFx(g: GameState, ctx: Ctx | null, fx: Fx): void {
   if (fx.athleticism) addHidden(g, 'athleticism', fx.athleticism)
   if (fx.religiousness) addHidden(g, 'religiousness', fx.religiousness)
   if (fx.money) {
-    if (fx.money > 0) addMoney(g, fx.money)
-    else addMoney(g, -Math.min(Math.max(0, c.money), -fx.money))
+    if (fx.money > 0) addMoney(g, fx.money, 'luck')
+    else addMoney(g, -Math.min(Math.max(0, c.money), -fx.money), 'luck')
   }
   if (fx.rel && x?.p) addRelationship(x.p, fx.rel)
   if (fx.rel2 && x?.q) addRelationship(x.q, fx.rel2)
@@ -333,6 +336,15 @@ export function applyFx(g: GameState, ctx: Ctx | null, fx: Fx): void {
   if (fx.memory) remember(g, fx.memory)
   if (fx.arrest) applyEffects(g, { arrest: fx.arrest })
   if (fx.death && c.alive) killCharacter(g, fx.death)
+}
+
+/**
+ * The player hands the event's person `amt` (the caller checked they can afford it): one booking between the two, and the value for
+ * `fx.money`, which is 0 when the person took it and `-amt` when there is no person (the event's own money effect then takes it).
+ */
+export function handOver(g: GameState, x: Ctx, amt: number, reason: Reason): number {
+  if (!x.p || !(amt > 0) || g.character.money < amt) return -amt
+  return moveCash(g, askedPurse(g), personPurse(x.p), amt, reason) > 0 ? 0 : -amt
 }
 
 /** Shorthand: popup + log + effects in one call. */

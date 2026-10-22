@@ -2,7 +2,7 @@
 // Juveniles can only use the hair salon, barber and nail salon, and pay with their own money.
 // Services follow the decades: Marcel waves and perms early on, tanning beds from the late
 // seventies, spray tans and keratin treatments only recently.
-import { addStat, count, log, scriptChoice, useYearAction } from '../core'
+import { addMoney, addStat, count, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, randInt } from '../rng'
 import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
@@ -252,7 +252,7 @@ function doService(g: GameState, section: Section, s: Service): void {
     brokeNotice(g, cost, `a ${s.label.toLowerCase()}`)
     return
   }
-  c.money -= cost
+  addMoney(g, -cost, 'health')
   useYearAction(g, key, SERVICE_LIMIT)
   count(g, 'salonVisits')
   if (s.mishap && chance(g, s.mishap.chance)) {

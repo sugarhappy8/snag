@@ -78,7 +78,7 @@ function skillLine(g: GameState, id: CraftId, gain: number): string {
 /** Pay out prize money or a sale (taxable income). */
 function earn(g: GameState, amount: number): number {
   const n = Math.max(0, Math.round(amount))
-  if (n > 0) earnIncome(g, n)
+  if (n > 0) earnIncome(g, n, 'prize')
   return n
 }
 

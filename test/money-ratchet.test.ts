@@ -85,6 +85,10 @@ const MIGRATED: readonly string[] = [
   'src/game/workshop/events.ts',
   'src/game/workshop/launch.ts',
   'src/game/workshop/yearly.ts',
+  // R2-L8: events, activities, and the estate in life.ts
+  'src/game/activities/',
+  'src/game/events/',
+  'src/game/life.ts',
 ]
 
 /** The comment that says a raw `.cash` or `.money` write is not a purse. */

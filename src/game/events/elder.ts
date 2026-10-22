@@ -12,6 +12,7 @@ import {
   dollars,
   friends,
   grandkids,
+  handOver,
   hasCar,
   kids,
   money,
@@ -208,14 +209,12 @@ export const ELDER_EVENTS = defineEvents([
       give: (g, x) => {
         const amt = x.n('amt')
         if (g.character.money < amt) return say(g, x, 'Fixed income', `You don't have ${money(amt)} to give. ${nm(x)} said not to worry about it.`, null, { rel: -1 })
-        if (x.p) x.p.money += amt
-        say(g, x, 'Generous', `You gave ${nm(x)} ${money(amt)} for ${x.s('why')}. ${x.p ? pr(x.p).He : 'They'} called you the best grandparent ever.`, `I gave my grandchild, ${nm(x)}, ${money(amt)}.`, { money: -amt, rel: 12, happiness: 3 }, 'good', '💝')
+        say(g, x, 'Generous', `You gave ${nm(x)} ${money(amt)} for ${x.s('why')}. ${x.p ? pr(x.p).He : 'They'} called you the best grandparent ever.`, `I gave my grandchild, ${nm(x)}, ${money(amt)}.`, { money: handOver(g, x, amt, 'gift'), rel: 12, happiness: 3 }, 'good', '💝')
       },
       half: (g, x) => {
         const amt = Math.round(x.n('amt') / 2)
         if (g.character.money < amt) return say(g, x, 'Fixed income', `You couldn't even spare half. ${nm(x)} understood.`, null, {})
-        if (x.p) x.p.money += amt
-        say(g, x, 'Compromise', `You gave ${nm(x)} ${money(amt)} and told ${x.p ? pr(x.p).him : 'them'} to earn the rest.`, `I gave my grandchild, ${nm(x)}, ${money(amt)}.`, { money: -amt, rel: 5 }, 'good')
+        say(g, x, 'Compromise', `You gave ${nm(x)} ${money(amt)} and told ${x.p ? pr(x.p).him : 'them'} to earn the rest.`, `I gave my grandchild, ${nm(x)}, ${money(amt)}.`, { money: handOver(g, x, amt, 'gift'), rel: 5 }, 'good')
       },
       lecture: (g, x) => say(g, x, 'In my day...', `You gave ${nm(x)} a 40-minute lecture on how pocket change used to buy a whole meal. ${nm(x)} left with no money and a headache.`, `I lectured my grandchild, ${nm(x)}, about money.`, { rel: -5, happiness: 2 }),
       no: (g, x) => say(g, x, 'Bank closed', `You told ${nm(x)} no. ${x.p ? pr(x.p).He : 'They'} sulked through dinner.`, `I refused to give my grandchild, ${nm(x)}, money.`, { rel: -8 }),

@@ -206,7 +206,7 @@ function pray(g: GameState, p: Prayer): void {
     }
     case 'wealth': {
       const found = localPrice(g, randInt(g, 5, 200))
-      addMoney(g, found)
+      addMoney(g, found, 'luck')
       log(g, `I found ${money(found)} on the sidewalk.`, 'good')
       result(g, 'Pray', `You prayed for wealth. The next day you found ${money(found)} on the sidewalk. Not exactly a fortune, but you'll take it.`, p.emoji, 'good')
       return
@@ -283,7 +283,7 @@ function enterSweepstakes(g: GameState): void {
     result(g, 'Sweepstakes', "You've already entered every sweepstakes in town this year.", '\u{1F39F}\u{FE0F}')
     return
   }
-  if (!spend(g, 1)) {
+  if (!spend(g, 1, 'gamble')) {
     brokeNotice(g, 1, 'a sweepstakes entry')
     return
   }
@@ -315,7 +315,7 @@ function enterSweepstakes(g: GameState): void {
       return
     }
     const cash = localPrice(g, pick(g, [25_000, 50_000, 100_000, 250_000]))
-    addMoney(g, cash)
+    addMoney(g, cash, 'gamble')
     addStat(g, 'happiness', 20)
     remember(g, `Won ${money(cash)} in a sweepstakes.`)
     log(g, `I won ${money(cash)} in a sweepstakes!`, 'good')
@@ -325,7 +325,7 @@ function enterSweepstakes(g: GameState): void {
   if (roll <= 40) {
     if (chance(g, 0.5)) {
       const card = localPrice(g, pick(g, [25, 50, 100, 250, 500]))
-      addMoney(g, card)
+      addMoney(g, card, 'gamble')
       addStat(g, 'happiness', 4)
       const voucher = g.year >= 1995 ? 'gift card' : 'store voucher'
       log(g, `I won a ${money(card)} ${voucher} in a sweepstakes.`, 'good')

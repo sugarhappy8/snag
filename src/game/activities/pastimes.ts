@@ -7,7 +7,7 @@
 // per-year cap, a price, a diminishing return (the feed) or a risk.
 //
 // Menus are pure functions of state; only run() and the helpers it calls mutate g.
-import { addRelationship, addStat, count, formatMoney, log, relationLabel } from '../core'
+import { addMoney, addRelationship, addStat, count, formatMoney, log, relationLabel } from '../core'
 import { common, exists, landline, mixWord } from '../events/era'
 import { adoption, eraPrice, regionIs, videoChain, wealthOf } from '../events/era-late-kit'
 import { PRESENT_YEAR } from '../history/timeline'
@@ -135,7 +135,7 @@ const DEFS: Pastime[] = [
       if (chance(g, 0.15)) {
         const fee = eraPrice(g, 6)
         if (g.character.money >= fee) {
-          g.character.money -= fee
+          addMoney(g, -fee, 'fine')
           late = `\n\nYou returned it a day late and paid a ${formatMoney(fee)} fee.`
         }
       }
@@ -344,7 +344,7 @@ function cafeVisit(g: GameState, what: 'write' | 'learn' | 'play'): void {
     return
   }
   const cost = cafeHour(g)
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'leisure')
   if (!paid) {
     brokeNotice(g, cost, 'an hour at the cyber cafe')
     return
@@ -427,7 +427,7 @@ function attempt(g: GameState, def: Pastime, partnerId: string | null): void {
   }
   const outings = partner ? 2 : 1
   const cost = def.cost(g) * outings
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'leisure')
   if (!paid) {
     brokeNotice(g, cost, def.label.toLowerCase())
     return
