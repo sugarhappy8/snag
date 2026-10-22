@@ -21,6 +21,11 @@
 // a memory or a repeat guard as well; if those lived in people or character, an extra draw on the text stream would show up
 // as a move of people or character and no isolation test could pass.
 //
+// A number that is not an integer is digested rounded to 9 significant digits (GOLDEN_DIGITS), an integer exactly. Math.log, Math.exp
+// and Math.pow differ in the last bit between CPUs and between Node majors, and the engine keeps a few unrounded floats, so the exact
+// bits recorded on one machine would fail on the next (the lead's decision 31; test/r2-parity-kit.ts PARITY_DIGITS is the same rule).
+// Nine digits drop that noise (about 1e-15 of the value) and keep every real move, which is far larger than 1e-9 of the value.
+//
 // Every view is rooted at the real path of the state ({ people: [...] }, { flags: { diet: ... } }), so a JSON pointer out of
 // firstDiff reads as a path of the saved game and not as a path inside a hash input.
 //
@@ -62,6 +67,9 @@ const has = (o: object, key: string): boolean => Object.prototype.hasOwnProperty
 
 // ---------------------------------------------------------------------------------------------- canonical text
 
+/** Significant digits kept of a number that is not an integer. */
+export const GOLDEN_DIGITS = 9
+
 /** A state is at most 128 deep (the load limit); this only stops a cycle from overflowing the stack. */
 const MAX_DEPTH = 512
 
@@ -71,8 +79,10 @@ function write(v: unknown, depth: number): string | undefined {
     case 'string':
       return JSON.stringify(v)
     case 'number':
-      // String(-0) is '0'. A non-finite number is a string, so it can never hide as null.
-      return Number.isFinite(v) ? String(v) : `"__num:${String(v)}"`
+      // String(-0) is '0'. A non-finite number is a string, so it can never hide as null. An integer is exact; any other number is
+      // cut to GOLDEN_DIGITS significant digits, which is what makes a digest the same on every CPU.
+      if (!Number.isFinite(v)) return `"__num:${String(v)}"`
+      return String(Number.isInteger(v) ? v : Number(v.toPrecision(GOLDEN_DIGITS)))
     case 'boolean':
       return v ? 'true' : 'false'
     case 'object': {
@@ -105,8 +115,9 @@ function write(v: unknown, depth: number): string | undefined {
 
 /**
  * JSON with the keys sorted, no whitespace, an undefined member skipped in an object and written null in an array (as
- * JSON.stringify does), -0 written 0, and a non-finite number written as the string "__num:NaN" ("__num:Infinity",
- * "__num:-Infinity"). A function, symbol or bigint is treated as undefined.
+ * JSON.stringify does), -0 written 0, a number that is not an integer rounded to GOLDEN_DIGITS (9) significant digits, and a
+ * non-finite number written as the string "__num:NaN" ("__num:Infinity", "__num:-Infinity"). A function, symbol or bigint is
+ * treated as undefined.
  */
 export function canonicalJson(value: unknown): string {
   return write(value, 0) ?? 'null'

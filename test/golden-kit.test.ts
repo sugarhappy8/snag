@@ -14,6 +14,7 @@ import type { Asset, GameState, Json } from '../src/game/types'
 import { classifyFlag } from '../src/game/world-flags'
 import { deepFreeze } from './fuzz-kit'
 import {
+  GOLDEN_DIGITS,
   SLICES,
   TOP_KEYS,
   canonicalJson,
@@ -108,6 +109,17 @@ describe('canonicalJson', () => {
     expect(canonicalJson(Infinity)).toBe('"__num:Infinity"')
     expect(canonicalJson(-Infinity)).toBe('"__num:-Infinity"')
     expect(canonicalJson([NaN])).not.toBe(canonicalJson([null]))
+  })
+
+  it('writes a number that is not an integer to 9 significant digits and an integer exactly: the last bit of a float is not a move', () => {
+    expect(canonicalJson(0.1 + 0.2)).toBe(canonicalJson(0.3))
+    expect(canonicalJson(Math.log(10))).toBe(canonicalJson(Math.log(10) * (1 + 4e-16)))
+    expect(canonicalJson(1.00000001)).not.toBe(canonicalJson(1.00000002))
+    expect(canonicalJson(123456789012345)).toBe('123456789012345')
+    expect(canonicalJson(1234567891)).not.toBe(canonicalJson(1234567892))
+    expect(canonicalJson(2 ** 53)).toBe(String(2 ** 53))
+    expect(canonicalJson([0.1 + 0.2, { a: 1 / 3 }])).toBe('[0.3,{"a":0.333333333}]')
+    expect(GOLDEN_DIGITS).toBe(9)
   })
 
   it('writes strings, booleans and nested arrays as JSON does', () => {
@@ -246,6 +258,16 @@ describe('sensitivity: one change moves one slice', () => {
     expect(moved(g, () => { year!.entries[0].text += '!' })).toEqual(['text'])
   })
 
+  it('a float that differs in its last bit moves no slice, and one that differs in its ninth digit moves its own', () => {
+    const a = withFlags(life())
+    const b = withFlags(life())
+    a.flags.worldEconomy = { year: 1990, inflation: 0.1 + 0.2 }
+    b.flags.worldEconomy = { year: 1990, inflation: 0.3 }
+    expect(movedSlices(sliceDigests(a), sliceDigests(b))).toEqual([])
+    b.flags.worldEconomy = { year: 1990, inflation: 0.30000001 }
+    expect(movedSlices(sliceDigests(a), sliceDigests(b))).toEqual(['economy'])
+  })
+
   it('version and schemaVersion move nothing', () => {
     expect(moved(life(), (g) => { g.version += 1 })).toEqual([])
     expect(moved(life(), (g) => { g.schemaVersion = (g.schemaVersion ?? 1) + 7 })).toEqual([])
@@ -261,7 +283,10 @@ describe('sensitivity: one change moves one slice', () => {
 
 describe('g.world', () => {
   it('absent, undefined and null agree', () => {
+    // A played life holds a world since the ledger landed (R2-L1), so "absent" is made on purpose: the key is deleted.
     const absent = life()
+    delete asRecord(absent).world
+    expect(Object.prototype.hasOwnProperty.call(absent, 'world')).toBe(false)
     const undef = life()
     asRecord(undef).world = undefined
     const nul = life()
@@ -274,9 +299,16 @@ describe('g.world', () => {
 
   it('an empty world is not an absent one', () => {
     const g = life()
+    delete asRecord(g).world
     const d = sliceDigests(g).world
     asRecord(g).world = {}
     expect(sliceDigests(g).world).not.toBe(d)
+  })
+
+  it('a played life holds a world, and what the world holds moves the world slice and nothing else', () => {
+    const g = life()
+    expect(g.world, 'a played life has a world once the ledger landed').toBeDefined()
+    expect(moved(g, (x) => { asRecord(x).world = { v: 1, note: 'one more shard' } })).toEqual(['world'])
   })
 })
 
