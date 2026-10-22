@@ -574,6 +574,41 @@ describe('the account cap', () => {
   })
 })
 
+describe('foldAccount and the reserved slot', () => {
+  it('never folds pool:other away: at 500 accounts a fold into a new account would leave the ledger no room for it, and the next redirect made 501', () => {
+    const g = makeTestGame()
+    for (let i = 0; i < 600; i++) book(g, 'wage', 'pool:employers', `person:p${i}` as AcctRef, 10)
+    expect(Object.keys(peekLedger(g).a)).toHaveLength(LEDGER_CAPS.accounts)
+    const other = acctBalance(g, 'pool:other')
+    expect(other).not.toBe(0)
+
+    expect(foldAccount(g, 'pool:other', 'person:p861' as AcctRef)).toBe(0)
+    expect(foldAccount(g, 'pool:other', 'person:p3' as AcctRef)).toBe(0)
+    expect(acctBalance(g, 'pool:other')).toBe(other)
+    expect(Object.keys(peekLedger(g).a)).toHaveLength(LEDGER_CAPS.accounts)
+
+    // The booking that has to redirect still has its account, and the count holds.
+    expect(book(g, 'gift', 'person:new1', 'person:new2', 50)).toBe(50)
+    expect(Object.keys(peekLedger(g).a).length).toBeLessThanOrEqual(LEDGER_CAPS.accounts)
+    expect(checkLedger(g).ok).toBe(true)
+    // A live, valid shard is already what normalizeLedger would make of it.
+    const L = peekLedger(g)
+    expect(normalizeLedger(structuredClone(L))).toEqual(L)
+  })
+
+  it('still folds an ordinary account into pool:other, or into another account, at any count', () => {
+    const g = makeTestGame()
+    for (let i = 0; i < 600; i++) book(g, 'wage', 'pool:employers', `person:p${i}` as AcctRef, 10)
+    const before = sumA(g)
+    expect(foldAccount(g, 'person:p3', 'pool:other')).toBe(10)
+    expect(foldAccount(g, 'person:p4', 'person:p5')).toBe(10)
+    expect(acctBalance(g, 'person:p5')).toBe(20)
+    expect(sumA(g)).toBe(before)
+    expect(checkLedger(g).ok).toBe(true)
+    expect(normalizeLedger(structuredClone(peekLedger(g)))).toEqual(peekLedger(g))
+  })
+})
+
 describe('normalizeLedger on a hostile shard', () => {
   function hostile(): unknown {
     const a: Record<string, unknown> = {}

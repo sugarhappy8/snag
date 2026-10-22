@@ -530,10 +530,12 @@ export function bookBurn(g: GameState, name: BurnName, from: AcctRef, amount: nu
 
 /**
  * Moves a whole balance (it may be negative) from one account into another and deletes the first. The sum is unchanged and no flow
- * is booked: it is a relabel, not money moving. Returns the balance moved, 0 when there was none or the move was refused.
+ * is booked: it is a relabel, not money moving. Returns the balance moved, 0 when there was none or the move was refused. pool:other
+ * is never the account folded away: it is the slot the ledger keeps for a booking it has no room to name, and a shard at the
+ * account cap without it would grow past the cap on the next redirect (foldSmallest and landing hold to the same rule).
  */
 export function foldAccount(g: GameState, from: AcctRef, into: AcctRef, token?: string): number {
-  if (classIdx(from) < 0 || classIdx(into) < 0 || from === into) return 0
+  if (classIdx(from) < 0 || classIdx(into) < 0 || from === into || from === OTHER) return 0
   if (!hasOwn(peekLedger(g).a, from)) return 0
   const L = ledgerRoot(g)
   roll(g, L)

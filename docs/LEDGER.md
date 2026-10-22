@@ -31,7 +31,8 @@ between two accounts, and the books say which. This page is the model, the vocab
   replay.
 - Caps. 500 accounts (a booking to a new account past that goes to `pool:other`, and the roll folds the smallest person and firm
   accounts into it), 480 flow rows, 600 tokens, 4 closes, 40 log rows. The log keeps `[year, kind, name, amount]` for every cap hit,
-  fold, redirect and heal, merged per year, kind and name.
+  fold, redirect and heal, merged per year, kind and name. One slot stays free for `pool:other` (a shard with 499 accounts and no
+  `pool:other` is full), so `foldAccount` never takes `pool:other` as the account it folds away.
 - Purity. `peekLedger` and `acctBalance` never write and work on a frozen state. `ledgerRoot` is the writer. The ledger is the one
   world shard that every booking edits in place; it is validated once per object identity.
 - Normalization is total. A hostile or damaged shard is made valid on read: bad account names fold into `pool:other`, numbers round,
