@@ -72,9 +72,14 @@ function choices(g: GameState): ChoiceModal[] {
   return g.queue.filter((m): m is ChoiceModal => m.kind === 'choice')
 }
 
-/** A grown-up living in a country's biggest city. */
+/**
+ * A grown-up living in a country's biggest city. Text draws come from a stream keyed by the life, not by g.rng, and
+ * makeTestGame has one life id for every seed: so the seed also names the life, or a loop over seeds would read one text.
+ */
 function local(countryId: string, seed: number, age: number, money = 0): GameState {
-  return makeTestGame(seed, { countryId, birthCountryId: countryId, city: getCountry(countryId).cities[0], age, money })
+  const g = makeTestGame(seed, { countryId, birthCountryId: countryId, city: getCountry(countryId).cities[0], age, money })
+  g.lifeId = `test-life-${seed}`
+  return g
 }
 
 function runDoctor(g: GameState, path: string[]): void {

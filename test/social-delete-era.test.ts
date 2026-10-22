@@ -19,6 +19,8 @@ describe('social account deletion era text', () => {
     const notices = new Set<string>()
     for (let seed = 1; seed <= 16; seed += 1) {
       const g = makeTestGame(seed, { age: 20 })
+      // Text draws left g.rng (R2), so a life varies its prose by its life id, not by its seed.
+      g.lifeId = `delete-era-${seed}`
       g.year = 2009
       const join = findAction(g, socialMediaMenu.children(g), 'social.friendbook.join')!
       expect(join.visible?.(g)).toBe(true)
