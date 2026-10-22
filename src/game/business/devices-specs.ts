@@ -7,7 +7,7 @@ import { familyId } from './competition-roster'
 import { chipTerms, devicePerf, HARDWARE_FAMILIES, kindReference, LINE_PRICE, MARKET_YIELD, marketNode } from './devices-data'
 import { localEcon } from './economy'
 import { effectiveQuality, fieldFor, infoOf } from './product-market'
-import { scoreRow, scoreText, type ScoreRow } from './scorecard'
+import { cmpKey, scoreFog, scoreRow, scoreText, type ScoreFog, type ScoreRow } from './scorecard'
 import { rivalPriceIndex } from './silicon'
 import type { BizState, Product } from './state'
 import { clampN, money } from './util'
@@ -21,6 +21,11 @@ export interface DeviceSpec {
   quality: ScoreRow
   /** Negated, so the cheapest ranks first: print it through `specLines` or with an absolute value. */
   price: ScoreRow
+  /**
+   * R3-G5: what the player may read of the performance and quality rows in Realistic mode (the rivals' figures are theirs). The
+   * rows above keep the true numbers; price is a posted price and has no fog. Absent in Exact mode and with nobody to read.
+   */
+  fog?: { perf: ScoreFog; quality: ScoreFog }
 }
 
 /** The best line of a kind: the highest effective quality, then the later launch, then the name. Bundles and add-ons sell no hardware. */
@@ -69,18 +74,24 @@ export function specSheet(g: GameState, b: BizState, year: number, ctx: MarketCt
     const perf = sellers.map(({ r, v }) => clampN(devicePerf(v, marketNode(year), MARKET_YIELD) + Math.round((r.tech - 55) / 6), 0, 100))
     const quality = sellers.map(({ v }) => v)
     const price = sellers.map(({ r }) => -reference * rivalPriceIndex(fam, r, year))
+    const perfRow = scoreRow('perf', 'Performance', 'score', now.perf, perf, then.perf)
+    const qualityRow = scoreRow('quality', 'Quality', 'score', now.q, quality, then.q)
+    // Each kind of hardware reads its own rivals: the kind is part of the key.
+    const perfFog = scoreFog(g, perfRow, perf, (i) => cmpKey(`dev.${family}.perf`, sellers[i]!.r.id))
+    const qualityFog = scoreFog(g, qualityRow, quality, (i) => cmpKey(`dev.${family}.quality`, sellers[i]!.r.id))
     out.push({
       family,
       line: best.p.name,
-      perf: scoreRow('perf', 'Performance', 'score', now.perf, perf, then.perf),
-      quality: scoreRow('quality', 'Quality', 'score', now.q, quality, then.q),
+      perf: perfRow,
+      quality: qualityRow,
       price: scoreRow('price', 'Price', 'usd', -now.price, price, -steady(now.price, then.price)),
+      ...(perfFog && qualityFog ? { fog: { perf: perfFog, quality: qualityFog } } : {}),
     })
   }
   return out
 }
 
-/** The three plain lines of a sheet: performance, quality, then price in dollars. */
+/** The three plain lines of a sheet: performance, quality, then price in dollars. A fogged sheet prints ranges and says estimated. */
 export function specLines(s: DeviceSpec): string[] {
-  return [scoreText(s.perf), scoreText(s.quality), scoreText(s.price, (n) => money(Math.abs(n)))]
+  return [scoreText(s.perf, undefined, s.fog?.perf), scoreText(s.quality, undefined, s.fog?.quality), scoreText(s.price, (n) => money(Math.abs(n)))]
 }

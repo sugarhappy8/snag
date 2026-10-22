@@ -8,7 +8,7 @@ import { familyId } from './competition-roster'
 import { mixIndex, siliconView, techPlan } from './deeptech-core'
 import type { TechState } from './deeptech-state'
 import { segmentsOf } from './market-view'
-import { scoreRow, scoreText } from './scorecard'
+import { cmpKey, scoreFog, scoreRow, scoreText } from './scorecard'
 import { brandStep, chipPerformance, rivalPriceIndex } from './silicon'
 import type { ChipLane } from './silicon-data'
 import type { BizState } from './state'
@@ -29,8 +29,31 @@ export function goodwillBand(goodwill: number): GoodwillBand {
 /**
  * The five rows Chips & Fabs shows a company from stage 2: goodwill (with the squeeze sentence while the squeeze
  * lasts), then where its chips stand on performance, quality, price and share of its segment.
+ *
+ * R3-G5: in Realistic mode the performance and quality rows read the rivals through scoreFog (ranges, "estimated") and
+ * `siliconBoard` carries the chip for each; the price row (your own prices against posted ones) and the share row (a published
+ * share) stay exact. In Exact mode, or with no rival to read, every line is the one it always was and there is no chip.
  */
-export function siliconRows(g: GameState, b: BizState, t: TechState): { goodwill: string; perf: string; quality: string; price: string; share: string } {
+export function siliconRows(g: GameState, b: BizState, t: TechState): SiliconRows {
+  return siliconBoard(g, b, t).rows
+}
+
+export interface SiliconRows {
+  goodwill: string
+  perf: string
+  quality: string
+  price: string
+  share: string
+}
+
+/** The chip for each fogged row (0 to 3); a row with nothing to fog has none. */
+export interface SiliconConf {
+  perf?: 0 | 1 | 2 | 3
+  quality?: 0 | 1 | 2 | 3
+}
+
+/** siliconRows with the confidence of its fogged rows beside it, for the screen that draws the chip. One read of the market. */
+export function siliconBoard(g: GameState, b: BizState, t: TechState): { rows: SiliconRows; conf: SiliconConf } {
   const s = siliconView(t)
   const v = marketViewOf(g, b)
   const rivals = v.rivals
@@ -48,14 +71,22 @@ export function siliconRows(g: GameState, b: BizState, t: TechState): { goodwill
   const plan = techPlan(g, b, t, g.year, { calm: true })
   const fam = familyId(g.lifeId)
   const mine = segmentsOf(b, v).find((x) => x.mine)
-  return {
+  const techs = rivals.map((r) => r.tech)
+  const qualities = rivals.map((r) => r.quality)
+  const perf = scoreRow('perf', 'Performance', '', chipPerformance(t), techs, s.last?.perf)
+  const quality = scoreRow('quality', 'Quality', '', b.quality, qualities, s.last?.quality)
+  const perfFog = scoreFog(g, perf, techs, (i) => cmpKey('chip.perf', rivals[i]!.id))
+  const qualityFog = scoreFog(g, quality, qualities, (i) => cmpKey('chip.quality', rivals[i]!.id))
+  const conf = { ...(perfFog ? { perf: perfFog.conf } : {}), ...(qualityFog ? { quality: qualityFog.conf } : {}) }
+  const rows: SiliconRows = {
     goodwill: `Goodwill ${n}/100, ${goodwillBand(n)}. ${effect}${tight}`,
-    perf: scoreText(scoreRow('perf', 'Performance', '', chipPerformance(t), rivals.map((r) => r.tech), s.last?.perf)),
-    quality: scoreText(scoreRow('quality', 'Quality', '', b.quality, rivals.map((r) => r.quality), s.last?.quality)),
+    perf: scoreText(perf, undefined, perfFog),
+    quality: scoreText(quality, undefined, qualityFog),
     // scoreRow ranks the higher value first, so the indices go in negated (the cheapest ranks first) and print back positive.
     price: scoreText(scoreRow('price', 'Price', '', -mixIndex(plan), rivals.map((r) => -rivalPriceIndex(fam, r, g.year, cutting(r.id)))), (x) => `${Math.abs(x).toFixed(2)}x`),
     share: scoreText(scoreRow('share', 'Share of segment', '%', (mine?.me ?? 0) * 100, (mine?.others ?? []).map((x) => x * 100)), (x) => `${x.toFixed(1)}%`),
   }
+  return { rows, conf }
 }
 
 /**

@@ -7,6 +7,7 @@
 // test/kernel-registry.test.ts fails on an unsorted or repeated id. R2-K7 added the fact recorder; R2-K9 added the yearly hooks of
 // ageUp (yearly-aging.ts, one module per hook, itself sorted by id); R2-K10 to R2-K12 convert the special careers, the menus and
 // the company view.
+import '../fog/hint/lens' // binds the port talents.hintLens (R3-G11); nothing in it is a module
 import { registerModules, type ModuleDef } from '../kernel/registry'
 import { knowledgeModule } from '../knowledge/module'
 import { factsModule } from '../world/facts'

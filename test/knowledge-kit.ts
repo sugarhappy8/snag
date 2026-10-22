@@ -5,7 +5,12 @@
 //
 // Lives. know() hashes (lifeId, key, year, source), so ten thousand draws need ten thousand lifeIds. fogGame(i) is one cheap
 // shallow copy of a real test game with its own lifeId, so a coverage run does not build ten thousand characters.
-import { streamKey, streamUnit } from '../src/game/kernel/streams'
+//
+// R3-H6 adds the acceptance helpers: a rich life (richLife), a cheap reader that may keep a record (readerGame), test key kinds whose
+// truths are a pure function of the key (registerTestKinds, testTruth), a step of the clock (nextYear) and the JSON size of a record.
+import { hashKey, streamKey, streamUnit } from '../src/game/kernel/streams'
+import { ruleOf } from '../src/game/knowledge/keys'
+import { registerKeyKind } from '../src/game/knowledge/kinds'
 import { withInfoMode } from '../src/game/knowledge/mode'
 import type { Estimate } from '../src/game/knowledge/types'
 import type { GameState } from '../src/game/types'
@@ -63,3 +68,84 @@ export function deepFreeze<T>(v: T): T {
   }
   return v
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// R3-H6: the acceptance helpers
+
+export interface LifeOver {
+  money?: number
+  lifeId?: string
+  year?: number
+  age?: number
+  seed?: number
+  talents?: readonly string[]
+  countryId?: string
+}
+
+/** A life of 40 (in 2026, in the US, with cash) built by makeTestGame; `lifeId` and `year` vary the hashed draws. A real life: write to it freely. */
+export function richLife(over: LifeOver = {}): GameState {
+  const g = makeTestGame(over.seed ?? 1, {
+    age: over.age ?? 40,
+    money: over.money ?? 5_000_000,
+    ...(over.talents ? { talents: [...over.talents] } : {}),
+    ...(over.countryId ? { countryId: over.countryId } : {}),
+  })
+  if (over.lifeId) g.lifeId = over.lifeId
+  if (over.year) g.year = over.year
+  return g
+}
+
+/**
+ * A cheap game that can keep a research record: the shallow copy `base` with its own lifeId, its own flags bag and its own year
+ * actions (so learn and takeReading never write into the base). Read everything else from it, write nothing else.
+ */
+export function readerGame(base: GameState, lifeId: string, year?: number): GameState {
+  return { ...base, lifeId, flags: {}, yearActions: {}, ...(year !== undefined ? { year } : {}) }
+}
+
+/** One turn of the clock without the whole aging step: the year and the age move on, the year's actions reset. */
+export function nextYear(g: GameState, years = 1): void {
+  g.year += years
+  g.character.age += years
+  g.yearActions = {}
+}
+
+/** What a test kind reports as the truth of a key: a number on the scale of the key's unit, a pure function of the key and nothing else. */
+export function testTruth(key: string): number {
+  const u = ((hashKey(key) >>> 0) % 10_000) / 10_000
+  switch (ruleOf(key)?.unit) {
+    case 'score':
+      return 15 + 75 * u
+    case 'odds':
+      return 0.05 + 0.9 * u
+    case 'pct':
+      return 0.02 + 0.5 * u
+    case 'delta':
+      return (u - 0.5) * 4e7
+    default:
+      return 1e6 * 10 ** (2.3 * u)
+  }
+}
+
+/**
+ * Register a key kind for each name, the way an owner (the Fog track) does at module load: a label, a truth that is a pure read
+ * (testTruth) and a tier 1 scope in the US. The same call twice is fine (registerKeyKind accepts the same def).
+ */
+export function registerTestKinds(kinds: readonly string[], truth: (key: string) => number | null = testTruth): void {
+  for (const kind of kinds) {
+    registerKeyKind({
+      kind,
+      label: (_g, key) => `${kind} ${key.split(':')[1]}`,
+      truth: (_g, key) => truth(key),
+      scope: () => ({ tier: 1, country: 'us' }),
+    })
+  }
+}
+
+/** `n` keys of one shape: `shape(i)` for i from `from`. */
+export function keyRange(n: number, shape: (i: number) => string, from = 0): string[] {
+  return Array.from({ length: n }, (_, i) => shape(from + i))
+}
+
+/** A number as an id of fixed width, so keys sort and stay short. */
+export const pad = (i: number, width = 3): string => String(i).padStart(width, '0')

@@ -48,6 +48,7 @@ const HUBS: readonly (readonly [string, () => Promise<object>])[] = [
   ['kernel/registry', () => import('../src/game/kernel/registry')],
   ['modules/index', () => import('../src/game/modules/index')],
   ['world/facts', () => import('../src/game/world/facts')],
+  ['fog/hint/lens', () => import('../src/game/fog/hint/lens')],
   ['knowledge/module', () => import('../src/game/knowledge/module')],
 ]
 
@@ -55,7 +56,7 @@ const HUBS: readonly (readonly [string, () => Promise<object>])[] = [
 const UNDEFINED_OK: Readonly<Record<string, { names: readonly string[]; why: string }>> = {}
 
 /** The ports the game defines, by name. Each task that cuts an import with a port adds its name here. */
-const EXPECTED_PORTS: readonly string[] = ['activities.relocate', 'business.revalueCompany', 'computer.gameMakingMenu', 'workplace.ordinaryJobs']
+const EXPECTED_PORTS: readonly string[] = ['activities.relocate', 'business.revalueCompany', 'computer.gameMakingMenu', 'talents.hintLens', 'workplace.ordinaryJobs']
 
 describe('enter the game through each hub, in a fresh module registry', () => {
   it('lists each hub once', () => {
