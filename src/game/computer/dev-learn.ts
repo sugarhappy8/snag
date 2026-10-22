@@ -2,13 +2,15 @@
 // coding camp for kids, coding contests and hackathons; and, before any of that, getting a
 // computer (asking your parents, or a used laptop off the local classifieds).
 import { electronicsStoreMenu, localGoodsMult, nicePrice, seeded, yearKey } from '../assets'
-import { ownsComputer } from '../computer'
+import { personCash } from '../cash'
+import { ownsComputer } from './access'
 import { addHidden, addRelationship, addStat, count, formatMoney, log, notice, pronouns, remember, spend, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
 import { eraLines } from '../events/era'
 import { createPerson } from '../people'
 import { liftSkill } from '../mastery'
 import { chance, pick, randFloat, randInt, uid } from '../rng'
+import { pickLine } from '../text/pick'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
@@ -318,8 +320,8 @@ function bootcamp(g: GameState, track: Track): void {
     g,
     modern ? 'Bootcamp Graduate' : 'Diploma Earned',
     modern
-      ? `Twelve weeks, ${randInt(g, 70, 95)} hours a week, ${randInt(g, 300, 900)} cups of ${pick(g, ['coffee', 'tea', 'energy drinks'])}. You graduated from ${school}'s ${track.label} bootcamp (${langs}). The instructor called your capstone project "ambitious," which is instructor for "it crashed during the demo."${paidLine(who, cost)}\n\n${skillLine(g, before, getLanguage(track.langs[0]), gains)}`
-      : `Twelve weeks of evenings at ${school}, ${randInt(g, 300, 900)} cups of vending-machine ${pick(g, ['coffee', 'tea', 'hot chocolate'])} and a final exam on paper. You earned the ${track.label} (${langs}). The certificate has a gold seal and a typo.${paidLine(who, cost)}\n\n${skillLine(g, before, getLanguage(track.langs[0]), gains)}`,
+      ? `Twelve weeks, ${randInt(g, 70, 95)} hours a week, ${randInt(g, 300, 900)} cups of ${pickLine(g, ['coffee', 'tea', 'energy drinks'])}. You graduated from ${school}'s ${track.label} bootcamp (${langs}). The instructor called your capstone project "ambitious," which is instructor for "it crashed during the demo."${paidLine(who, cost)}\n\n${skillLine(g, before, getLanguage(track.langs[0]), gains)}`
+      : `Twelve weeks of evenings at ${school}, ${randInt(g, 300, 900)} cups of vending-machine ${pickLine(g, ['coffee', 'tea', 'hot chocolate'])} and a final exam on paper. You earned the ${track.label} (${langs}). The certificate has a gold seal and a typo.${paidLine(who, cost)}\n\n${skillLine(g, before, getLanguage(track.langs[0]), gains)}`,
     { emoji: '\u{1F393}', tone: 'good' },
   )
 }
@@ -498,7 +500,7 @@ const HACK_THEMES = ['climate', 'public transit in {city}', 'pet adoption', 'fix
 
 const COMPETITIONS: CompDef[] = [
   { id: 'contest', label: 'Online Coding Contest', emoji: '\u{2328}\u{FE0F}', minAge: 12, bar: 0, prizes: [250, 100, 50], strengths: [5, 4, 3, 2], use: 'data', local: false, name: () => 'the CodeDuel Monthly Challenge', era: { tech: 'internet', from: 2001 } },
-  { id: 'gamejam', label: '48-Hour Game Jam', emoji: '\u{1F3AE}', minAge: 12, bar: 0, prizes: [500, 200, 100], strengths: [6, 5, 4, 3], use: 'games', local: false, name: (g) => `the ${pick(g, ['Pixel Panic', 'Midnight Sprite', 'Jamboree'])} 48-Hour Game Jam`, era: { tech: 'internet', from: 2002 } },
+  { id: 'gamejam', label: '48-Hour Game Jam', emoji: '\u{1F3AE}', minAge: 12, bar: 0, prizes: [500, 200, 100], strengths: [6, 5, 4, 3], use: 'games', local: false, name: (g) => `the ${pickLine(g, ['Pixel Panic', 'Midnight Sprite', 'Jamboree'])} 48-Hour Game Jam`, era: { tech: 'internet', from: 2002 } },
   { id: 'olympiad', label: 'Olympiad in Informatics', emoji: '\u{1F947}', minAge: 13, maxAge: 19, bar: 12, prizes: [0, 0, 0], strengths: [8, 7, 6, 4], use: 'data', local: true, name: (g) => { const k = getCountry(g.character.countryId); return `the ${k.demonym || k.name} Olympiad in Informatics` }, era: { tech: 'homeComputer', from: 1989 } },
   { id: 'hackathon', label: 'Hackathon', emoji: '\u{1F9D1}\u{200D}\u{1F4BB}', minAge: 14, bar: 6, prizes: [4_000, 1_500, 750], strengths: [7, 6, 5, 3], use: 'web', local: true, name: (g) => fillLocal(g, `the ${g.character.city} Hackathon for ${pick(g, HACK_THEMES)}`), era: { tech: 'internet', from: 2005 } },
   // Before the internet: the local computer club's yearly contest (appended so ids stay stable).
@@ -542,7 +544,7 @@ function compete(g: GameState, def: CompDef): void {
     addStat(g, 'happiness', -randInt(g, 1, 4))
     const m = randInt(g, 40, 900)
     log(g, `I competed in ${name} and didn't place.`, 'bad')
-    notice(g, def.label, `You competed in ${name}. ${pick(g, NO_PLACE).replace('{n}', ordinal(randInt(g, Math.floor(m / 3), m - 1))).replace('{m}', String(m))}`, { emoji: def.emoji, tone: 'bad' })
+    notice(g, def.label, `You competed in ${name}. ${pickLine(g, NO_PLACE).replace('{n}', ordinal(randInt(g, Math.floor(m / 3), m - 1))).replace('{m}', String(m))}`, { emoji: def.emoji, tone: 'bad' })
     return
   }
   const place = between(placed, 0, 3)
@@ -559,7 +561,7 @@ function compete(g: GameState, def: CompDef): void {
   }
   const prizeUsd: number = place <= 2 ? (def.prizes[place] ?? 0) : 0
   const prize = prizeUsd > 0 ? (def.local ? localFee(g, prizeUsd) : onlinePrice(g, prizeUsd)) : 0
-  const tax = prize > 0 ? earnNow(g, prize) : 0
+  const tax = prize > 0 ? earnNow(g, prize, 'prize') : 0
   addStat(g, 'happiness', randInt(g, 3, 8))
   addStat(g, 'smarts', randInt(g, 0, 1))
   const detail = olympiad ? (strength >= 9 ? 'Selected for the international olympiad' : 'National olympiad') : place === 3 ? 'Made the final round' : 'Podium finish'
@@ -673,7 +675,8 @@ export function askParentsForComputer(g: GameState): void {
   const modern = model.name === 'Laptop'
   const thing = modern ? 'laptop' : 'computer'
   if (budget >= price * 4 && score >= 0.55) {
-    payer.money = Math.round(payer.money - price)
+    // A parent buys it: the retail pool is paid, and the rounding is the line's own.
+    personCash(g, payer, Math.round(payer.money - price) - payer.money, 'purchase')
     addRelationship(payer, 2)
     giveComputer(g, model.displayName, price, 100, { gift: 'parents' })
     g.flags.devParentLaptopAge = c.age
@@ -743,7 +746,7 @@ function buyUsedLaptop(g: GameState): void {
   if (reason) return notice(g, title, reason, { emoji: '\u{1F4BB}' })
   if (g.flags.devUsedLaptopYear === g.year) return notice(g, title, 'That listing is gone. Check again next year.', { emoji: '\u{1F4BB}' })
   const l = usedLaptopListing(g)
-  if (!spend(g, l.price)) return notice(g, title, `It costs ${formatMoney(l.price)} and you have ${formatMoney(Math.max(0, c.money))}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+  if (!spend(g, l.price, 'purchase')) return notice(g, title, `It costs ${formatMoney(l.price)} and you have ${formatMoney(Math.max(0, c.money))}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
   g.flags.devUsedLaptopYear = g.year
   count(g, 'purchases')
   if (l.dud) {
@@ -841,7 +844,7 @@ export function familyComputerYear(g: GameState, budget: number): number {
   const price = laptopPrice(g)
   const payer = ps.reduce((a, b) => (b.money > a.money ? b : a))
   if (payer.money < price) return 0
-  payer.money = Math.round(payer.money - price)
+  personCash(g, payer, Math.round(payer.money - price) - payer.money, 'purchase')
   const model = computerModel(g)
   const name = familyComputerName(g)
   giveComputer(g, name, price, 100, { gift: 'family' })
@@ -854,13 +857,13 @@ export function familyComputerYear(g: GameState, budget: number): number {
   remember(g, `${mine} brought home our first family computer when I was ${c.age}.`)
   log(g, `${mine} brought home a family computer!`, 'good')
   const era = computerEra(g)
-  const room = pick(g, ['the den', 'the living room', 'a corner of the kitchen', 'the spare room'])
+  const room = pickLine(g, ['the den', 'the living room', 'a corner of the kitchen', 'the spare room'])
   const rules =
     era === 'micro'
-      ? pick(g, ['Your dad bought three games and a book called "Programming for Absolute Beginners."', 'Your parents mostly use it to balance the checkbook. You mostly use it for everything else.', 'The whole family gathered to watch it draw a circle. It took a while.'])
+      ? pickLine(g, ['Your dad bought three games and a book called "Programming for Absolute Beginners."', 'Your parents mostly use it to balance the checkbook. You mostly use it for everything else.', 'The whole family gathered to watch it draw a circle. It took a while.'])
       : era === 'pc'
-        ? pick(g, ['There is a sign-up sheet on the fridge for computer time. Your name is on every line.', 'Your parents bought it "for the encyclopedia CD." You found the games folder in minutes.', 'Nobody is allowed to touch it while someone is on the phone, because the modem shares the line.'])
-        : pick(g, ['Everyone in the family has their own login and nobody remembers the password.', 'It is "for homework." Everyone knows it is not for homework.', 'Your parents put it in the living room so they can see the screen. Bold.'])
+        ? pickLine(g, ['There is a sign-up sheet on the fridge for computer time. Your name is on every line.', 'Your parents bought it "for the encyclopedia CD." You found the games folder in minutes.', 'Nobody is allowed to touch it while someone is on the phone, because the modem shares the line.'])
+        : pickLine(g, ['Everyone in the family has their own login and nobody remembers the password.', 'It is "for homework." Everyone knows it is not for homework.', 'Your parents put it in the living room so they can see the screen. Bold.'])
   notice(g, 'Family Computer!', `${who} came home with ${model.noun}${model.name === 'Laptop' ? ' for the family' : ''} (${formatMoney(price)}). It lives in ${room}. ${model.flavor ? `${model.flavor} ` : ''}${rules}\n\nActivities › Computer is now open.`, { emoji: model.emoji, tone: 'good' })
   return 1
 }

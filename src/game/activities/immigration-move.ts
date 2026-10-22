@@ -11,6 +11,7 @@ import { randInt } from '../rng'
 import { getCountry, randomCity, type Country } from '../world'
 import type { Asset, GameState, ImmigrationStatus, Person } from '../types'
 import { isAbroad, money, niceRound, pushFlagString, stableRng } from './common'
+import { relocatePlayer } from './contract'
 import {
   blocAccess,
   citizenshipsOf,
@@ -99,7 +100,7 @@ export function acquireCitizenship(g: GameState, dest: string): { lost: string[]
     lost.push(id)
     if (t.due > 0) {
       const paid = Math.min(t.due, Math.max(0, g.character.money))
-      if (paid > 0) spend(g, paid)
+      if (paid > 0) spend(g, paid, 'tax.capgains')
       tax += paid
       taxName = t.name
     }
@@ -166,7 +167,7 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
     if (t.due > 0) {
       const paid = Math.min(t.due, Math.max(0, c.money))
       if (paid > 0) {
-        spend(g, paid)
+        spend(g, paid, 'tax.capgains')
         lines.push(`${capital(t.name)} took ${money(paid)} on your way out.`)
         log(g, `I paid ${money(paid)} in exit tax leaving ${oldName}.`, 'bad')
       }
@@ -300,6 +301,9 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
   else addStat(g, 'happiness', randInt(g, 3, 8))
   notice(g, text.title, [text.opener, ...lines].join('\n\n'), { emoji: text.emoji ?? country.flag, tone: how === 'deported' ? 'bad' : 'event' })
 }
+
+// The nation's exile calls the move through this port (activities/contract.ts), so it imports neither this file nor the careers.
+relocatePlayer.use(relocate)
 
 function capital(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s

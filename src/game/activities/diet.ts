@@ -3,7 +3,8 @@
 // Diets are fads of their decade: thorough chewing in the 1900s, grapefruit in the thirties,
 // cabbage soup in the fifties, Atkins in the seventies, keto and paleo in the 2010s.
 import { addStat, count, log, notice, spend } from '../core'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addCondition, gate, localPrice, money, result, stablePick } from './common'
 
@@ -106,7 +107,7 @@ export function syncDiet(g: GameState): void {
       log(g, `I had to give up the ${def.name} diet. Prison food doesn't do substitutions.`, 'neutral')
       return
     }
-    if (!spend(g, cost)) {
+    if (!spend(g, cost, 'health')) {
       saveDiet(g, null)
       log(g, `I couldn't afford the ${def.name} diet anymore, so I quit it.`, 'bad')
       notice(g, 'Diet Over', `You couldn't afford the ${money(cost)} a year for the ${def.name} diet, so you went back to eating whatever was in the fridge.`, { emoji: '\u{1F37D}\u{FE0F}' })
@@ -144,7 +145,7 @@ function startDiet(g: GameState, def: DietDef): void {
     return
   }
   const firstMonth = localPrice(g, def.monthly)
-  if (!spend(g, firstMonth)) {
+  if (!spend(g, firstMonth, 'health')) {
     result(g, 'Insufficient Funds', `The ${def.name} diet costs ${money(firstMonth)} a month. You can't afford even the first month.`, '\u{1F4B8}', 'bad')
     return
   }
@@ -153,7 +154,7 @@ function startDiet(g: GameState, def: DietDef): void {
   count(g, 'diets')
   if (def.id === 'hotChips') g.flags.triedSpicyDiet = true
   log(g, `I started the ${def.name} diet.`, 'neutral')
-  result(g, `${def.name} Diet`, pick(g, START_LINES).replace('{name}', def.name), def.emoji)
+  result(g, `${def.name} Diet`, pickLine(g, START_LINES).replace('{name}', def.name), def.emoji)
 }
 
 function stopDiet(g: GameState): void {
@@ -162,10 +163,10 @@ function stopDiet(g: GameState): void {
   syncDiet(g)
   saveDiet(g, null)
   log(g, `I quit the ${cur.def.name} diet.`, 'neutral')
-  result(g, 'Diet Over', pick(g, [
+  result(g, 'Diet Over', pickSite(g, [
     `You quit the ${cur.def.name} diet and celebrated with an entire pizza.`,
     `You're officially off the ${cur.def.name} diet. Freedom tastes like fries.`,
-  ]), '\u{1F355}')
+  ], 0x4562e313), '\u{1F355}')
 }
 
 export const dietMenu: MenuGroup = {

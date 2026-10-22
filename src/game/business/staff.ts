@@ -1,7 +1,9 @@
 // Key staff: interviews, hiring, raises, team-building, yelling and firing. General staff are
 // hired to match the production plan automatically; you control their pay policy and morale.
+import { firmCash } from '../cash'
 import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
-import { bell, chance, pick, rand, randInt, uid, weightedPick } from '../rng'
+import { bell, chance, rand, randInt, uid, weightedPick } from '../rng'
+import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -199,7 +201,7 @@ function interviewAction(a: Asset, role: RoleDef, g0: GameState): MenuAction {
       const fee = interviewFee(b, role, yearActionsUsed(g, `biz.interview.${a.id}`))
       if (b.cash < fee) return noCash(g, cur, fee, 'a headhunter')
       useYearAction(g, `biz.interview.${a.id}`, Number.MAX_SAFE_INTEGER)
-      b.cash -= fee
+      firmCash(g, b, -fee, 'inputs', cur.id)
       b.yearCosts += fee
       const list = candidatesFor(g, b, role)
       const lines = list.map((c) => `• ${c.firstName} ${c.lastName}, ${c.age}: skill ${c.skill}/100, asks ${formatMoney(c.salary)}, ${traitOf(c.trait).label.toLowerCase()}.`)
@@ -292,7 +294,7 @@ function staffAction(a: Asset, id: string, key: string, label: string, emoji: st
 export function fireStaff(g: GameState, a: Asset, b: BizState, s: KeyStaff, why = 'fired'): void {
   const sev = Math.round((s.salary * severanceMonths(b.countryId)) / 12)
   b.staff = b.staff.filter((x) => x.id !== s.id)
-  b.cash -= sev
+  firmCash(g, b, -sev, 'payroll', a.id)
   b.yearCosts += sev
   b.morale = clampN(b.morale - 4, 0, 100)
   const country = getCountry(b.countryId).name
@@ -300,7 +302,7 @@ export function fireStaff(g: GameState, a: Asset, b: BizState, s: KeyStaff, why 
   text += sev > 0 ? ` Labor law in ${country} meant ${formatMoney(sev)} in severance.` : ` In ${country} that took one awkward meeting and a cardboard box.`
   if (chance(g, laborProtection(b.countryId) * 0.25 + (s.trait === 'shady' ? 0.1 : 0))) {
     const cost = Math.round(s.salary * (0.5 + rand(g)))
-    b.cash -= cost
+    firmCash(g, b, -cost, 'legal', a.id)
     b.yearCosts += cost
     text += ` ${they(s).charAt(0).toUpperCase() + they(s).slice(1)} sued for wrongful dismissal and the company settled for ${formatMoney(cost)}.`
   }
@@ -328,7 +330,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
       staffAction(a, id, 'compliment', 'Compliment', '\u{1F44F}', 'Tell them they are doing great', (g, _b, x) => {
         if (!useYearAction(g, `biz.compliment.${id}`, 1)) return tooBusy(g, `complimented ${x.firstName}`)
         x.morale = clampN(x.morale + randInt(g, 6, 14), 0, 100)
-        notice(g, 'Compliment', pick(g, [`You told ${x.firstName} the whole company runs on their work. ${x.firstName} pretended not to care and then told everyone.`, `You praised ${x.firstName} in front of the team. ${x.firstName} is glowing.`]), { emoji: '\u{1F44F}', tone: 'good' })
+        notice(g, 'Compliment', pickSite(g, [`You told ${x.firstName} the whole company runs on their work. ${x.firstName} pretended not to care and then told everyone.`, `You praised ${x.firstName} in front of the team. ${x.firstName} is glowing.`], 0xeb2c789a), { emoji: '\u{1F44F}', tone: 'good' })
       }),
       staffAction(a, id, 'raise', 'Give a Raise', '\u{1F4B5}', `10% more (${formatMoney(Math.round(s.salary * 0.1))}/yr)`, (g, _b, x) => {
         if (!useYearAction(g, `biz.raise.${id}`, 1)) return tooBusy(g, `given ${x.firstName} a raise`)
@@ -343,7 +345,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
         if (!cur) return
         if (b.cash < cost) return noCash(g, cur, cost, 'the course')
         if (!useYearAction(g, `biz.train.${id}`, 1)) return tooBusy(g, `sent ${x.firstName} to training`)
-        b.cash -= cost
+        firmCash(g, b, -cost, 'inputs', cur.id)
         b.yearCosts += cost
         const gain = traitOf(x.trait).id === 'lazy' ? randInt(g, 0, 2) : randInt(g, 3, 8)
         x.skill = clampN(x.skill + gain, 0, 100)
@@ -358,7 +360,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
         if (!cur) return
         if (chance(g, 0.08 + laborProtection(b.countryId) * 0.08)) {
           const cost = Math.round(x.salary * (0.3 + rand(g) * 0.5))
-          b.cash -= cost
+          firmCash(g, b, -cost, 'legal', cur.id)
           b.yearCosts += cost
           b.staff = b.staff.filter((y) => y.id !== x.id)
           log(g, `${fullName(x)} sued ${cur.name} after I screamed at them.`, 'bad')
@@ -371,7 +373,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
           notice(g, 'Quit', `${x.firstName} threw ${x.gender === 'female' ? 'her' : 'his'} badge on your desk and walked out. Rumor has it a competitor hired ${x.gender === 'female' ? 'her' : 'him'} by lunch.`, { emoji: '\u{1F6AA}', tone: 'bad' })
           return
         }
-        notice(g, 'You Yelled', pick(g, [`You yelled at ${x.firstName} about missed targets. The whole floor went silent. Morale took a hit.`, `You lost it at ${x.firstName} in the break room. ${x.firstName} spat out ${x.gender === 'female' ? 'her' : 'his'} coffee. Nobody won.`]), { emoji: '\u{1F92C}', tone: 'bad' })
+        notice(g, 'You Yelled', pickSite(g, [`You yelled at ${x.firstName} about missed targets. The whole floor went silent. Morale took a hit.`, `You lost it at ${x.firstName} in the break room. ${x.firstName} spat out ${x.gender === 'female' ? 'her' : 'his'} coffee. Nobody won.`], 0xa7e8a66c), { emoji: '\u{1F92C}', tone: 'bad' })
       }),
       {
         ...staffAction(
@@ -495,7 +497,7 @@ function teamBuildingAction(a: Asset): MenuAction {
       const cost = teamBuildingCost(b)
       if (b.cash < cost) return noCash(g, cur, cost, 'a team outing')
       if (!useYearAction(g, `biz.team.${a.id}`, 1)) return tooBusy(g, 'organized a team outing')
-      b.cash -= cost
+      firmCash(g, b, -cost, 'payroll', cur.id)
       b.yearCosts += cost
       const outing = localOuting(b.countryId, rand(g))
       const good = chance(g, OUTING_GOOD)

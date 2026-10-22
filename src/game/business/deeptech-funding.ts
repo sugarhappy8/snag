@@ -3,6 +3,7 @@
 // grants that differ by country. Rounds need milestones and a year between them; grants have
 // one application a year, cooldowns and lifetime caps. None of this money can be paid out.
 import { marketOf } from '../data/markets'
+import { firmCash } from '../cash'
 import { rand } from '../rng'
 import type { Asset, GameState } from '../types'
 import { valuationOf } from './economy'
@@ -10,6 +11,7 @@ import { DEEP_TECH, GRANTS, GRANT_COOLDOWN, MAX_GRANT_AWARDS, NATIONAL_GRANT, gr
 import { dtInd, industryCycle, payTech, rdBudget, rdScale, revalue, runwayYears, techSkill } from './deeptech-core'
 import { MAX_SERIES, SERIES, type TechProgram, type TechState } from './deeptech-state'
 import { investorFirm } from './flavor'
+import { firmOf } from './settle'
 import { diluteBusinessEquity, type BizState } from './state'
 import { clampN, money, rec } from './util'
 import { readMembership } from './conglomerate-state'
@@ -300,9 +302,9 @@ export function repayGrants(g: GameState, b: BizState, t: TechState, p: TechProg
       t.yearGrant -= fresh
       const fromVenture = Math.min(Math.max(0, t.venture), fresh)
       t.venture -= fromVenture
-      b.cash -= fresh - fromVenture
-      if (amount > fresh) payTech(b, t, amount - fresh)
-    } else payTech(b, t, amount)
+      firmCash(g, b, -(fresh - fromVenture), 'benefit', firmOf(g, b))
+      if (amount > fresh) payTech(g, b, t, amount - fresh, 'benefit')
+    } else payTech(g, b, t, amount, 'benefit')
     total += amount
   }
   return total

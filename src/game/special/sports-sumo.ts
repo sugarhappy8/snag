@@ -4,6 +4,7 @@
 // Men only, in Japan, starting young, exactly like the real thing.
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
 import { hasMainCharacter, hasTalent, talentMult } from '../talents'
@@ -155,7 +156,7 @@ const keikoScript = defineScript('sports.sumo.keiko', (g, choice) => {
   p.skills[choice] = Math.min(100, (p.skills[choice] ?? 0) + gain)
   addHidden(g, 'discipline', 1)
   log(g, `I practiced ${choice.toLowerCase()} at morning keiko.`)
-  say(g, 'Keiko', `${pick(g, ['Shiko leg-stomps for an hour, then butsukari-geiko until you could not see straight.', 'The stablemaster hit you with a bamboo stick for "encouragement".', 'You hit the teppo pole so many times it has a dent shaped like you.'])} ${choice}: ${p.skills[choice]}%.`, '\u{1F3EF}', 'good')
+  say(g, 'Keiko', `${pickLine(g, ['Shiko leg-stomps for an hour, then butsukari-geiko until you could not see straight.', 'The stablemaster hit you with a bamboo stick for "encouragement".', 'You hit the teppo pole so many times it has a dent shaped like you.'])} ${choice}: ${p.skills[choice]}%.`, '\u{1F3EF}', 'good')
 })
 
 const SUMO_INJ = ['Torn Knee Ligament', 'Dislocated Shoulder', 'Bad Back', 'Torn Bicep']
@@ -405,7 +406,7 @@ export function yearlySumo(g: GameState): void {
     pay += r.pay
   }
   pay = tidy(pay)
-  earnIncome(g, pay)
+  earnIncome(g, pay, 'wage') // one booking: the stipend and the prizes
   job.salary = pay
   job.title = `Sumo Wrestler (${DIVS[d.div]})`
   p.bestDiv = Math.max(p.bestDiv, d.div)

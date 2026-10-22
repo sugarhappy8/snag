@@ -1,5 +1,6 @@
 // Management actions on an owned business: marketing, products, quality, expansion, money,
 // leadership and the exits. Each action re-reads the business from state when it runs.
+import { firmCash, firmPurse, moveCash, playerPurse } from '../cash'
 import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, shortMoney, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { venueOwnerMenu } from './venues'
@@ -8,6 +9,7 @@ import { sectorMenu } from './sector-menu'
 import { familyOf } from './sector-state'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { flagOn } from '../flags'
+import { collectMenu, registerModules, type MenuEntry } from '../kernel/registry'
 import { companyScreen } from '../hubs/company'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
@@ -281,7 +283,7 @@ function campaignAction(a: Asset, c: Campaign, b0: BizState, g0: GameState): Men
       const cost = adCost(b, c.base)
       if (b.cash < cost) return noCash(g, cur, cost, 'the campaign')
       if (!useYearAction(g, `biz.campaign.${cur.id}`, 2)) return tooBusy(g, 'run two campaigns for this company')
-      b.cash -= cost
+      firmCash(g, b, -cost, 'marketing', cur.id)
       b.yearCosts += cost
       if (c.id === 'influencers' && chance(g, INFLUENCER_FAIL)) {
         b.brand = clampN(b.brand - 6, 0, 100)
@@ -1015,7 +1017,7 @@ function openAction(a: Asset, b0: BizState, countryId: string, city: string): Me
       if (b.cash < cost) return noCash(g, cur, cost, `${plural(n, 'new location')}`)
       const gain = expansionGain(g, cur, countryId, city, n)
       if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Open ${plural(n, `new ${industryDef(b.industry).site}`, `new ${industryDef(b.industry).sitePlural}`)} in ${city} for ${money(cost)}` })) return
-      b.cash -= cost
+      firmCash(g, b, -cost, 'capex', cur.id)
       const existing = b.outlets.find((o) => o.countryId === countryId && o.city === city)
       if (existing) existing.count += n
       else b.outlets.push({ countryId, city, count: n, opened: g.year })
@@ -1163,7 +1165,7 @@ function closeOutletAction(a: Asset, b0: BizState, countryId: string, city: stri
       const refund = Math.round(localEcon(b.industry, countryId, city).capital * n * 0.35)
       o.count -= n
       b.outlets = b.outlets.filter((x) => x.count > 0)
-      b.cash += refund
+      firmCash(g, b, refund, 'capex', cur.id)
       b.morale = clampN(b.morale - 6, 0, 100)
       b.production = Math.min(b.production, maxProduction(g, b))
       b.valuation = valuationOf(b)
@@ -1250,7 +1252,7 @@ function buildLinesAction(a: Asset, b0: BizState): MenuAction {
       if (b.cash < cost) return noCash(g, cur, cost, plural(n, line.one, line.many))
       const gain = linesGain(g, cur, n)
       if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Build ${plural(n, line.one, line.many)} for ${money(cost)}` })) return
-      b.cash -= cost
+      firmCash(g, b, -cost, 'capex', cur.id)
       b.lines = linesOf(b) + n
       b.valuation = valuationOf(b)
       refreshValue(cur, b)
@@ -1285,7 +1287,7 @@ function sellLinesAction(a: Asset, b0: BizState): MenuAction {
       if (n < 1) return
       const refund = Math.round(lineCost(b, n) * 0.35)
       b.lines = linesOf(b) - n
-      b.cash += refund
+      firmCash(g, b, refund, 'capex', cur.id)
       b.production = Math.min(b.production, maxProduction(g, b))
       b.valuation = valuationOf(b)
       refreshValue(cur, b)
@@ -1340,7 +1342,7 @@ export function buildFabAction(a: Asset): MenuAction {
       if (b.cash < cost) return noCash(g, cur, cost, 'a chip fab')
       const gain = fabGain(g, cur)
       if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Build a chip fab for ${money(cost)}` })) return
-      b.cash -= cost
+      firmCash(g, b, -cost, 'capex', cur.id)
       b.fabs = readFabs(b.fabs) + 1
       b.valuation = valuationOf(b)
       refreshValue(cur, b)
@@ -1429,7 +1431,7 @@ function consultantAction(a: Asset): MenuAction {
       const fee = adCost(b, 6_000)
       if (b.cash < fee) return noCash(g, cur, fee, 'the consultant')
       if (!useYearAction(g, `biz.consultant.${cur.id}`, 1)) return tooBusy(g, `hired a consultant for ${cur.name}`)
-      b.cash -= fee
+      firmCash(g, b, -fee, 'inputs', cur.id)
       b.yearCosts += fee
       const best = bestPrice(g, b)
       const def = industryDef(b.industry)
@@ -1555,8 +1557,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
       run: (gg, cur, bb, input) => {
         const n = amount(input, gg.character.money)
         if (n <= 0) return
-        addMoney(gg, -n)
-        bb.cash += n
+        moveCash(gg, playerPurse(gg), firmPurse(bb, cur.id), n, 'inject')
         bb.invested += n
         log(gg, `I invested ${money(n)} of my own money in ${cur.name}.`)
         notice(gg, 'Cash Injected', `You moved ${formatMoney(n)} into ${cur.name}. Company cash: ${formatMoney(bb.cash)}.`, { emoji: '\u{1F4E5}' })
@@ -1628,7 +1629,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
         const rate = companyLoanRate(bb, gg)
         bb.debtRate = bb.debt > 0 ? (bb.debtRate * bb.debt + rate * n) / (bb.debt + n) : rate
         bb.debt += n
-        bb.cash += n
+        firmCash(gg, bb, n, 'loan.principal', cur.id)
         notice(gg, 'Loan Approved', `${cur.name} borrowed ${formatMoney(n)} at ${pct(rate, 1)}. Company debt: ${formatMoney(bb.debt)}. Interest comes out of profits every year.`, { emoji: '\u{1F3E6}' })
       },
     }),
@@ -1643,7 +1644,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
           const n = amount(input, Math.min(bb.debt, Math.max(0, bb.cash)))
           if (n <= 0) return
           bb.debt -= n
-          bb.cash -= n
+          firmCash(gg, bb, -n, 'loan.repay', cur.id)
           if (bb.debt <= 0) bb.debt = 0
           notice(gg, 'Debt Repaid', `${cur.name} repaid ${formatMoney(n)}. ${bb.debt > 0 ? `${formatMoney(bb.debt)} still owed.` : 'The company is debt-free!'}`, { emoji: '\u{1F4B3}', tone: 'good' })
         },
@@ -1733,10 +1734,11 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
         if (yearActionsUsed(gg, `biz.bonus.${cur.id}`) >= 1) return tooBusy(gg, 'taken a bonus')
         if (!boardAllows(gg, cur, bb, bonusP(n))) return
         useYearAction(gg, `biz.bonus.${cur.id}`, 1)
-        bb.cash -= n
+        // Both sides name the draw; the owner's side is earnIncome so the bonus stays taxable income.
+        firmCash(gg, bb, -n, 'draw', cur.id)
         bb.yearCosts += n
         bb.ownerDraws = (bb.ownerDraws ?? 0) + n
-        earnIncome(gg, n)
+        earnIncome(gg, n, 'draw')
         const greedy = bb.last && bb.last.net < 0
         if (greedy) {
           bb.morale = clampN(bb.morale - 8, 0, 100)
@@ -1825,16 +1827,16 @@ export function managerValue(w: Worth, m: Manager): number {
 }
 
 /** Pay a headhunter from company cash first, then the owner's pocket. Null means unaffordable. */
-function payFee(g: GameState, b: BizState, fee: number): 'company' | 'owner' | 'split' | null {
+function payFee(g: GameState, a: Asset, b: BizState, fee: number): 'company' | 'owner' | 'split' | null {
   const cost = Math.max(0, Math.round(Number.isFinite(fee) ? fee : 0))
   const fromCompany = Math.min(cost, Math.max(0, b.cash))
   const fromOwner = cost - fromCompany
   if (fromOwner > Math.max(0, g.character.money)) return null
   if (fromCompany > 0) {
-    b.cash -= fromCompany
+    firmCash(g, b, -fromCompany, 'inputs', a.id)
   }
   if (fromOwner > 0) {
-    addMoney(g, -fromOwner)
+    addMoney(g, -fromOwner, 'inputs')
     b.invested += fromOwner
   }
   // The expense is the whole invoice regardless of whether the company paid it directly or the
@@ -1850,7 +1852,7 @@ function payFee(g: GameState, b: BizState, fee: number): 'company' | 'owner' | '
 function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow: 'replace' | 'stepDown'): void {
   const key = `biz.headhunt.${a.id}`
   const fee = headhunterFee(b, kind, yearActionsUsed(g, key))
-  const by = payFee(g, b, fee)
+  const by = payFee(g, a, b, fee)
   if (!by) {
     notice(g, 'Not Enough Cash', `The headhunter wants ${formatMoney(fee)}. ${a.name}'s cash and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
@@ -2227,55 +2229,76 @@ function detailsMenu(a: Asset): MenuGroup {
   }
 }
 
-export function businessView(g: GameState, a: Asset): MenuNode[] {
+/**
+ * What the sections of one company view share, worked out once per view. The registry hands it to every builder as `ctx`
+ * (business.view.* sections, R2-K12), so a builder does not read the company again to learn what kind it is.
+ */
+interface ViewCtx {
+  health: BizState
+  finance: boolean
+  studio: boolean
+  strategy: MenuNode[]
+}
+
+function viewCtx(g: GameState, a: Asset): ViewCtx {
   const health = readBiz(g, a)
   const finance = isFinanceFirm(health)
-  // The dashboard card (business/dashboard.ts), governance, milestones and the full fact sheet.
-  const nodes: MenuNode[] = [...dashboardRows(g, a), ...governanceRows(g, a), milestonesMenu(a), detailsMenu(a)]
   // National strategy programs are for product companies; financial firms run their own operations.
   const strategy = finance ? [] : [tidyNationalStrategy(nationalStrategyMenu(a), a)]
-  if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
-  if (familyOf(health.industry)) nodes.push(sectorMenu(a))
-  if (finance) {
-    nodes.push({ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a))
-  } else if (isStudio(readBiz(g, a))) {
-    nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
-    // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
-    nodes.push(...studioNodes(g, a))
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), ...strategy, insuranceAction(a), cookBooksAction(a))
-  } else {
-    nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
-    nodes.push(
-      act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
-        hint: (gg) => {
-          const cur = live(gg, a)
-          if (!hinting(gg, cur)) return null
-          const b = readBiz(gg, cur)
-          if (!priceAndOutput(b)) return null
-          const p = cachedHint(gg, cur, `plan.${priceCapOf(gg, cur.id) ?? ''}`, () => bestPlan(gg, b, { quick: true, ownerDraw: runsIt(gg, cur) ? b.ownerSalary : 0, maxPrice: priceCapOf(gg, cur.id) ?? undefined }))
-          const close = Math.abs(p.price - b.price) <= Math.max(0.02, b.price * 0.03) && Math.abs(p.production - b.production) <= Math.max(1, p.production * 0.05)
-          return talentHint(gg, 'Business', close ? 'Your plan is already close to the sweet spot' : `The report has a better plan for you: about ${money(Math.abs(p.profit))} ${p.profit >= 0 ? 'profit' : 'loss'} next year`)
-        },
-        subtitle: 'Open the planning report',
-        run: (gg, cur, bb) => queueReport(gg, cur, bb),
-      }),
-    )
-    // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
-    if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
-    const franchise = franchiseMenu(a, health)
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...(health.industry === 'devices' ? [devicesMenu(a, buildFabAction(a))] : []), ...labMenus(a, health), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
-  }
-  nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
-  nodes.push(economicReportMenu(a))
-  if (flagOn('chartKit')) nodes.push(booksMenu(a))
-  nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g), dividendMenu(a))
-  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', subtitle: 'Put in more money, buy out investors, buy back shares', children: gg => { const aa = findBusiness(gg, a.id); return aa ? [...rescueNodes(gg, aa), ...(groupIdOf(readBiz(gg, aa)) ? [] : [classesNode(aa)])] : [] } })
-  nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
-  nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a))
-  nodes.push(equityMenu(a.id))
-  nodes.push({ type: 'heading', id: `biz.exitH.${a.id}`, label: 'Exit' })
-  nodes.push(...exitNodes(a, g))
+  return { health, finance, studio: !finance && isStudio(health), strategy }
+}
+
+/**
+ * The company screen: the nodes of the five sections business.view.top, .run, .money, .lead and .exit, in that order, each the
+ * registered entries of the slot sorted by their order. The built-in entries are registered at the bottom of this file; a track
+ * adds a row to a section with one module on the slot (kernel/registry.ts).
+ */
+export function businessView(g: GameState, a: Asset): MenuNode[] {
+  const ctx = viewCtx(g, a)
+  return (['top', 'run', 'money', 'lead', 'exit'] as const).flatMap((s) => collectMenu(`business.view.${s}`, g, a, ctx))
+}
+
+/** Finance firms run financial operations instead of the usual company menus. */
+function financeRunNodes(g: GameState, a: Asset): MenuNode[] {
+  return [{ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a)]
+}
+
+/** Game studios make games: a pipeline, a back catalog and a team instead of price and production. */
+function studioRunNodes(g: GameState, a: Asset, strategy: MenuNode[]): MenuNode[] {
+  const nodes: MenuNode[] = [{ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' }]
+  nodes.push(...studioNodes(g, a))
+  nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), ...strategy, insuranceAction(a), cookBooksAction(a))
   return nodes
+}
+
+/** Every other company: price and production, the market, the people and the rest of the run menus. */
+function productRunNodes(g: GameState, a: Asset, health: BizState, strategy: MenuNode[]): MenuNode[] {
+  const nodes: MenuNode[] = [{ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' }]
+  nodes.push(
+    act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
+      hint: (gg) => {
+        const cur = live(gg, a)
+        if (!hinting(gg, cur)) return null
+        const b = readBiz(gg, cur)
+        if (!priceAndOutput(b)) return null
+        const p = cachedHint(gg, cur, `plan.${priceCapOf(gg, cur.id) ?? ''}`, () => bestPlan(gg, b, { quick: true, ownerDraw: runsIt(gg, cur) ? b.ownerSalary : 0, maxPrice: priceCapOf(gg, cur.id) ?? undefined }))
+        const close = Math.abs(p.price - b.price) <= Math.max(0.02, b.price * 0.03) && Math.abs(p.production - b.production) <= Math.max(1, p.production * 0.05)
+        return talentHint(gg, 'Business', close ? 'Your plan is already close to the sweet spot' : `The report has a better plan for you: about ${money(Math.abs(p.profit))} ${p.profit >= 0 ? 'profit' : 'loss'} next year`)
+      },
+      subtitle: 'Open the planning report',
+      run: (gg, cur, bb) => queueReport(gg, cur, bb),
+    }),
+  )
+  // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
+  if (isDeepTech(health)) nodes.push(...deepTechNodes(g, a))
+  const franchise = franchiseMenu(a, health)
+  nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...(health.industry === 'devices' ? [devicesMenu(a, buildFabAction(a))] : []), ...labMenus(a, health), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
+  return nodes
+}
+
+/** Put in more money, buy out investors, buy back shares. */
+function rescueMenu(a: Asset, health: BizState): MenuNode {
+  return { type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', subtitle: 'Put in more money, buy out investors, buy back shares', children: gg => { const aa = findBusiness(gg, a.id); return aa ? [...rescueNodes(gg, aa), ...(groupIdOf(readBiz(gg, aa)) ? [] : [classesNode(aa)])] : [] } }
 }
 
 /**
@@ -2289,3 +2312,41 @@ export function businessScreen(g: GameState, a: Asset): MenuNode[] {
     return cur ? businessView(gg, cur) : null
   })
 }
+
+/** One section entry of the company view; `build` gets the view's ctx already typed (the registry passes it as `unknown`). */
+function viewEntry(section: 'top' | 'run' | 'money' | 'lead' | 'exit', order: number, build: (g: GameState, a: Asset, ctx: ViewCtx) => MenuNode[]): MenuEntry {
+  return { path: `business.view.${section}`, order, build: (g, a, ctx) => build(g, a as Asset, ctx as ViewCtx) }
+}
+
+// The built-in sections of the company screen (R2-K12, K.3 h), registered here so every test that opens a company screen finds
+// them. Each order follows the place the old businessView pushed that row, in steps of 10; the three run blocks exclude one another.
+// Every builder is an arrow, so no import is read while this file loads (manage.ts sits in a 4-module cycle). The plural
+// registerModules( is deliberate: test/world-streams.test.ts guards the singular token, and this file rolls dice for the player.
+registerModules([
+  {
+    id: 'business.manage',
+    layer: 3,
+    menus: [
+      // The dashboard card (business/dashboard.ts), governance, milestones and the full fact sheet.
+      viewEntry('top', 10, (g, a) => dashboardRows(g, a)),
+      viewEntry('top', 20, (g, a) => governanceRows(g, a)),
+      viewEntry('top', 30, (_g, a) => [milestonesMenu(a)]),
+      viewEntry('top', 40, (_g, a) => [detailsMenu(a)]),
+      viewEntry('top', 50, (_g, a, ctx) => (isVenue(ctx.health.industry) ? [venueOwnerMenu(a)] : [])),
+      viewEntry('top', 60, (_g, a, ctx) => (familyOf(ctx.health.industry) ? [sectorMenu(a)] : [])),
+      viewEntry('run', 10, (g, a, ctx) => (ctx.finance ? financeRunNodes(g, a) : [])),
+      viewEntry('run', 20, (g, a, ctx) => (ctx.studio ? studioRunNodes(g, a, ctx.strategy) : [])),
+      viewEntry('run', 30, (g, a, ctx) => (ctx.finance || ctx.studio ? [] : productRunNodes(g, a, ctx.health, ctx.strategy))),
+      viewEntry('money', 10, (_g, a) => [{ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' }]),
+      viewEntry('money', 20, (_g, a) => [economicReportMenu(a)]),
+      viewEntry('money', 30, (_g, a) => (flagOn('chartKit') ? [booksMenu(a)] : [])),
+      viewEntry('money', 40, (g, a) => [...ceoNodes(a, g), ...moneyNodes(a, g), dividendMenu(a)]),
+      viewEntry('money', 50, (_g, a, ctx) => [rescueMenu(a, ctx.health)]),
+      viewEntry('lead', 10, (_g, a) => [{ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' }]),
+      viewEntry('lead', 20, (g, a) => [...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a)]),
+      viewEntry('lead', 30, (_g, a) => [equityMenu(a.id)]),
+      viewEntry('exit', 10, (_g, a) => [{ type: 'heading', id: `biz.exitH.${a.id}`, label: 'Exit' }]),
+      viewEntry('exit', 20, (g, a) => exitNodes(a, g)),
+    ],
+  },
+])

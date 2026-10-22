@@ -11,10 +11,12 @@
 // publishers, try early access, ship DLC and sequels; big publishers try to buy hit studios.
 import { seeded } from '../assets'
 import { readVenture } from '../computer/dev-state'
-import { addHidden, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
+import { erodeFirm, firmCash } from '../cash'
+import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { economyOf } from '../economy'
 import { economicReportSummary } from './economic-report'
 import { chance, pick, randFloat, randInt, shuffle, uid } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hire } from '../special/common'
 import { salaryFor } from '../special/gamedev-career'
@@ -441,13 +443,18 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   const corpTax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedSales, g, year, b.industry)
   const net = pbt - corpTax
   // One-off costs and income booked during the year already moved the company's cash.
-  b.cash = dollars(b.cash + net + b.yearCosts - b.yearIncome)
+  // One booking: the year's operating result, sales when it is a gain and inputs when it is a loss (the sim keeps one net number).
+  const settled = dollars(b.cash + net + b.yearCosts - b.yearIncome)
+  const operating = settled >= b.cash ? 'sales' : 'inputs'
+  firmCash(g, b, settled - b.cash, operating, a.id, { operating: true })
+  // A float cash that crosses zero can land an ulp off the whole-dollar figure: this closes that gap and books nothing (it is under a dollar).
+  firmCash(g, b, settled - b.cash, operating, a.id, { operating: true })
   let cashErosion = 0
   if (b.cash > 0) {
     const economy = economyOf(g, b.countryId, year)
     const real = clampN((economy.inflation - economy.rate) * 0.35, 0, 0.4)
     cashErosion = Math.round(b.cash * real)
-    b.cash -= cashErosion
+    erodeFirm(g, b, cashErosion, a.id)
   }
   b.inventory = 0
   const idle = devGames(st).length === 0 && !st.engines.some((x) => x.stage === 'dev' && x.team > 0) && b.employees > 0
@@ -1107,7 +1114,7 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
         x.exclusiveFee = amount
         x.platform = 'console'
         x.hype = clampN(x.hype + 15, 0, 100)
-        b.cash += amount
+        firmCash(g, b, amount, 'royalty', a.id)
         b.yearIncome += amount
         saveStudio(a, st)
         log(g, `${who} paid ${a.name} ${money(amount)} to keep "${x.title}" exclusive.`, 'good')
@@ -1125,7 +1132,7 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
         notice(g, 'Leaked!', bizHas(g, b.countryId, 'smartphone') ? `You posted "well, that's awkward" with a winking emoji and released the official trailer early. Hype for "${x.title}" went through the roof.` : `You joked about it in the magazines and showed the real thing early. Hype for "${x.title}" went through the roof.`, { emoji: '\u{1F648}', tone: 'good' })
       } else if (choice === 'lawyers') {
         const cost = Math.round(devCost(b) * 0.6)
-        b.cash -= cost
+        firmCash(g, b, -cost, 'legal', a.id)
         b.yearCosts += cost
         b.morale = clampN(b.morale - 3, 0, 100)
         notice(g, 'Takedowns', `Your lawyers sent ${randInt(g, 200, 4_000)} ${bizHas(g, b.countryId, 'internet') ? 'takedown notices' : 'cease-and-desist letters'} (${formatMoney(cost)}). ${bizHas(g, b.countryId, 'internet') ? 'The internet now shares the leak out of spite.' : 'Every kid with a disk drive now copies the leak out of spite.'}`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
@@ -1141,7 +1148,7 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
       if (!x) return
       if (choice === 'patch') {
         const cost = Math.round(devCost(b) * 2)
-        b.cash -= cost
+        firmCash(g, b, -cost, 'rnd', a.id)
         b.yearCosts += cost
         x.players = Math.round(clampN(x.players + randInt(g, 3, 7), 0, 99))
         notice(g, 'Hotfix', `Your team shipped a hotfix in a week (${formatMoney(cost)}). Players calmed down; "${x.title}" is back to "${playerLabel(x.players)}".`, { emoji: '\u{1FA79}', tone: 'good' })
@@ -1178,7 +1185,7 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
       if (!x) return
       if (choice === 'sponsor') {
         const cost = Math.round(devCost(b) * 0.5)
-        b.cash -= cost
+        firmCash(g, b, -cost, 'marketing', a.id)
         b.yearCosts += cost
         x.tail = whole(x.tail * 1.6)
         notice(g, 'Sponsored', bizHas(g, b.countryId, 'streaming') ? `You sponsored the streamer's next three sessions (${formatMoney(cost)}). "${x.title}" sales are climbing again.` : `You bought the magazine's next three back covers (${formatMoney(cost)}). "${x.title}" sales are climbing again.`, { emoji: bizHas(g, b.countryId, 'streaming') ? '\u{1F3A5}' : '\u{1F4F0}', tone: 'good' })
@@ -1310,7 +1317,7 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
           id === 'patch' ? 'Best move: the fix pays for itself in sales' : id === 'statement' ? 'Best move: a hotfix would cost more than it wins back' : undefined,
         )
       }
-      scriptChoice(g, EVENT, 'Review Bomb', `"${x.title}" is getting review-bombed because ${pick(g, ['a hat costs real money now', 'one character got a new haircut', 'the new patch moved the jump button', 'a developer said they prefer cats'])}. ${randInt(g, 2, 40)},000 one-star reviews in a weekend.`, choices, { emoji: '\u{1F4A3}', data: base })
+      scriptChoice(g, EVENT, 'Review Bomb', `"${x.title}" is getting review-bombed because ${pickLine(g, ['a hat costs real money now', 'one character got a new haircut', 'the new patch moved the jump button', 'a developer said they prefer cats'])}. ${randInt(g, 2, 40)},000 one-star reviews in a weekend.`, choices, { emoji: '\u{1F4A3}', data: base })
       return true
     }
     case 'expose': {
@@ -1326,7 +1333,7 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
           id === 'change' ? 'Best move: a rested team ships better games' : undefined,
         )
       }
-      scriptChoice(g, EVENT, 'Crunch Exposé', `A games journalist published "Inside ${a.name}'s Crunch Culture", with anonymous quotes about 90-hour weeks and a ${pick(g, ['nap pod nobody is allowed to use', 'mandatory weekend "fun day"', 'pizza budget bigger than the QA budget'])}.`, choices, { emoji: '\u{1F4F0}', data: base })
+      scriptChoice(g, EVENT, 'Crunch Exposé', `A games journalist published "Inside ${a.name}'s Crunch Culture", with anonymous quotes about 90-hour weeks and a ${pickLine(g, ['nap pod nobody is allowed to use', 'mandatory weekend "fun day"', 'pizza budget bigger than the QA budget'])}.`, choices, { emoji: '\u{1F4F0}', data: base })
       return true
     }
     case 'streamer': {
@@ -1341,7 +1348,7 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
           id === 'sponsor' ? 'Best move: the extra buyers are worth more than the sponsorship' : 'Best move: the free buzz is enough',
         )
       }
-      const quote = pick(g, ['the best game nobody is talking about', 'my new obsession', 'the reason I have not slept'])
+      const quote = pickLine(g, ['the best game nobody is talking about', 'my new obsession', 'the reason I have not slept'])
       if (bizHas(g, b.countryId, 'streaming')) scriptChoice(g, EVENT, 'Streamer Spotlight', `A huge streamer played "${x.title}" for nine hours straight and called it "${quote}". Clips are everywhere.`, choices, { emoji: '\u{1F3A5}', data: base })
       else scriptChoice(g, EVENT, 'Magazine Cover', `The biggest gaming magazine put "${x.title}" on its cover and called it "${quote}". Kids are photocopying the review.`, choices.map((c) => (c.id === 'sponsor' ? { ...c, label: 'Buy more ad pages', emoji: '\u{1F4F0}' } : c)), { emoji: '\u{1F4F0}', data: base })
       return true
@@ -1633,7 +1640,7 @@ function hireDevs(g: GameState, a: Asset, b: BizState, n: number): void {
   if (count0 <= 0) return notice(g, 'Full House', `${a.name}'s offices are full (${maxDevs(b)} desks). Open another studio office to grow.`, { emoji: '\u{1F3E2}' })
   const fee = Math.round(count0 * devCost(b) * 0.08)
   if (b.cash < fee) return noCash(g, a, fee, 'recruiting')
-  b.cash -= fee
+  firmCash(g, b, -fee, 'inputs', a.id)
   b.yearCosts += fee
   b.employees += count0
   notice(g, 'Hiring Spree', `${a.name} hired ${count0} developer${count0 === 1 ? '' : 's'} (recruiters: ${formatMoney(fee)}). Each costs about ${formatMoney(devCost(b))} a year. Team: ${b.employees}.`, { emoji: '\u{1F465}', tone: 'good' })
@@ -1643,7 +1650,7 @@ function layOff(g: GameState, a: Asset, b: BizState, st: StudioState, n: number)
   const cut = Math.min(n, Math.max(0, b.employees - 1))
   if (cut <= 0) return notice(g, 'Layoffs', 'There is nobody left to lay off except you.', { emoji: '\u{1F4E6}' })
   const sev = Math.round((cut * devCost(b) * clampN(severanceMonths(b.countryId), 0, 12)) / 12)
-  b.cash -= sev
+  firmCash(g, b, -sev, 'payroll', a.id)
   b.yearCosts += sev
   b.employees -= cut
   b.morale = clampN(b.morale - Math.min(20, 4 + Math.round((cut / Math.max(1, b.employees + cut)) * 40)), 0, 100)
@@ -1740,11 +1747,11 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
             const cost = Math.round(sc.marketingUsd * 0.12 * costScale(bb.countryId))
             if (bb.cash < cost) return noCash(gg, aa, cost, 'the trailer')
             if (!useYearAction(gg, once('hype'), 1)) return tooBusy(gg, 'run a marketing push for this game')
-            bb.cash -= cost
+            firmCash(gg, bb, -cost, 'marketing', aa.id)
             bb.yearCosts += cost
             y.hype = clampN(y.hype + randInt(gg, 15, 25) * (0.8 + bb.brand / 200), 0, 100)
             saveStudio(aa, st)
-            notice(gg, 'Trailer Drop', `"${y.title}" got a trailer and a slot in a big online showcase (${formatMoney(cost)}). ${pick(gg, ['The comments say "TAKE MY MONEY".', 'It trended for six hours.', 'A famous streamer reacted with a single tear.'])} Hype ${Math.round(y.hype)}/100.`, { emoji: '\u{1F3AC}', tone: 'good' })
+            notice(gg, 'Trailer Drop', `"${y.title}" got a trailer and a slot in a big online showcase (${formatMoney(cost)}). ${pickLine(gg, ['The comments say "TAKE MY MONEY".', 'It trended for six hours.', 'A famous streamer reacted with a single tear.'])} Hype ${Math.round(y.hype)}/100.`, { emoji: '\u{1F3AC}', tone: 'good' })
           },
         }),
       ]
@@ -1772,7 +1779,7 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
               y.raised = raised
               y.backers = backers
               y.hype = clampN(y.hype + 15, 0, 100)
-              bb.cash += raised
+              firmCash(gg, bb, raised, 'sales', aa.id)
               bb.yearIncome += raised
               saveStudio(aa, st)
               log(gg, `${aa.name} crowdfunded "${y.title}": ${money(raised)}.`, 'good')
@@ -1859,7 +1866,7 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
             // Money taken for a game that will never ship goes back: refunds, advances, exclusivity fees.
             const refunds = (y.raised > 1 ? y.raised : 0) + y.advanceGot + y.exclusiveFee
             if (refunds > 0) {
-              bb.cash -= refunds
+              firmCash(gg, bb, -refunds, 'sales', aa.id)
               bb.yearCosts += refunds
             }
             if (y.raised > 1) {
@@ -1901,7 +1908,7 @@ const PUB = defineScript('gamestudio.publisher', (g, choice, data) => {
   x.advance = advance
   x.advanceGot = upfront
   x.hype = clampN(x.hype + 15, 0, 100)
-  b.cash += upfront
+  firmCash(g, b, upfront, 'royalty', a.id)
   b.yearIncome += upfront
   saveStudio(a, st)
   log(g, `${a.name} signed "${x.title}" with ${x.publisher}.`, 'good')
@@ -1947,7 +1954,7 @@ function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
             const cost = Math.round(sc.extraUsd * 0.6 * costScale(bb.countryId) + devCost(bb) * Math.max(1, sc.team * 0.15) * 0.5)
             if (bb.cash < cost) return noCash(gg, aa, cost, 'the DLC')
             if (!useYearAction(gg, once('dlc'), 1)) return tooBusy(gg, 'released DLC for this game')
-            bb.cash -= cost
+            firmCash(gg, bb, -cost, 'rnd', aa.id)
             bb.yearCosts += cost
             const q = clampN(bb.quality * 0.5 + y.critic * 0.4 + staffPower(bb, 'quality') * 5 + randInt(gg, -10, 10), 0, 100)
             y.lastDlc = gg.year
@@ -1962,7 +1969,7 @@ function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
             y.players = Math.round(clampN(y.players + randInt(gg, 0, 3), 0, 99))
             saveStudio(aa, st)
             log(gg, `${aa.name} released DLC for "${y.title}".`, 'good')
-            notice(gg, 'DLC Out', `"${y.title}: ${pick(gg, ['The Frozen North', 'Blood & Brine', 'The Lost Archive', 'Cosmic Edition', 'Heart of the Swamp'])}" is out (${formatMoney(cost)}). Reviews: "${playerLabel(q)}".`, { emoji: '\u{1F381}', tone: 'good' })
+            notice(gg, 'DLC Out', `"${y.title}: ${pickLine(gg, ['The Frozen North', 'Blood & Brine', 'The Lost Archive', 'Cosmic Edition', 'Heart of the Swamp'])}" is out (${formatMoney(cost)}). Reviews: "${playerLabel(q)}".`, { emoji: '\u{1F381}', tone: 'good' })
           },
         }),
         studioAct(a, `patch.${gid}`, 'Ship a Big Patch', '\u{1FA79}', {
@@ -1974,7 +1981,7 @@ function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
             const cost = Math.round(devCost(bb) * 1.5)
             if (bb.cash < cost) return noCash(gg, aa, cost, 'the patch')
             if (!useYearAction(gg, once('patch'), 1)) return tooBusy(gg, 'patched this game')
-            bb.cash -= cost
+            firmCash(gg, bb, -cost, 'rnd', aa.id)
             bb.yearCosts += cost
             const up = Math.min(Math.max(0, y.critic + 12 - y.players), randInt(gg, 3, 8))
             y.players = Math.round(clampN(y.players + up, 0, 99))
@@ -2217,7 +2224,7 @@ export function growVentureIntoStudio(g: GameState, va: Asset, runner: 'me' | 'm
   const fee = studioRegistrationFee(g)
   const fromCash = Math.min(v.cash, fee)
   const fromYou = fee - fromCash
-  c.money = Math.round(c.money - fromYou)
+  addMoney(g, -fromYou, 'fee.gov')
   const country = getCountry(c.countryId)
   const city = country.cities.includes(c.city) ? c.city : country.cities[0]
   const price = [4.99, 14.99, 24.99][clampN(Math.round(v.tier), 0, 2)]

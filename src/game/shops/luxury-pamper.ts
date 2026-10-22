@@ -6,6 +6,7 @@ import { nicePrice } from '../assets'
 import { hasTech } from '../history/timeline'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { authorMut } from '../special/author-state'
 import { gdMut, gdPeek } from '../special/gamedev-state'
@@ -134,7 +135,7 @@ export function haveTreatment(g: GameState, id: string): boolean {
     return false
   }
   useYearAction(g, 'luxury.spa', SPA_PER_YEAR)
-  addMoney(g, -price)
+  addMoney(g, -price, 'leisure')
   count(g, 'spaVisits')
   if (chance(g, 0.07)) {
     addStat(g, t.oopsStat, -randInt(g, 1, 3))
@@ -248,7 +249,7 @@ export function attendLuxuryExperience(g: GameState, id: LuxuryExperienceId): bo
     return false
   }
   if (!useYearAction(g, 'luxury.experience', LUXURY_EXPERIENCES_PER_YEAR)) return false
-  addMoney(g, -price)
+  addMoney(g, -price, 'leisure')
   count(g, 'luxuryExperiences')
 
   if (id === 'familyRetreat') {
@@ -400,7 +401,7 @@ export function attendVipEvent(g: GameState, id: VipEventId, pledge = 'table'): 
     return false
   }
   useYearAction(g, eventKey(e.id), 1)
-  addMoney(g, -price)
+  addMoney(g, -price, 'leisure')
   count(g, 'vipEvents')
 
   if (id === 'gala') {
@@ -429,17 +430,17 @@ export function attendVipEvent(g: GameState, id: VipEventId, pledge = 'table'): 
 
   const metChance = e.id === 'gala' ? 0.3 : e.id === 'nightclub' ? 0.4 : 0.35
   const intro: Record<VipEventId, string> = {
-    chefDinner: pick(g, ['Twelve courses, each the size of a postage stamp, each somehow perfect.', 'The chef came out to explain the foam. Nobody understood. Everyone applauded.']),
-    wedding: pick(g, ['The vows made even the security team cry, and the doves arrived on cue.', 'A sunset ceremony on a cliff, a string quartet and a cake taller than you.']),
+    chefDinner: pickLine(g, ['Twelve courses, each the size of a postage stamp, each somehow perfect.', 'The chef came out to explain the foam. Nobody understood. Everyone applauded.']),
+    wedding: pickLine(g, ['The vows made even the security team cry, and the doves arrived on cue.', 'A sunset ceremony on a cliff, a string quartet and a cake taller than you.']),
     gala:
       p && p.amount > 0
         ? `When the host announced your pledge of ${formatMoney(p.amount)}, the ballroom gave you a standing ovation.`
         : 'You ate a tiny salmon mousse, clapped politely for the speeches and felt very charitable.',
-    premiere: pick(g, ['You walked the red carpet to a storm of flashbulbs. One photographer yelled your name. Probably your name.', 'The movie was three hours long and mostly explosions. The after-party was better.']),
-    nightclub: pick(g, ['The bottles came out with sparklers and a parade of servers. The DJ shouted your name. You felt like a legend.', 'You danced until 4 AM in a roped-off booth above everyone else, exactly as nature intended.']),
+    premiere: pickLine(g, ['You walked the red carpet to a storm of flashbulbs. One photographer yelled your name. Probably your name.', 'The movie was three hours long and mostly explosions. The after-party was better.']),
+    nightclub: pickLine(g, ['The bottles came out with sparklers and a parade of servers. The DJ shouted your name. You felt like a legend.', 'You danced until 4 AM in a roped-off booth above everyone else, exactly as nature intended.']),
   }
   if (chance(g, metChance)) {
-    const occupation = e.id === 'chefDinner' && chance(g, 0.6) ? 'Celebrity Chef' : e.id === 'premiere' && chance(g, 0.6) ? 'Movie Star' : e.id === 'nightclub' && chance(g, 0.5) ? pick(g, ['Pop Star', 'Rapper', 'Supermodel']) : undefined
+    const occupation = e.id === 'chefDinner' && chance(g, 0.6) ? 'Celebrity Chef' : e.id === 'premiere' && chance(g, 0.6) ? 'Movie Star' : e.id === 'nightclub' && chance(g, 0.5) ? pickLine(g, ['Pop Star', 'Rapper', 'Supermodel']) : undefined
     const romantic = e.id !== 'gala' && chance(g, 0.5)
     meetCeleb(g, rollCeleb(g, occupation, romantic), `a ${e.label.toLowerCase()}`, intro[e.id])
     return true
@@ -464,7 +465,7 @@ function vipEventAction(e: VipEvent): MenuAction {
       const table = vipPrice(g, e)
       const choices: ChoiceOption[] = galaPledges(g).map((p) => ({ id: p.id, label: p.amount > 0 ? `${p.label}: ${formatMoney(table + p.amount)}` : `${p.label}: ${formatMoney(table)}`, emoji: p.id === 'lavish' ? '💎' : p.id === 'generous' ? '💝' : '🎟️' }))
       choices.push({ id: 'cancel', label: 'Stay home', emoji: '🏠' })
-      scriptChoice(g, GALA, '🎗️ Charity Gala', `A black-tie gala for ${pick(g, ['children\'s hospitals', 'ocean cleanup', 'clean water', 'animal shelters', 'cancer research', 'literacy'])}. A table costs ${formatMoney(table)}. Will you pledge more during the auction?`, choices, { emoji: '🎗️' })
+      scriptChoice(g, GALA, '🎗️ Charity Gala', `A black-tie gala for ${pickLine(g, ['children\'s hospitals', 'ocean cleanup', 'clean water', 'animal shelters', 'cancer research', 'literacy'])}. A table costs ${formatMoney(table)}. Will you pledge more during the auction?`, choices, { emoji: '🎗️' })
     },
   }
 }

@@ -6,6 +6,7 @@
 import { addMoney, addRelationship, addStat, count, getPerson, log, remember, scriptChoice, spend } from '../core'
 import { notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import {
@@ -245,7 +246,7 @@ function reaction(g: GameState, d: Defendant, won: boolean): string {
   const name = d.kind === 'employer' || d.kind === 'police' ? `A spokesperson for ${d.name}` : d.name
   return pick(g, won ? WIN_REACTIONS : LOSE_REACTIONS)
     .replace('{name}', name)
-    .replace('{insult}', pick(g, INSULTS))
+    .replace('{insult}', pickLine(g, INSULTS))
 }
 
 function markSued(g: GameState, d: Defendant, person: Person | undefined): void {
@@ -269,7 +270,7 @@ const AMOUNT = defineScript('act.lawsuit.amount', (g, choice, data) => {
   const idx = Math.max(0, Math.min(4, Number.parseInt(choice, 10) || 0))
   const firm = lawFirms(g, d.kind)[tier]
   const amount = damageOptions(g, d.kind)[idx]
-  if (!spend(g, firm.fee)) {
+  if (!spend(g, firm.fee, 'legal')) {
     brokeNotice(g, firm.fee, `a retainer at ${firm.name}`)
     return
   }
@@ -279,7 +280,7 @@ const AMOUNT = defineScript('act.lawsuit.amount', (g, choice, data) => {
   count(g, 'lawsuits')
   const vs = `${d.name}, who ${d.detail}`
   if (won) {
-    addMoney(g, amount)
+    addMoney(g, amount, 'legal')
     count(g, 'lawsuitsWon')
     addStat(g, 'happiness', randInt(g, 8, 18))
     remember(g, `Won a ${money(amount)} lawsuit against ${d.name}.`)

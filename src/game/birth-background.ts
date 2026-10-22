@@ -1,4 +1,5 @@
 import { addStat, log } from './core'
+import { personCash } from './cash'
 import { economyOf } from './economy'
 import { householdPressure } from './economy/cohorts'
 import { typicalIncome } from './events/wealth-core'
@@ -41,7 +42,7 @@ export function initializeBirthParent(g: GameState, p: Person): void {
   // This is an initial endowment of the parent, never money handed to the newborn.
   const years = [.06, .6, 1.8, 5, 18, 100, 1600, 90000][tier] * (.65 + rand(g) * .7)
   const total = income * years
-  p.money = Math.round(total * (tier >= 4 ? .12 : .5))
+  personCash(g, p, Math.round(total * (tier >= 4 ? .12 : .5)) - p.money, 'gift')
   l.investments = Math.round(total * (tier >= 4 ? .6 : .1))
   l.housing = Math.round(total - p.money - l.investments)
   l.debt = tier === 0 ? income * .4 : tier <= 3 ? income * [.2,.5,1.2,2][tier] : 0
@@ -74,7 +75,7 @@ export function yearlyBackground(g: GameState): void {
     const payer = parents.reduce((a,b) => a.money > b.money ? a : b)
     const fee = income * .02
     if (g.character.age >= 5 && payer.money >= fee) {
-      payer.money -= fee; addStat(g, 'smarts', 1)
+      personCash(g, payer, -fee, 'tuition'); addStat(g, 'smarts', 1)
       const school = g.character.education.current
       if (school) school.grades = clampN(school.grades + 1, 0, 100)
     }

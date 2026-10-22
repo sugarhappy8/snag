@@ -3,7 +3,7 @@
 // Everything takes the year it is about and never reads the game's year (only benchYear derives one). Nothing
 // here draws from the game's random stream; the drift past 2026 and a model's specialty are seeded from the family id.
 // No roster code is imported, so deeptech-data.ts can use this file without an import cycle.
-import { seeded } from '../assets'
+import { seeded } from '../rng'
 import { PRESENT_YEAR, TECH } from '../history/timeline'
 import { CAP_IDS, CAPS, type CapId, type CapMap } from './ai-bench-data'
 import type { AiModel } from './deeptech-state'

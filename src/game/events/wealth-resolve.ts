@@ -4,13 +4,18 @@
 // spoiled) and spoils a kid a little; a no stings (more when you're rich and it's small change);
 // boundaries stop the asking for a while at a smaller cost. Some kids respect a no.
 import { addHidden, addStat, count, getPerson, log, notice, scriptChoice, scriptInput, spend } from '../core'
+import type { Reason } from '../kernel/reasons'
 import { touch } from '../love'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
+import { BOUNDARY_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import { common } from './era'
 import { queueSecretaryRequest } from '../shops/luxury-secretary-state'
 import { askDef } from './wealth-catalog'
+import { payPersonWhole } from './purses'
 import { POCKET_SCRIPT, setAllowance } from './wealth-kids'
 import { whoOf, type Ask, type AskDef } from './wealth-ask'
 import {
@@ -33,6 +38,8 @@ import {
   type Answer,
 } from './wealth-core'
 import type { ChoiceOption, GameState, Json, Person } from '../types'
+
+export { BOUNDARY_LINES }
 
 export const ASK_SCRIPT = 'wealth.ask'
 export const LESS_SCRIPT = 'wealth.ask.less'
@@ -195,16 +202,21 @@ function respects(g: GameState, p: Person): boolean {
 function reactionLine(g: GameState, p: Person, full: boolean): string {
   const e = entitlement(p)
   const x = p.gender === 'male' ? { he: 'he', He: 'He', his: 'his' } : { he: 'she', He: 'She', his: 'her' }
-  if (e >= 70) return pick(g, [`${x.He} asked why it took you so long.`, `${x.He} said "thanks, I guess" without looking up.`, `${x.He} is already asking about next time.`])
-  if (!full && e >= 45) return pick(g, [`${x.He} looked at it like it was a parking ticket.`, `"That's it?" ${x.he} asked.`])
+  if (e >= 70) return pickSite(g, [`${x.He} asked why it took you so long.`, `${x.He} said "thanks, I guess" without looking up.`, `${x.He} is already asking about next time.`], 0xfa271119)
+  if (!full && e >= 45) return pickSite(g, [`${x.He} looked at it like it was a parking ticket.`, `"That's it?" ${x.he} asked.`], 0x82078c70)
   // From prison the thanks come by mail or on visiting day.
-  if (g.character.prison) return pick(g, [`${x.He} wrote back a thank-you letter, with drawings.`, `${x.He} came on visiting day just to say thank you.`, `${x.He} sent a card that said "you're the best (even in there)."`])
+  if (g.character.prison) return pickSite(g, [`${x.He} wrote back a thank-you letter, with drawings.`, `${x.He} came on visiting day just to say thank you.`, `${x.He} sent a card that said "you're the best (even in there)."`], 0xd39f22fc)
   // Family abroad can't hug you either.
-  if (isAbroad(g, p)) return pick(g, [`${x.He} wrote to say thank you, at length.`, `${x.He} sent a photo of what it bought and a very long thank-you.`])
-  return pick(g, [`${x.He} hugged you so hard your back cracked.`, `${x.He} was genuinely touched.`, `${x.He} said you're the best, and for a moment you believed it.`, `${x.He} got a little teary.`])
+  if (isAbroad(g, p)) return pickSite(g, [`${x.He} wrote to say thank you, at length.`, `${x.He} sent a photo of what it bought and a very long thank-you.`], 0x4cf06bce)
+  return pickSite(g, [`${x.He} hugged you so hard your back cracked.`, `${x.He} was genuinely touched.`, `${x.He} said you're the best, and for a moment you believed it.`, `${x.He} got a little teary.`], 0x3fc695e9)
 }
 
 type GiveKind = 'full' | 'alt' | 'less'
+
+/** What an ask costs the player: cash for the asker's own pocket is one booking between the two; anything else pays a bill or buys a thing. */
+function payAsk(g: GameState, def: AskDef | undefined, p: Person | undefined, amount: number, reason: Reason): boolean {
+  return p && def?.cash ? payPersonWhole(g, p, amount, reason) : spend(g, amount, 'purchase')
+}
 
 /** Pay for an ask (all of it, the cheaper alternative, or a chosen smaller amount). */
 export function giveFor(g: GameState, a: Ask, amount: number, kind: GiveKind): void {
@@ -212,7 +224,7 @@ export function giveFor(g: GameState, a: Ask, amount: number, kind: GiveKind): v
   const { ok, p } = liveAsker(g, a)
   if (!def || !ok) return gone(g, a)
   const amt = Math.max(0, Math.round(amount))
-  if (amt <= 0 || !spend(g, amt)) {
+  if (amt <= 0 || !payAsk(g, def, p, amt, 'gift')) {
     if (p) bumpRelationship(p, -1)
     notice(g, a.title, `You don't have ${money(amt)} in cash right now, so that settles that. ${p ? `${p.firstName} took it well, mostly.` : ''}`.trim(), { emoji: '\u{1F4B8}' })
     return
@@ -224,7 +236,6 @@ export function giveFor(g: GameState, a: Ask, amount: number, kind: GiveKind): v
   let rel = 0
   if (p) {
     touch(g, p)
-    if (def.cash) p.money = Math.round(p.money + amt)
     updateTies(g, p, (t) => {
       t.given += amt
     })
@@ -250,12 +261,11 @@ function lend(g: GameState, a: Ask): void {
   const def = askDef(a.k)
   const { ok, p } = liveAsker(g, a)
   if (!def || !ok || !p) return gone(g, a)
-  if (!spend(g, a.amt)) {
+  if (!payAsk(g, def, p, a.amt, 'support')) {
     notice(g, a.title, `You don't have ${money(a.amt)} to lend right now.`, { emoji: '\u{1F4B8}' })
     return
   }
   touch(g, p)
-  if (def.cash) p.money = Math.round(p.money + a.amt)
   updateTies(g, p, (t) => {
     if (t.owes <= 0) t.owesSince = g.year
     t.owes += a.amt
@@ -264,7 +274,7 @@ function lend(g: GameState, a: Ask): void {
   bumpRelationship(p, gratitude(p, (def.thanks ?? 8) * 0.6))
   count(g, 'wealthLoans')
   log(g, `I lent ${myOf(p)} ${money(a.amt)} for ${a.what}.`)
-  const promise = pick(g, ['by the end of the year', 'as soon as things pick up', 'with interest, probably', '"soon"'])
+  const promise = pickLine(g, ['by the end of the year', 'as soon as things pick up', 'with interest, probably', '"soon"'])
   notice(g, a.title, `You lent ${p.firstName} ${money(a.amt)}. ${p.gender === 'male' ? 'He' : 'She'} promised to pay you back ${promise}. You'll find it under Relationships if you ever want to ask for it.`, { emoji: '\u{1F91D}' })
 }
 
@@ -296,7 +306,7 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
       const atm = common(g, 'atm') ? 'an ATM' : 'a bank'
       parts.push(`You told ${p.firstName} you love ${p.gender === 'male' ? 'him' : 'her'}, but you're not ${atm}: no more money talk for a while.`)
       parts.push(entitlement(p) >= 60 ? `${p.firstName} did not take it well.` : `${p.firstName} was hurt, then quiet, then (eventually) okay.`)
-      log(g, `I set money boundaries with ${myOf(p)}.`)
+      log(g, fillSlots(pickLine(g, BOUNDARY_LINES), { who: myOf(p) }))
     } else if (respect) {
       bumpRelationship(p, randInt(g, 1, 3))
       if (isDescendant(p)) addEntitlement(p, -4)
@@ -308,13 +318,13 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
       parts.push(`You told ${p.firstName} no.`)
       parts.push(
         entitlement(p) >= 60
-          ? pick(g, [`${p.firstName} called it "abuse" and slammed every door in the house.`, `${p.firstName} told everyone you're "basically broke," which is not how that works.`])
-          : pick(g, [`${p.firstName} said "fine." It was not fine.`, `${p.firstName} pointed out how much you have. Several times.`, `Dinner was very quiet.`]),
+          ? pickSite(g, [`${p.firstName} called it "abuse" and slammed every door in the house.`, `${p.firstName} told everyone you're "basically broke," which is not how that works.`], 0x286ac511)
+          : pickSite(g, [`${p.firstName} said "fine." It was not fine.`, `${p.firstName} pointed out how much you have. Several times.`, `Dinner was very quiet.`], 0x91ba553b),
       )
       log(g, `I said no when ${myOf(p)} asked me for ${askedFor(a)}.`, 'bad')
     }
   } else {
-    parts.push(pick(g, ['You said no.', 'You politely declined.', 'You passed.']))
+    parts.push(pickLine(g, ['You said no.', 'You politely declined.', 'You passed.']))
   }
   if (def.need && answer !== 'bound' && perceivedWealth(g) > a.amt * 50) {
     addHidden(g, 'karma', -2)
@@ -422,11 +432,10 @@ defineScript(BUNDLE_SCRIPT, (g, choice, data) => {
     const family = !!p && (isDescendant(p) || p.relation === 'spouse' || p.relation === 'partner' || p.relation === 'fiance')
     const yes = choice === 'all' || (choice === 'family' && family)
     const def = askDef(a.k)
-    if (yes && spend(g, a.amt)) {
+    if (yes && payAsk(g, def, p, a.amt, 'gift')) {
       paid.push(`${p ? p.firstName : a.name ?? 'someone'}: ${a.what}`)
       if (p) {
         touch(g, p)
-        if (def?.cash) p.money = Math.round(p.money + a.amt)
         updateTies(g, p, (t) => {
           t.given += a.amt
         })
@@ -476,5 +485,5 @@ defineScript(ADULT_SCRIPT, (g, choice, data) => {
     addEntitlement(p, -6)
   }
   log(g, `I stopped paying ${names} an allowance now that they're adults.`)
-  notice(g, 'All Grown Up', `You told ${names} the allowance stops now: welcome to adulthood. ${pick(g, ['There was a lot of sighing.', 'Someone said "but rent is SO expensive."', 'It was the first time anyone in your family read a job listing.'])}`, { emoji: '\u{1F393}' })
+  notice(g, 'All Grown Up', `You told ${names} the allowance stops now: welcome to adulthood. ${pickLine(g, ['There was a lot of sighing.', 'Someone said "but rent is SO expensive."', 'It was the first time anyone in your family read a job listing.'])}`, { emoji: '\u{1F393}' })
 })

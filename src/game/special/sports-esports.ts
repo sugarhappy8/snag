@@ -5,6 +5,7 @@
 // Every game, team and tournament here is original.
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { bell, chance, pick, rand, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
 import { hasMainCharacter, hasTalent, talentHint, talentMult } from '../talents'
@@ -326,7 +327,7 @@ function cup(g: GameState): void {
   const place = Math.max(1, Math.min(64, Math.round(64 / (1 + Math.exp((perf - 62) / 6)))))
   const prize = place === 1 ? tidy(1_000 + mmr) : place <= 4 ? tidy(200 + mmr / 5) : 0
   if (prize) {
-    earnIncome(g, prize)
+    earnIncome(g, prize, 'prize')
     p.earnings += prize
   }
   if (place === 1) {
@@ -487,7 +488,7 @@ function bookEs(g: GameState, job: Job, ev: EsEvent, name: string, place: number
   const p = es(g)
   const prize = playerCut(gm, ev.pool * shareOf(place, ev.teams))
   if (prize > 0) {
-    earnIncome(g, prize)
+    earnIncome(g, prize, 'prize')
     d.earned += prize
     p.earnings += prize
   }
@@ -536,7 +537,7 @@ const finalScript = defineScript('sports.es.final', (g, choice, data) => {
   else prob += ((p.attrs['Game Sense'] ?? 50) - 55) / 200 + 0.04
   const won = chance(g, Math.max(0.05, Math.min(0.95, prob)))
   bookEs(g, job, ev, f.name, won ? 1 : 2, false)
-  const lead = won ? `${pick(g, ['You hit an impossible clutch and the arena exploded.', 'Your call won the final fight and the trophy.', 'You popped off. The caster lost his voice screaming your name.'])}` : `${pick(g, ['You whiffed the clutch play. The clip will haunt you forever.', `${f.opp} out-played you in the deciding map.`, 'Your team collapsed in the last fight.'])}`
+  const lead = won ? `${pickLine(g, ['You hit an impossible clutch and the arena exploded.', 'Your call won the final fight and the trophy.', 'You popped off. The caster lost his voice screaming your name.'])}` : `${pickSite(g, ['You whiffed the clutch play. The clip will haunt you forever.', `${f.opp} out-played you in the deciding map.`, 'Your team collapsed in the last fight.'], 0x5bb12c0e)}`
   log(g, won ? `We won ${theName(f.name)}!` : `We lost the grand final of ${theName(f.name)}.`, won ? 'good' : 'neutral')
   say(g, won ? 'CHAMPIONS!' : 'Grand Final', `${lead} ${won ? `You won ${theName(f.name)}!` : `Runners-up at ${theName(f.name)}.`}`, won ? '\u{1F3C6}' : gm.emoji, won ? 'good' : 'neutral')
 })
@@ -589,7 +590,7 @@ const scrimScript = defineScript('sports.es.scrim', (g, choice) => {
   p.attrs[choice] = Math.min(100, (p.attrs[choice] ?? 0) + trainGain(g, p.attrs[choice] ?? 0, 3, 6, (g.character.age < 23 ? 1.2 : 0.9) * talentMult(g, 'Gaming', 1.5)))
   addStat(g, 'health', -1)
   log(g, `I practiced ${choice.toLowerCase()} in scrims.`)
-  say(g, 'Scrims', `${pick(g, ['Twelve hours of scrims and one cold energy drink.', 'Your coach made you rewatch your worst games in slow motion.', 'You ran the same drill 400 times. Your wrist hates you.'])} ${choice}: ${p.attrs[choice]}%.`, '\u{1F5A5}\u{FE0F}', 'good')
+  say(g, 'Scrims', `${pickLine(g, ['Twelve hours of scrims and one cold energy drink.', 'Your coach made you rewatch your worst games in slow motion.', 'You ran the same drill 400 times. Your wrist hates you.'])} ${choice}: ${p.attrs[choice]}%.`, '\u{1F5A5}\u{FE0F}', 'good')
 })
 
 export function esportsJobNodes(g: GameState): MenuNode[] {
@@ -654,7 +655,7 @@ export function esportsJobNodes(g: GameState): MenuNode[] {
           return say(gg, 'Stream Meltdown', 'You raged at a teammate live on stream and threw your keyboard. The clip has nine million views. Your team issued a statement. Your mom called.', '\u{1F92C}', 'bad')
         }
         const income = tidy(500 + fame * fame * 40)
-        earnIncome(gg, income)
+        earnIncome(gg, income, 'royalty')
         addFame(gg, 2)
         say(gg, 'Stream', `You streamed ranked games for 14 hours and made ${short(income)} from subs and donations. Chat spammed your emote.`, '\u{1F4F9}', 'good')
       },
@@ -766,7 +767,7 @@ export function yearlyEsports(g: GameState): void {
     if (d.played.includes(ev.id) || (ev.minTier ?? 0) > d.tier) continue
     bookEs(g, job, ev, fillEvent(g, ev.name, g.year - 1), eventPlace(g, eventPerf(g, job), ev), true)
   }
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   const wins = p.titles.filter((t) => t.endsWith(`(${g.year - 1})`) || t.endsWith(`(${g.year})`)).length
   fameToward(g, d.tier === 1 ? 20 + skill(g, p) * 0.4 + wins * 5 : 8, 4)
   d.teamStrength = Math.max(30, Math.min(95, d.teamStrength + randInt(g, -6, 6)))

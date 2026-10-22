@@ -5,8 +5,9 @@
 import { addRelationship, notice, pronouns, spouse as spouseOf } from '../core'
 import { notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickSite } from '../text/pick'
 import { getCountry, randomFirstName, randomLastName } from '../world'
-import { byEra, eraPick, landline } from './era'
+import { byEra, eraPickPlain, landline } from './era'
 import { channel, folks, mayAsk, scaled, type AskDef } from './wealth-ask'
 import { addVenture, carLabel, carPrice, ventureOdds, VENTURE_PARTIAL } from './wealth-kids'
 import {
@@ -90,9 +91,9 @@ export const FAMILY_ASKS: AskDef[] = [
     weight: () => 2.5,
     build: (g, tier, p) => {
       if (!p) return null
-      const trip = eraPick(g, PARTNER_TRIPS)
+      const trip = eraPickPlain(g, PARTNER_TRIPS)
       const amt = scaled(g, 12_000, tier, p, 0.02)
-      return { k: 'partner.trip', pid: p.id, title: 'Getaway', emoji: '\u{1F3DD}\u{FE0F}', text: `${channel(g, p)}${who(p)} has been "so stressed" and thinks ${trip} would help (${money(amt)}). ${pick(g, [`${cap(pr(p).he)} already packed.`, `There's a brochure taped to the bathroom mirror.`, `${cap(pr(p).he)} says you can come too, if you behave.`])}${postnupLine(g, p)}`, amt, what: trip, less: true }
+      return { k: 'partner.trip', pid: p.id, title: 'Getaway', emoji: '\u{1F3DD}\u{FE0F}', text: `${channel(g, p)}${who(p)} has been "so stressed" and thinks ${trip} would help (${money(amt)}). ${pickSite(g, [`${cap(pr(p).he)} already packed.`, `There's a brochure taped to the bathroom mirror.`, `${cap(pr(p).he)} says you can come too, if you behave.`], 0xce2dce2d)}${postnupLine(g, p)}`, amt, what: trip, less: true }
     },
     onGive: (g, _a, p) => {
       if (!p) return ''
@@ -254,7 +255,7 @@ export const FAMILY_ASKS: AskDef[] = [
     weight: (_g, _tier, p) => (p && p.stats.health < 50 ? 4 : 2),
     build: (g, tier, p) => {
       if (!p) return null
-      const what = eraPick(g, ['@1965 a hip replacement', '@1955 heart surgery', 'a long hospital stay', 'cataract surgery', 'months of care after a bad fall', 'a specialist across the country'])
+      const what = eraPickPlain(g, ['@1965 a hip replacement', '@1955 heart surgery', 'a long hospital stay', 'cataract surgery', 'months of care after a bad fall', 'a specialist across the country'])
       const universal = getCountry(personCountry(g, p)).universalHealthcare
       const amt = scaled(g, universal ? 8_000 : 30_000, Math.min(tier, 2), p, 0.03)
       const why = universal ? 'The public waiting list is eight months; a private clinic can do it next week.' : `${cap(pr(p).his)} insurance covers "a portion," which turns out to be a small one.`
@@ -345,7 +346,7 @@ export const FAMILY_ASKS: AskDef[] = [
     weight: () => 0.8,
     build: (g, tier, p) => {
       if (!p) return null
-      const idea = eraPick(g, ['a little bakery', '@1970 a bed-and-breakfast', 'a vineyard (one row of grapes, for now)', 'an antique shop', 'a bait-and-tackle shop'])
+      const idea = eraPickPlain(g, ['a little bakery', '@1970 a bed-and-breakfast', 'a vineyard (one row of grapes, for now)', 'an antique shop', 'a bait-and-tackle shop'])
       const amt = scaled(g, 40_000, Math.min(tier, 3), p, 0.03)
       return { k: 'parent.dream', pid: p.id, title: 'Second Act', emoji: '\u{1F9C1}', text: `${channel(g, p)}${who(p)} wants to finally open ${idea} and asked you to invest (${money(amt)}). "It's my dream, and you're the only one in the family with money," ${pr(p).he} said, while three other relatives nodded.`, amt, what: idea, less: true, odds: ventureOdds(p), partial: VENTURE_PARTIAL }
     },
@@ -409,7 +410,7 @@ export const FAMILY_ASKS: AskDef[] = [
     build: (g, tier, p) => {
       if (!p) return null
       const amt = scaled(g, 6_000 * housingScale(g, personCountry(g, p)), Math.min(tier, 2), p, 0.01)
-      return { k: 'sibling.rent', pid: p.id, title: 'Rough Patch', emoji: '\u{1F4C9}', text: `${channel(g, p)}${who(p)} is behind on rent (${money(amt)}). ${pick(g, [`${cap(pr(p).he)} got laid off.`, `${cap(pr(p).he)} "invested" in something.`, `${cap(pr(p).his)} landlord discovered the four cats.`])}`, amt, what: 'help with rent', less: true, lend: true }
+      return { k: 'sibling.rent', pid: p.id, title: 'Rough Patch', emoji: '\u{1F4C9}', text: `${channel(g, p)}${who(p)} is behind on rent (${money(amt)}). ${pickSite(g, [`${cap(pr(p).he)} got laid off.`, `${cap(pr(p).he)} "invested" in something.`, `${cap(pr(p).his)} landlord discovered the four cats.`], 0x5eea8ce1)}`, amt, what: 'help with rent', less: true, lend: true }
     },
     need: true,
     thanks: 8,
@@ -462,7 +463,7 @@ export const FAMILY_ASKS: AskDef[] = [
     weight: () => 0.9,
     build: (g, tier, p) => {
       if (!p) return null
-      const idea = eraPick(g, ['@1985 a craft brewery', '@1970 a dog-grooming van', '@1927 a mini-golf course', '@1975 a gym for seniors', '@1960 a franchise of a franchise', 'a hat shop', 'a dance hall'])
+      const idea = eraPickPlain(g, ['@1985 a craft brewery', '@1970 a dog-grooming van', '@1927 a mini-golf course', '@1975 a gym for seniors', '@1960 a franchise of a franchise', 'a hat shop', 'a dance hall'])
       const amt = scaled(g, 50_000, tier, p, 0.04)
       return { k: 'sibling.venture', pid: p.id, title: 'Big Idea', emoji: '\u{1F4BC}', text: `${channel(g, p)}${who(p)} wants you to invest in ${idea} (${money(amt)}). "You'll double your money." ${cap(pr(p).he)} said the same thing about the last two.`, amt, what: idea, less: true, odds: ventureOdds(p), partial: VENTURE_PARTIAL }
     },
@@ -504,7 +505,7 @@ export const FAMILY_ASKS: AskDef[] = [
       const sp = spouseOf(g)
       if (!sp) return null
       const il = inLaw(g, sp)
-      const what = eraPick(g, ['@1965 a new hip', '@cars a new truck after the old one finally died', 'a roof that no longer leaks onto the bed', 'a trip to see the grandkids'])
+      const what = eraPickPlain(g, ['@1965 a new hip', '@cars a new truck after the old one finally died', 'a roof that no longer leaks onto the bed', 'a trip to see the grandkids'])
       const amt = scaled(g, 12_000, Math.min(tier, 3), undefined, 0.02)
       return { k: 'inlaw.help', name: il.name, title: 'In-Laws', emoji: '\u{1F475}', text: `${cap(il.name)} needs ${what} (${money(amt)}). ${sp.firstName} didn't ask directly. ${cap(pr(sp).he)} just sighed every time the topic came up, which was often.`, amt, what, less: true, x: { spouseId: sp.id } }
     },
@@ -528,7 +529,7 @@ export const FAMILY_ASKS: AskDef[] = [
     weight: () => 1.3,
     build: (g, tier) => {
       const c = cousin(g)
-      const tip = eraPick(g, TIPS)
+      const tip = eraPickPlain(g, TIPS)
       const amt = scaled(g, 25_000, tier, undefined, 0.03)
       const odds = 0.08
       return { k: 'cousin.tip', name: c.name, title: "Can't Miss", emoji: '\u{1F911}', text: `${cap(c.name)} has a can't-miss opportunity: ${tip}. ${c.first} needs ${money(amt)} from you by Friday and "can't say more ${landline(g) ? 'over the phone' : 'in a letter'}."`, amt, what: tip, less: true, odds, partial: 0.15 }

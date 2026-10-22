@@ -3,6 +3,8 @@
 // here, so the main save and the Time Machine's snapshots can both load through it.
 import { GAME_VERSION, SAVE_SCHEMA } from './core'
 import { INBOX_LINK_MAX } from './inbox'
+import { cleanVersions, migrateSlices } from './kernel/slices'
+import './save-slices'
 import { HIDDEN_KEYS, STAT_KEYS, type GameState, type ModalItem } from './types'
 
 export { SAVE_SCHEMA }
@@ -33,15 +35,26 @@ const STEPS: Readonly<Record<number, MigrationStep>> = {
     migrated.schemaVersion = 2
     return migrated
   },
+  // Schema 3 is versioned slices and chunks. A v2 record is plain JSON in the shape v4.1.1 wrote, which is version 1 of every
+  // slice; no slice has a migrate yet, so this moves nothing today. A later release that bumps a slice adds its migrate and
+  // this step carries a v2 record through it.
+  2: (g) => {
+    migrateSlices(g as unknown as Record<string, unknown>, null, 1)
+    g.schemaVersion = 3
+    return g
+  },
 }
 
 /**
  * Bring a stored value up to the current schema, in place. A save with no `schemaVersion` predates
  * the field and counts as schema 1. A newer or too-old save is reported untouched, whatever its
  * shape; anything else that can't be played is `invalid`, and junk of every kind is never a throw.
- * `opts.minSchema` replaces MIN_SCHEMA (tests use it to exercise the floor).
+ * `opts.minSchema` replaces MIN_SCHEMA (tests use it to exercise the floor). `opts.versions` is the
+ * `sv` map of a schema 3 head (the version each slice was written at; the codec reads it, R2-S4): a
+ * slice below its current version is brought up by its own `migrate`. A schema 2 record has no such
+ * map, so it is migrated from version 1 by STEPS[2] and `versions` is not read for it.
  */
-export function migrateSave(raw: unknown, opts?: { minSchema?: number }): MigrationResult {
+export function migrateSave(raw: unknown, opts?: { minSchema?: number; versions?: unknown }): MigrationResult {
   if (!isRecord(raw)) return { kind: 'invalid' }
   const version = raw.schemaVersion === undefined ? 1 : raw.schemaVersion
   if (!isBoundedInteger(version, 1, Number.MAX_SAFE_INTEGER)) return { kind: 'invalid' }
@@ -50,6 +63,8 @@ export function migrateSave(raw: unknown, opts?: { minSchema?: number }): Migrat
   if (!isGameShell(raw)) return { kind: 'invalid' }
   let game = raw as unknown as GameState
   for (let v = version; v < SAVE_SCHEMA; v++) game = STEPS[v](game)
+  // A schema 3 record names the slice versions it was written at; one that names none is current in every slice.
+  if (version >= 3) migrateSlices(game as unknown as Record<string, unknown>, cleanVersions(opts?.versions), 'current')
   // Every load drops popups nothing could show or close, not only an upgrade: a damaged queue
   // would otherwise lock the life or fail the check below, whatever schema the save is at.
   game = migrateLegacyAi(game)

@@ -6,13 +6,15 @@
 // few quiet log lines); each moment happens once per character (air raids, the Depression and wars
 // at home may come back). Tragedies are told with tact: headlines, feelings and
 // choices, never graphic detail. Wartime drafts live in special/military.ts.
+import { personCash } from '../cash'
 import { addHidden, addMoney, addStat, endJob, earnIncome, formatMoney, inPrison, log, notice, parents, remember, scriptChoice, spend } from '../core'
 import { contractCondition } from '../health'
 import { PANDEMIC_COVID, PANDEMIC_FLU, medicalYear } from '../history/events-medicine'
 import { homeFrontAt, warDraftAt, warsAt, warStartFor, type WarDef } from '../history/events-wars'
 import { hasTech, techOdds } from '../history/timeline'
 import { notePerson } from '../people'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import { employerRef, isRealBrandName } from '../shops/everyday-brands'
@@ -112,7 +114,7 @@ function quietMoments(g: GameState): void {
   if (winner === id && c.age >= 5 && !isDone(g, `worldcup.${g.year}`)) {
     markDone(g, `worldcup.${g.year}`)
     addStat(g, 'happiness', randInt(g, 3, 6))
-    log(g, c.prison ? 'We won the World Cup! The whole cell block went wild.' : pick(g, ['We won the World Cup! I celebrated in the streets until dawn.', 'We won the World Cup! Strangers hugged me in the street.']), 'good')
+    log(g, c.prison ? 'We won the World Cup! The whole cell block went wild.' : pickLine(g, ['We won the World Cup! I celebrated in the streets until dawn.', 'We won the World Cup! Strangers hugged me in the street.']), 'good')
   }
 
   // The polio vaccine reached each country in its own year.
@@ -666,7 +668,7 @@ function depression(g: GameState): void {
     const pron = victim.gender === 'male' ? 'his' : 'her'
     const job = victim.occupation
     victim.occupation = 'Unemployed'
-    victim.money = Math.round(victim.money * 0.4)
+    personCash(g, victim, Math.round(victim.money * 0.4) - victim.money, 'luck')
     notePerson(victim, 'Lost their job in the Great Depression.')
     addStat(g, 'happiness', -5)
     notice(g, 'Hard Times', `Your ${word} lost ${pron} job as ${/^[aeiou]/i.test(job) ? 'an' : 'a'} ${job} in the Depression. Dinners got smaller, and you learned to patch your own clothes.`, { emoji: '\u{1F35E}', tone: 'bad' })
@@ -738,7 +740,7 @@ const WALL = defineScript('history.berlinWall', (g, choice) => {
     addStat(g, 'happiness', 8)
     if (hasTalent(g, 'Business')) {
       const cash = Math.round(randInt(g, 300, 1500) * wealth(g))
-      addMoney(g, cash)
+      addMoney(g, cash, 'sales')
       notice(g, 'A Piece of History', `You chipped off a bag of genuine Berlin Wall and sold most of it to tourists for ${formatMoney(cash)}. You kept the best piece for yourself.`, { emoji: '\u{1F528}', tone: 'good' })
       log(g, `I chipped off pieces of the Berlin Wall and sold them for ${formatMoney(cash)}.`, 'good')
     } else {
@@ -765,7 +767,7 @@ const CUBA = defineScript('history.cuba', (g, choice) => {
   if (choice === 'shelter') {
     // About $1,500 at the time (money is in today's dollars).
     const cost = Math.round(15_000 * wealth(g))
-    if (spend(g, cost)) {
+    if (spend(g, cost, 'purchase')) {
       addStat(g, 'happiness', -1)
       notice(g, 'Fallout Shelter', `You spent ${formatMoney(cost)} on a concrete shelter in the backyard. Thirteen days later the crisis was over. It makes an excellent root cellar.`, { emoji: '\u{1F3D7}\u{FE0F}' })
       log(g, 'I built a fallout shelter during the Cuban Missile Crisis.')
@@ -776,7 +778,7 @@ const CUBA = defineScript('history.cuba', (g, choice) => {
     return
   }
   if (choice === 'cans') {
-    spend(g, Math.min(Math.max(0, g.character.money), Math.round(150 * wealth(g))))
+    spend(g, Math.min(Math.max(0, g.character.money), Math.round(150 * wealth(g))), 'purchase')
     addStat(g, 'happiness', 1)
     notice(g, 'Canned Food', 'You filled the basement with canned beans and peaches. The world survived, and you ate beans until spring.', { emoji: '\u{1F96B}' })
     log(g, 'I stocked up on canned food during the missile crisis.')
@@ -823,7 +825,7 @@ const WAR_WORK = defineScript('history.warWork', (g, choice) => {
   if (choice === 'factory') {
     // A war-plant wage, about $2,000 a year at the time.
     const pay = Math.round(32_000 * wealth(g))
-    earnIncome(g, pay)
+    earnIncome(g, pay, 'wage')
     addStat(g, 'smarts', 2)
     addStat(g, 'happiness', 2)
     notice(g, 'Factory Work', `You learned to rivet, weld and swear like a sailor, and earned ${formatMoney(pay)} doing it.`, { emoji: '\u{1F3ED}', tone: 'good' })
@@ -854,7 +856,7 @@ const WAR_WORK = defineScript('history.warWork', (g, choice) => {
 const Y2K = defineScript('history.y2k', (g, choice) => {
   if (!g.character.alive) return
   if (choice === 'stockpile') {
-    spend(g, Math.min(Math.max(0, g.character.money), Math.round(250 * wealth(g))))
+    spend(g, Math.min(Math.max(0, g.character.money), Math.round(250 * wealth(g))), 'purchase')
     addStat(g, 'happiness', -1)
     notice(g, 'Y2K', 'Midnight came and went. Nothing happened. You will be eating canned beans until 2003.', { emoji: '\u{1F96B}' })
     log(g, 'I stockpiled food for the Y2K bug. Nothing happened.')

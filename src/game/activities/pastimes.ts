@@ -7,12 +7,13 @@
 // per-year cap, a price, a diminishing return (the feed) or a risk.
 //
 // Menus are pure functions of state; only run() and the helpers it calls mutate g.
-import { addRelationship, addStat, count, formatMoney, log, relationLabel } from '../core'
+import { addMoney, addRelationship, addStat, count, formatMoney, log, relationLabel } from '../core'
 import { common, exists, landline, mixWord } from '../events/era'
 import { adoption, eraPrice, regionIs, videoChain, wealthOf } from '../events/era-late-kit'
 import { PRESENT_YEAR } from '../history/timeline'
 import { createPerson, notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { masterInstrument } from '../special/common'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, MenuAction, MenuGroup, MenuNode, Person } from '../types'
@@ -89,7 +90,7 @@ const DEFS: Pastime[] = [
         g.character.hidden.fame = Math.min(100, g.character.hidden.fame + 1)
         log(g, 'I put my initials at the top of the arcade high-score list.', 'good')
       } else addStat(g, 'happiness', randInt(g, 1, 4))
-      const text = win ? 'You beat the top score and typed in your initials. For a week you were the king of the arcade.' : pick(g, ['You spent your coins on a long, glorious, losing game.', 'You made it to the third level before a small child took over the machine.', 'You watched the attract mode demo more than you played.'])
+      const text = win ? 'You beat the top score and typed in your initials. For a week you were the king of the arcade.' : pickLine(g, ['You spent your coins on a long, glorious, losing game.', 'You made it to the third level before a small child took over the machine.', 'You watched the attract mode demo more than you played.'])
       result(g, 'Arcade', `${text}${partner ? `\n\n${partner.firstName} cheered you on from behind the cabinet.` : ''}`, '\u{1F579}\u{FE0F}', win ? 'good' : undefined)
     },
   },
@@ -114,7 +115,7 @@ const DEFS: Pastime[] = [
       } else if (partner) {
         extra = `\n\nYou and ${partner.firstName} spent two hours trying things on and buying nothing.`
       }
-      result(g, 'The Mall', `${pick(g, ['You drifted from store to store until the music started to sound the same.', 'You people-watched from a bench by the fountain.', 'You split a pretzel and judged everyone’s shoes.'])}${extra}`, '\u{1F6CD}\u{FE0F}')
+      result(g, 'The Mall', `${pickLine(g, ['You drifted from store to store until the music started to sound the same.', 'You people-watched from a bench by the fountain.', 'You split a pretzel and judged everyone’s shoes.'])}${extra}`, '\u{1F6CD}\u{FE0F}')
     },
   },
   {
@@ -134,7 +135,7 @@ const DEFS: Pastime[] = [
       if (chance(g, 0.15)) {
         const fee = eraPrice(g, 6)
         if (g.character.money >= fee) {
-          g.character.money -= fee
+          addMoney(g, -fee, 'fine')
           late = `\n\nYou returned it a day late and paid a ${formatMoney(fee)} fee.`
         }
       }
@@ -343,7 +344,7 @@ function cafeVisit(g: GameState, what: 'write' | 'learn' | 'play'): void {
     return
   }
   const cost = cafeHour(g)
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'leisure')
   if (!paid) {
     brokeNotice(g, cost, 'an hour at the cyber cafe')
     return
@@ -426,7 +427,7 @@ function attempt(g: GameState, def: Pastime, partnerId: string | null): void {
   }
   const outings = partner ? 2 : 1
   const cost = def.cost(g) * outings
-  const paid = payFor(g, cost, true)
+  const paid = payFor(g, cost, true, 'leisure')
   if (!paid) {
     brokeNotice(g, cost, def.label.toLowerCase())
     return

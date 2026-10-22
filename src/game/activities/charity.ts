@@ -3,6 +3,7 @@
 // you). A few "charities" turn out to be scams.
 import { addHidden, addStat, count, log, netWorth, remember, spend } from '../core'
 import { chance, pick, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, gate, money, result, stablePick, usesLeft } from './common'
 import { common } from '../events/era'
@@ -53,14 +54,14 @@ function donate(g: GameState, ch: Charity, input: string | undefined): void {
   const c = g.character
   const amount = parseAmount(input)
   if (amount <= 0) {
-    result(g, 'Donation', pick(g, ['You pretended to drop something in the donation box. The volunteer saw.', 'You donated your thoughts and prayers. The charity asked for money instead.']), ch.emoji)
+    result(g, 'Donation', pickLine(g, ['You pretended to drop something in the donation box. The volunteer saw.', 'You donated your thoughts and prayers. The charity asked for money instead.']), ch.emoji)
     return
   }
   if ((g.yearActions[KEY] ?? 0) >= DONATIONS_PER_YEAR) {
     result(g, 'Donation', "You've donated plenty this year. The charities' thank-you letters are starting to pile up.", ch.emoji)
     return
   }
-  if (!spend(g, amount)) {
+  if (!spend(g, amount, 'donation')) {
     brokeNotice(g, amount, `a donation of ${money(amount)}`)
     return
   }
@@ -78,10 +79,10 @@ function donate(g: GameState, ch: Charity, input: string | undefined): void {
 
   if (amount < 10) {
     log(g, `I donated ${money(amount)} to ${ch.name}.`, 'neutral')
-    result(g, 'Donation', pick(g, [
+    result(g, 'Donation', pickSite(g, [
       `You donated ${money(amount)} to ${ch.name}. The volunteer squinted at it, then thanked you very politely.`,
       `You dropped ${money(amount)} into the ${ch.name} jar. Every little bit helps. This was a very little bit.`,
-    ]), ch.emoji)
+    ], 0x06bfa8b9), ch.emoji)
     return
   }
 

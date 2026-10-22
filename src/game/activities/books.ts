@@ -2,7 +2,8 @@
 // The shelf only holds books that had been published by the current year (no Harry Potter in
 // 1950), so a childhood in 1905 gets Peter Rabbit and the Wizard of Oz.
 import { addStat, count, counter, log } from '../core'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { gate, result, stablePick } from './common'
@@ -308,10 +309,10 @@ function readBook(g: GameState, book: Book): void {
       'No Time',
       used === 0
         ? `${book.title} is ${book.pages.toLocaleString('en-US')} pages long. You don't have time to read all of that this year.`
-        : pick(g, [
+        : pickSite(g, [
             `You've already read ${used.toLocaleString('en-US')} pages this year. Your eyes need a break before you tackle ${book.title}.`,
             `You opened ${book.title}, read one sentence, and fell asleep. You've read enough this year.`,
-          ]),
+          ], 0xf4e6539d),
       '\u{1F634}',
     )
     return
@@ -341,7 +342,7 @@ function readBook(g: GameState, book: Book): void {
     return
   }
   const vars = { title: book.title, author: book.author, pages: book.pages }
-  const text = h >= 5 ? pick(g, LOVED) : h <= -1 ? pick(g, DEPRESSING) : pick(g, FINE)
+  const text = h >= 5 ? pickLine(g, LOVED) : h <= -1 ? pickLine(g, DEPRESSING) : pickLine(g, FINE)
   log(g, h >= 5 ? `I read ${book.title} and loved it.` : `I read ${book.title} by ${book.author}.`, h >= 0 ? 'good' : 'neutral')
   result(g, book.title, text.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k as keyof typeof vars])), '\u{1F4DA}', h >= 0 ? 'good' : undefined)
 }

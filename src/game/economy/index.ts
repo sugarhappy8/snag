@@ -1,6 +1,7 @@
-import { log } from '../core'
 import { marketOf } from '../data/markets'
 import { historicalCycle, inHistory } from '../history/markets'
+import { stateLine } from '../text/state'
+import { logStateLine } from '../text/state-log'
 import { outcomeTag } from '../timeMachine'
 import type { GameState } from '../types'
 import { COUNTRIES } from '../world'
@@ -9,6 +10,7 @@ import { advanceCountry, worldConditions, type NationInput } from './simulation'
 import { nationOverlay } from '../nation/effects'
 import { tradeOverlay } from '../nation/trade-policy'
 import { consumeWriteDowns } from '../nation/state'
+import { economyFocus, HISTORY_YEARS, pruneToFocus } from './focus'
 import { bound, ECONOMY_VERSION, economyOf, economyState, initialCountry, pointOf, sectorOf, storeEconomy, type EconomicPolicy, type EconomyFeedback, type EconomyState } from './model'
 
 export { bound, ECONOMY_KEY, economicRoll, economyOf, economyState, initialCountry, sectorOf, SECTORS, SECTOR_RULES } from './model'
@@ -31,7 +33,8 @@ export function yearlyEconomy(g: GameState): void {
   const opening = prev.year === g.year - 1 ? prev.countries : Object.fromEntries(COUNTRIES.map(c => [c.id, initialCountry(c.id, g.year - 1)]))
   const world = worldConditions(opening)
   const seed = `${g.lifeId.replace(/-g\d+$/, '')}${outcomeTag(g, g.year)}`
-  const next: EconomyState = { v: ECONOMY_VERSION, year: g.year, countries: {}, previous: opening, history: {}, pending: [], policies: prev.policies.filter(p => p.until >= g.year), receipts: [], rivals: advanceRivals(g, opening, prev.rivals, g.year), previousRivals: prev.rivals }
+  // Last year's frame is kept for the countries a reader can name (A.K9): the simulation below reads the full `opening`.
+  const next: EconomyState = { v: ECONOMY_VERSION, year: g.year, countries: {}, previous: pruneToFocus(opening, economyFocus(g)), history: {}, pending: [], policies: prev.policies.filter(p => p.until >= g.year), receipts: [], rivals: advanceRivals(g, opening, prev.rivals, g.year), previousRivals: prev.rivals }
   // Governments' own laws (nation/): measures passed before this year move this transition.
   const trade = tradeOverlay(g, g.year)
   for (const c of COUNTRIES) {
@@ -40,13 +43,20 @@ export function yearlyEconomy(g: GameState): void {
     const nation: NationInput | null = overlay || trade ? { overlay, trade } : null
     const current = advanceCountry(old, c.id, g.year, seed, world, prev.pending, next.policies, opening, nation)
     next.countries[c.id] = current
-    next.history[c.id] = [...(prev.history[c.id] ?? [pointOf(old)]), pointOf(current)].slice(-32)
+    next.history[c.id] = [...(prev.history[c.id] ?? [pointOf(old)]), pointOf(current)].slice(-HISTORY_YEARS)
   }
   storeEconomy(g, next)
   consumeWriteDowns(g)
   const local = next.countries[g.character.countryId], before = opening[g.character.countryId]
-  if (local && before && g.character.age >= 16 && (local.growth < -.02 && before.growth >= -.02 || local.credit < .72 && before.credit >= .72 || local.supply > .12 && before.supply <= .12)) {
-    log(g, `Around me: ${local.causes[0]}`, 'neutral')
+  if (local && before && g.character.age >= 16) {
+    // One line, for the first condition that crossed this year. The row (text/state-table.ts) keeps the same crossing from
+    // speaking again within 5 years; a year with no stated cause says nothing.
+    const crossed = local.growth < -.02 && before.growth >= -.02 ? { key: 'around.growth', value: local.growth } as const
+      : local.credit < .72 && before.credit >= .72 ? { key: 'around.credit', value: local.credit } as const
+      : local.supply > .12 && before.supply <= .12 ? { key: 'around.supply', value: local.supply } as const
+      : null
+    const cause = local.causes[0]
+    if (crossed) logStateLine(g, cause ? stateLine(g, crossed.key, crossed.value, { slots: { cause } }) : null)
   }
 }
 

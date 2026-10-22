@@ -3,6 +3,7 @@
 // royalties and paparazzi/stalker/feud scenarios.
 import { addHidden, addRelationship, addStat, count, earnIncome, log, parents, remember, scriptChoice, spend, spouse, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { localStreetName } from '../data/locales'
 import { hasTalent, talentHint } from '../talents'
@@ -181,7 +182,7 @@ const bookAction: MenuAction = {
   },
   run: (g, input) => {
     if (!useYearAction(g, 'fame.book', 1)) return tooBusy(g, 'released a book')
-    if (!spend(g, BOOK_COST)) {
+    if (!spend(g, BOOK_COST, 'purchase')) {
       g.yearActions['fame.book'] = 0
       return tell(g, 'Book', `You can't afford the ${money(BOOK_COST)} it costs to get your manuscript edited and printed.`, '\u{1F4B8}')
     }
@@ -192,7 +193,7 @@ const bookAction: MenuAction = {
     const score = fameOf(g) * 0.55 + c.stats.smarts * 0.35 + randInt(g, -20, 20) + (writer ? 14 : 0)
     const [, verdict, mult, fameDelta] = BOOK_TIERS.find(([max]) => score < max) ?? BOOK_TIERS[BOOK_TIERS.length - 1]
     const earned = Math.max(150, vary(g, (4_000 + fameOf(g) ** 2 * 120 + c.stats.smarts * 150) * mult * (writer ? 1.3 : 1), 0.3))
-    earnIncome(g, earned)
+    earnIncome(g, earned, 'royalty')
     addFame(g, fameDelta)
     addStat(g, 'happiness', fameDelta >= 2 ? 8 : fameDelta < 0 ? -6 : 2)
     addStat(g, 'smarts', 2)
@@ -204,10 +205,10 @@ const bookAction: MenuAction = {
     remember(g, `Published the book "${title}" (${verdict}).`)
     const flavor =
       fameDelta >= 5
-        ? pick(g, ['Bookstores can\'t keep it on the shelves.', 'Book clubs everywhere are arguing about chapter 7.', 'Even your harshest critics bought two copies.'])
+        ? pickLine(g, ['Bookstores can\'t keep it on the shelves.', 'Book clubs everywhere are arguing about chapter 7.', 'Even your harshest critics bought two copies.'])
         : fameDelta >= 2
-          ? pick(g, ['Readers seem to genuinely like it.', `A few ${tvEra(g) ? 'talk shows' : radioEra(g) ? 'radio hosts' : 'newspaper critics'} mentioned it favorably.`, 'Your mom bought fifty copies, but so did strangers.'])
-          : pick(g, ['Most copies are being used to level wobbly tables.', 'The reviews were... words were used.', 'Your publisher has stopped returning your calls.'])
+          ? pickSite(g, ['Readers seem to genuinely like it.', `A few ${tvEra(g) ? 'talk shows' : radioEra(g) ? 'radio hosts' : 'newspaper critics'} mentioned it favorably.`, 'Your mom bought fifty copies, but so did strangers.'], 0x2d9f6100)
+          : pickLine(g, ['Most copies are being used to level wobbly tables.', 'The reviews were... words were used.', 'Your publisher has stopped returning your calls.'])
     say(g, 'Book', `Your book "${title}" was ${verdict}. ${flavor} You earned ${money(earned)}.`, '\u{1F4D6}', fameDelta >= 2 ? 'good' : fameDelta < 0 ? 'bad' : 'neutral')
   },
 }
@@ -257,7 +258,7 @@ const commercialScript = defineScript('special.fame.commercial', (g, choice, dat
     log(g, `I turned down a commercial for ${offer.brand}.`)
     return say(g, 'Commercial', `You turned down ${offer.brand}. Somewhere, an advertising executive is crying into a stack of storyboards.`, '\u{1F4FA}')
   }
-  earnIncome(g, offer.pay)
+  earnIncome(g, offer.pay, 'royalty')
   fameProfile(g).commercials += 1
   count(g, 'fameActions')
   if (offer.pay >= 2_000_000) g.flags['special.endorser'] = true
@@ -266,14 +267,14 @@ const commercialScript = defineScript('special.fame.commercial', (g, choice, dat
   if (roll < 0.5) {
     addFame(g, randInt(g, 2, 4))
     addStat(g, 'happiness', 5)
-    text = pick(g, [
+    text = pickLine(g, [
       'Viewers loved it, and your catchphrase is now stuck in everyone\'s head.',
       'The ad was a hit. Kids are quoting it on playgrounds.',
       'Critics called it "the only commercial worth not skipping."',
     ])
   } else if (roll < 0.8) {
     addFame(g, 1)
-    text = pick(g, ['The public reception was lukewarm, but the check cleared.', 'Most people watched it on mute. Still counts.'])
+    text = pickLine(g, ['The public reception was lukewarm, but the check cleared.', 'Most people watched it on mute. Still counts.'])
   } else {
     addFame(g, 1)
     addStat(g, 'happiness', -4)
@@ -352,7 +353,7 @@ const photoScript = defineScript('special.fame.photo', (g, choice, data) => {
     return say(g, 'Photo Shoot', `You passed on the ${offer.magazine} shoot. Their photographer will have to find another muse.`, '\u{1F4F8}')
   }
   const c = g.character
-  earnIncome(g, offer.pay)
+  earnIncome(g, offer.pay, 'wage')
   count(g, 'fameActions')
   const good = c.stats.looks + randInt(g, -25, 25) >= 55
   addFame(g, good ? randInt(g, 2, 4) : 1)
@@ -368,7 +369,7 @@ const photoScript = defineScript('special.fame.photo', (g, choice, data) => {
   log(g, `I posed for a ${offer.kind} photo shoot in ${offer.magazine}.`, good ? 'good' : 'neutral')
   const reception = good
     ? pick(g, ['Readers couldn\'t stop talking about how stunning you looked.', 'The issue flew off the newsstands.', online(g) && g.year >= 2004 ? 'Fashion bloggers declared it the shoot of the year.' : 'Fashion columnists declared it the shoot of the year.'])
-    : pick(g, ['A few readers said the lighting did you no favors.', 'The photos were airbrushed so much your own mother didn\'t recognize you.', 'The reception was polite at best.'])
+    : pickLine(g, ['A few readers said the lighting did you no favors.', 'The photos were airbrushed so much your own mother didn\'t recognize you.', 'The reception was polite at best.'])
   say(g, 'Photo Shoot', `You posed for a ${offer.kind} shoot in ${offer.magazine} and earned ${money(offer.pay)}. ${reception}${extra}`, '\u{1F4F8}', good ? 'good' : 'neutral')
 })
 
@@ -384,7 +385,7 @@ const photoAction: MenuAction = {
     const c = g.character
     const options = SHOOTS.filter((s) => c.age >= s.minAge && (s.kind !== 'cover' || fameOf(g) >= 50))
     const shoot = pick(g, options)
-    const magazine = pick(g, MAGAZINES)
+    const magazine = pickLine(g, MAGAZINES)
     const pay = Math.round((2_000 + fameOf(g) ** 2 * 45 * shoot.mult * (0.6 + c.stats.looks / 100)) / 100) * 100
     scriptChoice(
       g,
@@ -455,10 +456,10 @@ const talkTopicScript = defineScript('special.fame.talkTopic', (g, choice, data)
   } else if (score >= 30) {
     addFame(g, 1)
     tone = 'neutral'
-    text = pick(g, [
+    text = pickSite(g, [
       `You did an okay job on ${show}. Nobody will remember it, but nobody hated it either.`,
       `Your appearance on ${show} was perfectly fine. The host checked their watch only twice.`,
-    ])
+    ], 0x8bed26b4)
   } else {
     addFame(g, -2)
     addStat(g, 'happiness', -8)
@@ -495,7 +496,7 @@ const talkShowAction: MenuAction = {
   disabledReason: needFame(FAMOUS),
   run: (g) => {
     if (!useYearAction(g, 'fame.talkShow', 1)) return tooBusy(g, 'been on a talk show')
-    const show = pick(g, TALK_SHOWS)
+    const show = pickLine(g, TALK_SHOWS)
     scriptChoice(
       g,
       talkShowScript,
@@ -528,7 +529,7 @@ const autographAction: MenuAction = {
     addStat(g, 'happiness', randInt(g, 2, 6))
     if (chance(g, 0.5)) addFame(g, 1)
     const weird = chance(g, 0.15)
-      ? ' ' + pick(g, ['One fan asked you to sign their forehead.', 'A man asked you to sign his cat.', 'Someone handed you a photo of a completely different celebrity.', 'A fan fainted when you said hello.'])
+      ? ' ' + pickLine(g, ['One fan asked you to sign their forehead.', 'A man asked you to sign his cat.', 'Someone handed you a photo of a completely different celebrity.', 'A fan fainted when you said hello.'])
       : ''
     log(g, `I signed autographs for ${fans} fans.`, 'good')
     say(g, 'Autographs', `You signed autographs for ${fans} adoring fans.${weird}`, '\u{270D}\u{FE0F}', 'good')
@@ -558,14 +559,14 @@ const merchScript = defineScript('special.fame.merch', (g, choice) => {
   if (choice === 'cancel') return
   const item = merchNow(g).find((m) => m.id === choice)
   if (!item) return
-  if (!spend(g, item.cost)) {
+  if (!spend(g, item.cost, 'purchase')) {
     g.yearActions['fame.merch'] = 0
     return tell(g, 'Merchandise', `You can't afford the ${money(item.cost)} it costs to manufacture your ${item.label.toLowerCase()}.`, '\u{1F4B8}')
   }
   const f = fameOf(g)
   const mult = (f / 50) ** 2 * (0.3 + rand(g) * 2.2)
   const revenue = Math.round(item.cost * mult)
-  earnIncome(g, revenue)
+  earnIncome(g, revenue, 'royalty')
   fameProfile(g).merchLines += 1
   count(g, 'fameActions')
   const profit = revenue - item.cost
@@ -573,20 +574,20 @@ const merchScript = defineScript('special.fame.merch', (g, choice) => {
   if (profit > item.cost) {
     addStat(g, 'happiness', 8)
     addFame(g, 1)
-    text = pick(g, [
+    text = pickSite(g, [
       `Your ${item.label.toLowerCase()} sold out in hours!`,
       `Fans camped outside stores to get their hands on your ${item.label.toLowerCase()}.`,
       `Resellers are flipping your ${item.label.toLowerCase()} for triple the price.`,
-    ])
+    ], 0xbbc761b6)
   } else if (profit >= 0) {
     addStat(g, 'happiness', 3)
     text = `Your ${item.label.toLowerCase()} sold steadily.`
   } else {
     addStat(g, 'happiness', -6)
-    text = pick(g, [
+    text = pickSite(g, [
       `You now own a warehouse full of unsold ${item.label.toLowerCase()}.`,
       `Your ${item.label.toLowerCase()} ended up in the bargain bin within a week.`,
-    ])
+    ], 0x7851b26d)
   }
   log(g, `I launched a line of ${item.label.toLowerCase()}.`, profit >= 0 ? 'good' : 'bad')
   say(g, 'Merchandise', `${text} You spent ${money(item.cost)} and made ${money(revenue)} in sales (${profit >= 0 ? 'profit' : 'loss'}: ${money(Math.abs(profit))}).`, item.emoji, profit >= 0 ? 'good' : 'bad')
@@ -667,7 +668,7 @@ const recordEpisodeAction: MenuAction = {
     if (!p) return
     if (!useYearAction(g, 'fame.podcast', 3)) return tooBusy(g, 'recorded plenty of episodes')
     p.episodes += 1
-    const topic = pick(g, EPISODE_TOPICS)
+    const topic = pickLine(g, EPISODE_TOPICS)
     const roll = rand(g)
     let text: string
     if (roll < 0.15) {
@@ -744,7 +745,7 @@ const stuntScript = defineScript('special.fame.stunt', (g, choice) => {
       break
     case 'vanish': {
       const fine = Math.min(Math.max(0, c.money), 25_000)
-      if (fine > 0) spend(g, fine)
+      if (fine > 0) spend(g, fine, 'fine')
       addHidden(g, 'notoriety', 5)
       text = win
         ? `You "vanished" for two weeks and reappeared to a media frenzy.${fine > 0 ? ` The police fined you ${money(fine)} for wasting their time.` : ''}`
@@ -753,7 +754,7 @@ const stuntScript = defineScript('special.fame.stunt', (g, choice) => {
     }
     case 'charity': {
       const cost = Math.min(Math.max(0, c.money), 10_000)
-      if (cost > 0) spend(g, cost)
+      if (cost > 0) spend(g, cost, 'donation')
       addHidden(g, 'karma', 5)
       text = win ? `You gave away ${money(cost)} in surprise gifts. Fans called you an angel.` : `You gave away ${money(cost)}, but critics called it a shameless publicity grab.`
       break
@@ -815,11 +816,11 @@ const paparazziScript = defineScript('special.fame.paparazzi', (g, choice) => {
     text = good ? 'You struck a pose. The photos made the front page and you looked fantastic.' : 'You posed, but the tabloids ran the one photo where you were mid-sneeze.'
     tone = good ? 'good' : 'neutral'
   } else if (choice === 'hide') {
-    text = pick(g, ['You hid your face behind your bag. The headline read "WHAT IS THE STAR HIDING?"', 'You covered your face and walked into a lamppost.'])
+    text = pickLine(g, ['You hid your face behind your bag. The headline read "WHAT IS THE STAR HIDING?"', 'You covered your face and walked into a lamppost.'])
     if (chance(g, 0.4)) addFame(g, -1)
   } else if (choice === 'smash') {
     const fine = Math.min(Math.max(0, g.character.money), randInt(g, 5_000, 40_000))
-    if (fine > 0) spend(g, fine)
+    if (fine > 0) spend(g, fine, 'legal')
     addHidden(g, 'notoriety', 4)
     addFame(g, 2)
     text = `You smashed a photographer's camera. ${fine > 0 ? `You paid ${money(fine)} to settle the lawsuit. ` : ''}${online(g) && g.year >= 2006 ? 'The video went viral.' : 'It made every front page.'}`
@@ -932,7 +933,7 @@ function celebrityScenario(g: GameState): void {
       g,
       paparazziScript,
       'Paparazzi',
-      pick(g, ['Paparazzi ambushed you outside a restaurant.', 'A swarm of photographers is waiting outside your gym.', 'Paparazzi caught you buying a suspicious amount of toilet paper.']),
+      pickLine(g, ['Paparazzi ambushed you outside a restaurant.', 'A swarm of photographers is waiting outside your gym.', 'Paparazzi caught you buying a suspicious amount of toilet paper.']),
       [
         { id: 'pose', label: 'Pose for them', emoji: '\u{1F4F8}' },
         { id: 'ignore', label: 'Ignore them', emoji: '\u{1F610}' },
@@ -995,7 +996,7 @@ export function yearlyFame(g: GameState): void {
   if (p) {
     for (const b of p.books) {
       if (b.royalty >= 50) {
-        earnIncome(g, b.royalty)
+        earnIncome(g, b.royalty, 'royalty')
         b.royalty = Math.round(b.royalty / 2)
       } else b.royalty = 0
     }
@@ -1005,7 +1006,7 @@ export function yearlyFame(g: GameState): void {
       pod.listeners = Math.min(MAX_AUDIENCE, Math.max(50, Math.round(pod.listeners * (1 + drift))))
       const income = Math.round(pod.listeners * (0.4 + rand(g) * 0.5) * payScale(g))
       if (income > 0 && !c.prison) {
-        earnIncome(g, income)
+        earnIncome(g, income, 'royalty')
         log(g, `My ${podcastWord(g)} "${pod.name}" earned ${money(income)} from ads.`)
       }
     }

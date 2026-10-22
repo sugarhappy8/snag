@@ -4,8 +4,11 @@
 // returns (wealth-core donationKarma / donationFame).
 import { addHidden, addStat, attractedTo, count, currentPartner, log, notice, preferredGender, remember, removePerson, spend, useYearAction } from '../core'
 import { pick, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
+import { ADMIRER_LINES, SCAM_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import { randomFirstName } from '../world'
-import { eraPick, landline } from './era'
+import { eraPick, eraPickPlain, landline } from './era'
 import { channel, folks, mayAsk, scaled, type Ask, type AskDef } from './wealth-ask'
 import { addVenture, ventureOdds, VENTURE_PARTIAL } from './wealth-kids'
 import { boundary, markMarried, spouseFor } from './wealth-family'
@@ -25,6 +28,8 @@ import {
   yourOf,
 } from './wealth-core'
 import type { GameState, Person } from '../types'
+
+export { ADMIRER_LINES, SCAM_LINES }
 
 function he(p: Person): string {
   return p.gender === 'male' ? 'he' : 'she'
@@ -47,7 +52,7 @@ export function isMoocher(g: GameState, p: Person): boolean {
  */
 export function donate(g: GameState, amount: number, cause: string): boolean {
   const amt = Math.max(0, Math.round(amount))
-  if (amt <= 0 || !spend(g, amt)) return false
+  if (amt <= 0 || !spend(g, amt, 'donation')) return false
   const karma = donationKarma(g, amt)
   const fame = useYearAction(g, 'wealth.fame', 1) ? donationFame(g, amt) : 0
   noteDonation(g, amt)
@@ -92,7 +97,7 @@ export const WORLD_ASKS: AskDef[] = [
     weight: () => 2,
     build: (g, tier, p) => {
       if (!p) return null
-      const why = eraPick(g, ['a divorce lawyer', 'back rent', '@cars a car repair that turned into a new engine', 'a move across the country for a new job', '@creditCards a credit card bill that got out of hand', '@-1960 the grocer, the tailor and the bookie'])
+      const why = eraPickPlain(g, ['a divorce lawyer', 'back rent', '@cars a car repair that turned into a new engine', 'a move across the country for a new job', '@creditCards a credit card bill that got out of hand', '@-1960 the grocer, the tailor and the bookie'])
       const amt = scaled(g, 6_000, tier, p, 0.02)
       return { k: 'friend.loan', pid: p.id, title: 'A Favor', emoji: '\u{1F91D}', text: `${channel(g, p)}${cap(yourOf(p))} asked to borrow ${money(amt)} for ${why}. ${cap(he(p))} swears it's the first and last time, and to be fair, it is the first time.`, amt, what: why, less: true, lend: true }
     },
@@ -147,7 +152,7 @@ export const WORLD_ASKS: AskDef[] = [
     weight: () => 1.1,
     build: (g, tier, p) => {
       if (!p) return null
-      const idea = eraPick(g, ['@1935 a chain of laundromats with a bar inside', '@smartphone an app that tells you which app to use', '@+internet,1997 a website for selling used furniture', '@1990 a luxury dog bakery', '@2005 a board game cafe', '@1985 a gourmet popcorn franchise', 'a traveling circus (modern, ethical, mostly jugglers)', 'a hat shop for very large hats'])
+      const idea = eraPickPlain(g, ['@1935 a chain of laundromats with a bar inside', '@smartphone an app that tells you which app to use', '@+internet,1997 a website for selling used furniture', '@1990 a luxury dog bakery', '@2005 a board game cafe', '@1985 a gourmet popcorn franchise', 'a traveling circus (modern, ethical, mostly jugglers)', 'a hat shop for very large hats'])
       const amt = scaled(g, 60_000, tier, p, 0.04)
       return { k: 'friend.startup', pid: p.id, title: 'The Pitch', emoji: '\u{1F4C8}', text: `${channel(g, p)}${cap(yourOf(p))} pitched you ${idea} for ${money(amt)}. The slides had sound effects. ${cap(he(p))} used the word "disrupt" eleven times.`, amt, what: idea, less: true, odds: ventureOdds(p), partial: VENTURE_PARTIAL }
     },
@@ -228,13 +233,13 @@ export const WORLD_ASKS: AskDef[] = [
         label: (_g, a) => `Send the ${money(a.amt)}`,
         emoji: '\u{1F4B8}',
         run: (g, a) => {
-          if (!spend(g, a.amt)) {
+          if (!spend(g, a.amt, 'crime.take')) {
             notice(g, 'Opportunity Knocks', "You went to send the money and didn't have it. Possibly the luckiest broke moment of your life.", { emoji: '\u{1F4B8}' })
             return
           }
           count(g, 'scammed')
           addStat(g, 'happiness', -randInt(g, 4, 8))
-          log(g, `I lost ${money(a.amt)} to a scam.`, 'bad')
+          log(g, fillSlots(pickLine(g, SCAM_LINES), { money: money(a.amt) }), 'bad')
           notice(g, 'Scammed', `You sent ${money(a.amt)}. The "opportunity" stopped answering the next morning. The money is gone, and so is a little of your faith in people.`, { emoji: '\u{1F3A3}', tone: 'bad' })
         },
       },
@@ -244,7 +249,7 @@ export const WORLD_ASKS: AskDef[] = [
         emoji: '\u{1F46E}',
         run: (g) => {
           addHidden(g, 'karma', 2)
-          notice(g, 'Opportunity Knocks', pick(g, ['You reported it. The officer sighed: you are the ninth this week. They took a statement anyway.', `You reported it, and the police traced it to a man in a rented office with ${landline(g) ? 'forty phones' : 'a printing press and a stack of fake share certificates'}. You saved some people a lot of money.`]), { emoji: '\u{1F46E}', tone: 'good' })
+          notice(g, 'Opportunity Knocks', pickSite(g, ['You reported it. The officer sighed: you are the ninth this week. They took a statement anyway.', `You reported it, and the police traced it to a man in a rented office with ${landline(g) ? 'forty phones' : 'a printing press and a stack of fake share certificates'}. You saved some people a lot of money.`], 0xe76109b8), { emoji: '\u{1F46E}', tone: 'good' })
         },
       },
       {
@@ -281,12 +286,12 @@ export const WORLD_ASKS: AskDef[] = [
         label: (_g, a) => `Enjoy the attention (about ${money(a.amt)} in dinners and gifts)`,
         emoji: '\u{1F942}',
         run: (g, a) => {
-          if (!spend(g, a.amt)) {
+          if (!spend(g, a.amt, 'leisure')) {
             notice(g, 'Admirer', `Your card was declined at the first dinner. ${a.name ?? 'Your admirer'} excused themselves to the bathroom and never came back.`, { emoji: '\u{1F48B}' })
             return
           }
           addStat(g, 'happiness', randInt(g, 4, 8))
-          log(g, `I spent ${money(a.amt)} on an admirer who left when the gifts stopped.`)
+          log(g, fillSlots(pickLine(g, ADMIRER_LINES), { money: money(a.amt) }))
           notice(g, 'Admirer', `You had a glamorous few months with ${a.name ?? 'your admirer'}: dinners, gifts, a weekend away. When you hinted the gifts might slow down, so did everything else.`, { emoji: '\u{1F942}' })
         },
       },

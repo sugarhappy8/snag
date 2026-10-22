@@ -1,6 +1,6 @@
 // The money team's year-end step: the advisor's retainer, the manager's invoice and trades, the catch of a manager
 // who padded the bills, the advisor's review and one statement. It runs once a year after rent, tax and upkeep
-// are paid (aging.ts YEARLY_HOOKS), so the cash it spends is real and the manager's reserve protects the living costs.
+// are paid (the yearly registry, modules/yearly-aging.ts), so the cash it spends is real and the manager's reserve protects the living costs.
 //
 // This is the only code of the feature that draws from g.rng, and only after a manager has been paid: one chance
 // for the blunder, one for its direction when it fires, one for the catch when a crook has padded a bill. A game
@@ -80,7 +80,7 @@ function manage(g: GameState, team: Team): ManagerYear | null {
   const cash = Number.isFinite(g.character.money) ? g.character.money : 0
   const skim = manager.honest ? 0 : Math.min(crookedSkim(pool, mandate.limit), Math.max(0, Math.floor(cash - fee)))
   const bill = fee + skim
-  if (!spend(g, bill)) {
+  if (!spend(g, bill, 'fee.bank')) {
     log(g, `${manager.name} left over an unpaid bill.`)
     dropManager(team)
     return null
@@ -105,7 +105,7 @@ function manage(g: GameState, team: Team): ManagerYear | null {
 
   // The slippage of a weaker manager comes out of the bank on the money moved.
   const costs = Math.min(Math.max(0, g.character.money), Math.round(moved * slipRate(manager.skill)))
-  if (costs > 0) addMoney(g, -costs)
+  if (costs > 0) addMoney(g, -costs, 'trade.buy')
 
   const stocks = stocksShare(managedBook(g))
   team.last = { year: g.year, pool, billed: bill, moved, costs, stocks }
@@ -119,7 +119,7 @@ function manage(g: GameState, team: Team): ManagerYear | null {
   if (!manager.honest && manager.skimmed > 0 && chance(g, catchOdds(team.advisor?.skill ?? null))) {
     const refund = Math.round(TERMS.clawback * manager.skimmed)
     const years = Math.max(1, g.year - manager.since)
-    addMoney(g, refund)
+    addMoney(g, refund, 'fee.bank')
     notice(
       g,
       'Missing Money',
@@ -152,7 +152,7 @@ export function yearlyAdvisors(g: GameState): void {
   const advisor = team.advisor
   if (advisor) {
     const fee = advisorFee(g, advisor.skill)
-    if (spend(g, fee)) {
+    if (spend(g, fee, 'fee.bank')) {
       fees += fee
       lines.push(`${advisor.name} charged ${money(fee)}.`)
     } else {

@@ -6,6 +6,7 @@
 // Options are priced off the real distribution of the index's yearly moves plus a market-maker
 // markup, so every trade has a negative expected value: skill shaves the markup, never past
 // zero. Max loss when buying is the premium; selling options can blow up into margin debt.
+import { moveCash, personCash, personPurse, playerPurse } from '../cash'
 import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, formatMoney, getPerson, log, notice, relationLabel, remember, scriptChoice, scriptInput, shortMoney, useYearAction } from '../core'
 import { taxAdditionalIncome } from '../finance'
 import { GAMBLING_ADDICTION } from '../gambling'
@@ -14,7 +15,8 @@ import { PRESENT_YEAR } from '../history/timeline'
 import { marketInstinct, type Instinct } from '../invest/instinct'
 import { indexShockFactor } from '../invest/shocks'
 import { liftSkill } from '../mastery'
-import { chance, pick, randInt, uid } from '../rng'
+import { chance, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { isRealBrandName } from '../shops/everyday-brands'
 import { HINT_EMOJI, talentHint } from '../talents'
@@ -259,15 +261,15 @@ export function bankGain(g: GameState, st: MoneyState, gain: number, cashIn: num
   const gn = Number.isFinite(gain) ? Math.round(gain) : 0
   if (gn <= 0) {
     st.lossCarry = dollars(st.lossCarry - gn)
-    if (cash > 0) addMoney(g, cash)
+    if (cash > 0) addMoney(g, cash, 'trade.sell')
     return 0
   }
   const offset = Math.min(st.lossCarry, gn)
   st.lossCarry = dollars(st.lossCarry - offset)
   const taxable = gn - offset
   // earnIncome adds the money too, so credit only the rest of the cash here.
-  addMoney(g, cash - taxable)
-  earnIncome(g, taxable)
+  addMoney(g, cash - taxable, 'trade.sell')
+  earnIncome(g, taxable, 'trade.sell')
   return now && taxable > 0 ? taxAdditionalIncome(g, taxable) : 0
 }
 
@@ -291,7 +293,7 @@ export function maybeTradingAddiction(g: GameState, stake: number, moneyBefore: 
   notice(
     g,
     'Hooked',
-    pick(g, [
+    pickLine(g, [
       'You check option prices in the shower. You check them at funerals. You have developed a gambling addiction; the casino just happens to be your brokerage app.',
       'You told yourself it was "investing." Your heart rate says otherwise. You have developed a gambling addiction.',
       'You now refer to your savings as "dry powder." You have developed a gambling addiction.',
@@ -502,7 +504,7 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
     // The broker holds the premium as collateral until expiry: it nets out at settlement, so it
     // can't be spent (or left to heirs) before the options are paid for.
     if (f.mode !== 'paper') {
-      addMoney(g, -cost)
+      addMoney(g, -cost, 'trade.buy')
       st.trades += 1
       count(g, 'optionTrades')
     }
@@ -531,11 +533,11 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
   else if (f.mode === 'parent') {
     parent = getPerson(g, f.parentId)
     if (!parent) return
-    parent.money = Math.round(parent.money - premium - cost)
+    personCash(g, parent, Math.round(parent.money - premium - cost) - parent.money, 'trade.buy')
     count(g, 'optionTrades')
   } else {
     const before = g.character.money
-    addMoney(g, -(premium + cost))
+    addMoney(g, -(premium + cost), 'trade.buy')
     st.trades += 1
     count(g, 'optionTrades')
     maybeTradingAddiction(g, premium, before)
@@ -549,13 +551,13 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
   notice(
     g,
     'Position Opened',
-    `You bought ${formatMoney(premium)} of ${f.strike === 'lotto' ? 'lottery-ticket ' : f.strike === 'otm' ? 'out-of-the-money ' : ''}${dirWord(f.dir)} on the ${inf.ex.index}${where} (about ${lev >= 10 ? Math.round(lev) : lev.toFixed(1)}x leverage). They settle when the year ends. ${pick(g, ['Now you just have to refresh the chart 400 times a day.', 'You whispered "to the moon" at your screen. Your screen did not respond.', 'Your stomach is already doing its own price action.'])}${f.mode === 'parent' ? ' You cleared the browser history, just in case.' : ''}`,
+    `You bought ${formatMoney(premium)} of ${f.strike === 'lotto' ? 'lottery-ticket ' : f.strike === 'otm' ? 'out-of-the-money ' : ''}${dirWord(f.dir)} on the ${inf.ex.index}${where} (about ${lev >= 10 ? Math.round(lev) : lev.toFixed(1)}x leverage). They settle when the year ends. ${pickLine(g, ['Now you just have to refresh the chart 400 times a day.', 'You whispered "to the moon" at your screen. Your screen did not respond.', 'Your stomach is already doing its own price action.'])}${f.mode === 'parent' ? ' You cleared the browser history, just in case.' : ''}`,
     { emoji: f.dir === 'call' ? '\u{1F4C8}' : '\u{1F4C9}' },
   )
 })
 
 function tooMuch(g: GameState): void {
-  notice(g, 'Market Closed', pick(g, ["You've traded enough this year. Your broker's app now opens with a meditation prompt.", 'Your eyes are twitching from staring at candlestick charts. Take a break until next year.', "You've hit your trading limit for the year. The market will still be there next year. Probably."]), { emoji: '\u{1F6D1}' })
+  notice(g, 'Market Closed', pickLine(g, ["You've traded enough this year. Your broker's app now opens with a meditation prompt.", 'Your eyes are twitching from staring at candlestick charts. Take a break until next year.', "You've hit your trading limit for the year. The market will still be there next year. Probably."]), { emoji: '\u{1F6D1}' })
 }
 
 // ---------------------------------------------------------------------------
@@ -639,7 +641,7 @@ defineScript(YOLO_SIZE_SCRIPT, (g, value, data) => {
     parentLine = parentTrade(g, st, p, premium, cost, payout, true)
   } else {
     const before = g.character.money
-    addMoney(g, -(premium + cost))
+    addMoney(g, -(premium + cost), 'trade.buy')
     st.trades += 1
     st.pnl = Math.round(st.pnl + net - cost)
     count(g, 'optionTrades')
@@ -652,13 +654,13 @@ defineScript(YOLO_SIZE_SCRIPT, (g, value, data) => {
   let text: string
   if (payout <= 0) {
     title = 'Expired Worthless'
-    text = `${day} Your ${formatMoney(premium)} of 0DTE ${dirWord(f.dir)} expired worthless${paper}. ${pick(g, ['You stared at the screen until it went dark. So did your soul.', 'You posted a screenshot of the loss for internet points. You got three.', 'The market maker who sold them to you is having a lovely evening.'])}`
+    text = `${day} Your ${formatMoney(premium)} of 0DTE ${dirWord(f.dir)} expired worthless${paper}. ${pickLine(g, ['You stared at the screen until it went dark. So did your soul.', 'You posted a screenshot of the loss for internet points. You got three.', 'The market maker who sold them to you is having a lovely evening.'])}`
   } else if (net < 0) {
     title = 'Bled Out'
     text = `${day} Your ${dirWord(f.dir)} clawed back ${formatMoney(payout)} of your ${formatMoney(premium)}${paper}. A loss, but a dignified one.`
   } else if (mult >= 3) {
     title = 'Printed!'
-    text = `${day} Your ${formatMoney(premium)} of ${dirWord(f.dir)} turned into ${formatMoney(payout)}${paper}! You did a lap around the house. ${pick(g, ['You are now insufferable at parties.', 'You briefly considered quitting everything to do this full time. Briefly.', 'Somewhere, a market maker sighed.'])}`
+    text = `${day} Your ${formatMoney(premium)} of ${dirWord(f.dir)} turned into ${formatMoney(payout)}${paper}! You did a lap around the house. ${pickLine(g, ['You are now insufferable at parties.', 'You briefly considered quitting everything to do this full time. Briefly.', 'Somewhere, a market maker sighed.'])}`
   } else {
     title = 'Green Day'
     text = `${day} Your ${dirWord(f.dir)} paid ${formatMoney(payout)} on ${formatMoney(premium)}${paper}. A win's a win.`
@@ -675,12 +677,12 @@ defineScript(YOLO_SIZE_SCRIPT, (g, value, data) => {
  * what was lost). Returns a sentence when the parent notices ('' otherwise).
  */
 function parentTrade(g: GameState, st: MoneyState, p: Person, premium: number, cost: number, payout: number, payNow: boolean): string {
-  if (payNow) p.money = Math.round(p.money - premium - cost)
+  if (payNow) personCash(g, p, Math.round(p.money - premium - cost) - p.money, 'trade.buy')
   const profit = Math.max(0, payout - premium)
   const parentLoss = Math.max(0, premium + cost - payout)
   const noticeP = profit > 0 ? 0.25 : clampNum(0.2 + (0.6 * parentLoss) / Math.max(500, p.money * 0.05), 0.2, 0.9)
   if (!chance(g, noticeP)) {
-    p.money = Math.round(p.money + Math.min(payout, premium))
+    personCash(g, p, Math.round(p.money + Math.min(payout, premium)) - p.money, 'trade.sell')
     if (profit > 0) {
       bankGain(g, st, profit, profit, payNow)
       addHidden(g, 'karma', -2)
@@ -689,7 +691,7 @@ function parentTrade(g: GameState, st: MoneyState, p: Person, premium: number, c
     return ''
   }
   // Caught: everything the trade paid stays in the parent's account.
-  p.money = Math.round(p.money + payout)
+  personCash(g, p, Math.round(p.money + payout) - p.money, 'trade.sell')
   return parentFindsTrades(g, p, parentLoss, profit)
 }
 
@@ -701,8 +703,7 @@ function parentFindsTrades(g: GameState, p: Person, loss: number, profit: number
   if (loss > 0) {
     const paid = Math.min(dollars(g.character.money), dollars(loss))
     if (paid > 0) {
-      addMoney(g, -paid)
-      p.money = Math.round(p.money + paid)
+      moveCash(g, playerPurse(g), personPurse(p), paid, 'gift')
       repay = ` You had to pay back ${formatMoney(paid)} of the ${formatMoney(loss)} you lost.`
     } else repay = ` You couldn't pay back a cent of the ${formatMoney(loss)}, so you'll be doing chores until you're thirty.`
   }
@@ -772,7 +773,7 @@ export function settleOptions(g: GameState, st: MoneyState): News | null {
       if (net >= 0) bankGain(g, st, net, net, false)
       else {
         st.lossCarry = dollars(st.lossCarry - net)
-        const financed = payOrBorrow(g, -net, `${st.broker || brokerName(g.character.countryId, g.year)} margin desk`)
+        const financed = payOrBorrow(g, -net, `${st.broker || brokerName(g.character.countryId, g.year)} margin desk`, 'trade.buy')
         if (financed > 0) {
           t.margin += financed
           count(g, 'marginCalls')
@@ -814,10 +815,10 @@ export function compulsiveTrading(g: GameState, st: MoneyState): void {
   if (!c.conditions.some((x) => x.name === GAMBLING_ADDICTION) || !chance(g, 0.35)) return
   const lost = dollars(c.money * (0.03 + randInt(g, 0, 9) / 100))
   if (lost <= 0) return
-  addMoney(g, -lost)
+  addMoney(g, -lost, 'trade.buy')
   st.pnl = Math.round(st.pnl - lost)
   st.lossCarry = dollars(st.lossCarry + lost)
-  log(g, pick(g, [`I lost ${formatMoney(lost)} revenge-trading options at 3 a.m.`, `I promised myself I'd stop trading. Then I lost ${formatMoney(lost)} on "one last play."`, `My trading habit ate ${formatMoney(lost)} this year.`]), 'bad')
+  log(g, pickSite(g, [`I lost ${formatMoney(lost)} revenge-trading options at 3 a.m.`, `I promised myself I'd stop trading. Then I lost ${formatMoney(lost)} on "one last play."`, `My trading habit ate ${formatMoney(lost)} this year.`], 0xe5cf0cb1), 'bad')
 }
 
 // ---------------------------------------------------------------------------

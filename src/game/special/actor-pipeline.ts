@@ -4,6 +4,7 @@
 // (`pushOdds`, `grossOf`, `awardOdds`). `landProject` is the only place a role becomes a `Proj`.
 // Imports from actor.ts are used inside function bodies only (it imports this file back).
 import { seeded } from '../assets'
+import { personCash } from '../cash'
 import { addRelationship, addStat, article, count, fullName, getPerson, remember as rememberLife, useYearAction, yearActionsUsed } from '../core'
 import { techOdds } from '../history/timeline'
 import { brandPool } from '../shops/everyday-brands'
@@ -389,7 +390,8 @@ export function landProject(c: CareerCtx<ActorState>, l: Listing, role: Role): P
     for (let i = 0; i < n; i++) {
       const person = addColleague(g, p.studio, chance(g, 0.5) ? 'Actor' : 'Actress', { ageOffset: [-12, 15], relationship: randInt(g, 35, 65) })
       person.occupation = person.gender === 'female' ? 'Actress' : 'Actor'
-      person.money = randInt(g, 50, 5_000) * 1_000
+      // The colleague's savings are rolled once, here; the books take the change from the pool of luck, so the account opens at that difference.
+      personCash(g, person, randInt(g, 50, 5_000) * 1_000 - person.money, 'luck')
       if (chance(g, 0.35)) person.traits = ['arrogant', ...person.traits].slice(0, 3)
       person.data.costarOf = p.title
       p.costars.push(person.id)

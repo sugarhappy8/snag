@@ -1,5 +1,7 @@
 import type { GameState, Person, RelationKind } from '../types'
+import { personCash } from '../cash'
 import { addMoney, earnIncome, fullName, log } from '../core'
+import type { Reason } from '../kernel/reasons'
 import { CHARITY, willSlices } from '../events/will-core'
 import { allGroups, groupsOf, groupValue, liveGroup, readMembership, saveGroup, syncMembers, type Group } from './conglomerate-state'
 import { bizOf, businessAssets, readBiz, type BizState } from './state'
@@ -74,15 +76,17 @@ function payHolder(g: GameState, holderId: string, gross: number, income: boolea
     log(g, `${money(gross)} of ${what} went to charity, as the family will directed.`, 'neutral')
     return
   }
+  // A dividend is the company's payout and a sale or closure is firm.sale; each holder takes a part (the tax withheld stays in the pool).
+  const reason: Reason = income ? 'dividend' : 'firm.sale'
   const alive = livingHolder(g, holderId)
-  if (alive) { alive.money += gross * (income ? .8 : 1); return }
+  if (alive) { personCash(g, alive, gross * (income ? .8 : 1), reason); return }
   const dead = g.people.find(x => x.id === holderId)
   const heirs = dead ? familyStakeHeirs(g, dead) : []
   for (const id of heirs) {
     const part = gross / heirs.length
-    if (id === g.character.id) { if (income) earnIncome(g, part); else addMoney(g, part); continue }
+    if (id === g.character.id) { if (income) earnIncome(g, part, 'dividend'); else addMoney(g, part, 'firm.sale'); continue }
     const heir = g.people.find(x => x.id === id)
-    if (heir) heir.money += part * (income ? .8 : 1)
+    if (heir) personCash(g, heir, part * (income ? .8 : 1), reason)
   }
 }
 

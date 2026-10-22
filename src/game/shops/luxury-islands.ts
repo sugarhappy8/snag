@@ -2,10 +2,12 @@
 // as 'house' assets (details.typeLabel 'Private Island') so the regular house actions (move in,
 // party, rent out, amenities, renovate, sell, upkeep) keep working. Also island getaways, island
 // parties, renaming and the yearly island events (storms, treasure, noisy neighbors...).
+import { lend } from '../cash'
 import { conditionLabel, MORTGAGE_PLANS, mortgageDecision, nicePrice, seeded, yearKey, type MortgagePlan } from '../assets'
 import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, shortMoney, spend, useYearAction } from '../core'
 import { creditLabel, creditScore } from '../finance'
 import { chance, pick, randInt, weightedPick } from '../rng'
+import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, Mortgage } from '../types'
 import { getCountry, type Continent } from '../world'
@@ -308,7 +310,7 @@ export function buyIsland(g: GameState, l: IslandListing, plan: MortgagePlan | n
   }
   let mortgage: Mortgage | undefined
   if (!plan) {
-    if (!spend(g, l.price)) {
+    if (!spend(g, l.price, 'property.buy')) {
       cantAfford(g, l.price, l.name)
       return null
     }
@@ -318,7 +320,8 @@ export function buyIsland(g: GameState, l: IslandListing, plan: MortgagePlan | n
       notice(g, 'Loan Denied', d.reason, { emoji: '\u{1F3E6}', tone: 'bad' })
       return null
     }
-    spend(g, d.down)
+    spend(g, d.down, 'property.buy')
+    lend(g, d.principal, 'pool:sellers') // the lender creates the loan; the sellers' pool gets the whole price
     mortgage = { lender: pick(g, ['Lagoon Private Bank', 'Atoll Trust & Co.', 'Old Harbour Private Bank', 'Meridian Wealth Lending']), balance: d.principal, yearlyPayment: d.payment, yearsLeft: plan.years, rate: d.rate }
   }
   const region = regionById(l.regionId)
@@ -543,7 +546,7 @@ function islandPartyAction(a: Asset): MenuAction {
         return
       }
       const cost = islandPartyCost(g)
-      if (!spend(g, cost)) {
+      if (!spend(g, cost, 'leisure')) {
         g.yearActions[`luxury.islandParty.${cur.id}`] = 0
         cantAfford(g, cost, 'an island bash')
         return
@@ -555,13 +558,13 @@ function islandPartyAction(a: Asset): MenuAction {
         addHidden(g, 'notoriety', randInt(g, 2, 5))
         addHidden(g, 'fame', randInt(g, 1, 3))
         log(g, `My party on ${name} made the tabloids for the wrong reasons.`, 'bad')
-        notice(g, 'Party Disaster', pick(g, [`The last water taxi left at midnight and stranded 80 guests on ${name}. Someone started a "Lord of the Flies" livestream. It trended.`, `The fireworks barge drifted into the guest marina. Nobody was hurt, but three speedboats are now modern art.`, `A guest tried to ride one of the goats into the lagoon. The video has six million views and you are tagged in all of them.`]), { emoji: '\u{1F525}', tone: 'bad' })
+        notice(g, 'Party Disaster', pickSite(g, [`The last water taxi left at midnight and stranded 80 guests on ${name}. Someone started a "Lord of the Flies" livestream. It trended.`, `The fireworks barge drifted into the guest marina. Nobody was hurt, but three speedboats are now modern art.`, `A guest tried to ride one of the goats into the lagoon. The video has six million views and you are tagged in all of them.`], 0x577d4988), { emoji: '\u{1F525}', tone: 'bad' })
         return
       }
       addStat(g, 'happiness', randInt(g, 6, 12))
       addHidden(g, 'fame', randInt(g, 2, 5))
       log(g, `I threw a legendary party on my island, ${name}.`, 'good')
-      const text = pick(g, [`Your party on ${name} was the talk of every yacht for a hundred miles. A DJ played on the beach until sunrise.`, `Seaplanes kept landing all night. Someone proposed on your dock. Someone else got rejected on your dock.`, `Your island bash had a lobster tower, a fire dancer and a pop-up tattoo parlor. You regret one of those.`])
+      const text = pickSite(g, [`Your party on ${name} was the talk of every yacht for a hundred miles. A DJ played on the beach until sunrise.`, `Seaplanes kept landing all night. Someone proposed on your dock. Someone else got rejected on your dock.`, `Your island bash had a lobster tower, a fire dancer and a pop-up tattoo parlor. You regret one of those.`], 0x963d7fbc)
       if (roll >= 70) {
         meetCeleb(g, rollCeleb(g, undefined, chance(g, 0.5)), `a party on ${name}`, `${text}`)
         return
@@ -699,7 +702,7 @@ const INFLUENCERS = defineScript('luxury.island.influencers', (g, choice, data) 
     notice(g, 'Trespassers', `Your groundskeeper chased them off with a leaf blower. The video of it got more views than any of their posts.`, { emoji: '\u{1F32C}\u{FE0F}' })
   } else if (choice === 'charge') {
     const fee = nicePrice(randInt(g, 5_000, 40_000))
-    addMoney(g, fee)
+    addMoney(g, fee, 'royalty')
     log(g, `I charged influencers ${formatMoney(fee)} to shoot on ${island}.`, 'good')
     notice(g, 'Location Fee', `You charged them ${formatMoney(fee)} for a "location license." They paid it without blinking and tagged ${island} 400 times.`, { emoji: '\u{1F4B5}', tone: 'good' })
   } else {
@@ -730,7 +733,7 @@ export function islandEventCandidates(g: GameState): Candidate[] {
           const dmg = randInt(g, 10, 35)
           if (a.details.insured === true) {
             const ded = nicePrice(Math.min(a.value * 0.01, 250_000))
-            addMoney(g, -Math.min(ded, Math.max(0, g.character.money)))
+            addMoney(g, -Math.min(ded, Math.max(0, g.character.money)), 'premium')
             log(g, `A ${storm} hit my island, ${name}. Insurance paid for the repairs.`, 'bad')
             notice(g, `${storm.charAt(0).toUpperCase()}${storm.slice(1)}!`, `A ${storm} tore across ${name}, flattening palms and tossing your dock into the lagoon. Your insurer paid for repairs, minus a ${formatMoney(ded)} deductible.`, { emoji: '\u{1F300}', tone: 'bad' })
           } else {
@@ -749,7 +752,7 @@ export function islandEventCandidates(g: GameState): Candidate[] {
         weight: 2,
         fire: () => {
           const found = nicePrice(randInt(g, 40_000, 1_500_000))
-          addMoney(g, found)
+          addMoney(g, found, 'luck')
           addStat(g, 'happiness', 8)
           count(g, 'treasureFound')
           remember(g, `Found treasure worth ${formatMoney(found)} on my island, ${name}.`)

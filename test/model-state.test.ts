@@ -257,8 +257,8 @@ describe('model state', () => {
     expect([v.standing, v.book, v.rep, v.mother, v.floor, v.ledger, v.proteges, v.life.gross]).toEqual([20, 0, 50, null, 0, [], [], 0])
   })
 
-  it('keeps SAVE_SCHEMA at 2', () => {
-    expect(SAVE_SCHEMA).toBe(2)
+  it('has SAVE_SCHEMA at 3', () => {
+    expect(SAVE_SCHEMA).toBe(3)
     expect(modelStore.key).toBe('model.sim')
     expect(modelStore.version).toBe(1)
   })

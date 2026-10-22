@@ -5,6 +5,7 @@ import { ECONOMY_VERSION, initialCountry, normalizeCountry, SECTORS, STOCK_SECTO
 import { advanceCountry, worldConditions } from '../src/game/economy/simulation'
 import { sectorSupply } from '../src/game/economy/supply'
 import { economyMenu } from '../src/game/economy/menu'
+import { SAVE_SCHEMA } from '../src/game/core'
 import { loadSnapshot, memorySnapshotBackend, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
 import type { GameState, Json, MenuNode } from '../src/game/types'
 
@@ -199,12 +200,14 @@ describe('World Simulation 2.0: persistent supplier constraints', () => {
 
   it('keeps supplier buffers, backlogs and exact next-year results across version-2 Time Machine frames', async () => {
     const g = makeTestGame(912, { age: 30, money: 54321 })
+    // Every game the engine makes says its schema; a snapshot restores through migrateSave (R2-S9), which stamps one that does not.
+    g.schemaVersion = SAVE_SCHEMA
     g.lifeId = 'world2-supply-snapshot'
     g.year = 2030
     g.log = [{ age: 30, year: 2030, entries: [] }]
     ensureEconomy(g)
     // Include both opening/closing frames and populated history, not only a newly
-    // initialized world, so both v2 chunk formats must survive the snapshot.
+    // initialized world, so all of it must survive the snapshot (as one `world` chunk since R2-S9).
     g.year++; g.character.age++
     g.log.push({ age: 31, year: 2031, entries: [] })
     yearlyEconomy(g)
@@ -219,7 +222,8 @@ describe('World Simulation 2.0: persistent supplier constraints', () => {
     await snapshotWritesSettled()
     expect(await takeSnapshot(g)).toBe(true)
     expect((await backend.keys()).some(key => key.includes('world.'))).toBe(true)
-    expect((await backend.keys()).some(key => key.includes('history.'))).toBe(true)
+    // The v4.1.1 layout cut the history into `history.<hash>` frames; the codec keeps the whole economy in one world chunk.
+    expect((await backend.keys()).some(key => key.includes('history.'))).toBe(false)
     const restored = await loadSnapshot(g.lifeId, 31)
     expect(restored).not.toBeNull()
     expect(restored!.flags.worldEconomy).toEqual(g.flags.worldEconomy)

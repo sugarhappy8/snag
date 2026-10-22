@@ -4,6 +4,7 @@
 // (so ribbons and the profile see the player's main account).
 import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, relationLabel, remember, scriptChoice, spend, useYearAction } from '../core'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, SocialMedia } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, claimYearly, compact, fameOf, money, peek, prof, say, tell } from './common'
@@ -459,30 +460,30 @@ function resolvePost(g: GameState, acct: Account, plat: Platform, stat: StatSour
 function postSummary(g: GameState, what: string, plat: Platform, r: PostResult): string {
   const noun = plat.noun
   if (r.viral) {
-    return pick(g, [
+    return pickSite(g, [
       `Your ${what} went VIRAL! It racked up ${compact(r.likes)} likes and you gained ${compact(r.gained)} new ${noun}.`,
       `The internet lost its mind over your ${what}. ${compact(r.gained)} new ${noun} and counting!`,
       `Your ${what} is everywhere. ${compact(r.likes)} likes, ${compact(r.gained)} new ${noun}, and a morning show wants to talk about it.`,
-    ])
+    ], 0xc1e2fbd8)
   }
   if (r.gained < 0) {
-    return pick(g, [
+    return pickSite(g, [
       `Your ${what} flopped. Only ${compact(r.likes)} people liked it and you lost ${compact(-r.gained)} ${noun}.`,
       `Nobody liked your ${what}. ${compact(-r.gained)} ${noun} hit unfollow.`,
       `Your ${what} got ${compact(r.likes)} likes, mostly from bots. You lost ${compact(-r.gained)} ${noun}.`,
-    ])
+    ], 0x2985647d)
   }
   if (r.good) {
-    return pick(g, [
+    return pickSite(g, [
       `Your ${what} got ${compact(r.likes)} likes and you gained ${compact(r.gained)} new ${noun}.`,
       `People loved your ${what}: ${compact(r.likes)} likes and ${compact(r.gained)} new ${noun}.`,
       `Your ${what} did well, picking up ${compact(r.likes)} likes and ${compact(r.gained)} ${noun}.`,
-    ])
+    ], 0xaf33cd6f)
   }
-  return pick(g, [
+  return pickSite(g, [
     `Your ${what} got a lukewarm ${compact(r.likes)} likes. You gained ${compact(r.gained)} ${noun}.`,
     `Your ${what} got ${compact(r.likes)} likes. Your mom commented "nice". You gained ${compact(r.gained)} ${noun}.`,
-  ])
+  ], 0xe6a2f876)
 }
 
 const hateScript = defineScript('special.social.hate', (g, choice, data) => {
@@ -518,11 +519,11 @@ function maybeHate(g: GameState, plat: Platform, risk: number): void {
     g,
     hateScript,
     'Hate Comments',
-    pick(g, [
+    pickSite(g, [
       `Your latest ${plat.name} post is flooded with hate comments.`,
       `A swarm of trolls found your ${plat.name} post. The comments are brutal.`,
       `Someone wrote "ratio + nobody asked" under your post and it got thousands of likes.`,
-    ]),
+    ], 0xb77e757c),
     [
       { id: 'ignore', label: 'Ignore them', emoji: '\u{1F610}' },
       { id: 'clap', label: 'Clap back', emoji: '\u{1F525}' },
@@ -585,7 +586,7 @@ const streamLengthScript = defineScript('special.social.streamLength', (g, choic
   let tips = 0
   if (acct.monetized) {
     tips = Math.round(viewers * len.hours * (0.05 + rand(g) * 0.2))
-    if (tips > 0) earnIncome(g, tips)
+    if (tips > 0) earnIncome(g, tips, 'royalty')
   }
   log(g, `I livestreamed ${cat.label} on Glitch for ${len.hours} hours.`, r.good ? 'good' : 'neutral')
   sync(g)
@@ -635,7 +636,7 @@ const promoScript = defineScript('special.social.promo', (g, choice, data) => {
   const acct = account(g, offer.platform)
   if (!acct) return
   if (choice !== 'accept') return say(g, plat.name, `You turned down ${offer.sponsor}. Your integrity remains intact (for now).`, '\u{1F91D}')
-  earnIncome(g, offer.pay)
+  earnIncome(g, offer.pay, 'royalty')
   count(g, 'sponsoredPosts')
   let text = `You promoted ${offer.product} for ${offer.sponsor} on ${plat.name} and earned ${money(offer.pay)}.`
   if (offer.shady && chance(g, 0.7)) {
@@ -645,7 +646,7 @@ const promoScript = defineScript('special.social.promo', (g, choice, data) => {
     addFame(g, -1)
     text += lost > 0 ? ` Your ${plat.noun} saw right through it and ${compact(lost)} of them unfollowed you.` : ` The followers were bought, so none left.`
   } else {
-    text += pick(g, [' Your fans didn\'t seem to mind.', ' A few fans even bought it.', ' Nobody noticed it was an ad. Perfect.'])
+    text += pickLine(g, [' Your fans didn\'t seem to mind.', ' A few fans even bought it.', ' Nobody noticed it was an ad. Perfect.'])
   }
   log(g, `I promoted ${offer.product} on ${plat.name}.`)
   sync(g)
@@ -700,7 +701,7 @@ const celebActScript = defineScript('special.social.celebAct', (g, choice, data)
       const gained = Math.round(500 + organic(acct) * 0.05 + rand(g) * 5_000)
       acct.followers += gained
       text = `You complimented ${celeb}. They followed you back! You gained ${compact(gained)} ${plat.noun} from the attention.`
-    } else text = pick(g, [`You complimented ${celeb}. They didn't notice.`, `You told ${celeb} they were your hero. Their assistant liked it.`])
+    } else text = pickSite(g, [`You complimented ${celeb}. They didn't notice.`, `You told ${celeb} they were your hero. Their assistant liked it.`], 0xd386f1c6)
   } else if (choice === 'insult') {
     if (chance(g, 0.3)) {
       const gained = Math.round(200 + organic(acct) * 0.03 + rand(g) * 3_000)
@@ -802,7 +803,7 @@ const buyScript = defineScript('special.social.buy', (g, choice, data) => {
   const acct = account(g, plat.id)
   const pack = BUY_PACKS.find((b) => b.id === choice)
   if (!acct || !pack) return
-  if (!spend(g, pack.cost)) return tell(g, plat.name, `You can't afford ${money(pack.cost)} for fake ${plat.noun}.`, '\u{1F4B8}')
+  if (!spend(g, pack.cost, 'purchase')) return tell(g, plat.name, `You can't afford ${money(pack.cost)} for fake ${plat.noun}.`, '\u{1F4B8}')
   acct.followers += pack.amount
   acct.fake = boundedFake((acct.fake ?? 0) + pack.amount, acct.followers)
   acct.spam += pack.amount >= 100_000 ? 3 : pack.amount >= 10_000 ? 2 : 1
@@ -853,7 +854,7 @@ const hackScript = defineScript('special.social.hack', (g, choice, data) => {
   if (!acct) return
   let text: string
   if (choice === 'pay') {
-    if (spend(g, d.ransom)) {
+    if (spend(g, d.ransom, 'crime.take')) {
       if (chance(g, 0.7)) text = `You paid the hacker ${money(d.ransom)} and got your ${plat.name} account back.`
       else {
         scaleFollowers(acct, 0.6)
@@ -1088,7 +1089,7 @@ function deleteAction(plat: Platform): MenuAction {
       p.accounts = p.accounts.filter((a) => a.platform !== plat.id)
       sync(g)
       log(g, `I deleted my ${plat.name} account.`)
-      say(g, plat.name, pick(g, [`You deleted your ${plat.name} account. You feel lighter already.`, `You deleted ${plat.name}. You just reclaimed six hours of your day.`]), '\u{1F5D1}\u{FE0F}')
+      say(g, plat.name, pickSite(g, [`You deleted your ${plat.name} account. You feel lighter already.`, `You deleted ${plat.name}. You just reclaimed six hours of your day.`], 0xa3006ea0), '\u{1F5D1}\u{FE0F}')
     },
   }
 }
@@ -1185,7 +1186,7 @@ export function yearlySocial(g: GameState): void {
       const [lo, hi] = plat.payRate
       const income = Math.min(Math.round(organic(acct) * (lo + rand(g) * (hi - lo)) * Math.min(1, recentPosts / 4)), 1500 * typicalIncome(g))
       if (income > 0) {
-        earnIncome(g, income)
+        earnIncome(g, income, 'royalty')
         count(g, 'influencerIncome', income)
         log(g, `My ${plat.name} ${plat.stream ? 'streams' : 'content'} earned ${money(income)}.`, 'good')
       }

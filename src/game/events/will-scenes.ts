@@ -5,6 +5,7 @@
 //
 // The builders (queue...) are called by will-feud.ts and will-amends.ts; the handlers are
 // registered at import time with defineScript.
+import { moveCash } from '../cash'
 import { addHidden, addMoney, clamp, addRelationship, addStat, canAfford, formatMoney, getPerson, inPrison, log, netWorth, notice, pronouns, scriptChoice, scriptInput } from '../core'
 import { couplesCounseling } from '../love'
 import { notePerson } from '../people'
@@ -13,6 +14,7 @@ import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, Json, Person } from '../types'
 import { common, landline, phoneWord } from './era'
 import { addEntitlement, entitlement, goodsScale, noteCashGift, updateTies, readTies } from './wealth-core'
+import { askedPurse, wholePurse } from './purses'
 import { addHeir, changeWill, learn, reconcile, type ChangeReport } from './will-act'
 import {
   angerAfterShare,
@@ -274,8 +276,7 @@ export function payOff(g: GameState, p: Person, amt: number): string | null {
   const relief = giftRelief(g, p, amt)
   // Goodwill follows the anger that was really there to soothe, so a small grudge can't be milked for trust.
   const eased = Math.min(relief, readWl(g, p).anger)
-  addMoney(g, -amt)
-  p.money = Math.round(p.money + amt)
+  moveCash(g, askedPurse(g), wholePurse(p), amt, 'gift')
   noteCashGift(g, p, amt)
   updateWl(g, p, (x) => {
     x.anger -= relief
@@ -355,8 +356,7 @@ defineScript(S_SPOUSE, (g, choice, data) => {
     const offer = settlementOffer(g, p)
     if (offer < 1 || !canAfford(g, offer)) return
     const relief = giftRelief(g, p, offer)
-    addMoney(g, -offer)
-    p.money = Math.round(p.money + offer)
+    moveCash(g, askedPurse(g), wholePurse(p), offer, 'gift')
     updateTies(g, p, (t) => {
       t.given += offer
     })
@@ -425,7 +425,7 @@ defineScript(S_PRESS, (g, choice, data) => {
   if (choice === 'pr') {
     const cost = pressCost(g)
     if (!canAfford(g, cost)) return
-    addMoney(g, -cost)
+    addMoney(g, -cost, 'purchase')
     addStat(g, 'happiness', -1)
     log(g, `I hired ${g.year < 1950 ? 'a press agent' : 'a publicist'} to deal with the story about my will (${formatMoney(cost)}).`)
     notice(g, 'Damage Control', `The ${g.year < 1950 ? 'press agent' : 'publicist'} buried the story under three better ones. It cost ${formatMoney(cost)}. ${p ? `${p.firstName} was not thrilled to read about being "a source close to the family".` : ''}`.trim(), { emoji: '\u{1F4F0}' })

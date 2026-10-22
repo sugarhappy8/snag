@@ -3,6 +3,7 @@
 // cabinet), local popularity, fees parents pay for kids, the Olympic calendar, endorsements and
 // the long-term brain-injury risk of contact sports.
 import { anachronistic } from '../events/era'
+import { personCash } from '../cash'
 import { typicalIncome } from '../events/wealth-core'
 import { allBrands, type Brand } from '../data/brands'
 import { brandPool, pickBrand } from '../shops/everyday-brands'
@@ -10,6 +11,9 @@ import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, spe
 import { addCvEntry } from '../cv'
 import { localeOf } from '../data/locales'
 import { chance, pick, rand, randInt, uid } from '../rng'
+import { pickLine } from '../text/pick'
+import { stateLine } from '../text/state'
+import { logStateLine } from '../text/state-log'
 import { defineScript } from '../scripts'
 import type { Condition, CvEntry, GameState, Gender, Job, Json, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, flagEmoji, getCountry, randomFirstName, randomLastName } from '../world'
@@ -261,11 +265,12 @@ export function payFee(g: GameState, cost: number): Payer | null {
       .filter((p) => p.alive && (p.relation === 'parent' || p.relation === 'stepparent') && p.money >= cost)
       .sort((a, b) => b.relationship - a.relationship)[0]
     if (parent) {
-      parent.money = Math.max(0, Math.round(parent.money - cost))
+      // The parent's cash keeps the rounding and the floor this line always had; the books follow what it lost.
+      personCash(g, parent, Math.max(0, Math.round(parent.money - cost)) - parent.money, 'purchase', 0)
       return 'parent'
     }
   }
-  return spend(g, cost) ? 'self' : null
+  return spend(g, cost, 'purchase') ? 'self' : null
 }
 
 export function payerNote(p: Payer | null): string {
@@ -588,7 +593,7 @@ export function yearlySponsors(g: GameState, sport: string | null, appeal: numbe
     total += d.yearly
     d.yearsLeft -= 1
   }
-  if (total > 0) earnIncome(g, total)
+  if (total > 0) earnIncome(g, total, 'royalty')
   const ended = p.sponsors.filter((d) => d.yearsLeft <= 0)
   p.sponsors = p.sponsors.filter((d) => d.yearsLeft > 0)
   for (const d of ended) {
@@ -597,7 +602,9 @@ export function yearlySponsors(g: GameState, sport: string | null, appeal: numbe
       log(g, `${d.brand} renewed my endorsement deal.`, 'good')
     } else log(g, `My endorsement deal with ${d.brand} ended.`)
   }
-  if (total > 0) log(g, `I earned ${short(total)} from endorsements this year.`, 'good')
+  // What the deals paid, said through its row (text/state-table.ts): in the first year, when the sum moves up a step, or after 5
+  // quiet years. A quiet year still takes the log id the line took, so no later id moves.
+  if (total > 0) logStateLine(g, stateLine(g, 'endorse.income', total, { slots: { money: short(total) } }), 'good')
   const recentlyActive = sport !== null || (p.lastActiveAge >= 0 && c.age - p.lastActiveAge <= 3)
   if (recentlyActive) sponsorCall(g, sport ?? 'sports', appeal)
   p.buzz = Math.max(0, Math.round(p.buzz * 0.5))
@@ -635,7 +642,7 @@ export function endorsementsMenu(): MenuGroup {
           if (!useYearAction(gg, 'sports.pitch', 1)) return tell(gg, 'Endorsements', 'Your agent already called every brand in the phone book this year.', '\u{1F4DE}')
           const job = playingJob(gg)
           const ok = sponsorCall(gg, job?.title ?? 'sports', 0.7, gg.character.hidden.fame >= 12 || viewSports(gg).buzz >= 10)
-          if (!ok) tell(gg, 'Endorsements', pick(gg, ["Your agent made forty calls. The best offer was a coupon for a free smoothie.", 'Brands want winners, or at least someone famous. Keep working.']), '\u{1F4DE}')
+          if (!ok) tell(gg, 'Endorsements', pickLine(gg, ["Your agent made forty calls. The best offer was a coupon for a free smoothie.", 'Brands want winners, or at least someone famous. Keep working.']), '\u{1F4DE}')
         },
       })
       return nodes

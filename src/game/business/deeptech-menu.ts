@@ -662,7 +662,7 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
       hint: (gg) => (!enterpriseBlock(gg, a, t) && competitiveness(t, gg.year, familyId(gg.lifeId)) >= 0.9 ? talentHint(gg, 'Business', 'Pitch now: your models are close enough to the frontier that you will probably win it, and the contract is worth far more than the pitch.') : null),
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.enterprise.${cur.id}`, 1)) return tooBusy(gg, 'pitched a big customer')
-        const cost = payTech(bb, tt, Math.round(300_000 * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
+        const cost = payTech(gg, bb, tt, Math.round(300_000 * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
         if (chance(gg, clampN(0.15 + competitiveness(tt, gg.year, familyId(gg.lifeId)) * 0.45, 0.1, 0.8))) {
           const unit = localEcon(bb.industry, bb.countryId, bb.city).baseDemand * localEcon(bb.industry, bb.countryId, bb.city).goingPrice
           const perYear = Math.round(unit * (0.1 + rand(gg) * 0.15))
@@ -697,7 +697,7 @@ function robotNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNo
       hint: (gg) => (t.level >= 55 && (gg.yearActions[`dt.demo.${a.id}`] ?? 0) < 1 ? talentHint(gg, 'Business', 'Go for it: your robot is good enough that a live demo will probably land.') : null),
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.demo.${cur.id}`, 1)) return tooBusy(gg, `held a demo day for ${cur.name}`)
-        const cost = payTech(bb, tt, Math.round(250_000 * (0.5 + (localEcon(bb.industry, bb.countryId, bb.city).level))))
+        const cost = payTech(gg, bb, tt, Math.round(250_000 * (0.5 + (localEcon(bb.industry, bb.countryId, bb.city).level))))
         const ok = chance(gg, clampN(0.3 + tt.level / 180 + tt.safety / 400, 0.15, 0.92))
         if (ok) {
           tt.hype = clampN(tt.hype + 20, 0, 100)
@@ -841,7 +841,7 @@ function testOdds(g: GameState, a: Asset, b: BizState, t: TechState): number {
 }
 
 function testFlight(g: GameState, a: Asset, b: BizState, t: TechState, quiet = false): void {
-  const cost = payTech(b, t, testFlightCost(b))
+  const cost = payTech(g, b, t, testFlightCost(b))
   const ok = chance(g, testOdds(g, a, b, t))
   t.tests += 1
   if (ok) {
@@ -883,7 +883,7 @@ function evNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNode[
       disabled: (_gg, _bb, tt) => (tt.stage < 1 ? 'Unveil a car you can actually build first.' : null),
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.unveil.${cur.id}`, 1)) return tooBusy(gg, `unveiled a car for ${cur.name}`)
-        const cost = payTech(bb, tt, unveilCost(bb))
+        const cost = payTech(gg, bb, tt, unveilCost(bb))
         const ok = chance(gg, clampN(0.55 + tt.level / 300, 0.3, 0.9))
         bb.campaignBoost = clampN(bb.campaignBoost + (ok ? 0.15 : 0.04), 0, 0.6)
         tt.hype = clampN(tt.hype + (ok ? 15 : 2), 0, 100)
@@ -939,7 +939,7 @@ function cyberNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNo
       subtitle: 'Name a hacking group, win the news cycle',
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.research.${cur.id}`, 1)) return tooBusy(gg, 'published a threat report')
-        const cost = payTech(bb, tt, Math.round(150_000 * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
+        const cost = payTech(gg, bb, tt, Math.round(150_000 * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
         tt.hype = clampN(tt.hype + 8, 0, 100)
         bb.brand = clampN(bb.brand + 4, 0, 100)
         bb.campaignBoost = clampN(bb.campaignBoost + 0.05, 0, 0.6)
@@ -1011,7 +1011,7 @@ function showcaseNodes(a: Asset, t: TechState, ind: keyof typeof SHOWCASE): Menu
       disabled: (gg, _bb, tt) => (tt.stage < d.stage ? d.early : (gg.yearActions[`dt.showcase.${a.id}`] ?? 0) >= 1 ? 'You already did that this year.' : null),
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.showcase.${cur.id}`, 1)) return tooBusy(gg, d.done)
-        const cost = payTech(bb, tt, Math.round(d.usd * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
+        const cost = payTech(gg, bb, tt, Math.round(d.usd * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
         if (chance(gg, clampN(0.3 + tt.level / 180 + tt.safety / 400, 0.15, 0.92))) {
           tt.hype = clampN(tt.hype + 15, 0, 100)
           bb.campaignBoost = clampN(bb.campaignBoost + 0.08, 0, 0.6)

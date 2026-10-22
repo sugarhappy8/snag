@@ -3,7 +3,7 @@
 // draft, exactly like the UI store does; the committed state is deep-frozen so a menu closure
 // that writes to an object it captured from it (instead of the draft) throws.
 import { describe, expect, it, vi } from 'vitest'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { applyFallback } from '../src/game/offline'
 import { businessAssetView, businessCareerMenu } from '../src/game/business'
 import { capitalGainsTax, ownerProceeds, sellBusiness } from '../src/game/business/exit'
@@ -32,6 +32,7 @@ import { buyOffer } from '../src/game/shops/luxury-brands-deal'
 import { luxuryAssetNodes } from '../src/game/shops/luxury-brands-assets'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'
+import { withAging } from './kernel-kit'
 
 function deepFreeze<T>(v: T): T {
   if (v && typeof v === 'object' && !Object.isFrozen(v)) {
@@ -296,11 +297,12 @@ describe('a reload changes nothing', () => {
       g.queue = []
       // A baby born the way newSiblings() does it: at the end of the relationships pass, after
       // the year's NPC-life pass has already run.
-      const at = YEARLY_HOOKS.findIndex(([name]) => name === 'relationships') + 1
-      YEARLY_HOOKS.splice(at, 0, ['test: a sibling is born', (gg) => {
-        createPerson(gg, { relation: 'sibling', age: 0, gender: 'female', firstName: 'Ariane', lastName: gg.character.lastName, occupation: 'Baby', money: 0, livesWithPlayer: true, data: { bornAge: gg.character.age } })
-      }])
-      try { ageUp(g) } finally { YEARLY_HOOKS.splice(at, 1) }
+      withAging((es) => {
+        const at = es.findIndex((e) => e.id === 'yearly.relationships') + 1
+        return [...es.slice(0, at), { seam: 'aging', phase: 'life', order: 45, run: (gg) => {
+          createPerson(gg, { relation: 'sibling', age: 0, gender: 'female', firstName: 'Ariane', lastName: gg.character.lastName, occupation: 'Baby', money: 0, livesWithPlayer: true, data: { bornAge: gg.character.age } })
+        } }, ...es.slice(at)]
+      }, () => ageUp(g))
       g.queue = []
       const baby = g.people.find((p) => p.firstName === 'Ariane')!
       expect(baby.data.royalHouse).toBeTypeOf('string')

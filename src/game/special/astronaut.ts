@@ -6,6 +6,7 @@ import { addHidden, addStat, article, count, counter, earnIncome, log, remember,
 import { killCharacter } from '../death'
 import { masterFirstTime } from '../mastery'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasMainCharacter } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -222,11 +223,11 @@ const academyAction: MenuAction = {
       return say(
         g,
         ACADEMY,
-        pick(g, [
+        pickSite(g, [
           `${ACADEMY} rejected you. The letter said "Ad astra... but not with us."`,
           `You failed the centrifuge test and threw up on an admissions officer. ${ACADEMY} said no.`,
           `${ACADEMY} said your application was "promising but grounded". Try again next year.`,
-        ]),
+        ], 0xed64066d),
         '\u{1F4ED}',
         'bad',
       )
@@ -429,16 +430,16 @@ defineScript(TRAIN_SCRIPT, (g, choice) => {
   let text: string
   if (choice === 'pool') {
     addHidden(g, 'athleticism', randInt(g, 1, 2))
-    text = pick(g, ['You practiced spacewalks in a giant underwater pool. A diver gave you a thumbs up.', 'Six hours in a pressurized suit at the bottom of a pool. Your fingers are raisins.'])
+    text = pickLine(g, ['You practiced spacewalks in a giant underwater pool. A diver gave you a thumbs up.', 'Six hours in a pressurized suit at the bottom of a pool. Your fingers are raisins.'])
   } else if (choice === 'centrifuge') {
     addStat(g, 'health', -1)
-    text = pick(g, ['You pulled 8 Gs in the centrifuge and briefly forgot your own name.', 'The centrifuge spun you so fast your face is still catching up.'])
+    text = pickLine(g, ['You pulled 8 Gs in the centrifuge and briefly forgot your own name.', 'The centrifuge spun you so fast your face is still catching up.'])
   } else if (choice === 'survival') {
     addHidden(g, 'athleticism', randInt(g, 0, 2))
-    text = pick(g, ['You survived three days in the wilderness in case your capsule lands off course. You ate a beetle.', 'Water survival training: you bobbed in the ocean for hours waiting for a rescue helicopter.'])
+    text = pickLine(g, ['You survived three days in the wilderness in case your capsule lands off course. You ate a beetle.', 'Water survival training: you bobbed in the ocean for hours waiting for a rescue helicopter.'])
   } else {
     addStat(g, 'smarts', randInt(g, 0, 2))
-    text = pick(g, ['You flew emergency scenarios in the simulator until you could land with your eyes closed.', 'You practiced docking with the space station in the simulator. Gently. Very gently.'])
+    text = pickLine(g, ['You flew emergency scenarios in the simulator until you could land with your eyes closed.', 'You practiced docking with the space station in the simulator. Gently. Very gently.'])
   }
   log(g, 'I trained for spaceflight.')
   say(g, 'Training', `${text} Performance: ${job.performance}%.`, '\u{1F9D1}\u{200D}\u{1F680}', 'good')
@@ -501,7 +502,7 @@ const articleAction: MenuAction = {
     const score = c.stats.smarts * 0.6 + Math.min(40, p.research * 2) + randInt(g, -15, 15)
     if (score < 45) {
       log(g, 'A scientific journal rejected my article.', 'bad')
-      return say(g, 'Rejected', pick(g, ['Reviewer #2 called your article "an embarrassment to the cosmos".', 'The journal rejected your article. Do more research first.', 'Your article was rejected for using the word "space-stuff" eleven times.']), '\u{1F4C4}', 'bad')
+      return say(g, 'Rejected', pickLine(g, ['Reviewer #2 called your article "an embarrassment to the cosmos".', 'The journal rejected your article. Do more research first.', 'Your article was rejected for using the word "space-stuff" eleven times.']), '\u{1F4C4}', 'bad')
     }
     p.articles += 1
     count(g, 'articles')
@@ -513,8 +514,8 @@ const articleAction: MenuAction = {
       g,
       'Published!',
       big
-        ? `Your article on ${pick(g, ['microgravity muscle loss', 'lunar water ice', 'exoplanet atmospheres', 'the sleep habits of astronauts'])} made the cover of a major scientific journal!`
-        : `Your article on ${pick(g, ['solar wind', 'space station air filters', 'the taste of space food', 'orbital debris'])} was published. Twelve people read it, and they loved it.`,
+        ? `Your article on ${pickLine(g, ['microgravity muscle loss', 'lunar water ice', 'exoplanet atmospheres', 'the sleep habits of astronauts'])} made the cover of a major scientific journal!`
+        : `Your article on ${pickLine(g, ['solar wind', 'space station air filters', 'the taste of space food', 'orbital debris'])} was published. Twelve people read it, and they loved it.`,
       '\u{1F4C4}',
       'good',
     )
@@ -607,7 +608,7 @@ defineScript(DEST_SCRIPT, (g, choice) => {
     return
   }
   log(g, `I launched on a mission: ${dest.label.toLowerCase()}.`, 'event')
-  const launch = pick(g, [
+  const launch = pickLine(g, [
     'Three... two... one... LIFTOFF! The rumble rattled your teeth as Earth fell away beneath you.',
     'The engines roared and you were pinned to your seat. Moments later, the sky turned black.',
     'You waved at the camera, the countdown hit zero, and you were on your way to space!',
@@ -636,11 +637,11 @@ defineScript(ASTEROID_SCRIPT, (g, choice, data) => {
   const risk = job ? agencyOf(adata(job).agency, g).risk : 1
   let text: string
   if (f.safe.includes(choice)) {
-    text = pick(g, ['You threaded the needle between two asteroids. Mission control exhaled.', 'A clean maneuver! The asteroids tumbled harmlessly past your window.', 'Perfect piloting. Somewhere, your flight instructor felt a disturbance in the force.'])
+    text = pickLine(g, ['You threaded the needle between two asteroids. Mission control exhaled.', 'A clean maneuver! The asteroids tumbled harmlessly past your window.', 'Perfect piloting. Somewhere, your flight instructor felt a disturbance in the force.'])
   } else {
     const dmg = randInt(g, 20, 40)
     f.hull = Math.max(0, f.hull - dmg)
-    text = pick(g, [`CLANG! An asteroid clipped the hull (-${dmg}%).`, `A rock the size of a minivan scraped your wing (-${dmg}%). Alarms everywhere.`, `You zigged when you should have zagged. Impact! (-${dmg}%)`])
+    text = pickSite(g, [`CLANG! An asteroid clipped the hull (-${dmg}%).`, `A rock the size of a minivan scraped your wing (-${dmg}%). Alarms everywhere.`, `You zigged when you should have zagged. Impact! (-${dmg}%)`], 0x1de9c910)
   }
   if (f.hull <= 0) {
     if (chance(g, Math.min(0.6, 0.3 * risk))) {
@@ -677,7 +678,7 @@ function arrive(g: GameState, destId: string, hull: number, prefix: string, paid
   count(g, 'spaceMissions')
   // Paid flights (the Flight Board) were already paid through the ledger: no bonus, and the draw is skipped.
   const bonus = paid ? 0 : Math.round((job.salary * dest.bonus * (0.8 + rand(g) * 0.5)) / 100) * 100
-  if (!paid) earnIncome(g, bonus)
+  if (!paid) earnIncome(g, bonus, 'wage')
   bump(job, randInt(g, 8, 15) - (hull < 50 ? 5 : 0))
   addFame(g, dest.fame)
   addStat(g, 'happiness', randInt(g, 10, 18))
@@ -686,13 +687,13 @@ function arrive(g: GameState, destId: string, hull: number, prefix: string, paid
   switch (dest.id) {
     case 'station': {
       log(g, 'I flew a mission to the space station.', 'good')
-      say(g, 'Space Station', `${lead}You docked with the space station and delivered supplies, experiments and ${pick(g, ['a birthday cake for the commander', 'three hundred pounds of freeze-dried lasagna', 'a very confused fruit fly colony'])}.${pay}`, '\u{1F6F0}\u{FE0F}', 'good')
+      say(g, 'Space Station', `${lead}You docked with the space station and delivered supplies, experiments and ${pickLine(g, ['a birthday cake for the commander', 'three hundred pounds of freeze-dried lasagna', 'a very confused fruit fly colony'])}.${pay}`, '\u{1F6F0}\u{FE0F}', 'good')
       if (chance(g, 0.6)) spacewalkOffer(g, 'A solar panel on the station needs repairs. Your commander asks for a volunteer to go outside.')
       return
     }
     case 'flight': {
       log(g, 'I flew a crewed mission.', 'good')
-      say(g, 'Crewed Flight', `${lead}${pick(g, ['The crew did its work and came home on schedule.', 'You flew the plan and the landing was clean.', 'The flight ran to the minute. Mission control had little to say.'])}${pay}`, '\u{1F680}', 'good')
+      say(g, 'Crewed Flight', `${lead}${pickLine(g, ['The crew did its work and came home on schedule.', 'You flew the plan and the landing was clean.', 'The flight ran to the minute. Mission control had little to say.'])}${pay}`, '\u{1F680}', 'good')
       return
     }
     case 'satellite': {
@@ -786,7 +787,7 @@ defineScript(SPACEWALK_SCRIPT, (g, choice) => {
   if (!job) return
   if (choice !== 'go') {
     bump(job, -2)
-    return say(g, 'Spacewalk', `You stayed inside. ${pick(g, ['A crewmate went instead and got all the glory.', 'You watched through the window, eating dehydrated ice cream.'])}`, '\u{1F6F0}\u{FE0F}')
+    return say(g, 'Spacewalk', `You stayed inside. ${pickLine(g, ['A crewmate went instead and got all the glory.', 'You watched through the window, eating dehydrated ice cream.'])}`, '\u{1F6F0}\u{FE0F}')
   }
   if (chance(g, 0.008)) {
     say(g, 'Spacewalk', 'Your tether snapped. You drifted away from the station, waving goodbye as Earth turned slowly beneath you.', '\u{1F30C}', 'bad')
@@ -800,7 +801,7 @@ defineScript(SPACEWALK_SCRIPT, (g, choice) => {
     p.spacewalks += 1
     count(g, 'spacewalks')
     log(g, 'I had a scary moment on a spacewalk.', 'bad')
-    return say(g, 'Spacewalk', pick(g, ['Your helmet started filling with water mid-repair. You finished the job anyway and got back inside just in time.', 'You lost your grip and floated off for a terrifying few seconds before your tether caught you.']), '\u{1F630}', 'bad')
+    return say(g, 'Spacewalk', pickLine(g, ['Your helmet started filling with water mid-repair. You finished the job anyway and got back inside just in time.', 'You lost your grip and floated off for a terrifying few seconds before your tether caught you.']), '\u{1F630}', 'bad')
   }
   p.spacewalks += 1
   count(g, 'spacewalks')
@@ -808,7 +809,7 @@ defineScript(SPACEWALK_SCRIPT, (g, choice) => {
   addFame(g, 1)
   addStat(g, 'happiness', 8)
   log(g, 'I went on a spacewalk.', 'good')
-  say(g, 'Spacewalk', pick(g, ['You floated outside with the whole Earth beneath your boots. You finished the repair and just stared for a while.', 'Your spacewalk was flawless. Mission control said "textbook".', 'You fixed the problem, then took the greatest selfie in human history.']), '\u{1F9D1}\u{200D}\u{1F680}', 'good')
+  say(g, 'Spacewalk', pickLine(g, ['You floated outside with the whole Earth beneath your boots. You finished the repair and just stared for a while.', 'Your spacewalk was flawless. Mission control said "textbook".', 'You fixed the problem, then took the greatest selfie in human history.']), '\u{1F9D1}\u{200D}\u{1F680}', 'good')
 })
 
 defineScript(WORDS_SCRIPT, (g, choice) => {
@@ -839,7 +840,7 @@ defineScript(PLANET_SCRIPT, (g, value, data) => {
   if (job) bump(job, 6)
   log(g, `I discovered a new planet and named it ${name}.`, 'good')
   remember(g, `Discovered the planet ${name}.`)
-  say(g, 'Planet Named', `The new ${kind} is officially named ${name}! ${pick(g, ['Textbooks are being updated as we speak.', 'Astronomers everywhere are mispronouncing it already.', 'Somewhere up there, it is waiting for visitors.'])}`, '\u{1FA90}', 'good')
+  say(g, 'Planet Named', `The new ${kind} is officially named ${name}! ${pickLine(g, ['Textbooks are being updated as we speak.', 'Astronomers everywhere are mispronouncing it already.', 'Somewhere up there, it is waiting for visitors.'])}`, '\u{1FA90}', 'good')
 })
 
 function spaceLogMenu(): MenuGroup {
@@ -883,7 +884,7 @@ const quitAstro: MenuAction = {
     const retire = g.character.age >= 50
     leave(g, retire ? 'retired' : 'quit')
     log(g, `I ${retire ? 'retired' : 'resigned'} from the ${agency}.`)
-    say(g, retire ? 'Retired' : 'Resigned', `You ${retire ? 'retired' : 'resigned'} from the ${agency}. ${pick(g, ['You still look up at the night sky every evening.', 'Gravity feels heavier now. Emotionally.', 'You kept the space suit. Nobody asked for it back.'])}`, '\u{1F30D}')
+    say(g, retire ? 'Retired' : 'Resigned', `You ${retire ? 'retired' : 'resigned'} from the ${agency}. ${pickLine(g, ['You still look up at the night sky every evening.', 'Gravity feels heavier now. Emotionally.', 'You kept the space suit. Nobody asked for it back.'])}`, '\u{1F30D}')
   },
 }
 
@@ -943,7 +944,7 @@ function masterTraining(g: GameState, d: { training: number }): void {
 
 function yearlyCadet(g: GameState, job: Job): void {
   syncTenure(g, job)
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   const d = cdata(job)
   masterTraining(g, d)
   d.training = clamp100(d.training + randInt(g, 1, 5))
@@ -999,7 +1000,7 @@ export function yearlyAstronaut(g: GameState): void {
   const d = adata(job)
   const agency = agencyOf(d.agency, g)
   const p = astroProfile(g)
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   const flew = d.lastMissionAge === c.age - 1
   // Administrators (rank 6 and 7 of a corps record) fly nothing by design: the no-flight penalty and the performance firing are not theirs.
   const admin = astronautStore.has(g) && job.level >= 6
@@ -1020,7 +1021,7 @@ export function yearlyAstronaut(g: GameState): void {
   if (!admin && job.performance < 20 && chance(g, 0.5)) {
     leave(g, 'fired')
     log(g, `${TheAgency(agency)} let me go.`, 'bad')
-    say(g, 'Fired', `${TheAgency(agency)} cut you from the astronaut corps. ${pick(g, ['Your locker was emptied before you got back from lunch.', 'They said you were "a risk to the mission". And the snacks.'])}`, '\u{1F4C9}', 'bad')
+    say(g, 'Fired', `${TheAgency(agency)} cut you from the astronaut corps. ${pickLine(g, ['Your locker was emptied before you got back from lunch.', 'They said you were "a risk to the mission". And the snacks.'])}`, '\u{1F4C9}', 'bad')
     return
   }
 
@@ -1038,6 +1039,6 @@ export function yearlyAstronaut(g: GameState): void {
   if (chance(g, 0.08)) {
     addFame(g, 1)
     log(g, 'I visited a school to talk about space.', 'good')
-    say(g, 'School Visit', `You visited an elementary school to talk about life in space. ${pick(g, ['The first question was how astronauts go to the bathroom. So was the second.', 'A kid asked if you have met any aliens. You said "no comment".', 'Thirty kids now want to be astronauts. Their parents blame you.'])}`, '\u{1F3EB}', 'good')
+    say(g, 'School Visit', `You visited an elementary school to talk about life in space. ${pickLine(g, ['The first question was how astronauts go to the bathroom. So was the second.', 'A kid asked if you have met any aliens. You said "no comment".', 'Thirty kids now want to be astronauts. Their parents blame you.'])}`, '\u{1F3EB}', 'good')
   }
 }

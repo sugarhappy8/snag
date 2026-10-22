@@ -3,6 +3,7 @@
 import { peopleBy, spouse } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import {
   country,
@@ -10,6 +11,7 @@ import {
   ch,
   defineEvents,
   dollars,
+  handOver,
   kids,
   livesWithParents,
   money,
@@ -67,8 +69,7 @@ export const FAMILY_EVENTS = defineEvents([
       give: (g: GameState, x: Ctx) => {
         const amt = x.n('amt')
         if (g.character.money < amt) return say(g, x, "Can't afford it", `You don't have ${money(amt)} to give. ${nm(x)} understood, mostly.`, null, { rel: -2 })
-        if (x.p) x.p.money += amt
-        say(g, x, ['Generous', 'Family first'], `You gave ${nm(x)} ${money(amt)} to ${x.s('why')}. They were overwhelmed with gratitude.`, `I gave ${money(amt)} to ${myRelOf(x.p)} to ${x.s('why')}.`, { money: -amt, rel: 18, karma: 6 }, 'good', '💝')
+        say(g, x, ['Generous', 'Family first'], `You gave ${nm(x)} ${money(amt)} to ${x.s('why')}. They were overwhelmed with gratitude.`, `I gave ${money(amt)} to ${myRelOf(x.p)} to ${x.s('why')}.`, { money: handOver(g, x, amt, 'gift'), rel: 18, karma: 6 }, 'good', '💝')
       },
       lend: (g: GameState, x: Ctx) => {
         const amt = x.n('amt')
@@ -77,15 +78,13 @@ export const FAMILY_EVENTS = defineEvents([
         if (back) {
           say(g, x, 'Paid in full', `You lent ${nm(x)} ${money(amt)}, and incredibly, they paid you back with a thank-you card.`, `I lent ${money(amt)} to ${myRelOf(x.p)} and got it back.`, { rel: 10 }, 'good')
         } else {
-          say(g, x, 'Never seeing that again', `You lent ${nm(x)} ${money(amt)}. Every time you bring it up, they suddenly have to go.`, `I lent ${money(amt)} to ${myRelOf(x.p)} and never got it back.`, { money: -amt, rel: 4, happiness: -4 })
-          if (x.p) x.p.money += amt
+          say(g, x, 'Never seeing that again', `You lent ${nm(x)} ${money(amt)}. Every time you bring it up, they suddenly have to go.`, `I lent ${money(amt)} to ${myRelOf(x.p)} and never got it back.`, { money: handOver(g, x, amt, 'gift'), rel: 4, happiness: -4 })
         }
       },
       less: (g: GameState, x: Ctx) => {
         const amt = Math.round(x.n('amt') / 2)
         if (g.character.money < amt) return say(g, x, "Can't afford it", "Even half is more than you've got right now.", null, {})
-        if (x.p) x.p.money += amt
-        say(g, x, 'Compromise', `You offered ${money(amt)}. ${nm(x)} took it, a little disappointed.`, `I gave ${money(amt)} to ${myRelOf(x.p)}.`, { money: -amt, rel: 6 })
+        say(g, x, 'Compromise', `You offered ${money(amt)}. ${nm(x)} took it, a little disappointed.`, `I gave ${money(amt)} to ${myRelOf(x.p)}.`, { money: handOver(g, x, amt, 'gift'), rel: 6 })
       },
       refuse: (g: GameState, x: Ctx) => say(g, x, 'Tough love', `You told ${nm(x)} no. Family dinners will be awkward for a while.`, `I refused to lend money to ${myRelOf(x.p)}.`, { rel: -12 }, 'bad'),
     },
@@ -101,7 +100,7 @@ export const FAMILY_EVENTS = defineEvents([
     setup: (g: GameState) => {
       const p = anyOf(g, peopleBy(g, ['parent']).filter((q) => q.age >= 55))
       if (!p) return null
-      const what = pick(g, ['a minor heart attack', 'a bad fall', 'pneumonia', 'a kidney stone the size of a marble', 'a scary dizzy spell'])
+      const what = pickLine(g, ['a minor heart attack', 'a bad fall', 'pneumonia', 'a kidney stone the size of a marble', 'a scary dizzy spell'])
       return {
         text: `${uc(yourRel(p))}, was rushed to the hospital after ${what}. ${pr(p).He} is stable for now. What will you do?`,
         choices: [ch('visit', 'Rush to the hospital'), ch('flowers', 'Send flowers'), ch('call', landline(g) ? 'Give them a call' : 'Write them a letter'), ch('nothing', 'Do nothing')],
@@ -306,15 +305,13 @@ export const FAMILY_EVENTS = defineEvents([
       give: (g: GameState, x: Ctx) => {
         const amt = x.n('amt')
         if (g.character.money < amt) return say(g, x, "Can't swing it", `You don't have ${money(amt)} to spare. ${nm(x)} said they understand.`, null, { rel: -2 })
-        if (x.p) x.p.money += amt
-        say(g, x, 'Generous parent', `You gave ${nm(x)} ${money(amt)} for ${x.s('why')}. They hugged you like they were five again.`, `I gave my child, ${nm(x)}, ${money(amt)} for ${x.s('why')}.`, { money: -amt, rel: 15, happiness: 4 }, 'good', '💝')
+        say(g, x, 'Generous parent', `You gave ${nm(x)} ${money(amt)} for ${x.s('why')}. They hugged you like they were five again.`, `I gave my child, ${nm(x)}, ${money(amt)} for ${x.s('why')}.`, { money: handOver(g, x, amt, 'gift'), rel: 15, happiness: 4 }, 'good', '💝')
       },
       loan: (g: GameState, x: Ctx) => {
         const amt = x.n('amt')
         if (g.character.money < amt) return say(g, x, "Can't swing it", `You don't have ${money(amt)} to lend.`, null, {})
         const back = chance(g, 0.5)
-        if (x.p && !back) x.p.money += amt
-        say(g, x, back ? 'Paid back' : 'Family discount', back ? `${nm(x)} paid back every cent, with interest! You raised them right.` : `${nm(x)} "forgot" about the loan. You'll bring it up at ${feastHoliday(g)}.`, `I lent my child, ${nm(x)}, ${money(amt)}.`, back ? { rel: 10 } : { money: -amt, rel: 4 }, back ? 'good' : 'neutral')
+        say(g, x, back ? 'Paid back' : 'Family discount', back ? `${nm(x)} paid back every cent, with interest! You raised them right.` : `${nm(x)} "forgot" about the loan. You'll bring it up at ${feastHoliday(g)}.`, `I lent my child, ${nm(x)}, ${money(amt)}.`, back ? { rel: 10 } : { money: handOver(g, x, amt, 'gift'), rel: 4 }, back ? 'good' : 'neutral')
       },
       no: (g: GameState, x: Ctx) => say(g, x, 'Tough love', `You told ${nm(x)} to figure it out. They said "fine" in a tone that was not fine.`, `I refused to give my child, ${nm(x)}, money.`, { rel: -10 }),
     },
@@ -587,8 +584,7 @@ export const FAMILY_EVENTS = defineEvents([
       },
       help: (g: GameState, x: Ctx) => {
         const amt = Math.min(Math.max(0, g.character.money), dollars(g, 500, 3000))
-        if (x.p) x.p.money += amt
-        say(g, x, 'Big heart', amt > 0 ? `You offered ${nm(x)} ${money(amt)} and some career advice. They were stunned, then grateful.` : `You offered ${nm(x)} some career advice. They were grateful.`, `I helped out ${myRelOf(x.p)}.`, { money: -amt, rel: 12, karma: 5 }, 'good')
+        say(g, x, 'Big heart', amt > 0 ? `You offered ${nm(x)} ${money(amt)} and some career advice. They were stunned, then grateful.` : `You offered ${nm(x)} some career advice. They were grateful.`, `I helped out ${myRelOf(x.p)}.`, { money: handOver(g, x, amt, 'gift'), rel: 12, karma: 5 }, 'good')
       },
       flaunt: (g: GameState, x: Ctx) => say(g, x, 'Petty', `You showed up to the next family dinner in a ${cars(g) ? 'rented limo' : 'hired carriage'}. ${nm(x)} left early.`, `I flaunted my success in front of ${myRelOf(x.p)}.`, { rel: -15, happiness: 4 }),
       ignore: (g: GameState, x: Ctx) => say(g, x, 'Above it', 'You ignored the comments. They lost their sting eventually.', `I ignored ${myRelOf(x.p)}'s snide comments.`, { rel: -2 }),

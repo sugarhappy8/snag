@@ -192,11 +192,14 @@ describe('prepareSectorYear', () => {
     const { g, a, b } = deskGame('restaurant')
     live(g, b)
     const rngBefore = g.rng
-    const gBefore = JSON.parse(JSON.stringify({ ...g, assets: [] })) as Record<string, unknown>
+    // The books are a channel of g too since R2-L12: the year's income and costs are booked through the ledger (g.world). Nothing else of g may change.
+    const outside = (x: GameState): Record<string, unknown> => JSON.parse(JSON.stringify({ ...x, assets: [], world: undefined })) as Record<string, unknown>
+    const gBefore = outside(g)
     const bBefore = JSON.parse(JSON.stringify(b)) as Record<string, unknown>
     prepareSectorYear(g, a, b, g.year)
     expect(g.rng).toBe(rngBefore)
-    expect(JSON.parse(JSON.stringify({ ...g, assets: [] }))).toEqual(gBefore)
+    expect(outside(g)).toEqual(gBefore)
+    expect(g.world?.ledger, 'the year of income and costs was booked').toBeTruthy()
     const bAfter = JSON.parse(JSON.stringify(b)) as Record<string, unknown>
     const channels = ['demandShock', 'costShock', 'capacityLoss', 'openFraction', 'cash', 'yearIncome', 'yearCosts', 'sector']
     const changed = Object.keys(bAfter).filter((k) => JSON.stringify(bAfter[k]) !== JSON.stringify(bBefore[k]))
@@ -232,15 +235,15 @@ describe('seedSector', () => {
 
 describe('money', () => {
   it('rounds to whole dollars and moves cash with the matching channel', () => {
-    const { b } = deskGame('restaurant')
+    const { g, b } = deskGame('restaurant')
     const cash = b.cash, inc = b.yearIncome, cost = b.yearCosts
-    expect(bookIncome(b, 100.6)).toBe(101)
-    expect(bookCost(b, 40.4)).toBe(40)
+    expect(bookIncome(g, b, 100.6)).toBe(101)
+    expect(bookCost(g, b, 40.4)).toBe(40)
     expect(b.cash).toBe(cash + 101 - 40)
     expect(b.yearIncome).toBe(inc + 101)
     expect(b.yearCosts).toBe(cost + 40)
-    expect(bookIncome(b, -5)).toBe(0)
-    expect(bookCost(b, NaN)).toBe(0)
+    expect(bookIncome(g, b, -5)).toBe(0)
+    expect(bookCost(g, b, NaN)).toBe(0)
     expect(b.cash).toBe(cash + 61)
   })
 })

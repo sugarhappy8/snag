@@ -1,6 +1,7 @@
 // Banking 2.0 player actions. Each one re-reads the live company, re-checks the gates the menu
 // showed (ownership, age, prison, a hired CEO, era, cash) and moves company cash only through
-// b.cash + b.yearCosts so the next settlement books it exactly once.
+// firmCash + b.yearCosts so the next settlement books it exactly once.
+import { firmCash } from '../cash'
 import { log, notice, useYearAction } from '../core'
 import type { Asset, GameState } from '../types'
 import { boardAllows } from './board-vote'
@@ -68,7 +69,7 @@ export function switchBankProduct(g: GameState, assetId: string, id: ProductId, 
   if (b.cash < cost) return noCash(g, a, cost, `launching ${PRODUCTS[id].label.toLowerCase()}`)
   const gain = productGain(g, b, book, id)
   if (cost > 0 && !boardAllows(g, a, b, { kind: 'capex', by: 'owner', amount: cost, gain, label: `Launch ${PRODUCTS[id].label.toLowerCase()} for ${money(cost)}` })) return
-  b.cash -= cost; b.yearCosts += cost
+  firmCash(g, b, -cost, 'capex', a.id); b.yearCosts += cost
   book.products[id] = g.year
   saveBank(b, book)
   log(g, `${a.name} launched ${PRODUCTS[id].label.toLowerCase()}.`, 'good')
@@ -84,7 +85,7 @@ export function runBankCampaign(g: GameState, assetId: string): void {
   const cost = campaignCost(b, book)
   if (b.cash < cost) return noCash(g, a, cost, 'a marketing campaign')
   if (!useYearAction(g, `bank.campaign.${a.id}`, 1)) return
-  b.cash -= cost; b.yearCosts += cost
+  firmCash(g, b, -cost, 'marketing', a.id); b.yearCosts += cost
   book.campaignYear = g.year; book.campaignBoost = .2
   if (b.industry === 'onlineBank') book.reach += 1.5
   saveBank(b, book)

@@ -3,6 +3,7 @@
 import { addRelationship, preferredGender } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import {
   anyOf,
@@ -11,6 +12,7 @@ import {
   dollars,
   friends,
   grandkids,
+  handOver,
   hasCar,
   kids,
   money,
@@ -91,7 +93,7 @@ export const ELDER_EVENTS = defineEvents([
       const gk = anyOf(g, grandkids(g, 14))
       const who = gk ? gk.firstName : 'your grandson'
       const amt = Math.round(dollars(g, 900, 4500) / 100) * 100
-      const place = g.character.countryId === 'us' ? pick(g, SCAM_PLACES) : fillLocal(g, pick(g, LOCAL_SCAM_PLACES))
+      const place = g.character.countryId === 'us' ? pickLine(g, SCAM_PLACES) : fillLocal(g, pick(g, LOCAL_SCAM_PLACES))
       const way = scamWay(g)
       return {
         text: `Your phone rings. A muffled voice says, "${gk ? `Hi, it's ${who}` : "Grandma? Grandpa? It's me"}! I'm stuck in ${place} and I need ${money(amt)} ${way.pay} for bail. Please don't tell Mom!" What will you do?`,
@@ -207,14 +209,12 @@ export const ELDER_EVENTS = defineEvents([
       give: (g, x) => {
         const amt = x.n('amt')
         if (g.character.money < amt) return say(g, x, 'Fixed income', `You don't have ${money(amt)} to give. ${nm(x)} said not to worry about it.`, null, { rel: -1 })
-        if (x.p) x.p.money += amt
-        say(g, x, 'Generous', `You gave ${nm(x)} ${money(amt)} for ${x.s('why')}. ${x.p ? pr(x.p).He : 'They'} called you the best grandparent ever.`, `I gave my grandchild, ${nm(x)}, ${money(amt)}.`, { money: -amt, rel: 12, happiness: 3 }, 'good', '💝')
+        say(g, x, 'Generous', `You gave ${nm(x)} ${money(amt)} for ${x.s('why')}. ${x.p ? pr(x.p).He : 'They'} called you the best grandparent ever.`, `I gave my grandchild, ${nm(x)}, ${money(amt)}.`, { money: handOver(g, x, amt, 'gift'), rel: 12, happiness: 3 }, 'good', '💝')
       },
       half: (g, x) => {
         const amt = Math.round(x.n('amt') / 2)
         if (g.character.money < amt) return say(g, x, 'Fixed income', `You couldn't even spare half. ${nm(x)} understood.`, null, {})
-        if (x.p) x.p.money += amt
-        say(g, x, 'Compromise', `You gave ${nm(x)} ${money(amt)} and told ${x.p ? pr(x.p).him : 'them'} to earn the rest.`, `I gave my grandchild, ${nm(x)}, ${money(amt)}.`, { money: -amt, rel: 5 }, 'good')
+        say(g, x, 'Compromise', `You gave ${nm(x)} ${money(amt)} and told ${x.p ? pr(x.p).him : 'them'} to earn the rest.`, `I gave my grandchild, ${nm(x)}, ${money(amt)}.`, { money: handOver(g, x, amt, 'gift'), rel: 5 }, 'good')
       },
       lecture: (g, x) => say(g, x, 'In my day...', `You gave ${nm(x)} a 40-minute lecture on how pocket change used to buy a whole meal. ${nm(x)} left with no money and a headache.`, `I lectured my grandchild, ${nm(x)}, about money.`, { rel: -5, happiness: 2 }),
       no: (g, x) => say(g, x, 'Bank closed', `You told ${nm(x)} no. ${x.p ? pr(x.p).He : 'They'} sulked through dinner.`, `I refused to give my grandchild, ${nm(x)}, money.`, { rel: -8 }),
@@ -251,7 +251,7 @@ export const ELDER_EVENTS = defineEvents([
     maxAge: 120,
     cooldown: 8,
     setup: (g) => {
-      const symptom = pick(g, ['a sharp pain in your chest', 'your left arm going numb', 'a crushing headache', 'blurry vision in one eye', 'shortness of breath climbing the stairs'])
+      const symptom = pickLine(g, ['a sharp pain in your chest', 'your left arm going numb', 'a crushing headache', 'blurry vision in one eye', 'shortness of breath climbing the stairs'])
       return {
         text: `You woke up with ${symptom}. What will you do?`,
         choices: [ch('er', 'Go to the emergency room', '🏥'), ch('wait', 'Wait and see', '⏳'), ch('google', common(g, 'internet') ? 'Look up my symptoms online' : 'Look it up in the medical encyclopedia', '🔍')],
@@ -285,7 +285,7 @@ export const ELDER_EVENTS = defineEvents([
     setup: (g) => {
       const p = anyOf(g, kids(g, 30))
       if (!p) return null
-      const place = pick(g, ['Sunny Pines', 'Golden Meadows', 'Shady Acres', 'Willow Creek Senior Living', 'The Evergreen'])
+      const place = pickLine(g, ['Sunny Pines', 'Golden Meadows', 'Shady Acres', 'Willow Creek Senior Living', 'The Evergreen'])
       return {
         text: `Your ${relWord(p)}, ${p.firstName}, gently suggests it might be time to look at ${place}, a retirement community "with a lovely bingo hall." What will you do?`,
         choices: [ch('tour', 'Agree to a tour', '🚶'), ch('refuse', "I'm not going anywhere!", '😤'), ch('guilt', 'Guilt-trip them', '😢')],

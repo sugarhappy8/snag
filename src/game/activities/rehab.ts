@@ -1,7 +1,7 @@
 // Rehab: battle your addictions. Support group meetings are free but less effective;
 // hypnotherapy and rehab centers cost money and work better. Anyone can attend, even
 // without an addiction (to mild confusion).
-import { addHidden, addStat, count, log, remember, scriptChoice } from '../core'
+import { addHidden, addMoney, addStat, count, log, remember, scriptChoice } from '../core'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { Condition, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -106,7 +106,7 @@ function startTreatment(g: GameState, t: Treatment): void {
     brokeNotice(g, cost, t.label.toLowerCase())
     return
   }
-  g.character.money -= cost
+  addMoney(g, -cost, 'health')
   g.yearActions[key] = (g.yearActions[key] ?? 0) + 1
   const list = addictions(g)
   if (list.length === 0) {

@@ -7,9 +7,12 @@
 // scored with the same odds and amounts the resolver uses (economy.fxValue / expectedFx, rd.rdValue,
 // franchise.franchiseValue), never touching g's RNG. Era and industry gates apply both to when an
 // event can appear and to the words it uses.
+import { firmCash } from '../cash'
 import { addHidden, formatMoney, log, notice, scriptChoice } from '../core'
+import type { Why } from '../kernel/ledger'
 import { marketOf } from '../data/markets'
 import { chance, pick, rand, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
@@ -50,18 +53,18 @@ function ctx(g: GameState, data: Json | undefined): Ctx | null {
   return { a, b: bizOf(g, a), d }
 }
 
-/** A one-off cost from company cash (may go negative; the year-end review deals with that). */
-function pay(b: BizState, amount: number): number {
+/** A one-off cost from company cash (may go negative; the year-end review deals with that). `why` is what it is for (supplies and services by default). */
+function pay(g: GameState, a: Asset, b: BizState, amount: number, why: Why = 'inputs'): number {
   const n = Math.max(0, Math.round(amount))
-  b.cash -= n
+  firmCash(g, b, -n, why, a.id)
   b.yearCosts += n
   return n
 }
 
 /** One-off income into company cash, booked once (yearIncome). */
-function earn(b: BizState, amount: number): number {
+function earn(g: GameState, a: Asset, b: BizState, amount: number, why: Why = 'sales'): number {
   const n = Math.max(0, Math.round(amount))
-  b.cash += n
+  firmCash(g, b, n, why, a.id)
   b.yearIncome += n
   return n
 }
@@ -194,7 +197,7 @@ const CRITIC = defineScript('business.ev.critic', (g, choice, data) => {
   const { a, b } = x
   const critic = str(x.d.critic, 'The critic')
   const outlet = bizHas(g, b.countryId, 'internet') ? 'review site' : 'paper'
-  if (choice === 'prep') pay(b, scaled(b, 3_000))
+  if (choice === 'prep') pay(g, a, b, scaled(b, 3_000), 'marketing')
   const u = rand(g)
   const good = criticGoodP(b, choice)
   const bad = criticBadP(b, choice)
@@ -257,7 +260,7 @@ const COLLAB = defineScript('business.ev.influencer', (g, choice, data) => {
     return
   }
   const o = INFLUENCER[choice]
-  pay(b, scaled(b, choice === 'paid' ? 6_000 : 800))
+  pay(g, a, b, scaled(b, choice === 'paid' ? 6_000 : 800), 'marketing')
   const u = rand(g)
   if (u < o.hit) {
     brandUp(b, choice === 'paid' ? 6 : 4)
@@ -312,7 +315,7 @@ const BREACH_EV = defineScript('business.ev.breach', (g, choice, data) => {
   if (choice === 'quiet') {
     addHidden(g, 'karma', -4)
     if (chance(g, BREACH.quiet.leak)) {
-      const fine = pay(b, scaled(b, 60_000))
+      const fine = pay(g, a, b, scaled(b, 60_000), { reason: 'fine', country: b.countryId })
       brandUp(b, -15)
       b.demandShock = Math.min(b.demandShock, 0.85)
       log(g, `${a.name}'s hidden data breach came out.`, 'bad')
@@ -320,10 +323,10 @@ const BREACH_EV = defineScript('business.ev.breach', (g, choice, data) => {
     } else tell(g, 'Patched', `Your engineers patched the hole over a long weekend. Nobody outside the company ever found out. Your conscience did.`, '\u{1F92B}')
     return
   }
-  const cost = pay(b, scaled(b, choice === 'experts' ? 30_000 : 15_000))
+  const cost = pay(g, a, b, scaled(b, choice === 'experts' ? 30_000 : 15_000), 'legal')
   brandUp(b, choice === 'experts' ? -2 : -4)
   const fined = chance(g, choice === 'experts' ? BREACH.experts.fine : BREACH.disclose.fine)
-  const fine = fined ? pay(b, scaled(b, 20_000)) : 0
+  const fine = fined ? pay(g, a, b, scaled(b, 20_000), { reason: 'fine', country: b.countryId }) : 0
   log(g, `${a.name} owned up to a data breach.`, 'neutral')
   tell(g, choice === 'experts' ? 'Experts Called In' : 'Owned Up', `${choice === 'experts' ? `A crack incident-response team sealed the breach and wrote the report regulators like to see (${formatMoney(cost)}).` : `You told every customer and paid for their protection (${formatMoney(cost)}).`} ${fined ? `The regulator still fined ${a.name} ${formatMoney(fine)}.` : 'The regulator let it go with a warning.'} Customers grumbled, but most stayed.`, '\u{1F510}', fined ? 'bad' : 'neutral')
 })
@@ -379,7 +382,7 @@ const UNION = defineScript('business.ev.union', (g, choice, data) => {
     return
   }
   if (choice === 'perks') {
-    const cost = pay(b, perksCost(b))
+    const cost = pay(g, a, b, perksCost(b), 'payroll')
     if (chance(g, PERKS_P)) {
       moraleUp(b, 6)
       tell(g, 'Perks Worked', `Better breaks, a new staff room and free lunches (${formatMoney(cost)}) did the trick. The union drive fizzled out.`, '\u{1F96A}', 'good')
@@ -390,7 +393,7 @@ const UNION = defineScript('business.ev.union', (g, choice, data) => {
     }
     return
   }
-  const cost = pay(b, scaled(b, 8_000))
+  const cost = pay(g, a, b, scaled(b, 8_000), 'legal')
   addHidden(g, 'karma', -5)
   if (chance(g, BUST_P)) {
     moraleUp(b, -6)
@@ -455,15 +458,15 @@ const BID_EV = defineScript('business.ev.bid', (g, choice, data) => {
     tell(g, 'Sat This One Out', `You skipped the tender. ${client} gave the contract to someone else.`, '\u{1F937}')
     return
   }
-  const prep = pay(b, scaled(b, 2_000))
+  const prep = pay(g, a, b, scaled(b, 2_000))
   if (!chance(g, bidWinP(b, choice))) {
     tell(g, 'Lost the Bid', `${client} picked another bidder. Preparing the bid cost ${formatMoney(prep)}.`, '\u{1F4C4}', 'bad')
     return
   }
-  const profit = earn(b, value * BID[choice].margin)
+  const profit = earn(g, a, b, value * BID[choice].margin, 'sales')
   brandUp(b, 2)
   b.capacityLoss = Math.max(b.capacityLoss, 0.05)
-  const over = chance(g, BID[choice].overrun) ? pay(b, value * 0.1) : 0
+  const over = chance(g, BID[choice].overrun) ? pay(g, a, b, value * 0.1) : 0
   log(g, `${a.name} won a ${money(value)} contract from ${client}.`, 'good')
   tell(g, 'Contract Won!', `${a.name} won the ${formatMoney(value)} contract from ${client}. It should leave about ${formatMoney(profit)} of profit after the work is done.${over ? ` Then the costs ran over by ${formatMoney(over)}. Of course they did.` : ''} A busy team means a little less capacity for everyone else this year.`, '\u{1F4DD}', over > profit ? 'neutral' : 'good')
 })
@@ -508,7 +511,7 @@ const COPYCAT = defineScript('business.ev.localCopycat', (g, choice, data) => {
   const { a, b } = x
   const rival = str(x.d.rival, 'the copycat')
   if (choice === 'lawyer') {
-    const cost = pay(b, scaled(b, 4_000))
+    const cost = pay(g, a, b, scaled(b, 4_000), 'legal')
     if (chance(g, copycatWinP(b))) {
       brandUp(b, 1)
       tell(g, 'They Backed Down', `One stern letter (${formatMoney(cost)}) later, ${rival} repainted the sign and changed the menu. Everyone in town knows who the original is.`, '\u{2696}\u{FE0F}', 'good')
@@ -519,7 +522,7 @@ const COPYCAT = defineScript('business.ev.localCopycat', (g, choice, data) => {
     return
   }
   if (choice === 'refresh') {
-    const cost = pay(b, scaled(b, 9_000))
+    const cost = pay(g, a, b, scaled(b, 9_000), 'capex')
     b.quality = clampN(b.quality + 4, 0, 100)
     brandUp(b, 2)
     b.pressure = Math.max(b.pressure, 0.06)
@@ -581,7 +584,7 @@ const IDEA = defineScript('business.ev.employeeIdea', (g, choice, data) => {
     return
   }
   if (choice === 'bonus') {
-    const cost = pay(b, scaled(b, 1_500))
+    const cost = pay(g, a, b, scaled(b, 1_500), 'payroll')
     moraleUp(b, 3)
     tell(g, 'Thanks, But No', `You gave ${who} a ${formatMoney(cost)} bonus for the idea and shelved it. They seem happy enough.`, '\u{1F4B5}')
     return
@@ -646,16 +649,16 @@ const RENT = defineScript('business.ev.rent', (g, choice, data) => {
   const extra = num(x.d.extra)
   if (choice === 'negotiate') {
     if (chance(g, rentDealP(g, b))) {
-      const cost = pay(b, extra * RENT_DEAL)
+      const cost = pay(g, a, b, extra * RENT_DEAL)
       tell(g, 'Talked Down', `After three meetings and a fruit basket the landlord settled for a smaller increase: ${formatMoney(cost)} more this year.`, '\u{1F91D}', 'good')
     } else {
-      const cost = pay(b, extra * RENT_DUG_IN)
+      const cost = pay(g, a, b, extra * RENT_DUG_IN)
       tell(g, 'Landlord Dug In', `The landlord didn't budge and billed you for their lawyer too: ${formatMoney(cost)} more this year.`, '\u{1F3E0}', 'bad')
     }
     return
   }
   if (choice === 'move') {
-    const cost = pay(b, moveCost(b))
+    const cost = pay(g, a, b, moveCost(b), 'capex')
     const loss = Math.round((0.08 / Math.max(1, Math.sqrt(totalOutlets(b)))) * 100) / 100
     b.capacityLoss = Math.max(b.capacityLoss, loss)
     brandUp(b, -2)
@@ -663,7 +666,7 @@ const RENT = defineScript('business.ev.rent', (g, choice, data) => {
     tell(g, 'Moving Day', `${a.name} moved down the street (${formatMoney(cost)} for the move and fit-out). A few weeks closed, a few regulars confused, but no rent hike.`, '\u{1F69A}')
     return
   }
-  const cost = pay(b, extra)
+  const cost = pay(g, a, b, extra)
   tell(g, 'Rent Paid', `You signed the new lease. ${formatMoney(cost)} more rent this year.`, '\u{1F3E0}')
 })
 
@@ -723,8 +726,8 @@ function openPrime(g: GameState, a: Asset, b: BizState, city: string, premium: n
   const capital = startupCost(b.industry, b.countryId, city).capital
   if (b.cash < capital + premium) return false
   // The fit-out is capital spending (like any opening); the key money is a cost of the year.
-  b.cash -= capital
-  pay(b, premium)
+  firmCash(g, b, -capital, 'capex', a.id)
+  pay(g, a, b, premium)
   const o = b.outlets.find((x) => x.countryId === b.countryId && x.city === city)
   if (o) o.count += 1
   else b.outlets.push({ countryId: b.countryId, city, count: 1, opened: g.year })
@@ -799,7 +802,7 @@ export function stakePrice(stake: number, pre: number): number {
 }
 
 function sellStake(g: GameState, a: Asset, b: BizState, stake: number, invest: number, who: string): void {
-  b.cash += invest
+  firmCash(g, b, invest, 'trade.sell', a.id)
   b.share = clampN(b.share * (1 - stake), 0.01, 1)
   diluteBusinessEquity(b, 1 - stake)
   brandUp(b, 8)
@@ -834,7 +837,7 @@ const STAR = defineScript('business.ev.starInvestor', (g, choice, data) => {
 
 function presentStar(g: GameState, a: Asset, b: BizState): void {
   const who = someone(g, b)
-  const what = pick(g, ['the famous actor', 'the champion athlete', 'the famous singer', 'the much-loved comedian'])
+  const what = pickLine(g, ['the famous actor', 'the champion athlete', 'the famous singer', 'the much-loved comedian'])
   const stake = Math.round((0.1 + rand(g) * 0.1) * 100) / 100
   // Stars don't always pay full price: some offers are generous, some lean on the fame they bring.
   const pre = Math.round(Math.max(1, b.valuation) * (0.85 + rand(g) * 0.5))
@@ -919,7 +922,7 @@ const TREND = defineScript('business.ev.trend', (g, choice, data) => {
   const label = str(x.d.trend, 'the new craze')
   const lasts = chance(g, TREND_LASTS)
   if (choice === 'jump' || choice === 'test') {
-    const cost = pay(b, scaled(b, choice === 'jump' ? 10_000 : 3_000))
+    const cost = pay(g, a, b, scaled(b, choice === 'jump' ? 10_000 : 3_000), 'marketing')
     if (lasts) {
       b.demandShock = Math.max(b.demandShock, choice === 'jump' ? 1.15 : 1.06)
       if (choice === 'jump') brandUp(b, 3)

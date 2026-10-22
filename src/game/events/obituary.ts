@@ -7,6 +7,7 @@
 // nothing to say. No eulogy, no verdict on the life (docs/VOICE.md).
 import { counter, formatMoney, fullName, netWorth, peopleBy, pronouns, shortMoney } from '../core'
 import { pick } from '../rng'
+import { pickLine } from '../text/pick'
 import { characterTalents, talentLabel } from '../talents'
 import type { GameState, Person } from '../types'
 import { country } from './helpers'
@@ -158,7 +159,7 @@ function closer(g: GameState, alone: boolean): string {
   const c = g.character
   return pick(g, [
     ...(alone && c.age >= 30 ? ['No family members could be reached for comment.'] : []),
-    `In lieu of flowers, the family asks that you ${pick(g, FLOWERS)}.`,
+    `In lieu of flowers, the family asks that you ${pickLine(g, FLOWERS)}.`,
     `A memorial service will be held in ${c.city || country(g).name}.`,
     'Rest in peace.',
   ])

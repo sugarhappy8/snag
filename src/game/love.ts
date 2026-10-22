@@ -30,15 +30,17 @@ import {
   spend,
   useYearAction,
 } from './core'
+import { moveCash, personCash, personPurse, playerPurse } from './cash'
 import { locale, localPick, localTerm } from './data/locales'
 import { createPerson, notePerson, pickDistinct, randomOccupation, randomWealth, TRAITS } from './people'
 import { bell, chance, pick, randFloat, randInt, uid } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { hasTalent, talentHint } from './talents'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
 import { DATING_SITE_GATE, eraOpen } from './computer/era'
 import { hasTech } from './history/timeline'
-import { common, eraPick, landline, texting } from './events/era'
+import { common, eraPick, eraPickPlain, landline, texting } from './events/era'
 import { stableRng } from './activities/common'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 import { businessGone } from './assetHooks'
@@ -293,7 +295,7 @@ export function makeCandidate(
   let occupation = randomOccupation(g, age)
   let worth = randomWealth(g, age, occupation)
   if (age >= 22 && wealth !== 'any') {
-    occupation = eraPick(g, RICH_JOBS)
+    occupation = eraPickPlain(g, RICH_JOBS)
     if (wealth === 'comfortable') worth = randInt(g, 100_000, 950_000)
     else if (wealth === 'rich') worth = randInt(g, 1_000_000, 9_500_000)
     else worth = randInt(g, 10_000_000, 250_000_000)
@@ -453,7 +455,7 @@ export function askOut(g: GameState, p: Person): void {
   if (chance(g, odds)) {
     startDating(g, p, `asked out (was ${article2(labelOf(p))})`)
     addStat(g, 'happiness', randInt(g, 5, 10))
-    notice(g, 'Ask Out', `You asked ${p.firstName} out. ${fillPronouns(pick(g, ASK_OUT_YES), p.gender)}\n\nYou are now dating ${fullName(p)}!`, {
+    notice(g, 'Ask Out', `You asked ${p.firstName} out. ${fillPronouns(pickLine(g, ASK_OUT_YES), p.gender)}\n\nYou are now dating ${fullName(p)}!`, {
       emoji: '\u{1F496}',
       tone: 'good',
     })
@@ -531,7 +533,7 @@ defineScript('love.date.pick', (g, choice, data) => {
   if (chance(g, attractionOdds(g, k))) {
     const p = startDating(g, k, 'met on a date')
     addStat(g, 'happiness', randInt(g, 6, 12))
-    notice(g, 'Date', `You asked ${k.firstName} out and ${fillPronouns(pick(g, ['{he} said yes!', '{he} happily agreed!', '{he} said {he} thought you would never ask.']), k.gender)}\n\nYou're now dating ${fullName(p)}.`, {
+    notice(g, 'Date', `You asked ${k.firstName} out and ${fillPronouns(pickLine(g, ['{he} said yes!', '{he} happily agreed!', '{he} said {he} thought you would never ask.']), k.gender)}\n\nYou're now dating ${fullName(p)}.`, {
       emoji: '\u{1F496}',
       tone: 'good',
     })
@@ -671,12 +673,12 @@ defineScript('love.app.age', (g, choice, data) => {
 function appSwipe(g: GameState, f: AppFilters): void {
   const price = f.gold ? APP_GOLD_PRICE : APP_PRICE
   const svc = datingService(g)
-  if (!spend(g, price)) {
+  if (!spend(g, price, 'leisure')) {
     notice(g, svc.name, `You can't afford ${f.gold ? svc.goldLabel : `another ${svc.unit}`} (${money(price)}).`, { emoji: '\u{1F4B8}' })
     return
   }
   if (!useYearAction(g, 'love.appSwipe', 12)) {
-    addMoney(g, price)
+    addMoney(g, price, 'leisure')
     notice(g, svc.name, svc.kind === 'ads' ? 'Nobody else answered your ad this year. Try again next year.' : "You've run out of matches in your area this year. Try again next year.", { emoji: '\u{1F648}' })
     return
   }
@@ -741,7 +743,7 @@ defineScript('love.app.match', (g, choice, data) => {
     notice(g, svc.name, `You went on a date with ${k.firstName} and hit it off! You're now dating ${fullName(p)}.`, { emoji: '\u{1F496}', tone: 'good' })
   } else {
     addStat(g, 'happiness', -randInt(g, 2, 5))
-    notice(g, svc.name, `You went on a date with ${k.firstName}, but ${pronouns(k.gender).he} wasn't feeling it. ${pick(g, ['The conversation died before the appetizers did.', 'You talked about your ex for forty minutes. Mistake.', `${pronouns(k.gender).He} said you were "a lot".`])}`, { emoji: '\u{1F494}', tone: 'bad' })
+    notice(g, svc.name, `You went on a date with ${k.firstName}, but ${pronouns(k.gender).he} wasn't feeling it. ${pickSite(g, ['The conversation died before the appetizers did.', 'You talked about your ex for forty minutes. Mistake.', `${pronouns(k.gender).He} said you were "a lot".`], 0xde44bb07)}`, { emoji: '\u{1F494}', tone: 'bad' })
   }
 })
 
@@ -1073,7 +1075,7 @@ defineScript('love.propose.ring', (g, choice, data) => {
   const p = getPerson(g, dStr(data, 'pid'))
   const ring = RINGS.find((r) => r.id === choice)
   if (!p || !p.alive || p.relation !== 'partner' || !ring) return
-  if (!spend(g, ring.price)) {
+  if (!spend(g, ring.price, 'asset.buy')) {
     notice(g, 'Propose', `You can't afford the ${ring.label.toLowerCase()} (${money(ring.price)}).`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -1112,7 +1114,7 @@ defineScript('love.propose.ring', (g, choice, data) => {
     notice(
       g,
       'Engaged!',
-      `You got down on one knee and proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} noticed the ring was fake, but said yes anyway.` : ''}\n\n${pick(g, [`${He} said yes!`, `${He} screamed "YES!" loud enough to scare a nearby pigeon.`, `${He} cried, laughed, and said yes.`])} You're engaged! \u{1F48D}`,
+      `You got down on one knee and proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} noticed the ring was fake, but said yes anyway.` : ''}\n\n${pickSite(g, [`${He} said yes!`, `${He} screamed "YES!" loud enough to scare a nearby pigeon.`, `${He} cried, laughed, and said yes.`], 0x0688659a)} You're engaged! \u{1F48D}`,
       { emoji: '\u{1F48D}', tone: 'good' },
     )
   } else {
@@ -1120,8 +1122,8 @@ defineScript('love.propose.ring', (g, choice, data) => {
     addStat(g, 'happiness', -randInt(g, 8, 14))
     log(g, `I proposed to ${fullName(p)}, but ${he} said no.`, 'bad')
     const refund = ring.price > 0 ? Math.round(ring.price * 0.5) : 0
-    if (refund) addMoney(g, refund)
-    let text = `You proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} immediately noticed the ring was fake.` : ''}\n\n${pick(g, [`${He} said no.`, `${He} said ${he} isn't ready.`, `${He} laughed, then realized you were serious, then said no.`, `${He} said "Can we talk about this later?" which means no.`])}`
+    if (refund) addMoney(g, refund, 'asset.buy')
+    let text = `You proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} immediately noticed the ring was fake.` : ''}\n\n${pickSite(g, [`${He} said no.`, `${He} said ${he} isn't ready.`, `${He} laughed, then realized you were serious, then said no.`, `${He} said "Can we talk about this later?" which means no.`], 0x33215d6e)}`
     if (refund) text += `\n\nYou returned the ring for a ${money(refund)} partial refund.`
     notice(g, 'Rejected', text, { emoji: '\u{1F494}', tone: 'bad' })
     if (p.relationship < 25 && chance(g, 0.35)) breakUp(g, p, 'them', 'felt pressured by the proposal')
@@ -1339,7 +1341,7 @@ defineScript('love.wedding.venue', (g, choice, data) => {
   const p = getPerson(g, dStr(data, 'pid'))
   const venue = (venuesFromData(data) ?? VENUES).find((v) => v.id === choice)
   if (!p || !p.alive || p.relation !== 'fiance' || !venue) return
-  if (!spend(g, venue.cost)) {
+  if (!spend(g, venue.cost, 'leisure')) {
     notice(g, 'Plan the Wedding', `You can't afford that venue (${venue.label}: ${money(venue.cost)}).`, { emoji: '\u{1F4B8}' })
     askVenue(g, p)
     return
@@ -1396,7 +1398,7 @@ defineScript('love.wedding.prenup', (g, choice, data) => {
     g,
     'love.wedding.prenupRefused',
     'Prenup',
-    `${p.firstName} refused to sign the prenup. "${pick(g, ['So you think this is going to fail?', "I'm not marrying a contract.", 'Wow. Just wow.', 'My lawyer says absolutely not. I do not have a lawyer.'])}"`,
+    `${p.firstName} refused to sign the prenup. "${pickLine(g, ['So you think this is going to fail?', "I'm not marrying a contract.", 'Wow. Just wow.', 'My lawyer says absolutely not. I do not have a lawyer.'])}"`,
     [
       { id: 'marry', label: 'Marry without a prenup', emoji: '\u{1F492}' },
       { id: 'cancel', label: 'Call off the wedding', emoji: '\u{1F6AB}' },
@@ -1422,7 +1424,7 @@ defineScript('love.wedding.honeymoon', (g, choice, data) => {
   const prenup = rec(data).prenup === true
   const list = honeymoonsFromData(data) ?? HONEYMOONS
   const h = list.find((x) => x.id === choice) ?? HONEYMOONS[0]
-  if (!spend(g, h.cost)) {
+  if (!spend(g, h.cost, 'leisure')) {
     notice(g, 'Honeymoon', `You can't afford that honeymoon (${h.label}: ${money(h.cost)}).`, { emoji: '\u{1F4B8}' })
     askHoneymoon(g, p, venue, prenup)
     return
@@ -1545,7 +1547,7 @@ defineScript('love.wedding.surname', (g, choice, data) => {
       notice(g, 'Surname', `${p.firstName} agreed to take your last name. Welcome to the ${original} family!`, { emoji: '\u{1F91D}', tone: 'good' })
     } else {
       addRelationship(p, -randInt(g, 2, 6))
-      notice(g, 'Surname', `${p.firstName} refused. "${pick(g, ["I've had this name for my whole life.", 'Absolutely not. Have you met your family?', 'How about you take mine instead?'])}"`, { emoji: '\u{1F645}' })
+      notice(g, 'Surname', `${p.firstName} refused. "${pickLine(g, ["I've had this name for my whole life.", 'Absolutely not. Have you met your family?', 'How about you take mine instead?'])}"`, { emoji: '\u{1F645}' })
     }
   }
 })
@@ -1563,10 +1565,10 @@ export function elope(g: GameState, p: Person): void {
   if (chance(g, clamp(odds, 0.05, 0.85))) {
     const where = localGetaway(g)
     performWedding(g, p, { venue: 'eloped', prenup: false, honeymoon: null, place: `a secret ceremony in ${where}` })
-    log(g, eraPick(g, ['We eloped!', '@socialMedia We eloped! Our families found out from social media.', `We ran off to ${where} and told nobody until it was done.`, 'We eloped. My mother is still not over it.']))
+    log(g, eraPickPlain(g, ['We eloped!', '@socialMedia We eloped! Our families found out from social media.', `We ran off to ${where} and told nobody until it was done.`, 'We eloped. My mother is still not over it.']))
   } else {
     addRelationship(p, -randInt(g, 5, 12))
-    notice(g, 'Elope', `${p.firstName} refused to elope. "${pick(g, ['My mother would never forgive me.', 'I want a real wedding with a cake taller than me.', 'Are you trying to avoid paying for a wedding?'])}"`, { emoji: '\u{1F645}' })
+    notice(g, 'Elope', `${p.firstName} refused to elope. "${pickLine(g, ['My mother would never forgive me.', 'I want a real wedding with a cake taller than me.', 'Are you trying to avoid paying for a wedding?'])}"`, { emoji: '\u{1F645}' })
   }
 }
 
@@ -1580,12 +1582,12 @@ export function renewVows(g: GameState, p: Person): void {
   touch(g, p)
   if (chance(g, p.relationship >= 60 ? 0.88 : 0.4)) {
     const cost = Math.min(2500, Math.max(0, c.money))
-    spend(g, cost)
+    spend(g, cost, 'leisure')
     p.data.vowsAge = c.age
     addRelationship(p, randInt(g, 12, 20))
     addStat(g, 'happiness', randInt(g, 8, 12))
     log(g, `${fullName(p)} and I renewed our wedding vows.`, 'good')
-    notice(g, 'Renew Vows', `You and ${p.firstName} renewed your vows in front of family and friends.${cost ? ` It cost ${money(cost)}.` : ''} ${pick(g, ['There was not a dry eye in the house.', 'You still got the words wrong.', 'Your kids rolled their eyes the whole time.'])}`, {
+    notice(g, 'Renew Vows', `You and ${p.firstName} renewed your vows in front of family and friends.${cost ? ` It cost ${money(cost)}.` : ''} ${pickLine(g, ['There was not a dry eye in the house.', 'You still got the words wrong.', 'Your kids rolled their eyes the whole time.'])}`, {
       emoji: '\u{1F492}',
       tone: 'good',
     })
@@ -1613,12 +1615,12 @@ export function couplesCounseling(g: GameState, p: Person): void {
     }
     return
   }
-  spend(g, fee)
+  spend(g, fee, 'health')
   const gain = randInt(g, 8, 22)
   addRelationship(p, gain)
   addStat(g, 'happiness', randInt(g, 2, 6))
   log(g, `${fullName(p)} and I went to couples counseling.`)
-  notice(g, 'Counseling', `You and ${p.firstName} went to the counseling office${fee ? ` (${money(fee)})` : ''}. ${pick(g, ['The therapist made you hold hands and say three nice things. It worked.', 'You both cried. You both felt better.', 'You learned about "love languages". Yours is apparently snacks.', 'The counselor took a lot of notes. A worrying amount of notes.'])}`, { emoji: '\u{1F6CB}\u{FE0F}', tone: 'good' })
+  notice(g, 'Counseling', `You and ${p.firstName} went to the counseling office${fee ? ` (${money(fee)})` : ''}. ${pickLine(g, ['The therapist made you hold hands and say three nice things. It worked.', 'You both cried. You both felt better.', 'You learned about "love languages". Yours is apparently snacks.', 'The counselor took a lot of notes. A worrying amount of notes.'])}`, { emoji: '\u{1F6CB}\u{FE0F}', tone: 'good' })
 }
 
 /** Divorce your spouse, splitting assets unless there's a prenup. */
@@ -1631,7 +1633,7 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
   const fondness = p.relationship
   const prenup = p.data.prenup === true
   const lines: string[] = []
-  lines.push(by === 'player' ? `You divorced ${p.firstName}.` : `${p.firstName} filed for divorce. "${pick(g, BREAKUP_THEM)}"`)
+  lines.push(by === 'player' ? `You divorced ${p.firstName}.` : `${p.firstName} filed for divorce. ${fillPronouns(eraPick(g, BREAKUP_THEM), p.gender)}`)
 
   // Settlement
   let owed = 0
@@ -1645,10 +1647,7 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
     lines.push('Thanks to the prenup, nobody owes anybody anything. Your lawyer high-fived you.')
   } else if (owed > 0) {
     const cash = Math.min(owed, Math.max(0, c.money))
-    if (cash > 0) {
-      spend(g, cash)
-      p.money += cash
-    }
+    if (cash > 0) moveCash(g, playerPurse(g), personPurse(p), cash, 'divorce')
     let remaining = owed - cash
     const taken: string[] = []
     const candidates = [...g.assets]
@@ -1662,8 +1661,8 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
       businessGone(g, a)
       // The ex gets only what is still owed; the rest of the sale comes back to you.
       const share = Math.min(equity, remaining)
-      p.money += share
-      if (equity > share) addMoney(g, equity - share)
+      personCash(g, p, share, 'divorce')
+      if (equity > share) addMoney(g, equity - share, 'divorce')
       remaining -= share
       taken.push(a.name)
     }
@@ -1672,8 +1671,7 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
   } else if (owed < 0) {
     const receive = Math.min(-owed, Math.max(0, p.money))
     if (receive > 0) {
-      addMoney(g, receive)
-      p.money -= receive
+      moveCash(g, personPurse(p), playerPurse(g), receive, 'divorce')
       lines.push(`The judge ordered ${p.firstName} to pay you ${money(receive)}.`)
     } else {
       lines.push('Neither of you owed the other anything.')
@@ -1864,7 +1862,7 @@ export function makeLove(g: GameState, p: Person): void {
   const notInMood = p.relationship < 30 ? 0.5 : 0.12
   if (chance(g, notInMood)) {
     addRelationship(p, -1)
-    notice(g, 'Make Love', `${p.firstName} ${pick(g, ["wasn't in the mood.", 'said they have a headache.', 'fell asleep on the couch before you could ask.', 'said "Not tonight, I just washed my hair."'])}`, { emoji: '\u{1F634}' })
+    notice(g, 'Make Love', `${p.firstName} ${pickLine(g, ["wasn't in the mood.", 'said they have a headache.', 'fell asleep on the couch before you could ask.', 'said "Not tonight, I just washed my hair."'])}`, { emoji: '\u{1F634}' })
     return
   }
   addRelationship(p, randInt(g, 3, 8))
@@ -1922,7 +1920,7 @@ export function tryForBaby(g: GameState, p: Person): void {
   const willing = (p.relation === 'spouse' ? 0.98 : p.relation === 'fiance' ? 0.7 : 0.45) + (p.relationship - 50) / 250
   if (!agreed && !chance(g, clamp(willing, 0.1, 0.99))) {
     addRelationship(p, -randInt(g, 1, 4))
-    notice(g, 'Try for a Baby', `${p.firstName} said ${pronouns(p.gender).he}'s not ready to have kids. ${pick(g, ['"Maybe in a few years."', '"We can barely keep a houseplant alive."', '"Ask me again after the honeymoon phase."'])}`, { emoji: '\u{1F645}' })
+    notice(g, 'Try for a Baby', `${p.firstName} said ${pronouns(p.gender).he}'s not ready to have kids. ${pickLine(g, ['"Maybe in a few years."', '"We can barely keep a houseplant alive."', '"Ask me again after the honeymoon phase."'])}`, { emoji: '\u{1F645}' })
     return
   }
   p.data.familyPlanWith = c.id
@@ -2078,7 +2076,7 @@ function deliver(g: GameState, other: Person | null, babies: number, carrier: 't
       logLine = `My surrogate gave birth to my ${kin}, {name}.`
     } else {
       const label = other ? cap(yourRel(other)) : 'Your partner'
-      text = pick(g, BABY_LINES_THEM).replace('{label}', label).replace('{kid}', kidW)
+      text = pickLine(g, BABY_LINES_THEM).replace('{label}', label).replace('{kid}', kidW)
       logLine = `${other ? cap(myRel(other)) : 'My partner'} gave birth to my ${kin}, {name}.`
       if (!livesWithPlayer && !inPrison(g)) text += ` The baby will live with ${other ? other.firstName : 'the mother'}.`
     }
@@ -2176,7 +2174,7 @@ function fertilityNodes(): MenuNode[] {
     confirm: () => 'Are you sure? This is meant to be permanent.',
     run: (g) => {
       const cost = g.character.gender === 'male' ? 900 : 3500
-      if (!spend(g, cost)) {
+      if (!spend(g, cost, 'health')) {
         notice(g, 'Fertility', `You can't afford the procedure (${money(cost)}).`, { emoji: '\u{1F4B8}' })
         return
       }
@@ -2201,7 +2199,7 @@ function fertilityNodes(): MenuNode[] {
     visible: (g) => g.flags.sterile === true,
     disabledReason: (g) => (clinicOpen(g, 'reverse') ? null : `Reversals aren't possible yet. It's ${g.year}.`),
     run: (g) => {
-      if (!spend(g, 12000)) {
+      if (!spend(g, 12000, 'health')) {
         notice(g, 'Fertility', `You can't afford the reversal (${money(12000)}).`, { emoji: '\u{1F4B8}' })
         return
       }
@@ -2245,7 +2243,7 @@ function fertilityNodes(): MenuNode[] {
         notice(g, 'IVF', `${p.firstName} isn't ready to try IVF.`, { emoji: '\u{1F645}' })
         return
       }
-      spend(g, 15000)
+      spend(g, 15000, 'health')
       if (chance(g, 0.45 * fertilityFactor(g, p) + 0.1)) {
         const babies = rollMultiples(g, 0.25)
         conceive(g, p, babies, 'ivf')
@@ -2269,7 +2267,7 @@ function fertilityNodes(): MenuNode[] {
         notice(g, 'Fertility', 'The clinic says to wait until next year.', { emoji: '\u{23F3}' })
         return
       }
-      if (!spend(g, 5000)) {
+      if (!spend(g, 5000, 'health')) {
         notice(g, 'Fertility', `You can't afford it (${money(5000)}).`, { emoji: '\u{1F4B8}' })
         return
       }
@@ -2310,10 +2308,10 @@ function fertilityNodes(): MenuNode[] {
         return
       }
       const pay = randInt(g, 40, 80)
-      addMoney(g, pay)
+      addMoney(g, pay, 'health')
       count(g, 'spermDonations')
       log(g, `I donated sperm and earned ${money(pay)}.`)
-      notice(g, 'Sperm Donation', `You made a donation to the fertility lab and got paid ${money(pay)}. ${pick(g, ['Somewhere, a family is grateful.', 'The magazine selection was disappointing.', 'The nurse did not make eye contact.'])}`, { emoji: '\u{1F9EA}' })
+      notice(g, 'Sperm Donation', `You made a donation to the fertility lab and got paid ${money(pay)}. ${pickLine(g, ['Somewhere, a family is grateful.', 'The magazine selection was disappointing.', 'The nurse did not make eye contact.'])}`, { emoji: '\u{1F9EA}' })
     },
   }
   const surrogate: MenuAction = {
@@ -2352,14 +2350,14 @@ defineScript('love.fertility.surrogate', (g, choice, data) => {
   const name = typeof o.name === 'string' ? o.name : 'your surrogate'
   const fee = typeof o.fee === 'number' ? o.fee : 80000
   const health = typeof o.health === 'number' ? o.health : 70
-  if (!spend(g, fee)) {
+  if (!spend(g, fee, 'health')) {
     notice(g, 'Surrogate', `You can't afford ${name}'s fee (${money(fee)}).`, { emoji: '\u{1F4B8}' })
     return
   }
   const partner = currentPartner(g)
   if (chance(g, 0.12)) {
     notice(g, 'Surrogate', `${name} turned you down. The agency refunded your money.`, { emoji: '\u{1F645}' })
-    addMoney(g, fee)
+    addMoney(g, fee, 'health')
     return
   }
   if (chance(g, 0.45 + health / 250)) {
@@ -2371,7 +2369,7 @@ defineScript('love.fertility.surrogate', (g, choice, data) => {
     if (partner) addRelationship(partner, randInt(g, 3, 8))
   } else {
     const refund = Math.round(fee / 2)
-    addMoney(g, refund)
+    addMoney(g, refund, 'health')
     notice(g, 'Surrogate', `${name} wasn't able to get pregnant. The agency refunded half of your money (${money(refund)}).`, { emoji: '\u{1F614}', tone: 'bad' })
   }
 })
@@ -2463,7 +2461,7 @@ const matchmakerAction: MenuAction = {
       notice(g, 'Matchmaker', 'Your matchmaker needs time to find new candidates. Try next year.', { emoji: '\u{23F3}' })
       return
     }
-    if (!spend(g, MATCHMAKER_FEE)) {
+    if (!spend(g, MATCHMAKER_FEE, 'leisure')) {
       notice(g, 'Matchmaker', `You can't afford the matchmaker's fee (${money(MATCHMAKER_FEE)}).`, { emoji: '\u{1F4B8}' })
       return
     }
@@ -2714,7 +2712,7 @@ defineScript('love.adopt.pick', (g, choice, data) => {
   if (!Array.isArray(list)) return
   const k = list[Number(choice)] as unknown as AdoptKid | undefined
   if (!k || typeof k.firstName !== 'string') return
-  if (!spend(g, k.fee)) {
+  if (!spend(g, k.fee, 'legal')) {
     notice(g, 'Adoption', `You can't afford the adoption fee (${money(k.fee)}).`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -3033,12 +3031,12 @@ defineScript('love.pet.pick', (g, choice, data) => {
     if (hasTrait(parent, 'generous', 'kind')) odds += 0.1
     if (hasTrait(parent, 'stingy', 'grumpy')) odds -= 0.15
     if (!chance(g, clamp(odds, 0.05, 0.9))) {
-      notice(g, label, `${cap(yourRel(parent))} said no. "${pick(g, ["Who's going to walk it? Me. That's who.", 'Maybe when you can take care of a houseplant.', "We can't afford another mouth to feed.", 'Absolutely not. Remember the goldfish?'])}"`, { emoji: '\u{1F645}' })
+      notice(g, label, `${cap(yourRel(parent))} said no. "${pickLine(g, ["Who's going to walk it? Me. That's who.", 'Maybe when you can take care of a houseplant.', "We can't afford another mouth to feed.", 'Absolutely not. Remember the goldfish?'])}"`, { emoji: '\u{1F645}' })
       return
     }
-    parent.money = Math.max(0, parent.money - o.price)
+    personCash(g, parent, -o.price, 'purchase', 0)
     boughtBy = parent
-  } else if (!spend(g, o.price)) {
+  } else if (!spend(g, o.price, 'purchase')) {
     notice(g, label, `You can't afford ${o.name} (${money(o.price)}).`, { emoji: '\u{1F4B8}' })
     return
   }

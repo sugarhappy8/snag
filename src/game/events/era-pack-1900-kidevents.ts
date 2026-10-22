@@ -4,7 +4,8 @@
 import { contractCondition } from '../health'
 import { techOdds } from '../history/timeline'
 import { leaveSchoolToWork, schoolLeavingAge } from '../education'
-import { chance, pick } from '../rng'
+import { chance } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState } from '../types'
 import { aParent, ch, defineEvents, money, say, siblings } from './helpers'
 import { at, richFamily, poorFamily } from './era-pack-where'
@@ -277,7 +278,7 @@ export const KID_EVENTS_1900 = defineEvents([
         const war = x.n('war') === 1
         const bad = war ? chance(g, 0.35) : chance(g, 0.12)
         if (bad) say(g, x, 'Bad News', war ? 'The telegram was from the services: a relative was missing in action. It was short and polite and nobody in the room could speak for a long time.' : 'The telegram was from a relative: someone in the family had passed away. You read it twice before you could understand it.', war ? 'A telegram brought bad news about a relative at the war.' : 'A telegram brought news of a death in the family.', { happiness: -9 }, 'bad')
-        else say(g, x, 'Good News', pick(g, ['The telegram was from an uncle overseas: a new baby cousin, and everyone was well. The room erupted in laughter and tea.', 'The telegram was about a job offer for a relative, and the whole house danced around the kitchen.', 'The telegram was from a soldier on leave: he was safe and coming home. Nobody stopped smiling all week.']), 'A telegram brought good news.', { happiness: 6 }, 'good')
+        else say(g, x, 'Good News', pickLine(g, ['The telegram was from an uncle overseas: a new baby cousin, and everyone was well. The room erupted in laughter and tea.', 'The telegram was about a job offer for a relative, and the whole house danced around the kitchen.', 'The telegram was from a soldier on leave: he was safe and coming home. Nobody stopped smiling all week.']), 'A telegram brought good news.', { happiness: 6 }, 'good')
       },
       wait: (g, x) => {
         const p = aParent(g)

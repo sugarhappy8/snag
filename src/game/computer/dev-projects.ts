@@ -5,11 +5,12 @@
 import { addHidden, addStat, count, earnIncome, formatMoney, log, notice, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
 import { pick, rand, randFloat, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { stableChoice } from '../special/common'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { makeGamesMenu } from '../special/gamedev-make'
+import { gameMakingMenu } from './contract'
 import { ageBlock, computerBlock, firstReason, useComputer } from './dev-common'
 import { practice } from './dev-learn'
 import { PROJECT_KINDS, type ProjectKind } from './dev-kinds'
@@ -126,11 +127,11 @@ export function buildProject(g: GameState, kind: ProjectKind): void {
   const verdict = hit
     ? `It was a hit! ${kind.great}`
     : q >= 80
-      ? pick(g, [`It's genuinely great. ${online(g) ? 'The internet' : 'The world'} hasn't noticed yet.`, 'It is the best thing you have ever made. Twelve people agree.'])
+      ? pickSite(g, [`It's genuinely great. ${online(g) ? 'The internet' : 'The world'} hasn't noticed yet.`, 'It is the best thing you have ever made. Twelve people agree.'], 0xaa0a41a3)
       : q >= 65
-        ? pick(g, ['It turned out really well.', 'People actually like it. Strangers, even.'])
+        ? pickLine(g, ['It turned out really well.', 'People actually like it. Strangers, even.'])
         : q >= 45
-          ? pick(g, ['Not bad! Not great. Solidly not bad.', 'It works, which is more than most first drafts can say.'])
+          ? pickLine(g, ['Not bad! Not great. Solidly not bad.', 'It works, which is more than most first drafts can say.'])
           : 'It turned out... fine. Fine counts.'
   const earn = income > 0 ? ` It should bring in about ${formatMoney(income)} a year in ${kind.id === 'listing' ? 'magazine fees and reprints' : kind.id === 'shareware' ? 'registration checks' : kind.income === 'sales' ? 'sales' : kind.income === 'premium' ? 'premium upgrades' : kind.income === 'donations' ? 'donations' : 'ad revenue'}, at least until people move on.` : ''
   const how = lang ? ` Written in ${lang.label}.` : ''
@@ -162,8 +163,8 @@ const makeGamesLink: MenuGroup = {
   emoji: '\u{1F3AE}',
   subtitle: 'Moved to Special Careers › Game Industry · tap for a shortcut',
   header: () => 'Scratch games, mods, game jams and real game releases now live in Occupation › Special Careers › Game Industry. Here is a shortcut.',
-  disabledReason: (g) => makeGamesMenu.disabledReason?.(g) ?? null,
-  children: (g) => makeGamesMenu.children(g),
+  disabledReason: (g) => gameMakingMenu()?.disabledReason?.(g) ?? null,
+  children: (g) => gameMakingMenu()?.children(g) ?? [],
 }
 
 export const projectsMenu: MenuGroup = {
@@ -227,7 +228,7 @@ export function yearlyProjects(g: GameState): number {
   }
   saveDev(g, s)
   if (total > 0) {
-    earnIncome(g, total)
+    earnIncome(g, total, 'royalty')
     const earners = s.projects.filter((p) => p.earned > 0).length
     log(g, earners === 1 ? `My side project brought in ${formatMoney(total)} this year.` : `My side projects brought in ${formatMoney(total)} this year.`, 'good')
   }

@@ -1,9 +1,12 @@
 // Shared helpers for the legit side of the home computer: who may use it, screen time,
 // paying for things (kids get their parents to chip in), and taxed earnings.
-import { canUseComputer, computerLocked, ownsComputer } from '../computer'
+import { personCash } from '../cash'
+import { canUseComputer, computerLocked, ownsComputer } from './access'
 import { addMoney, addStat, clamp, earnIncome, formatMoney, log, notice, parents, spend } from '../core'
 import { taxAdditionalIncome } from '../finance'
-import { chance, pick, randInt } from '../rng'
+import type { Reason } from '../kernel/reasons'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import { addScreenTime, SCREEN_LIMIT } from './skills'
 
@@ -59,7 +62,7 @@ export function useComputer(g: GameState, sessions = 1): number {
   if (chance(g, 0.25)) addStat(g, 'health', -1)
   if (chance(g, 0.2)) addStat(g, 'happiness', -1)
   if (before <= SCREEN_LIMIT) {
-    log(g, pick(g, ['I have been staring at a screen so long my eyes feel like raisins.', 'I forgot what the sun looks like. It was on my screensaver.', 'My chair has a permanent dent in the shape of me.']), 'bad')
+    log(g, pickLine(g, ['I have been staring at a screen so long my eyes feel like raisins.', 'I forgot what the sun looks like. It was on my screensaver.', 'My chair has a permanent dent in the shape of me.']), 'bad')
   }
   return total
 }
@@ -71,14 +74,15 @@ export function useComputer(g: GameState, sessions = 1): number {
 export function payFor(g: GameState, amount: number, what: string, opts: { parentsMayPay?: boolean; emoji?: string } = {}): string | null {
   if (!(amount > 0)) return 'free'
   const c = g.character
-  if (c.money >= amount && spend(g, amount)) return 'self'
+  if (c.money >= amount && spend(g, amount, 'tuition')) return 'self'
   if (c.age < 18 && opts.parentsMayPay !== false) {
     // Pocket money is easy; a bootcamp takes a parent who is well off and likes you.
     const big = amount > 2_000
     const ps = guardians(g).filter((p) => p.money >= amount * (big ? 5 : 2) && p.relationship >= (big ? 60 : 35))
     if (ps.length) {
       const p = ps.reduce((a, b) => (b.money > a.money ? b : a))
-      p.money = Math.round(p.money - amount)
+      // The parent pays the school: the rounding is the line's own.
+      personCash(g, p, Math.round(p.money - amount) - p.money, 'tuition')
       return parentWord(p)
     }
   }
@@ -95,12 +99,12 @@ export function paidLine(who: string | null, amount: number): string {
 
 /**
  * Taxable money earned between age-ups (gig pay, prizes): adds it, records it as income and
- * taxes it right away at the marginal rate. Returns the tax paid.
+ * taxes it right away at the marginal rate. Returns the tax paid. `reason` says who paid (a client, a prize committee).
  */
-export function earnNow(g: GameState, amount: number): number {
+export function earnNow(g: GameState, amount: number, reason: Reason = 'wage'): number {
   const a = Math.round(amount)
   if (!(a > 0)) return 0
-  earnIncome(g, a)
+  earnIncome(g, a, reason)
   return taxAdditionalIncome(g, a)
 }
 
@@ -111,9 +115,9 @@ export function earnNow(g: GameState, amount: number): number {
 export function receiveSale(g: GameState, proceeds: number, basis: number): { tax: number; gain: number } {
   const cash = Math.max(0, Math.round(proceeds))
   const gain = Math.max(0, cash - Math.max(0, Math.round(basis)))
-  addMoney(g, cash - gain)
+  addMoney(g, cash - gain, 'firm.sale')
   if (gain <= 0) return { tax: 0, gain: 0 }
-  earnIncome(g, gain)
+  earnIncome(g, gain, 'firm.sale')
   return { tax: taxAdditionalIncome(g, gain), gain }
 }
 

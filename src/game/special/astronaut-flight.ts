@@ -7,7 +7,8 @@ import { localPrice } from '../activities/common'
 import { seeded } from '../assets'
 import { addStat, useYearAction, yearActionsUsed } from '../core'
 import { killCharacter } from '../death'
-import { chance, pick, randFloat, randInt, weightedPick } from '../rng'
+import { chance, randFloat, randInt, weightedPick } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { outcomeTag } from '../timeMachine'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuNode } from '../types'
@@ -413,7 +414,7 @@ export function resolveFlight(c: CareerCtx<AstroState>, o: Offer, days: number, 
   befriend(g, job.company, crew)
   careerLog(c, `I launched on a ${label}, ${days} days.`, 'event')
   if (paid > 0) careerLog(c, `I was paid ${money(paid)} for the flight.`, 'good')
-  flyOn(g, legacyDest(o.type), pick(g, LAUNCH), true)
+  flyOn(g, legacyDest(o.type), pickLine(g, LAUNCH), true)
 }
 
 // ---------------------------------------------------------------------------

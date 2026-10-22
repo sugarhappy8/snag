@@ -1,12 +1,16 @@
 // ci: fast
 // R1-P4 (K.1): the import-cycle ratchet. v4.0.0 shipped a 60-module import cycle that grew to 177 modules before anyone
-// saw it. Five cycles exist today (the baseline file); this test lets them shrink and fails when a module joins one or
+// saw it. A few cycles remain (the baseline file; R2-K6 split it to the eight real ones); this test lets them shrink and fails when a module joins one or
 // two of them fuse. It reads the real src/ through one esbuild graph (test/arch-kit.ts), and builds small graphs and a
 // temp-directory fixture for the rules that must fail on a synthetic cycle (D.11 criterion 10).
 //
 // To shrink the baseline after a module leaves a cycle:
 //   UPDATE_ARCH_BASELINE=1 npx vitest run --maxWorkers=1 test/architecture.test.ts
 // The update only ever removes modules (shrinkBaseline throws on a new one). With no baseline file yet it writes the first.
+// R2-K6 added one more mode, for the day a cut splits a cycle in two (the baseline keeps R1's grouping until then):
+//   UPDATE_ARCH_BASELINE=split npx vitest run --maxWorkers=1 test/architecture.test.ts
+// It rewrites the baseline as the current components, one entry per real cycle (splitBaseline throws on a new module, and on a
+// component that spans two baseline groups, so a regenerate can never hide a new cycle or a fusion).
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,6 +22,7 @@ import {
   cyclePath,
   readImportGraph,
   shrinkBaseline,
+  splitBaseline,
   type ArchBaseline,
   type Graph,
   type Violation,
@@ -89,6 +94,8 @@ describe('import-cycle ratchet on the real src', () => {
     const current = cycleComponents(g)
     if (process.env.UPDATE_ARCH_BASELINE === '1') {
       writeBaseline(existsSync(BASELINE_PATH) ? shrinkBaseline(current, readBaseline()) : { v: 1, components: current })
+    } else if (process.env.UPDATE_ARCH_BASELINE === 'split') {
+      writeBaseline(splitBaseline(current, readBaseline()))
     }
     const baseline = readBaseline()
     expect(explain(g, baseline, compareToBaseline(current, baseline))).toEqual([])
@@ -275,6 +282,58 @@ describe('shrinkBaseline', () => {
     const fused = [['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts']]
     const out = shrinkBaseline(fused, baseline)
     expect(compareToBaseline(fused, out).map((x) => x.kind)).toEqual(['merged'])
+  })
+})
+
+describe('splitBaseline (R2-K6)', () => {
+  const baseline: ArchBaseline = {
+    v: 1,
+    components: [
+      ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts'],
+      ['src/e.ts', 'src/f.ts'],
+    ],
+  }
+
+  it('splits one baseline group into the two cycles it became, and the result passes the ratchet', () => {
+    const current = [['src/a.ts', 'src/b.ts'], ['src/c.ts', 'src/d.ts'], ['src/e.ts', 'src/f.ts']]
+    const out = splitBaseline(current, baseline)
+    expect(out).toEqual({ v: 1, components: current })
+    expect(compareToBaseline(current, out)).toEqual([])
+  })
+
+  it('keeps only what is still a cycle: a group that is gone is dropped from the result', () => {
+    const current = [['src/a.ts', 'src/b.ts'], ['src/c.ts', 'src/d.ts']]
+    expect(splitBaseline(current, baseline).components).toEqual(current)
+    expect(splitBaseline([], baseline)).toEqual({ v: 1, components: [] })
+  })
+
+  it('throws on a module the baseline does not hold, naming it, so a regenerate never writes a new cycle', () => {
+    expect(() => splitBaseline([['src/a.ts', 'src/b.ts', 'src/new.ts']], baseline)).toThrow(/src\/new\.ts/)
+    expect(() => splitBaseline([['src/x.ts', 'src/y.ts']], baseline)).toThrow(/src\/x\.ts, src\/y\.ts/)
+  })
+
+  it('throws on a cycle that spans two baseline groups (a fusion is a violation, never a baseline)', () => {
+    const fused = [['src/a.ts', 'src/b.ts', 'src/e.ts', 'src/f.ts']]
+    expect(() => splitBaseline(fused, baseline)).toThrow(/fuse/i)
+    expect(compareToBaseline(fused, baseline).map((v) => v.kind)).toContain('merged')
+  })
+
+  it('never holds a module the baseline lacked, and a fused graph fails after a split of the parts', () => {
+    const parts = splitBaseline([['src/a.ts', 'src/b.ts'], ['src/c.ts', 'src/d.ts']], baseline)
+    const known = new Set(baseline.components.flat())
+    for (const m of parts.components.flat()) expect(known.has(m), m).toBe(true)
+    // the two halves were split apart on purpose: one cycle through both of them is a merge again
+    const together = [['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts']]
+    expect(compareToBaseline(together, parts).map((v) => v.kind)).toEqual(['merged'])
+  })
+
+  it('does not change its input, and sorts each group', () => {
+    const before = JSON.stringify(baseline)
+    const current = [['src/d.ts', 'src/c.ts'], ['src/b.ts', 'src/a.ts']]
+    const out = splitBaseline(current, baseline)
+    expect(JSON.stringify(baseline)).toBe(before)
+    expect(current).toEqual([['src/d.ts', 'src/c.ts'], ['src/b.ts', 'src/a.ts']])
+    expect(out.components).toEqual([['src/c.ts', 'src/d.ts'], ['src/a.ts', 'src/b.ts']])
   })
 })
 

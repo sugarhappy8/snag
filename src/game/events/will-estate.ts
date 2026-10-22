@@ -12,12 +12,16 @@
 // whether the person was told in advance. The estate pays the fees of a contest filed by a relative;
 // the heir pays for one they file themselves, and only the amount they would win is held back while
 // it plays out. Probate holds half of the heir's share for a year or three when a contest was filed.
+import { moveCash, poolPurse, writeoff, type Purse } from '../cash'
 import { addMoney, addRelationship, addStat, canAfford, clamp, formatMoney, log, notice, scriptChoice } from '../core'
+import { book, foldAccount, playerAcct } from '../kernel/ledger'
+import { counterparty, type Reason } from '../kernel/reasons'
 import { notePerson } from '../people'
 import { chance, rand, randFloat, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
 import type { Character, GameState, Json, Person } from '../types'
 import { noteCashGift, personCountry, typicalIncome } from './wealth-core'
+import { askedPurse, wholePurse } from './purses'
 import { afterWillChange, ensureSnap, reactionClause } from './will-act'
 import {
   angerOnLearning,
@@ -175,7 +179,7 @@ function refund(g: GameState, pot: Pot): number {
   let given = 0
   const shares = pot.back.map((b) => ({ id: b.id, cash: Math.floor(pot.claim * b.pct) }))
   const total = shares.reduce((a, b) => a + b.cash, 0)
-  if (shares.length > 0) shares[0].cash += pot.claim - total
+  if (shares.length > 0) shares[0].cash += pot.claim - total // ledger-ok: one relative's cut in a local list, not a purse
   for (const s of shares) {
     if (s.id === CHARITY) {
       given += s.cash
@@ -183,7 +187,8 @@ function refund(g: GameState, pot: Pot): number {
     }
     const p = g.people.find((x) => x.id === s.id)
     if (p) {
-      p.money = Math.round(p.money + s.cash)
+      // The held claim sits in the family pool (bookEstate put it there); it comes back to the relatives it was taken from.
+      payFrom(g, poolPurse('family'), p, s.cash, 'inheritance')
       given += s.cash
     }
   }
@@ -204,6 +209,64 @@ function takePending(n: GameState): number {
     writePot(n, null)
   }
   return extra
+}
+
+// ---------------------------------------------------------------------------
+// The books (R2-L8): an estate is a flow out of the late player's account
+
+/** The late player's account as a purse: it pays on the books and changes no record (the character is replaced, not debited). */
+export function estatePurse(n: GameState): Purse {
+  return { acct: playerAcct(n), add: (delta) => delta }
+}
+
+/** Moves `cash` from `from` into a person's money (kept on a whole dollar, as it always was). A zero share still rounds the record, as it did. */
+function payFrom(g: GameState, from: Purse, p: Person, cash: number, reason: Reason): void {
+  if (cash > 0) moveCash(g, from, wholePurse(p), cash, reason)
+  else wholePurse(p).add(0)
+}
+
+/** A person's share of the estate, booked out of the late player's account. Call it while the late player is still the character. */
+export function payHeir(n: GameState, p: Person, cash: number, reason: Reason): void {
+  payFrom(n, estatePurse(n), p, cash, reason)
+}
+
+export interface EstateBooks {
+  /** The late player. */
+  old: Character
+  heirId: string
+  /** Cash plus the equity of the property that is sold, before the loans: what the estate had to pay them with. */
+  gross: number
+  /** What the late player still owed on loans. */
+  debts: number
+}
+
+/**
+ * Books what the plan paid out, once, from the late player's account (`person:<old.id>`): the heir's cash (inheritance), the estate
+ * tax (to the late player's government), the lawyers (legal), the charity (donation), the loans the estate paid off (loan.repay) and
+ * those it could not (a declared write-off). Probate money that waited joins the estate from the family pool, and what the court holds
+ * (the heir's held half and a claim the heir may press) goes to the family pool, which pays it out when it is released or refunded.
+ * The other heirs' cash was booked as planEstate paid them. Call it right after planEstate, while the late player is the character.
+ */
+export function bookEstate(n: GameState, plan: EstatePlan, e: EstateBooks): void {
+  const me = playerAcct(n)
+  const gov = counterparty('gov', e.old.countryId)
+  const token = (what: string): string => `estate:${e.old.id}:${n.year}:${what}`
+  if (plan.carried > 0) book(n, 'estate', 'pool:family', me, plan.carried, token('carried'))
+  const owed = Math.max(0, Math.round(e.debts))
+  const paid = Math.min(owed, Math.max(0, Math.round(e.gross + plan.carried)))
+  if (paid > 0) book(n, 'loan.repay', me, 'pool:banks', paid, token('loans'))
+  if (owed > paid) writeoff(n, owed - paid)
+  if (plan.heirCash > 0) book(n, 'inheritance', me, `person:${e.heirId}`, plan.heirCash, token('heir'))
+  if (plan.tax > 0) book(n, 'tax.estate', me, gov, plan.tax, token('tax'))
+  if (plan.fees > 0) book(n, 'legal', me, 'pool:legal', plan.fees, token('fees'))
+  if (plan.charityCash > 0) book(n, 'donation', me, 'pool:charity', plan.charityCash, token('charity'))
+  if (plan.held > 0) book(n, 'estate', me, 'pool:family', plan.held, token('held'))
+  if (plan.pot) book(n, 'estate', me, 'pool:family', plan.pot.claim, token('claim'))
+}
+
+/** Clears the late player's account into their country's households once the estate is settled; the sum of all accounts is unchanged. */
+export function closeEstate(n: GameState, old: Character): void {
+  foldAccount(n, playerAcct(n), counterparty('hh', old.countryId), `estate:${old.id}:${n.year}:fold`)
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +445,7 @@ export function planEstate(n: GameState, input: EstateInput): EstatePlan {
   for (const a of awardsPool) {
     const paid = Math.floor(a.award * scale)
     a.entry.award = paid
-    a.p.money = Math.round(a.p.money + paid)
+    payHeir(n, a.p, paid, 'inheritance')
     pot -= paid
     notePerson(a.p, 'Won part of a share in a contested will.')
   }
@@ -412,7 +475,7 @@ export function planEstate(n: GameState, input: EstateInput): EstatePlan {
       continue
     }
     const p = n.people.find((x) => x.id === c.id)
-    if (p) p.money = Math.round(p.money + c.cash)
+    if (p) payHeir(n, p, c.cash, 'inheritance')
   }
   if (contested && plan.heirCash > 0) {
     plan.held = Math.round(plan.heirCash * 0.5)
@@ -462,7 +525,6 @@ function isSiblingOf(p: Person): boolean {
  * the player (n.character) and the people list has been rebuilt; `old` is the late player.
  */
 export function settleReading(n: GameState, plan: EstatePlan, old: Character, heirId: string): void {
-  const heir = n.character
   const out: string[] = []
   // The new generation's flags were rebuilt after the plan was made: record the claim now.
   if (plan.pot) writePot(n, plan.pot)
@@ -494,8 +556,7 @@ export function settleReading(n: GameState, plan: EstatePlan, old: Character, he
       const mood = weightedPick(n, ['guilt', 'gloat', 'shrug'] as const, (m) => (m === 'guilt' ? 0.4 + kind : m === 'gloat' ? 0.2 + 2 * gloat : 1))
       if (mood === 'guilt' && s.money > 0) {
         const amt = Math.min(Math.round(s.money), Math.max(1, Math.round(s.money * randFloat(n, 0.2, 0.5))))
-        s.money = Math.round(s.money - amt)
-        heir.money = Math.round(heir.money + amt)
+        moveCash(n, wholePurse(s), askedPurse(n), amt, 'gift')
         addRelationship(s, 8)
         log(n, `${s.firstName} felt guilty and shared ${formatMoney(amt)} of the inheritance with me.`, 'good')
         out.push(`${s.firstName} pulled you aside, red-eyed, and pressed ${formatMoney(amt)} into your hands. "It isn't fair. Take it."`)
@@ -581,8 +642,7 @@ defineScript(S_ASK, (g, choice, data) => {
   }
   const amt = Math.min(Math.max(0, Math.round(c.money)), choice === 'half' ? Math.round(cashv / 2) : Math.round(cashv / 10))
   if (amt <= 0) return
-  c.money = Math.round(c.money - amt)
-  p.money = Math.round(p.money + amt)
+  moveCash(g, askedPurse(g), wholePurse(p), amt, 'gift')
   noteCashGift(g, p, amt)
   addRelationship(p, choice === 'half' ? 22 : 10)
   addStat(g, 'happiness', choice === 'half' ? 4 : 2)
@@ -601,7 +661,7 @@ defineScript(S_HEIR, (g, choice, data) => {
       writePot(g, null)
       return
     }
-    addMoney(g, -fee)
+    addMoney(g, -fee, 'legal')
     writePot(g, { ...pot, year: g.year + randInt(g, 1, 3) })
     for (const s of siblings) addRelationship(s, -randInt(g, 6, 12))
     log(g, `I took my ${g.character.gender === 'male' ? 'father' : 'mother'}'s will to court.`)
@@ -612,7 +672,7 @@ defineScript(S_HEIR, (g, choice, data) => {
     const odds = clamp(pot.odds * 0.5 + 0.1, 0.05, 0.5)
     const agreed = chance(g, odds)
     const given = agreed ? Math.round(pot.claim / 2) : 0
-    if (given > 0) addMoney(g, given)
+    if (given > 0) addMoney(g, given, 'inheritance')
     refund(g, { ...pot, claim: pot.claim - given })
     writePot(g, null)
     for (const s of siblings) addRelationship(s, agreed ? 3 : -2)
@@ -633,7 +693,7 @@ defineScript(S_HEIR, (g, choice, data) => {
 export function yearlyEstateTail(g: GameState): void {
   const esc = readEscrow(g)
   if (esc && g.year >= esc.year) {
-    addMoney(g, esc.amount)
+    addMoney(g, esc.amount, 'inheritance')
     writeEscrow(g, null)
     log(g, `Probate released ${formatMoney(esc.amount)} of my inheritance.`, 'good')
     notice(g, 'Probate Cleared', `The court released the ${formatMoney(esc.amount)} that had been held back from your inheritance. The lawyers have moved on to someone else's family.`, { emoji: EMOJI, tone: 'good' })
@@ -643,7 +703,7 @@ export function yearlyEstateTail(g: GameState): void {
     const win = chance(g, pot.odds)
     const siblings = g.people.filter((p) => p.alive && isSiblingOf(p))
     if (win) {
-      addMoney(g, pot.claim)
+      addMoney(g, pot.claim, 'inheritance')
       writePot(g, null)
       for (const s of siblings) addRelationship(s, -5)
       log(g, `The court gave me ${formatMoney(pot.claim)} of the estate.`, 'good')

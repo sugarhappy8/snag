@@ -6,6 +6,9 @@ import { addHidden, addMoney, addStat, aThing, count, earnIncome, log, remember,
 import { arrestPlayer } from '../crime'
 import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
+import { PRO_SEASON_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { bodyCeiling, crowdedField, masterFirstTime, masteryCap } from '../mastery'
@@ -449,11 +452,11 @@ const tryoutScript = defineScript('special.athlete.tryout', (g, choice, data) =>
     return say(
       g,
       'Tryout',
-      pick(g, [
+      pickSite(g, [
         `The ${t.team} coaches watched you for ten minutes and said "thanks, we'll call you". They won't.`,
         `You pulled a hamstring during the ${t.team} tryout warm-up.`,
         `The ${t.team} said you have "potential", which is coach-speak for "no".`,
-      ]),
+      ], 0x296f9398),
       sport.emoji,
       'bad',
     )
@@ -586,7 +589,7 @@ const trainScript = defineScript('special.athlete.train', (g, choice) => {
   addStat(g, 'health', 2)
   addHidden(g, 'athleticism', 1)
   log(g, `I did ${choice.toLowerCase()} training.`)
-  say(g, 'Training', `${pick(g, ['Your trainer pushed you to the limit.', 'You left the gym drenched in sweat.', 'You beat your personal best.'])} Fitness: ${p.fitness}%.`, '\u{1F4AA}', 'good')
+  say(g, 'Training', `${pickLine(g, ['Your trainer pushed you to the limit.', 'You left the gym drenched in sweat.', 'You beat your personal best.'])} Fitness: ${p.fitness}%.`, '\u{1F4AA}', 'good')
 })
 
 const fanScript = defineScript('special.athlete.fans', (g, choice) => {
@@ -602,7 +605,7 @@ const fanScript = defineScript('special.athlete.fans', (g, choice) => {
   } else if (choice === 'heckler') {
     p.respect = clamp100(p.respect - 8)
     addFame(g, 1)
-    text = 'You roasted a heckler in the stands. The clip went viral, but the league fined you.'
+    text = hasTech(g, 'internet') ? 'You roasted a heckler in the stands. The clip went viral, but the league fined you.' : 'You roasted a heckler in the stands. The papers ran it the next morning, and the league fined you.'
   } else {
     p.respect = clamp100(p.respect - 4)
     text = 'You walked past your fans without stopping. A kid in your jersey started crying.'
@@ -646,7 +649,7 @@ const dopeAction: MenuAction = {
     addStat(g, 'health', -3)
     count(g, 'doping')
     log(g, 'I started taking performance enhancers.', 'bad')
-    say(g, 'Performance Enhancer', pick(g, ['A guy named "Doc" sold you a cooler of unlabeled syringes. You feel... powerful.', 'You started a "vitamin regimen" that definitely is not vitamins.']), '\u{1F489}', 'bad')
+    say(g, 'Performance Enhancer', pickLine(g, ['A guy named "Doc" sold you a cooler of unlabeled syringes. You feel... powerful.', 'You started a "vitamin regimen" that definitely is not vitamins.']), '\u{1F489}', 'bad')
   },
 }
 
@@ -898,7 +901,7 @@ const bribeScript = defineScript('special.athlete.bribe', (g, choice, data) => {
   const amount = Number((data as { amount?: number } | undefined)?.amount ?? 0)
   const p = athleteProfile(g)
   if (choice === 'accept') {
-    addMoney(g, amount)
+    addMoney(g, amount, 'bribe')
     addHidden(g, 'karma', -10)
     log(g, 'I took a bribe to throw a game.', 'bad')
     if (chance(g, 0.3)) {
@@ -1015,14 +1018,14 @@ export function yearlyAthlete(g: GameState): void {
   d.standings = table.slice(0, 5).map((t, i) => ({ team: t.team, strength: Math.round(t.strength), rank: i + 1 }))
   const rank = table.findIndex((t) => t.team === d.team) + 1
   d.champion = table[0].team
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   addStat(g, 'health', -randInt(g, 0, 3))
   // Collision sports add up: every season of tackles and checks leaves a mark.
   const knocks: Record<string, number> = { football: 2.5, hockey: 1.2, rugby: 1.8, aussie: 1.5, soccer: 0.3 }
   if (knocks[sport.id]) addHeadTrauma(g, knocks[sport.id] * (0.6 + rand(g) * 0.8))
 
   const statLine = seasonStats(g, sport, greatness, d.position)
-  log(g, `I played my ${ordinal(p.seasons)} pro season with the ${d.team}. ${statLine}`, greatness >= 60 ? 'good' : 'neutral')
+  log(g, fillSlots(pickLine(g, PRO_SEASON_LINES), { nth: ordinal(p.seasons), team: d.team, stats: statLine }), greatness >= 60 ? 'good' : 'neutral')
   fameToward(g, greatness * 0.85 + p.championships * 2, 4)
 
   if (rank === 1) {
@@ -1118,6 +1121,8 @@ export function yearlyAthlete(g: GameState): void {
     )
   }
 }
+
+export { PRO_SEASON_LINES }
 
 function seasonStats(g: GameState, sport: Sport, greatness: number, position: string): string {
   const k = greatness / 100

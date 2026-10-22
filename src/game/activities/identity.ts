@@ -2,9 +2,10 @@
 // Gender identity lives in g.flags['identity.gender'] ('cisgender' | 'transgender' |
 // 'nonbinary' | 'genderqueer') with the birth gender in g.flags['identity.birthGender'].
 // Transgender characters present as the other gender (character.gender flips).
-import { addRelationship, count, log, notice, remember, scriptInput } from '../core'
+import { addMoney, addRelationship, count, log, notice, remember, scriptInput } from '../core'
 import { notePerson } from '../people'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, Sexuality } from '../types'
 import { brokeNotice, cleanName, gate, isAbroad, localPrice, money, result } from './common'
@@ -65,15 +66,15 @@ function familyReactions(g: GameState, topic: string): string {
     if (roll < 55) {
       addRelationship(p, randInt(g, 2, 6))
       notePerson(p, `Was supportive when the player shared their ${topic}.`)
-      lines.push(pick(g, [`Your ${word} hugged you and said they love you no matter what.`, `Your ${word} said they're proud of you for being yourself.`, `Your ${word} shrugged and asked what you wanted for dinner. Total acceptance.`]))
+      lines.push(pickSite(g, [`Your ${word} hugged you and said they love you no matter what.`, `Your ${word} said they're proud of you for being yourself.`, `Your ${word} shrugged and asked what you wanted for dinner. Total acceptance.`], 0x993e3be8))
     } else if (roll < 85) {
       addRelationship(p, -randInt(g, 3, 8))
       notePerson(p, `Needed time to process the player's ${topic}.`)
-      lines.push(pick(g, [`Your ${word} said they need some time to process.`, `Your ${word} went quiet and changed the subject.`]))
+      lines.push(pickSite(g, [`Your ${word} said they need some time to process.`, `Your ${word} went quiet and changed the subject.`], 0x6c4b0f37))
     } else {
       addRelationship(p, -randInt(g, 10, 20))
       notePerson(p, `Reacted badly to the player's ${topic}.`)
-      lines.push(pick(g, [`Your ${word} did not take it well and you two had a big argument.`, `Your ${word} said some hurtful things. You hope they come around.`]))
+      lines.push(pickSite(g, [`Your ${word} did not take it well and you two had a big argument.`, `Your ${word} said some hurtful things. You hope they come around.`], 0x2980bc56))
     }
   }
   return lines.join('\n')
@@ -178,7 +179,7 @@ const LAST = defineScript('act.identity.last', (g, value, data) => {
     brokeNotice(g, fee, 'the name change filing fee')
     return
   }
-  c.money -= fee
+  addMoney(g, -fee, 'fee.gov')
   g.yearActions['act.identity.name'] = 1
   const pOk = c.criminalRecord.some((r) => r.convicted) ? 0.6 : 0.92
   if (!chance(g, pOk)) {
@@ -251,7 +252,7 @@ function chooseOrientation(g: GameState, id: Sexuality): void {
   remember(g, `Came out as ${id}.`)
   log(g, `I came out as ${id}.`, 'event')
   const reactions = familyReactions(g, 'sexual orientation')
-  notice(g, 'Coming Out', `You came out as ${word}. ${pick(g, ['A weight has been lifted off your shoulders.', 'You feel more like yourself than ever.'])}${reactions ? `\n\n${reactions}` : ''}`, { emoji: '\u{1F3F3}\u{FE0F}\u{200D}\u{1F308}', tone: 'event' })
+  notice(g, 'Coming Out', `You came out as ${word}. ${pickLine(g, ['A weight has been lifted off your shoulders.', 'You feel more like yourself than ever.'])}${reactions ? `\n\n${reactions}` : ''}`, { emoji: '\u{1F3F3}\u{FE0F}\u{200D}\u{1F308}', tone: 'event' })
 }
 
 const orientationMenu: MenuGroup = {

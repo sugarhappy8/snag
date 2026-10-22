@@ -147,7 +147,7 @@ function updateLocks(g: GameState): void {
 
 function redeem(g: GameState, a: Asset, text: string): void {
   g.assets = g.assets.filter((x) => x.id !== a.id)
-  addMoney(g, Math.max(0, a.value))
+  addMoney(g, Math.max(0, a.value), 'trade.sell')
   log(g, `I cashed out ${money(Math.max(0, a.value))} from my visa investment.`, 'neutral')
   notice(g, 'Investment Unlocked', text, { emoji: '\u{1F513}' })
 }
@@ -355,7 +355,7 @@ function visaClock(g: GameState, s: ImmigrationStatus, st: ImmState): void {
       updateImm(g, (x) => (x.prDeferred = g.year))
       notice(g, 'Permanent Residency', `You qualify for permanent residency, but you couldn't pay the ${money(fee)} application fee. Try again next year.`, { emoji: '\u{1F4B8}' })
     } else {
-      if (fee > 0 && c.age >= 18) c.money = Math.round(c.money - fee)
+      if (fee > 0 && c.age >= 18) addMoney(g, -fee, 'fee.gov')
       grantPr(g, free ? `After ${years} years of living there, the right to stay became permanent.` : `After ${years} years on ${an(visaLabel(s.visa))}, your application${fee > 0 ? ` (${money(fee)})` : ''} was approved.`)
       return
     }
@@ -499,7 +499,7 @@ const CITIZENSHIP = defineScript('imm.citizenship', (g, choice) => {
     notice(g, 'Citizenship', `You couldn't afford the ${money(fee)} application fee. Maybe next year.`, { emoji: '\u{1F4B8}' })
     return
   }
-  c.money = Math.round(c.money - fee)
+  addMoney(g, -fee, 'fee.gov')
   if (!chance(g, citizenshipTestOdds(g, choice === 'study'))) {
     updateImm(g, (s) => (s.citizenAsk = g.year + 1))
     log(g, `I failed the ${country.demonym} citizenship test.`, 'bad')
@@ -636,7 +636,7 @@ const AMNESTY = defineScript('imm.amnesty', (g, choice, data) => {
     notice(g, 'Amnesty', `You couldn't scrape together the ${money(fee)} fee in time.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
-  c.money = Math.round(c.money - fee)
+  addMoney(g, -fee, 'fee.gov')
   const label = typeof d.label === 'string' ? d.label : 'the amnesty'
   if (d.result === 'permanent') {
     grantPr(g, `Thanks to ${label}, you finally have papers.`)

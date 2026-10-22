@@ -12,7 +12,8 @@
 //   @landline / @texting / @flights / @cars        common-sense extras (see GATES)
 // Lists must keep at least one untagged (or always-true) line so every era has something to say.
 import { getCountry } from '../world'
-import { pick } from '../rng'
+import { pick, type Picker } from '../rng'
+import { pickLine } from '../text/pick'
 import { TECH, techAdoption, techOdds, type TechId } from '../history/timeline'
 import type { GameState } from '../types'
 
@@ -106,8 +107,20 @@ export function eraLines(g: GameState, lines: readonly string[]): string[] {
   return lines.filter((l) => eraOk(g, l)).map(eraStrip)
 }
 
-/** A random line that fits this year (falls back to the untagged ones, then to any line). */
+/**
+ * A random line that fits this year (falls back to the untagged ones, then to any line). The line goes through the text kit, so a
+ * pool that was just used does not repeat (the memory key is the era-filtered list, so another filter result is another pool).
+ * Use eraPickPlain when the result is an identity: stored on a Person or an Asset, a name, or something the code branches on.
+ */
 export function eraPick(g: GameState, lines: readonly string[]): string {
+  const ok = eraLines(g, lines)
+  if (ok.length) return pickLine(g, ok)
+  const plain = lines.filter((l) => !TAG.test(l))
+  return eraStrip(pickLine(g, plain.length ? plain : lines))
+}
+
+/** eraPick without the text kit's memory: today's body, for a result that is an identity (see eraPick). One draw, like eraPick. */
+export function eraPickPlain(g: GameState, lines: readonly string[]): string {
   const ok = eraLines(g, lines)
   if (ok.length) return pick(g, ok)
   const plain = lines.filter((l) => !TAG.test(l))
@@ -304,15 +317,15 @@ const RADIO_SHOWS: readonly string[] = [
   'a big band broadcast',
 ]
 
-/** Something on TV this year (or on the radio before TV). */
-export function showName(g: GameState): string {
+/** Something on TV this year (or on the radio before TV). `draw` is the pick to use (flavor passes its text draw; default pick). */
+export function showName(g: GameState, draw: Picker = pick): string {
   const shows = common(g, 'tv') ? eraLines(g, SHOWS) : []
-  return shows.length ? pick(g, shows) : pick(g, RADIO_SHOWS)
+  return shows.length ? draw(g, shows) : draw(g, RADIO_SHOWS)
 }
 
-/** Something on the radio. */
-export function radioShow(g: GameState): string {
-  return pick(g, RADIO_SHOWS)
+/** Something on the radio. `draw` as in showName. */
+export function radioShow(g: GameState, draw: Picker = pick): string {
+  return draw(g, RADIO_SHOWS)
 }
 
 const VENUE_SINCE: readonly [RegExp, number][] = [

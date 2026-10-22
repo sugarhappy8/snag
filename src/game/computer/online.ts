@@ -5,12 +5,13 @@
 // the calendar: a 1998 teen in Lagos has a cyber cafe, not a modem), and each has a price: phone
 // minutes (billed by the minute outside North America), a virus, an in-app surprise, or time at
 // the screen (useComputer counts it against the yearly screen-time limit).
-import { ownsComputer } from '../computer'
+import { ownsComputer } from './access'
 import { addStat, count, formatMoney, log, notice, spend } from '../core'
 import { eraPrice, wealthOf } from '../events/era-late-kit'
 import { hasTech, techOdds } from '../history/timeline'
 import { createPerson, notePerson } from '../people'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, MenuGroup, MenuNode } from '../types'
 import { ageBlock, computerBlock, firstReason, useComputer } from './dev-common'
 
@@ -53,7 +54,7 @@ function sessionCost(g: GameState, usd: number): number {
 }
 
 function pay(g: GameState, cost: number, what: string): boolean {
-  if (cost <= 0 || spend(g, cost)) return true
+  if (cost <= 0 || spend(g, cost, 'purchase')) return true
   notice(g, 'Online', `You can't pay ${formatMoney(cost)} for ${what}.`, { emoji: '\u{1F4B8}' })
   return false
 }
@@ -84,7 +85,7 @@ function bbs(g: GameState): void {
     notice(g, 'Bulletin Board', 'The line was busy, then busier. After forty minutes of redialing you gave up and watched TV.', { emoji: '\u{1F4DF}' })
   } else if (meteredCalls(g)) {
     const extra = eraPrice(g, 20)
-    spend(g, Math.min(extra, Math.max(0, g.character.money)))
+    spend(g, Math.min(extra, Math.max(0, g.character.money)), 'purchase')
     addStat(g, 'happiness', -3)
     notice(g, 'Bulletin Board', `You lost track of time and stayed on until midnight. The phone bill came to an extra ${formatMoney(extra)}, and your parents noticed.`, { emoji: '\u{1F4DF}', tone: 'bad' })
   } else {
@@ -105,13 +106,13 @@ function earlyWeb(g: GameState): void {
     // Reading the early web teaches something the first few times; later sessions add less.
     if ((g.yearActions['computer.web'] ?? 0) <= 3) addStat(g, 'smarts', randInt(g, 1, 2))
     addStat(g, 'happiness', randInt(g, 1, 3))
-    notice(g, 'The Web', `Each page took a minute to load, line by line. You looked up ${pick(g, ['how volcanoes work', 'the lyrics to a song', 'a recipe for flapjacks', 'the capital of Burkina Faso', 'a cheat code'])} and learned more than you did at school that day.`, { emoji: '\u{1F310}' })
+    notice(g, 'The Web', `Each page took a minute to load, line by line. You looked up ${pickLine(g, ['how volcanoes work', 'the lyrics to a song', 'a recipe for flapjacks', 'the capital of Burkina Faso', 'a cheat code'])} and learned more than you did at school that day.`, { emoji: '\u{1F310}' })
   } else if (roll <= 90) {
     addStat(g, 'happiness', randInt(g, 1, 4))
     notice(g, 'The Web', 'You followed link after link through a haze of animated icons, guestbooks and pages "under construction." Three hours vanished.', { emoji: '\u{1F310}' })
   } else {
     const fix = eraPrice(g, 40)
-    spend(g, Math.min(fix, Math.max(0, g.character.money)))
+    spend(g, Math.min(fix, Math.max(0, g.character.money)), 'purchase')
     addStat(g, 'happiness', -3)
     notice(g, 'The Web', `A free screensaver came with a stowaway. Your computer slowed to a crawl, and the repair shop charged ${formatMoney(fix)}.`, { emoji: '\u{1F310}', tone: 'bad' })
   }
@@ -143,10 +144,10 @@ function appStore(g: GameState): void {
     notice(g, 'App Store', 'You downloaded a language-learning app and kept the streak alive for nine days. A record.', { emoji: '\u{1F4F2}' })
   } else if (roll <= 85) {
     addStat(g, 'happiness', randInt(g, 2, 4))
-    notice(g, 'App Store', `You downloaded ${pick(g, ['a puzzle game', 'a photo filter', 'a flashlight', 'a game about birds', 'a weather app'])} and used it for exactly one weekend.`, { emoji: '\u{1F4F2}' })
+    notice(g, 'App Store', `You downloaded ${pickLine(g, ['a puzzle game', 'a photo filter', 'a flashlight', 'a game about birds', 'a weather app'])} and used it for exactly one weekend.`, { emoji: '\u{1F4F2}' })
   } else {
     const extra = eraPrice(g, 15)
-    spend(g, Math.min(extra, Math.max(0, g.character.money)))
+    spend(g, Math.min(extra, Math.max(0, g.character.money)), 'purchase')
     addStat(g, 'happiness', -2)
     notice(g, 'App Store', `The free app turned out to sell hats for its mascot, and a small tap bought one. The charge: ${formatMoney(extra)}.`, { emoji: '\u{1F4F2}', tone: 'bad' })
   }
@@ -196,6 +197,6 @@ export function yearlyOnline(g: GameState): void {
   if (bill <= 0 || c.age < 18) return
   const paid = Math.min(bill, Math.max(0, c.money))
   if (paid <= 0) return
-  spend(g, paid)
+  spend(g, paid, 'purchase')
   if (paid >= bill * 0.9 && chance(g, 0.4)) log(g, `My dial-up phone bill came to ${formatMoney(paid)} this year.`, 'neutral')
 }

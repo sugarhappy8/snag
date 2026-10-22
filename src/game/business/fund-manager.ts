@@ -6,6 +6,7 @@ import type { GameState } from '../types'
 import { boardView, mandateDef, readBoard, type Mandate } from './board-state'
 import { reserveDollars } from './board-vote'
 import { financeProfileOf } from './finance-leadership'
+import { worldCash } from './settle'
 import { brokerEra, firmKey, leaderSkill, quantBlock, styleBlock, STRATEGIES, STYLES } from './fund-model'
 import { brokerOutlook, feeOutlook, hedgeFeeOutlook, strategyOutlook, styleOutlook } from './fund-outlook'
 import { campaignCost } from './fund-actions'
@@ -145,7 +146,7 @@ export function fundAutopilot(g: GameState, b: BizState): FundAutopilotResult {
   if (afterBooks && f.type !== 'vc' && f.campaign < g.year && skill >= policy.campaignSkill) {
     const cost = campaignCost(b, f)
     if (b.cash - cost > Math.max(reserveOf(b), reserve) * policy.campaignReserve) {
-      b.cash -= cost; b.yearCosts += cost
+      worldCash(g, b, -cost, 'marketing'); b.yearCosts += cost
       f.campaign = g.year; f.boost = Math.min(.3, f.boost + (f.type === 'broker' ? .06 : .05))
       campaign = cost
     }
@@ -203,7 +204,7 @@ function vcAutopilot(g: GameState, b: BizState, f: FundState, skill: number, man
     const cost = ddCost(b, p.ask)
     if (f.dd.includes(p.id)) read = (p.lo + p.hi) / 2
     else if (read >= bar - 3 && b.cash - cost > reserveOf(b)) {
-      b.cash -= cost; b.yearCosts += cost
+      worldCash(g, b, -cost, 'inputs'); b.yearCosts += cost
       f.dd.push(p.id)
       read = (p.lo + p.hi) / 2
     }

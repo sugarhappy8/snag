@@ -12,6 +12,7 @@ import { addHidden, addMoney, addRelationship, addStat, count, currentPartner, l
 import { notePerson } from '../people'
 import { pickBrand } from '../shops/everyday-brands'
 import { chance, pick, randInt, weightedPick } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { COUNTRIES, countryLabel, getCountry } from '../world'
 import { localeOf } from '../data/locales'
@@ -369,7 +370,7 @@ function travelPartner(g: GameState): Person | undefined {
 
 function noTripsLeft(g: GameState): boolean {
   if ((g.yearActions['act.vacation'] ?? 0) < TRIPS_PER_YEAR) return false
-  result(g, 'No Vacation Days', pick(g, [
+  result(g, 'No Vacation Days', pickLine(g, [
     "You've used up all your vacation days this year.",
     "You've traveled enough this year. Your suitcase has filed for divorce.",
   ]), '\u{1F9F3}')
@@ -419,7 +420,7 @@ const WHO = defineScript('act.vacation.who', (g, choice, data) => {
     brokeNotice(g, cost, 'this trip')
     return
   }
-  addMoney(g, -cost)
+  addMoney(g, -cost, 'leisure')
   useYearAction(g, 'act.vacation', TRIPS_PER_YEAR)
   takeTrip(g, dest, cls, companions)
 })
@@ -636,7 +637,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
     }
     case 'robbed': {
       const lost = Math.min(Math.max(0, c.money), randInt(g, 100, 800))
-      addMoney(g, -lost)
+      addMoney(g, -lost, 'luck')
       addStat(g, 'happiness', -randInt(g, 2, 5))
       log(g, `I got pickpocketed in ${dest.name}.`, 'bad')
       result(g, title, `A pickpocket in ${dest.name} relieved you of ${lost > 0 ? money(lost) : 'your sunglasses'}. You still had a nice time, mostly.${companionLine}`, '\u{1F45B}', 'bad')

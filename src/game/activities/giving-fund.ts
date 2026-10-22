@@ -14,14 +14,14 @@ export function givingFund(g: GameState): GivingFund | null {
 }
 const save = (g: GameState, f: GivingFund) => { g.flags.givingFund = f as unknown as Json }
 export function establishGivingFund(g: GameState, amount: number): boolean {
-  if (gate(g, { minAge: 18 }) || givingFund(g) || !Number.isFinite(amount) || amount < 10000 || amount > 1e12 || !payForAction(g, amount + 500)) return false
+  if (gate(g, { minAge: 18 }) || givingFund(g) || !Number.isFinite(amount) || amount < 10000 || amount > 1e12 || !payForAction(g, amount + 500, 'donation')) return false
   const f: GivingFund = { v: 1, name: `${g.character.lastName} Family Giving Fund`, founder: `${g.character.firstName} ${g.character.lastName}`, country: g.character.countryId, balance: amount, contributed: amount, granted: 0, administration: 500, annual: 0, yearsLeft: 0, cause: 'education', lastYear: g.year, history: [`${g.year}: founded by ${g.character.firstName} ${g.character.lastName}`] }
   save(g, f); count(g, 'donated'); count(g, 'moneyDonated', amount)
   notice(g, 'Family Giving Fund', `${formatMoney(amount)} is irrevocably committed to charity, plus ${formatMoney(500)} setup. It is no longer personal wealth and earns no guaranteed investment return. Annual administration costs 1% of remaining funds, minimum ${formatMoney(100)} while funds remain. Heirs inherit stewardship, not this money.`, { emoji: '🌱' }); return true
 }
 export function contributeGivingFund(g: GameState, amount: number): boolean {
   const f = givingFund(g)
-  if (!f || gate(g, { minAge: 18 }) || !Number.isFinite(amount) || amount <= 0 || amount > 1e12 - f.balance || !payForAction(g, amount)) return false
+  if (!f || gate(g, { minAge: 18 }) || !Number.isFinite(amount) || amount <= 0 || amount > 1e12 - f.balance || !payForAction(g, amount, 'donation')) return false
   f.balance += amount; f.contributed += amount; save(g, f); count(g, 'donated'); count(g, 'moneyDonated', amount)
   notice(g, 'Restricted Contribution', `${formatMoney(amount)} added. The gift cannot be withdrawn or used to pay family expenses.`, { emoji: '🌱' }); return true
 }

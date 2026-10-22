@@ -92,6 +92,9 @@ describe('purity and cost', () => {
     expect(benchStats().boards).toBeLessThanOrEqual(600); expect(benchStats().fronts).toBeLessThanOrEqual(600)
   })
   it('no pure bench file reads the game year, the random stream or the clock', () => {
-    for (const f of ['scorecard', 'ai-bench-data', 'ai-bench', 'ai-bench-market']) expect(readFileSync(new URL(`../src/game/business/${f}.ts`, import.meta.url), 'utf8'), f).not.toMatch(/\bg\.(year|rng)\b|\brand\(|\bchance\(|Math\.random|Date\.now|from '\.\.\/rng'/)
+    // R2-K5: `seeded` (a keyed generator that never touches g.rng) moved from assets.ts to rng.ts, so ai-bench.ts imports it from there. That one
+    // import line is the only thing exempt; any other import from the rng module (rand, randInt, pick, shuffle ...) still fails the scan.
+    const seededOnly = "import { seeded } from '../rng'\n"
+    for (const f of ['scorecard', 'ai-bench-data', 'ai-bench', 'ai-bench-market']) expect(readFileSync(new URL(`../src/game/business/${f}.ts`, import.meta.url), 'utf8').replace(seededOnly, ''), f).not.toMatch(/\bg\.(year|rng)\b|\brand\(|\bchance\(|Math\.random|Date\.now|from '\.\.\/rng'/)
   })
 })

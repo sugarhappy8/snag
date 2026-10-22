@@ -6,7 +6,7 @@
 // market is, and costs (salaries, contractors) are local.
 import { seeded } from '../assets'
 import { sizeRatio } from '../business/competition-data'
-import { localPay } from '../business/economy'
+import { localPay } from '../data/local-pay'
 import { contractorCost } from '../computer/dev-state'
 import { fillLocal } from '../data/locales'
 import { industryDemand, marketOf } from '../data/markets'

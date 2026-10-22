@@ -38,6 +38,9 @@ export function pick<T>(g: GameState, items: readonly T[]): T {
   return items[Math.floor(rand(g) * items.length)]
 }
 
+/** A function that picks one item of a list. pick is one; so is a text draw that closes over its own stream (R2-B2: flavor passes one to the helpers it calls). */
+export type Picker = <T>(g: GameState, items: readonly T[]) => T
+
 /** Pick by weight; items with weight <= 0 are never picked. */
 export function weightedPick<T>(g: GameState, items: readonly T[], weight: (item: T) => number): T {
   const total = items.reduce((sum, item) => sum + Math.max(0, weight(item)), 0)
@@ -74,4 +77,52 @@ export function uid(g: GameState, prefix = 'id'): string {
 /** A fresh seed from Math.random (only used when starting a new life). */
 export function freshSeed(): number {
   return Math.floor(Math.random() * 2 ** 31)
+}
+
+// ---------------------------------------------------------------------------
+// Seeded generators: stable for a key, no g.rng consumption. Moved verbatim from assets.ts (R2-K5), which still re-exports seeded and SRng.
+
+export interface SRng {
+  next(): number
+  int(min: number, max: number): number
+  float(min: number, max: number): number
+  chance(p: number): boolean
+  pick<T>(xs: readonly T[]): T
+  weighted<T>(xs: readonly T[], w: (x: T) => number): T
+}
+
+/** FNV-1a over the UTF-16 units of `s`, as a signed 32-bit integer: a stable seed from a text key. */
+export function hashString(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h | 0
+}
+
+/** A generator that depends only on `key`: the same key gives the same draws, and nothing reads or advances g.rng. */
+export function seeded(key: string): SRng {
+  let state = hashString(key)
+  const next = (): number => {
+    const [v, s] = nextRandom(state)
+    state = s
+    return v
+  }
+  return {
+    next,
+    int: (min, max) => min + Math.floor(next() * (max - min + 1)),
+    float: (min, max) => min + next() * (max - min),
+    chance: (p) => next() < p,
+    pick: (xs) => xs[Math.floor(next() * xs.length)],
+    weighted: (xs, w) => {
+      const total = xs.reduce((s, x) => s + Math.max(0, w(x)), 0)
+      let roll = next() * total
+      for (const x of xs) {
+        roll -= Math.max(0, w(x))
+        if (roll < 0) return x
+      }
+      return xs[xs.length - 1]
+    },
+  }
 }

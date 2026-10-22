@@ -1,8 +1,9 @@
 // Plastic Surgery: pick a procedure, then one of two surgeons (pricier = better reputation).
 // Botched surgeries hurt looks/health/happiness, can rarely be fatal, and give you someone to sue.
 import { killCharacter } from '../death'
-import { addStat, count, log, notice, remember, scriptInput } from '../core'
-import { chance, pick, randInt } from '../rng'
+import { addMoney, addStat, count, log, notice, remember, scriptInput } from '../core'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import {
@@ -118,7 +119,7 @@ function operate(g: GameState, proc: Procedure, s: Surgeon): void {
     brokeNotice(g, s.price, `a ${proc.name.toLowerCase()} with ${s.name}`)
     return
   }
-  c.money -= s.price
+  addMoney(g, -s.price, 'health')
   count(g, 'surgeries')
   const counts = { ...flagRecord(g, COUNTS) }
   counts[proc.id] = recNumber(counts, proc.id) + 1
@@ -140,7 +141,7 @@ function operate(g: GameState, proc: Procedure, s: Surgeon): void {
       return
     }
     remember(g, `A botched ${proc.name.toLowerCase()} by ${s.name} left me disfigured.`)
-    const text = pick(g, BOTCH_LINES).replace('{doc}', s.name).replace('{proc}', proc.name.toLowerCase())
+    const text = pickLine(g, BOTCH_LINES).replace('{doc}', s.name).replace('{proc}', proc.name.toLowerCase())
     result(g, 'Botched!', `${text}\n\nYou could sue ${s.name} for this.`, '\u{1F631}', 'bad')
     if (proc.id === 'gender') finishTransition(g)
     return

@@ -10,6 +10,7 @@ import { addMoney, count, currentPartner, peopleBy } from '../core'
 import { locale, localPick, localTerm, type LocaleToken } from '../data/locales'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { Asset, GameState, Json, Person } from '../types'
 import { citizensJudge, getCountry } from '../world'
 import {
@@ -235,7 +236,7 @@ function homeWeapon(g: GameState): string {
   if (isUS(g) || sports.includes('baseball')) return 'a baseball bat'
   if (sports.includes('cricket')) return 'a cricket bat'
   if (sports.includes('hockey')) return 'a hockey stick'
-  return pick(g, ['a broom', 'a frying pan', 'an umbrella'])
+  return pickLine(g, ['a broom', 'a frying pan', 'an umbrella'])
 }
 
 /** The neighborhood get-together: a backyard barbecue in the US, an asado, a braai, a feast... */
@@ -890,14 +891,14 @@ export const ADULT_EVENTS = defineEvents([
     },
     resolve: {
       accept: (g, x) => {
-        addMoney(g, x.n('amt'))
+        addMoney(g, x.n('amt'), 'inheritance')
         say(g, x, ['Windfall', 'Rest in peace'], `You accepted the ${money(x.n('amt'))} inheritance. Thank you, ${x.s('first')}, whoever you were.`, `I inherited ${money(x.n('amt'))} from a distant relative I never met.`, { happiness: 14, memory: `Inherited ${money(x.n('amt'))} from a distant relative.` }, 'good', '💰')
       },
       donate: (g, x) => say(g, x, 'Philanthropist', `You donated the entire ${money(x.n('amt'))} to charity. ${x.s('first')} would be proud. Probably.`, `I donated a ${money(x.n('amt'))} inheritance to charity.`, { karma: 20, happiness: 8, count: 'donated' }, 'good', '😇'),
       split: (g, x) => {
         const fam = peopleBy(g, ['parent', 'sibling', 'spouse', 'child'])
         const share = Math.round(x.n('amt') / (fam.length + 1))
-        addMoney(g, share)
+        addMoney(g, share, 'inheritance')
         say(g, x, 'Family first', fam.length ? `You split the inheritance with your family. Your share was ${money(share)}, and everyone loves you a little more.` : `With no family to share it with, you kept all ${money(share)}.`, `I split an inheritance with my family.`, { happiness: 10, karma: 8, rels: fam.map((p) => ({ p, d: 10 })) }, 'good', '💰')
       },
     },
@@ -1328,7 +1329,7 @@ export const ADULT_EVENTS = defineEvents([
       emoji: common(g, 'tv') ? '📺' : '📻',
       text: common(g, 'tv')
         ? `You've been randomly selected to be a contestant on the TV game show "${pick(g, ['Spin That Wheel!', 'Know-It-All', 'Price Is Close Enough', country(g).currency === '$' ? 'Million Dollar Toss' : 'The Million Toss'])}". What will you do?`
-        : `You've been picked from the studio audience to compete on the radio quiz show "${pick(g, ['Know-It-All', 'Brains Trust', 'Double or Nothing'])}". What will you do?`,
+        : `You've been picked from the studio audience to compete on the radio quiz show "${pickLine(g, ['Know-It-All', 'Brains Trust', 'Double or Nothing'])}". What will you do?`,
       choices: [ch('go', "Let's play!"), ch('no', 'I get stage fright')],
     }),
     resolve: {
@@ -1337,11 +1338,11 @@ export const ADULT_EVENTS = defineEvents([
         const smart = g.character.stats.smarts
         if (r <= 10 + smart / 10) {
           const prize = dollars(g, 25000, 100000)
-          addMoney(g, prize)
+          addMoney(g, prize, 'prize')
           say(g, null, ['Grand prize!', 'Winner!'], `You answered the final question correctly and won ${money(prize)}! Confetti everywhere.`, `I won ${money(prize)} on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: 20, fame: 4, memory: `Won ${money(prize)} on a ${common(g, 'tv') ? 'game' : 'quiz'} show.` }, 'good', '🏆')
         } else if (r <= 55) {
           const prize = dollars(g, 500, 5000)
-          addMoney(g, prize)
+          addMoney(g, prize, 'prize')
           say(g, null, 'Consolation prize', `You won ${money(prize)} and ${g.year >= 1975 ? 'a jet ski' : 'a complete set of encyclopedias'} you have nowhere to put.`, `I won ${money(prize)} on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: 10, fame: 2 }, 'good', '📺')
         } else {
           say(g, null, 'Lovely parting gifts', `You froze on the first question and went home with a coupon for ${g.year >= 1950 ? 'a car wash' : 'a free shoeshine'}.`, `I lost on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: -6, fame: 1 }, 'bad')
@@ -1489,16 +1490,16 @@ function scratch(g: GameState, x: Parameters<typeof say>[1], n: number): void {
     else if (r <= 150) won += price * 2
     else if (r <= 300) won += price
   }
-  addMoney(g, -cost)
+  addMoney(g, -cost, 'gamble')
   if (won >= price * 2000) {
-    addMoney(g, won)
+    addMoney(g, won, 'gamble')
     count(g, 'lotteryWins')
     say(g, x, ['JACKPOT!', 'Winner winner'], `You scratched off a ${money(won)} winner! The clerk fainted.`, `I won ${money(won)} on a scratch-off ticket.`, { happiness: 20 }, 'good', '🤑')
   } else if (won > cost) {
-    addMoney(g, won)
+    addMoney(g, won, 'gamble')
     say(g, x, 'Winner!', `You won ${money(won)} on your scratch-offs. Profit!`, `I won ${money(won)} on scratch-off tickets.`, { happiness: 8 }, 'good', '🎉')
   } else if (won > 0) {
-    addMoney(g, won)
+    addMoney(g, won, 'gamble')
     say(g, x, 'Broke even-ish', `You won back ${money(won)} of your ${money(cost)}. The house always wins.`, `I spent ${money(cost)} on scratch-offs and won back ${money(won)}.`, { happiness: -1 })
   } else {
     say(g, x, ['Better luck next time', 'Nothing'], `You scratched off ${n === 1 ? 'the ticket' : `all ${n} tickets`}. Nothing. Not even a free ticket.`, `I wasted ${money(cost)} on scratch-off tickets.`, { happiness: -4 }, 'bad')

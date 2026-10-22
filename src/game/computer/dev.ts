@@ -10,10 +10,11 @@
 //   dev-venture   ventures: founding, yearly simulation, events, dashboard and actions
 //   dev-freelance freelance gigs on invented platforms
 //   dev-cv        CV entries and the self-taught developer check
-import { computerLocked, ownsComputer } from '../computer'
+import { computerLocked, ownsComputer } from './access'
 import { addRelationship, addStat, count, log, notice, scriptChoice } from '../core'
 import { getJobDef } from '../data/jobs'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, GameState, MenuNode } from '../types'
 import { guardians, parentWord } from './dev-common'
@@ -94,7 +95,7 @@ function skillYear(g: GameState): void {
   if (keepsSkill(g, 'coding')) return
   addCodingSkill(g, -randInt(g, 1, 3))
   for (const id of Object.keys(codingLanguages(g))) if (chance(g, 0.5)) addLanguageXp(g, id, -randInt(g, 1, 2))
-  if (chance(g, 0.35)) log(g, pick(g, ["My coding skills are getting rusty. I forgot what a for loop is for.", "I opened my old code and couldn't understand a word of it. I wrote it."]), 'neutral')
+  if (chance(g, 0.35)) log(g, pickLine(g, ["My coding skills are getting rusty. I forgot what a for loop is for.", "I opened my old code and couldn't understand a word of it. I wrote it."]), 'neutral')
 }
 
 /** "screen time" once phones are everywhere; before that, parents fought about "computer time". */
@@ -122,7 +123,7 @@ const PARENT_SCRIPT = defineScript('computer.dev.parents.screen', (g, choice, da
     g.flags.computerLockedUntil = c.age + years
     g.flags.computerLockedBy = 'Your parents'
     log(g, `My parents confiscated my computer until I'm ${c.age + years}.`, 'bad')
-    return ` ${Who} unplugged your computer and locked it in ${pick(g, ['the garage', 'their closet', 'the trunk of the car', 'a cupboard with a padlock'])} until you're ${c.age + years}.`
+    return ` ${Who} unplugged your computer and locked it in ${pickLine(g, ['the garage', 'their closet', 'the trunk of the car', 'a cupboard with a padlock'])} until you're ${c.age + years}.`
   }
   if (choice === 'promise') {
     addStat(g, 'happiness', -randInt(g, 1, 3))
@@ -133,7 +134,7 @@ const PARENT_SCRIPT = defineScript('computer.dev.parents.screen', (g, choice, da
   }
   if (choice === 'earnings' && earned >= localFee(g, 500)) {
     if (p) addRelationship(p, randInt(g, 3, 7))
-    notice(g, 'Show Me the Money', `You showed ${who} that you've earned ${money(earned)} at the computer. ${Who} went quiet, then asked if you could ${online(g) ? 'build a website' : 'make a newsletter on the computer'} for ${pick(g, ['their friend\'s bakery', 'the church bake sale', 'their book club'])}. ${capitalizeFirst(screenWord(g))}: negotiable. Grades: still not.`, { emoji: '\u{1F4B0}', tone: 'good' })
+    notice(g, 'Show Me the Money', `You showed ${who} that you've earned ${money(earned)} at the computer. ${Who} went quiet, then asked if you could ${online(g) ? 'build a website' : 'make a newsletter on the computer'} for ${pickLine(g, ['their friend\'s bakery', 'the church bake sale', 'their book club'])}. ${capitalizeFirst(screenWord(g))}: negotiable. Grades: still not.`, { emoji: '\u{1F4B0}', tone: 'good' })
     return
   }
   if (p) addRelationship(p, -randInt(g, 5, 10))
@@ -143,7 +144,7 @@ const PARENT_SCRIPT = defineScript('computer.dev.parents.screen', (g, choice, da
   notice(
     g,
     taken ? 'Confiscated!' : `${titleWord(g)} Fight`,
-    choice === 'earnings' ? `You proudly showed ${who} the ${money(earned)} you've made ${online(g) ? 'online' : 'with the computer'}. "That's ${pick(g, ['about two hours of my salary', 'not even the electricity bill', 'adorable'])}." They were not impressed.${taken}` : `You argued that coding is basically homework. ${Who} pointed out your grades.${taken || ' You won this round. Barely.'}`,
+    choice === 'earnings' ? `You proudly showed ${who} the ${money(earned)} you've made ${online(g) ? 'online' : 'with the computer'}. "That's ${pickLine(g, ['about two hours of my salary', 'not even the electricity bill', 'adorable'])}." They were not impressed.${taken}` : `You argued that coding is basically homework. ${Who} pointed out your grades.${taken || ' You won this round. Barely.'}`,
     { emoji: taken ? '\u{1F512}' : '\u{1F4A2}', tone: 'bad' },
   )
 })

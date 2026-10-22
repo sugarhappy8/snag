@@ -142,7 +142,7 @@ export function yearlyRoyalty(g: GameState): void {
     r.reputation = clampN(r.reputation + r.duties * 3 - (g.character.age >= 18 ? 2 : 0) - (g.character.criminalRecord.some(x => x.age === g.character.age - 1 && x.convicted) ? 25 : 0), 0, 100)
     if (g.character.age >= 18 && r.duties > 0 && !g.character.prison && g.character.countryId === r.country) {
       r.allowance = Math.round(typicalIncome(g, r.country) * (r.rank === 'ruler' ? 4 : r.rank === 'extended' ? .5 : 1.5) * Math.min(1, r.duties / 2) * r.reputation / 100)
-      addMoney(g, r.allowance)
+      addMoney(g, r.allowance, 'benefit')
       log(g, `Royal duties allowance: ${money(r.allowance)} ${r.allowance > 0 ? 'paid for this year’s official work' : 'withheld'}.`)
     }
     const parent = g.people.find(p => p.id === r.parentId)

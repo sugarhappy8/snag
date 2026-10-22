@@ -1,93 +1,19 @@
 // The "+ Age" button. Advances one year and runs every subsystem's yearly hook in
 // a fixed order, then queues this year's flavor lines and random event from the event
 // library (a 'yearEvents' task the store resolves right away, see offline.ts).
-import { yearlyNation } from './nation/yearly'
-import { yearlyAssets } from './assets'
-import { yearlyBusiness } from './business'
-import { landRivalWaves } from './business/tech-waves'
-import { yearlyCareer } from './careers'
-import { yearlyProfessions } from './professions'
-import { yearlyDevelopment } from './development'
-import { yearlySharedProjects } from './activities/shared-projects'
-import { yearlyGivingFund } from './activities/giving-fund'
-import { yearlyComputer } from './computer'
+//
+// The hooks are modules (src/game/modules/yearly-aging.ts), run in the order the kernel registry sorts them into
+// (kernel/registry.ts YEARLY_PHASES, then each entry's order). `import './modules'` is what guarantees they are registered before
+// the first year runs: this file is the entry that loads them.
+import { yearlyEntries } from './kernel/registry'
+import './modules'
+import { erodeCash } from './cash'
 import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi } from './core'
-import { yearlyCrime } from './crime'
-import { yearlyEducation } from './education'
 import { economyOf, ensureEconomy, yearlyEconomy } from './economy'
-import { yearlyWealth } from './events/wealth'
-import { yearlyWillFeuds } from './events/will-feud'
-import { yearlyNepo } from './business/nepo'
-import { yearlyFamilyUse } from './shops/luxury-family'
-import { settleIncomeTax, yearlyFinance } from './finance'
-import { checkDeath, yearlyHealth } from './health'
-import { yearlyHousehold } from './household'
-import { yearlyHistory } from './history'
-import { yearlyDigest } from './history/digest'
-import { yearlyImmigration } from './immigration'
-import { yearlyWorkshop } from './workshop/yearly'
-import { yearlyUnderworld } from './underworld'
-import { yearlyAdvisors } from './advisors/year'
-import { yearlyCorruption } from './special/corruption'
-import { yearlyHedge } from './business/hedge-year'
-import { yearlyInvestments } from './investments'
-import { yearlyMilestones } from './life'
+import { settleIncomeTax } from './finance'
+import { checkDeath } from './health'
 import { writeLifeRow } from './life-series'
-import { yearlyRelationships } from './relationships'
-import { yearlyBackground } from './birth-background'
-import { yearlyRoyalty } from './royalty'
-import { refreshRoyalCareers } from './npc-lives'
-import { yearlyShops } from './shops'
-import { yearlySpecial } from './special'
 import type { GameState } from './types'
-
-/** Ordered yearly hooks. Each one must be a no-op when it doesn't apply. */
-export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
-  ['history', yearlyHistory],
-  ['digest', yearlyDigest],
-  ['household', yearlyHousehold],
-  ['relationships', yearlyRelationships],
-  ['sharedProjects', yearlySharedProjects],
-  ['givingFund', yearlyGivingFund],
-  ['background', yearlyBackground],
-  ['royalty', yearlyRoyalty],
-  // Royal blood can arrive mid-year (a sibling born after the NPC pass, a child
-  // titled by yearlyRoyalty): give them their court life now, as a reload would.
-  ['royalCareers', (g) => refreshRoyalCareers(g)],
-  ['health', yearlyHealth],
-  ['education', yearlyEducation],
-  ['professions', yearlyProfessions],
-  ['career', yearlyCareer],
-  ['special', yearlySpecial],
-  // Politics 2.0 (nation/): laws' upkeep, personal taxes under them, the State of the Nation,
-  // crises and consequences. After the careers (approval and elections), before the business year.
-  ['nation', yearlyNation],
-  // Inventions settle last year's sales before 'business' books the fiscal year (company
-  // margins go into b.cash + b.yearIncome) and before 'finance' taxes personal royalties.
-  ['workshop', yearlyWorkshop],
-  ['corruption', yearlyCorruption],
-  ['business', yearlyBusiness],
-  // Rival breakthroughs land after the business year, only for years after the present one (business/tech-waves.ts).
-  ['techWaves', landRivalWaves],
-  ['development', yearlyDevelopment],
-  ['investments', yearlyInvestments],
-  // Personal and Family hedge funds book their year and queue one popup (business/hedge-year.ts).
-  ['hedge', yearlyHedge],
-  ['shops', yearlyShops],
-  ['computer', yearlyComputer],
-  ['finance', yearlyFinance],
-  ['wealth', yearlyWealth],
-  ['familyUse', yearlyFamilyUse],
-  ['nepo', yearlyNepo],
-  ['willFeuds', yearlyWillFeuds],
-  ['immigration', yearlyImmigration],
-  ['assets', yearlyAssets],
-  ['crime', yearlyCrime],
-  ['underworld', yearlyUnderworld],
-  // The money team bills and trades last, so its cash is what is left after rent, tax and upkeep.
-  ['advisors', yearlyAdvisors],
-  ['milestones', yearlyMilestones],
-]
 
 export function canAgeUp(g: GameState): boolean {
   return g.character.alive && g.queue.length === 0
@@ -116,11 +42,11 @@ export function ageUp(g: GameState): void {
   // The economic year boundary precedes every income-producing hook, including history.
   // New-year earnings must not be eroded as though held since the previous birthday.
   yearlyEconomy(g)
-  c.money /= 1 + economyOf(g).inflation
+  erodeCash(g, economyOf(g).inflation)
 
   // The life series keeps one row for each age lived, the year of death included (src/game/life-series.ts).
-  for (const [, hook] of YEARLY_HOOKS) {
-    hook(g)
+  for (const e of yearlyEntries('aging')) {
+    e.run(g)
     if (!c.alive) {
       writeLifeRow(g)
       return

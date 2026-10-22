@@ -2,7 +2,7 @@
 // would do (previews from the same overlay the world uses), and the proposal flow: honest pass odds,
 // sweeteners (lean on the party, a deal, bribes), vetoes, the courts, retaliation from abroad and
 // insider bets on your own policy. Menus build measures; the 'nation.bill' script enacts them.
-import { addHidden, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { marketOf } from '../data/markets'
 import type { Sector } from '../economy/model'
 import { initialTrade } from '../economy/trade'
@@ -456,7 +456,7 @@ export function resolveBill(g: GameState, m: Measure, sweet: Sweetener): boolean
     const fromDirty = Math.min(me.dirty, cost)
     if (fromDirty + Math.max(0, g.character.money) < cost) { notice(g, 'No Money', `Waverers want ${formatMoney(cost)} in cash. You don't have it.`, { emoji: '💸' }); return false }
     me.dirty -= fromDirty
-    g.character.money -= cost - fromDirty
+    addMoney(g, -(cost - fromDirty), 'bribe')
     addHidden(g, 'karma', -8)
     me.heat = Math.min(100, me.heat + 8)
     addCase(g, me, { kind: 'votes', label: `Paid lawmakers to pass "${label}"`, evidence: .3, amount: cost })

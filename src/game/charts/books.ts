@@ -8,7 +8,8 @@
 // the profit line and the tiles; the builders that need the books skip them and say where the books start.
 import type { MarketView } from '../business/competition'
 import { readDividend } from '../business/dividend-policy'
-import { businessAssets, HISTORY_ROWS, readBiz, runsIt, stakeValue, type BizState, type YearRecord } from '../business/state'
+import { businessAssets, HISTORY_ROWS, readBiz, readTally, runsIt, stakeValue, TALLY_OPERATING, type BizState, type YearRecord } from '../business/state'
+import type { Tally } from '../kernel/tally'
 import type { GameState } from '../types'
 import { deltaLabel, fit, moneyLabel, pctLabel, priceBasisYear, whole } from './money'
 import { reveal } from './reveal'
@@ -57,7 +58,45 @@ const STRIP_MAX = 12
 const MAX_SHARE = 100
 /** The most a book amount may be for the cash walk: fewer than 32 of them can never reach the spec's magnitude limit. */
 const WALK_BOUND = SPEC_LIMITS.magnitude / 32
+/** The note of a walk drawn from a row with no reasons (an old save, the first year after the upgrade, a lean row): it still has a residual. */
 const WALK_NOTE = "Moves the books don't name yet sit in everything else."
+/** The steps of the cash walk after the four named ones that are shown one by one; the rest are summed as "Other moves". */
+const WALK_MOVES = 5
+const OTHER_MOVES = 'Other moves'
+
+/**
+ * The plain name of each reason that can move a company's cash, for the walk. A reason that is not here has no name of its own and is
+ * summed into "Other moves". The keys the four named steps hold (the operating result, inflation, debt, dividends) are not here.
+ */
+export const CASH_LABELS: Readonly<Record<string, string>> = {
+  benefit: 'Grants and subsidies',
+  capex: 'Equipment and buildings',
+  claim: 'Insurance payouts',
+  'crime.take': 'Fraud and graft',
+  draw: 'Your bonus',
+  'fee.bank': 'Bank fees',
+  'fee.gov': 'Licences and fees',
+  fine: 'Fines',
+  'firm.sale': 'Sale of a part of the business',
+  inject: 'Money you put in',
+  inputs: 'Supplies and services',
+  'invest.income': 'Investment income',
+  legal: 'Lawyers',
+  luck: OTHER_MOVES,
+  marketing: 'Marketing',
+  payroll: 'Staff pay',
+  premium: 'Insurance',
+  purchase: 'Purchases',
+  rent: 'Rent',
+  rnd: 'Research',
+  royalty: 'Royalties',
+  sales: 'Extra sales',
+  severance: 'Severance',
+  'tax.corp': 'Company tax',
+  'trade.buy': 'Investments bought',
+  'trade.sell': 'Investments sold',
+  wage: 'Wages',
+}
 
 /** A whole-dollar amount a spec can carry, or null when the book holds no usable number there. */
 function amount(v: unknown, bound: number = SPEC_LIMITS.magnitude): number | null {
@@ -191,13 +230,104 @@ export function costShareSpec(_g: GameState, b: BizState): ChartSpec | null {
 // ---------------------------------------------------------------------------
 // Cash
 
+/** The keys the four named steps of the cash walk hold between them: the operating result and inflation (net profit), debt, dividends. */
+const WALK_HELD: ReadonlySet<string> = new Set([TALLY_OPERATING, 'inflation', 'loan.principal', 'loan.repay', 'loan.interest', 'dividend'])
+const WALK_OPERATING = [TALLY_OPERATING, 'inflation'] as const
+const WALK_DEBT = ['loan.principal', 'loan.repay', 'loan.interest'] as const
+/** The most reasons looked at together when finding what net profit already holds: every set of them is tried, at most 4,095. */
+const ONE_OFF_POOL = 12
+
+/**
+ * The reasons whose flows are exactly the one-off costs and income that net profit already holds (`target`, their sum with the
+ * sign of a cash move): the smallest set that adds to it. Null when no set does, or when two sets of the same size do
+ * and the books cannot say which was meant. Reasons the four named steps hold are never in a set.
+ */
+function oneOffReasons(flows: Tally, target: number): string[] | null {
+  const pool = Object.keys(flows)
+    .filter((k) => !WALK_HELD.has(k) && flows[k] !== 0)
+    .sort((a, c) => Math.abs(flows[c]!) - Math.abs(flows[a]!) || (a < c ? -1 : 1))
+    .slice(0, ONE_OFF_POOL)
+  for (let size = 1; size <= pool.length; size++) {
+    const hits: string[][] = []
+    const pick = (from: number, left: number, sum: number, got: string[]): void => {
+      if (left === 0) {
+        if (sum === target) hits.push(got)
+        return
+      }
+      for (let i = from; i < pool.length; i++) pick(i + 1, left - 1, sum + flows[pool[i]!]!, [...got, pool[i]!])
+    }
+    pick(0, size, 0, [])
+    if (hits.length === 1) return hits[0]!
+    if (hits.length > 1) return null
+  }
+  return null
+}
+
+/** What the four named steps of the walk hold, and the cash walk's residual they leave (opening plus the steps, taken from closing). */
+interface WalkHeld {
+  net: number
+  erosion: number
+  debtMove: number
+  paid: number
+  rest: number
+}
+
+/**
+ * The residual of the walk, named. The year's row carries the ledger's reason for every move of the company's cash since the books
+ * closed the year before (YearRecord.flows), and the live tally carries the moves since this year closed. Together they add up to the
+ * whole change of cash, so the residual is explained by them: every reason the four named steps do not hold is a step of its own.
+ * Net profit already holds the one-off costs and income the company booked during the year (the books reverse them in the operating
+ * result, so their cash is not counted twice), so the reasons that carry them are taken out when the books say which they are (the
+ * smallest set of reasons that adds to the year's one-offs) and what is left of the operating result is "Stock and timing". Loans and
+ * dividends the named steps missed are named too. The five biggest steps are kept, the rest are summed. What no reason explains is a
+ * "Rounding" row of a dollar or two; anything bigger is "Unexplained", because it means a cash move bypassed the books. Null when the
+ * row has no reasons: it is drawn as R1 drew it.
+ */
+function namedMoves(b: BizState, r: YearRecord, held: WalkHeld): { items: { label: string; value: number }[] } | null {
+  const flows = readTally(r.flows)
+  if (flows === undefined) return null
+  const all = new Map<string, number>()
+  for (const t of [flows, readTally(b.tally) ?? {}]) {
+    for (const [k, v] of Object.entries(t)) {
+      if (Math.abs(v) > WALK_BOUND) return null
+      all.set(k, (all.get(k) ?? 0) + v)
+    }
+  }
+  const sum = (names: readonly string[]): number => names.reduce((t, k) => t + (all.get(k) ?? 0), 0)
+  // What the year's one-offs came to inside net profit: costs less income, from the same row as the flows.
+  const once = (amount(r.other) ?? 0) - (amount(r.otherIncome) ?? 0)
+  const inProfit = new Set(once === 0 ? [] : oneOffReasons(flows, -once) ?? [])
+  const moves = new Map<string, number>()
+  const put = (label: string, v: number): void => {
+    if (v !== 0) moves.set(label, (moves.get(label) ?? 0) + v)
+  }
+  let taken = 0
+  for (const [k, v] of all) {
+    if (WALK_HELD.has(k)) continue
+    const inside = inProfit.has(k) ? flows[k] ?? 0 : 0
+    taken += inside
+    put(CASH_LABELS[k] ?? OTHER_MOVES, v - inside)
+  }
+  put('Stock and timing', sum(WALK_OPERATING) - (held.net - held.erosion) + taken)
+  put('Loan moves', sum(WALK_DEBT) - held.debtMove)
+  put('Dividends paid earlier', sum(['dividend']) + held.paid)
+  const named = [...moves].filter(([l]) => l !== OTHER_MOVES).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]) || (x[0] < y[0] ? -1 : 1))
+  const items = named.slice(0, WALK_MOVES).map(([label, value]) => ({ label, value }))
+  const other = (moves.get(OTHER_MOVES) ?? 0) + named.slice(WALK_MOVES).reduce((t, [, v]) => t + v, 0)
+  if (other !== 0) items.push({ label: OTHER_MOVES, value: other })
+  const left = held.rest - items.reduce((t, i) => t + i.value, 0)
+  if (left !== 0) items.push({ label: Math.abs(left) <= 2 ? 'Rounding' : 'Unexplained', value: left })
+  return { items }
+}
+
 /**
  * Where the year's cash went: from the cash at the start of the year (the books close of the year before) to the cash
  * now, the number the report prints as "Company cash". The steps are the net profit, the inflation on idle cash, the
- * change in debt and the year's dividend, each left out when it is nothing, and one Everything else for what is left,
- * so the first total plus every step is the last total exactly. The owner's bonus is already inside the net profit, so
- * it is a mark on that row and not a step. Null with no statement, no books for the year before, or a number that is
- * not a sane size.
+ * change in debt and the year's dividend, each left out when it is nothing, and then the rest. A year whose row carries the
+ * ledger's reasons names every other move (namedMoves), so there is no Everything else; an older row has no reasons and keeps
+ * the one Everything else for what is left. Either way the first total plus every step is the last total exactly. The owner's
+ * bonus is already inside the net profit, so it is a mark on that row and not a step. Null with no statement, no books for the
+ * year before, or a number that is not a sane size.
  */
 export function cashWalkSpec(g: GameState, b: BizState): ChartSpec | null {
   const year = yearOf(b)
@@ -216,6 +346,8 @@ export function cashWalkSpec(g: GameState, b: BizState): ChartSpec | null {
   const dividend = readDividend(b.dividend)?.last
   const paid = dividend && dividend.year === year ? amount(dividend.paid, WALK_BOUND) ?? 0 : 0
   const rest = closing - (opening + net - erosion + debtMove - paid)
+  const thisRow = rows.find((p) => p.year === year)
+  const named = thisRow ? namedMoves(b, thisRow.r, { net, erosion, debtMove, paid, rest }) : null
 
   const steps: ChartStep[] = [
     { label: 'Cash at the start', value: opening, kind: 'total' },
@@ -227,11 +359,14 @@ export function cashWalkSpec(g: GameState, b: BizState): ChartSpec | null {
   add('Inflation on cash', 0 - erosion)
   add('Change in debt', debtMove)
   add('Dividends paid', 0 - paid)
-  add('Everything else', rest)
+  if (named) for (const m of named.items) add(m.label, m.value)
+  else add('Everything else', rest)
   steps.push({ label: 'Cash now', value: closing, kind: 'total' })
+  if (steps.some((x) => !Number.isFinite(x.value) || Math.abs(x.value) > SPEC_LIMITS.magnitude)) return null
 
   const draws = amount(rows.find((p) => p.year === year)?.r.draws)
   const marks: ChartMark[] = draws !== null && draws > 0 ? [{ at: 1, label: fit(`Includes your ${moneyLabel(g, draws)} bonus`, SPEC_LIMITS.label) }] : []
+  const note = named ? undefined : WALK_NOTE
   return reveal({
     v: 1,
     kind: 'waterfall',
@@ -241,7 +376,7 @@ export function cashWalkSpec(g: GameState, b: BizState): ChartSpec | null {
     series: [],
     steps,
     ...(marks.length > 0 ? { marks } : {}),
-    note: WALK_NOTE,
+    ...(note !== undefined ? { note } : {}),
     summary: fit(`Cash went from ${moneyLabel(g, opening)} at the start of ${year} to ${moneyLabel(g, closing)} now.`),
   })
 }

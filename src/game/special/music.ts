@@ -3,6 +3,7 @@
 // go on world tours, earn certifications and awards, and collect royalties forever.
 import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, scriptInput, useYearAction } from '../core'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { crowdedField } from '../mastery'
 import { musicMastersMenu, yearlyMusicRights } from './music-rights'
@@ -119,11 +120,11 @@ function auditionForLabel(g: GameState, instrument: string, label: RosterEntry, 
     return say(
       g,
       label.name,
-      pick(g, [
+      pickSite(g, [
         `You played your heart out for ${label.name}. They said they'd "keep your number on file".`,
         `The executives at ${label.name} took one listen and asked if you'd considered accounting.`,
         `${label.name} said your sound "isn't quite there yet". Practice more and try again.`,
-      ]),
+      ], 0xc7642177),
       INSTRUMENT_EMOJI[instrument] ?? '\u{1F3B5}',
       'bad',
     )
@@ -389,12 +390,12 @@ function release(g: GameState, job: Job, typeId: string, subgenre: string, title
   }
   const verdict =
     quality >= 85
-      ? pick(g, ['Critics are calling it a masterpiece.', 'Music blogs crowned it album of the year.', 'Even your haters have it on repeat.'])
+      ? pickLine(g, ['Critics are calling it a masterpiece.', 'Music blogs crowned it album of the year.', 'Even your haters have it on repeat.'])
       : quality >= 60
-        ? pick(g, ['Reviews were warm.', 'Fans seem to love it.', 'It got decent radio play.'])
+        ? pickLine(g, ['Reviews were warm.', 'Fans seem to love it.', 'It got decent radio play.'])
         : quality >= 40
-          ? pick(g, ['Reviews were mixed.', 'It got lost in the shuffle.', 'A few tracks are growing on people.'])
-          : pick(g, ['Critics savaged it.', 'One reviewer called it "a crime against ears".', 'It was mostly bought by your relatives.'])
+          ? pickLine(g, ['Reviews were mixed.', 'It got lost in the shuffle.', 'A few tracks are growing on people.'])
+          : pickLine(g, ['Critics savaged it.', 'One reviewer called it "a crime against ears".', 'It was mostly bought by your relatives.'])
   log(g, `I released the ${type.label.toLowerCase()} "${title}". It sold ${compact(sold)} copies${cert ? ` and went ${cert}` : ''}.`, cert || quality >= 60 ? 'good' : quality < 40 ? 'bad' : 'neutral')
   if (cert) remember(g, `"${title}" went ${cert}.`)
   say(
@@ -447,7 +448,7 @@ const concertScript = defineScript('special.music.concert', (g, choice) => {
   const ticket = 10 + Math.round(d.popularity * 1.2)
   const gross = Math.round(attendance * ticket * 0.35 * (0.6 + performance / 200))
   const share = d.mode === 'band' ? Math.round(gross / Math.max(1, d.members)) : gross
-  earnIncome(g, share)
+  earnIncome(g, share, 'wage')
   musicProfile(g).concerts += 1
   if (venue.name === 'a hoedown') g.flags['special.music.hoedown'] = true
   const good = performance >= 55
@@ -456,8 +457,8 @@ const concertScript = defineScript('special.music.concert', (g, choice) => {
   if (good) addFame(g, 1)
   log(g, `I played a concert at ${venueLabel(g, venue.name)} for ${attendance.toLocaleString('en-US')} people.`, good ? 'good' : 'neutral')
   const vibe = good
-    ? pick(g, ['The crowd sang every word back to you.', 'Someone threw flowers on stage. You hope they were flowers.', 'The encore went on for twenty minutes.'])
-    : pick(g, ['The sound system kept squealing.', 'You forgot the words to your own song.', 'Half the crowd left during the slow songs.'])
+    ? pickLine(g, ['The crowd sang every word back to you.', 'Someone threw flowers on stage. You hope they were flowers.', 'The encore went on for twenty minutes.'])
+    : pickLine(g, ['The sound system kept squealing.', 'You forgot the words to your own song.', 'Half the crowd left during the slow songs.'])
   say(g, 'Concert', `You played ${venueLabel(g, venue.name)} in front of ${attendance.toLocaleString('en-US')} fans. ${vibe} You earned ${money(share)}.`, '\u{1F3A4}', good ? 'good' : 'neutral')
 })
 
@@ -615,7 +616,7 @@ const quitMusic: MenuAction = {
     removeBand(g, job)
     leave(g, 'quit')
     log(g, 'I quit the music business.')
-    say(g, 'Quit Music', `You walked away from ${where ?? 'the music business'}. ${pick(g, ['The fans will always have your records.', 'Your guitar now gathers dust in the corner.', 'You swear you will make a comeback album someday.'])}`, '\u{1F6AA}')
+    say(g, 'Quit Music', `You walked away from ${where ?? 'the music business'}. ${pickLine(g, ['The fans will always have your records.', 'Your guitar now gathers dust in the corner.', 'You swear you will make a comeback album someday.'])}`, '\u{1F6AA}')
   },
 }
 
@@ -687,7 +688,7 @@ export function musicJobNodes(g: GameState): MenuNode[] {
         const base = masterInstrument(gg, inst)
         setInstrumentSkill(gg, inst, base + gain)
         log(gg, `I practiced my ${inst.toLowerCase()}.`)
-        say(gg, 'Practice', `${pick(gg, ['You rehearsed for eight hours straight.', 'You wrote three new riffs and deleted two.', 'You practiced until the neighbors started requesting songs.'])} Your ${inst.toLowerCase()} skill is now ${instrumentSkill(gg, inst)}%.`, '\u{1F3B6}', 'good')
+        say(gg, 'Practice', `${pickLine(gg, ['You rehearsed for eight hours straight.', 'You wrote three new riffs and deleted two.', 'You practiced until the neighbors started requesting songs.'])} Your ${inst.toLowerCase()} skill is now ${instrumentSkill(gg, inst)}%.`, '\u{1F3B6}', 'good')
       },
     },
     {
@@ -802,7 +803,7 @@ export function yearlyMusic(g: GameState): void {
       } else r.royalty = 0
     }
     if (royalties > 0) {
-      earnIncome(g, royalties)
+      earnIncome(g, royalties, 'royalty')
       log(g, `My records earned ${money(royalties)} in royalties.`)
     }
   }
@@ -818,7 +819,7 @@ export function yearlyMusic(g: GameState): void {
   const sim = musicStore.peek(g)?.migrated === true
   if (d.mode === 'solo') {
     if (!sim && d.contractYears > 0) {
-      earnIncome(g, d.advancePerYear)
+      earnIncome(g, d.advancePerYear, 'royalty')
       d.contractYears -= 1
       if (d.contractYears === 0) {
         if (d.popularity >= 35) {
@@ -847,7 +848,7 @@ export function yearlyMusic(g: GameState): void {
   } else {
     const gross = Math.round(d.popularity ** 2 * randInt(g, 15, 40))
     const share = Math.round(gross / Math.max(1, d.members))
-    if (share > 0) earnIncome(g, share)
+    if (share > 0) earnIncome(g, share, 'wage')
     job.salary = share
     if (chance(g, 0.04) && avgBandRelationship(g, job) < 45) {
       const name = d.bandName
@@ -878,11 +879,11 @@ export function yearlyMusic(g: GameState): void {
       d.popularity = clamp100(d.popularity + 5)
       log(g, `"${latest.title}" won the ${AWARD} for ${category}.`, 'good')
       remember(g, `Won the ${AWARD} for ${category} ("${latest.title}").`)
-      say(g, AWARD, `"${latest.title}" won the ${AWARD} for ${category}! You thanked ${pick(g, ['your mom', 'your fans', 'your producer', 'nobody in particular'])} and nearly tripped on the way off stage.`, '\u{1F3C6}', 'good')
+      say(g, AWARD, `"${latest.title}" won the ${AWARD} for ${category}! You thanked ${pickLine(g, ['your mom', 'your fans', 'your producer', 'nobody in particular'])} and nearly tripped on the way off stage.`, '\u{1F3C6}', 'good')
     } else {
       addFame(g, 2)
       log(g, `"${latest.title}" was nominated for the ${AWARD} for ${category}.`, 'good')
-      say(g, 'Nominated', `"${latest.title}" was nominated for the ${AWARD} for ${category}, but lost to ${pick(g, ['a song about a tractor', 'a boy band reunion album', 'an AI-generated lullaby', 'your biggest rival'])}.`, '\u{1F3C6}')
+      say(g, 'Nominated', `"${latest.title}" was nominated for the ${AWARD} for ${category}, but lost to ${pickLine(g, ['a song about a tractor', 'a boy band reunion album', 'an AI-generated lullaby', 'your biggest rival'])}.`, '\u{1F3C6}')
     }
   }
 }

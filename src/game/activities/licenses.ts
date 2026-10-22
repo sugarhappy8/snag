@@ -1,9 +1,11 @@
 // Licenses: driver's license (country driving age), boating license, pilot license (after 40
 // hours of flight school) and firearm license (background check). Each test is a short quiz
 // played through popups; get every question right to pass.
-import { count, hasLicense, log, notice, remember, scriptChoice } from '../core'
+import { personCash } from '../cash'
+import { addMoney, count, hasLicense, log, notice, remember, scriptChoice } from '../core'
 import { masterFirstTime } from '../mastery'
 import { chance, pick, randInt, shuffle, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasMainCharacter } from '../talents'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
@@ -227,7 +229,7 @@ function passTest(g: GameState, kind: LicenseKind): void {
   remember(g, `Got a ${NAMES[kind]}.`)
   log(g, `I got my ${NAMES[kind]}!`, 'good')
   const passLines: Record<LicenseKind, string> = {
-    driver: pick(g, ['You passed your driving test! The open road is yours.', `You passed! The examiner even cracked a smile. Your license photo from ${localTerm(g, 'licenseOffice')}, however, is a crime.`]),
+    driver: pickSite(g, ['You passed your driving test! The open road is yours.', `You passed! The examiner even cracked a smile. Your license photo from ${localTerm(g, 'licenseOffice')}, however, is a crime.`], 0x86fa54f5),
     boating: 'You passed your boating test! You are now legally allowed to captain a boat. Ahoy!',
     pilot: "You passed your pilot's test! You are now a licensed pilot. The sky is no longer the limit.",
     firearm: 'You passed the safety test and your background check came back clean. Your firearm license arrived in the mail.',
@@ -243,7 +245,7 @@ function maybeGiftCar(g: GameState): void {
   if (!parent || !chance(g, 0.35)) return
   const name = pick(g, GIFT_CARS)
   const value = localPrice(g, randInt(g, 4_000, 11_000))
-  parent.money = Math.max(0, parent.money - value)
+  personCash(g, parent, -value, 'asset.buy', 0)
   const asset: Asset = {
     id: uid(g, 'a'),
     kind: 'car',
@@ -280,7 +282,7 @@ function startTest(g: GameState, kind: LicenseKind, fee: number): void {
     brokeNotice(g, fee, `the ${NAMES[kind]} test`)
     return
   }
-  g.character.money -= fee
+  addMoney(g, -fee, 'fee.gov')
   g.yearActions[`act.license.${kind}`] = (g.yearActions[`act.license.${kind}`] ?? 0) + 1
   count(g, `${kind}Tests`)
   // Main Character Syndrome: the first time at the wheel (or the helm, or the yoke) is already mastery,
@@ -353,14 +355,14 @@ function flightLesson(g: GameState, hours: number, usd: number): void {
     brokeNotice(g, cost, `${hours} hours of flight school`)
     return
   }
-  c.money -= cost
+  addMoney(g, -cost, 'tuition')
   g.yearActions['act.flightHours'] = used + hours
   const total = flagNumber(g, FLIGHT_HOURS) + hours
   g.flags[FLIGHT_HOURS] = total
   count(g, 'flightSchool')
   if (hasMainCharacter(g)) masterFirstTime(g, 'drive.pilot', 'driving', 'flight lesson')
   log(g, `I logged ${hours} hours at flight school.`, 'good')
-  const line = pick(g, [
+  const line = pickLine(g, [
     'You practiced takeoffs and landings until you could do them in your sleep. Please do not do them in your sleep.',
     'Your instructor only grabbed the controls from you twice. Progress!',
     'You flew over the city at sunset and nearly forgot you were being graded.',
@@ -446,7 +448,7 @@ function applyFirearm(g: GameState): void {
   else if (mental) denial = 'Your background check flagged your mental health history.'
   else if (STRICT.includes(country.id) && !chance(g, 0.15)) denial = `Civilian firearm licenses are extremely restricted in ${country.name}. Your application was rejected.`
   if (denial) {
-    c.money -= fee
+    addMoney(g, -fee, 'fee.gov')
     g.yearActions['act.license.firearm'] = ATTEMPTS_PER_YEAR
     log(g, 'My firearm license application was denied.', 'bad')
     result(g, 'Application Denied', `${denial}

@@ -13,6 +13,7 @@ import { openBank } from './bank-state'
 import { createBusinessAsset, newBiz } from './founding'
 import { spendGroupTreasury, treasurySpare } from './group-treasury'
 import { industryDef } from './industries'
+import { landCash } from './settle'
 import { money } from './util'
 
 // Familiar, fully modeled operations; specialized R&D and regulated entertainment need owner setup.
@@ -33,7 +34,7 @@ export function foundGroupVenture(g: GameState, grp: Group): string[] {
     const working = Math.max(cost.capital, salary * 2)
     const total = cost.total + working
     if (total > budget) return []
-    b.cash = working
+    landCash(g, b, working) // a forecast of a division that was never founded: it is not in the world, so the books stay out of it
     // A bank's books are sized to its starting capital (newBiz opened them before the cash was set).
     openBank(b)
     let profit: number
@@ -52,7 +53,8 @@ export function foundGroupVenture(g: GameState, grp: Group): string[] {
   const b = best.b
   b.manager = managerCandidate(g, b, leader.skill)
   b.founderName = managerName(leader)
-  b.share = grp.core.share; b.cash = best.working
+  // The new division's opening cash is a constructor value, like a founded company's: the group's payment above went to the firms' pool.
+  b.share = grp.core.share; landCash(g, b, best.working) // not in the world yet either (the asset is made below)
   // Reinvested corporate cash is not a fresh personal tax-basis contribution.
   b.invested = 0
   b.yearCosts = best.cost.fee + best.cost.permits

@@ -28,16 +28,25 @@ export interface ProbeOptions {
    * nothing else changes.
    */
   keepAlive?: boolean
+  /** Called with 0 before the first year, then 1, 2, ... after each ageUp. Read-only: it must not change the life. */
+  onYear?: (g: GameState, yearsPlayed: number) => void
+  /**
+   * A measurement aid for the 100x ceiling probe (default 1): multiplies the founder's money (5,000,000) and the cash each
+   * company starts with (3,000,000), so a life can be run with a hundred times the inputs. A finite number above zero.
+   */
+  scale?: number
 }
 
 export function probeLife(opts: ProbeOptions): GameState {
+  const scale = opts.scale ?? 1
+  if (!Number.isFinite(scale) || scale <= 0) throw new Error(`probeLife: scale must be a finite number above zero, got ${String(scale)}`)
   const g = createNewLife({ seed: opts.seed, year: opts.birthYear })
   // Grow up instantly, as fuzzBusiness does: an adult with money, smarts and a licence. The calendar
   // moves with the character, because createNewLife's year is the birth year.
   g.queue = []
   g.character.age = 30
   g.year = opts.birthYear + 30
-  g.character.money = 5e6
+  g.character.money = 5e6 * scale
   g.character.stats.smarts = 75
   g.character.licenses = ['driver']
   bindMoneyContext(g)
@@ -50,7 +59,7 @@ export function probeLife(opts: ProbeOptions): GameState {
     if (founded === opts.businesses) break
     if (industryProblem(g, industry) !== null) continue
     const opened = g.year - 6
-    const b0 = newBiz(g, industry, countryId, city, { cash: 3_000_000, founded: opened, outlets: [{ countryId, city, count: 6, opened }] })
+    const b0 = newBiz(g, industry, countryId, city, { cash: 3_000_000 * scale, founded: opened, outlets: [{ countryId, city, count: 6, opened }] })
     const a = createBusinessAsset(g, `Probe ${industry}`, b0, 200_000)
     g.assets.push(a)
     const b = bizOf(g, a)
@@ -62,6 +71,7 @@ export function probeLife(opts: ProbeOptions): GameState {
   }
   if (founded < opts.businesses) throw new Error(`probeLife: only ${founded} of ${opts.businesses} industries are open to a founder in ${countryId} in ${g.year}`)
 
+  opts.onYear?.(g, 0)
   for (let y = 0; y < opts.years; y++) {
     g.queue = []
     if (opts.keepAlive) {
@@ -69,6 +79,7 @@ export function probeLife(opts: ProbeOptions): GameState {
       g.character.conditions = []
     }
     ageUp(g)
+    opts.onYear?.(g, y + 1)
   }
   return g
 }

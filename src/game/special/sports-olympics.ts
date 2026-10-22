@@ -5,7 +5,8 @@
 // bonus (some countries pay a fortune, some pay nothing).
 import { addStat, count, earnIncome, log, scriptChoice } from '../core'
 import { realWealthFactor } from '../history/events-people'
-import { bell, chance, pick } from '../rng'
+import { bell, chance } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, Json, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
@@ -110,7 +111,7 @@ const finalScript = defineScript('sports.olympics.final', (g, choice, data) => {
   const goldBonus = GOLD_BONUS[cid] ?? tidy(20_000 * Math.max(0.3, wealth(g)))
   // The table is in today's dollars; a committee paid its medalists in the money of the year.
   const bonus = cid === 'gb' || cid === 'se' || cid === 'no' ? 0 : tidy(goldBonus * (medal === 'gold' ? 1 : medal === 'silver' ? 0.5 : 0.33) * realWealthFactor(g.year))
-  if (bonus > 0) earnIncome(g, bonus)
+  if (bonus > 0) earnIncome(g, bonus, 'prize')
   const word = medal === 'gold' ? 'GOLD' : medal === 'silver' ? 'silver' : 'bronze'
   honor(g, `Won Olympic ${medal} in ${e.event} at the ${games}.`, `Olympic ${medal} medalist (${e.sport})`, nationalTeam(g), medal === 'gold' ? 10 : 9)
   log(g, `I won Olympic ${medal} in ${e.event}!`, 'good')
@@ -132,7 +133,7 @@ export function yearlyOlympics(g: GameState): void {
     g,
     finalScript,
     'The Olympics',
-    `You were selected for ${nationalTeam(g)} at the ${games}${flagBearer ? ' and chosen to carry the flag at the opening ceremony' : ''}! ${e.team ? `Your team fought through the group stage into the medal rounds.` : `You made it through the heats into the final.`} ${pick(g, ['The whole country is watching.', 'Your parents flew in wearing matching T-shirts with your face on them.', 'The stadium is so loud you can feel it in your teeth.'])} What's your mindset?`,
+    `You were selected for ${nationalTeam(g)} at the ${games}${flagBearer ? ' and chosen to carry the flag at the opening ceremony' : ''}! ${e.team ? `Your team fought through the group stage into the medal rounds.` : `You made it through the heats into the final.`} ${pickLine(g, ['The whole country is watching.', 'Your parents flew in wearing matching T-shirts with your face on them.', 'The stadium is so loud you can feel it in your teeth.'])} What's your mindset?`,
     [
       { id: 'gold', label: 'Go for gold, all or nothing', emoji: '\u{1F947}' },
       { id: 'medal', label: 'Play it safe and secure a medal', emoji: '\u{1F949}' },

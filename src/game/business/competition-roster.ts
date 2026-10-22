@@ -9,7 +9,7 @@
 // over a few years and close, sell out or go bust after a lifespan, when someone new takes their
 // place. Real brands never end after PRESENT_YEAR: in the procedural future they only shrink or
 // grow. Nothing here reads or writes game state; results are cached per market.
-import { seeded, type SRng } from '../assets'
+import { seeded, type SRng } from '../rng'
 import { allBrands, type Brand, type BrandTier } from '../data/brands'
 import { marketOf } from '../data/markets'
 import { getCountry, namePoolOf } from '../world'

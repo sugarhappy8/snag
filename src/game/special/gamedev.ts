@@ -22,6 +22,7 @@ import { devState } from '../computer/dev-state'
 import { ventureSubtitle, ventureView } from '../computer/dev-venture'
 import { addStat, count, log, remember } from '../core'
 import { chance, pick } from '../rng'
+import { pickLine } from '../text/pick'
 import type { Asset, GameState, MenuGroup, MenuNode } from '../types'
 import { addFame, blocked, money, say } from './common'
 import { attendConvention, gameJobNodes, studioJobsMenu, trackSkill, yearlyGameJob } from './gamedev-career'
@@ -310,9 +311,9 @@ function awardSeason(g: GameState, budget: number): number {
   remember(g, line)
   if (budget <= 0) return 0
   if (won === AWARDS.worst) {
-    say(g, 'Rusty Cartridge', `"${x.title}" won the ${won}. The trophy is a cartridge that does not work. You are contractually obliged to blow into it on stage. ${pick(g, ['The audience gave you a pity clap.', 'You accepted it in person, which the internet respected.'])}`, '\u{1F5D1}\u{FE0F}', 'bad')
+    say(g, 'Rusty Cartridge', `"${x.title}" won the ${won}. The trophy is a cartridge that does not work. You are contractually obliged to blow into it on stage. ${pickLine(g, ['The audience gave you a pity clap.', 'You accepted it in person, which the internet respected.'])}`, '\u{1F5D1}\u{FE0F}', 'bad')
   } else {
-    say(g, 'And the Winner Is...', `"${x.title}" won the ${won}!${own ? ` You walked on stage, thanked ${pick(g, ['your mom', 'the QA team, who are the real heroes', 'every developer who crunched (and said it should not happen again)', 'your cat'])}, and the orchestra played you off.` : ' The whole team went on stage. You were in the back row, waving.'} ${CRITIC_SITE} score: ${x.critic}, players: "${playerLabel(x.players)}".`, '\u{1F3C6}', 'good')
+    say(g, 'And the Winner Is...', `"${x.title}" won the ${won}!${own ? ` You walked on stage, thanked ${pickLine(g, ['your mom', 'the QA team, who are the real heroes', 'every developer who crunched (and said it should not happen again)', 'your cat'])}, and the orchestra played you off.` : ' The whole team went on stage. You were in the back row, waving.'} ${CRITIC_SITE} score: ${x.critic}, players: "${playerLabel(x.players)}".`, '\u{1F3C6}', 'good')
   }
   return 1
 }

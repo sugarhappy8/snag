@@ -562,7 +562,7 @@ function minoritySuit(g: GameState, a: Asset, b: BizState, st: BoardState, p: Pr
   const total = p.kind === 'bonus' ? b.ownerSalary + amount : amount
   const excess = family ? Math.max(0, total - Math.max(1, p.market ?? total) * ABOVE_MARKET, total * 0.25) : Math.max(0, total - payCap(b, st))
   const costs = Math.round(Math.max(5_000, excess * 0.15) * clampN(localEcon(b.industry, b.countryId, b.city).level, 0.3, 2))
-  addMoney(g, -costs)
+  addMoney(g, -costs, 'legal')
   const last = st.votes[st.votes.length - 1]
   if (last && last.what === p.label && last.year === g.year) last.note = 'then blocked in court as self-dealing'
   log(g, `${a.name}'s minority shareholders sued me over ${family ? "a relative's job" : 'my pay'} and a judge blocked it.`, 'bad')

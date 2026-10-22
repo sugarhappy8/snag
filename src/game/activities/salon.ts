@@ -2,8 +2,9 @@
 // Juveniles can only use the hair salon, barber and nail salon, and pay with their own money.
 // Services follow the decades: Marcel waves and perms early on, tanning beds from the late
 // seventies, spray tans and keratin treatments only recently.
-import { addStat, count, log, scriptChoice, useYearAction } from '../core'
+import { addMoney, addStat, count, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, randInt } from '../rng'
+import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Avatar, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addCondition, brokeNotice, gate, localPrice, money, result } from './common'
@@ -239,11 +240,11 @@ function doService(g: GameState, section: Section, s: Service): void {
   const c = g.character
   const key = `act.salon.${section.id}.${s.id}`
   if ((g.yearActions[key] ?? 0) >= SERVICE_LIMIT) {
-    result(g, section.label, pick(g, [
+    result(g, section.label, pickSite(g, [
       `You've already had a ${s.label.toLowerCase()} twice this year. Give it a rest.`,
       'Your stylist says there is nothing left to improve this year. Come back next year.',
       "The salon won't book you again this year. They need a break from you.",
-    ]), section.emoji)
+    ], 0x26d627dc), section.emoji)
     return
   }
   const cost = localPrice(g, s.price)
@@ -251,7 +252,7 @@ function doService(g: GameState, section: Section, s: Service): void {
     brokeNotice(g, cost, `a ${s.label.toLowerCase()}`)
     return
   }
-  c.money -= cost
+  addMoney(g, -cost, 'health')
   useYearAction(g, key, SERVICE_LIMIT)
   count(g, 'salonVisits')
   if (s.mishap && chance(g, s.mishap.chance)) {

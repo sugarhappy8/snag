@@ -30,6 +30,7 @@ import { incomeTax, livingCost, yearlyDebtPayments } from '../finance'
 import { dateAgeRange, makeCandidate, startDating, type Candidate } from '../love'
 import { createPerson, notePerson } from '../people'
 import { chance, pick, randInt, uid } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, GameState, Json, MenuGroup, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
@@ -253,7 +254,7 @@ export function joinMembership(g: GameState, planId: string, tierId: string): As
     }
   }
   const total = fee + initiation
-  if (!spend(g, total)) {
+  if (!spend(g, total, 'leisure')) {
     notice(g, 'Insufficient Funds', `Joining ${name} costs ${formatMoney(total)}${initiation ? ` (${formatMoney(initiation)} initiation fee + ${formatMoney(fee)} for the first year)` : ' for the first year'}. You have ${formatMoney(Math.max(0, c.money))}.`, { emoji: '💸', tone: 'bad' })
     return null
   }
@@ -302,7 +303,7 @@ export function changeTier(g: GameState, assetId: string, tierId: string): boole
   const newFee = planFee(g, plan, to)
   if (newFee > oldFee) {
     const diff = newFee - oldFee
-    if (!spend(g, diff)) {
+    if (!spend(g, diff, 'leisure')) {
       notice(g, 'Insufficient Funds', `Upgrading to ${to.label} costs ${formatMoney(diff)} now. You have ${formatMoney(Math.max(0, g.character.money))}.`, { emoji: '💸', tone: 'bad' })
       return false
     }
@@ -423,14 +424,14 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
       addStat(g, 'happiness', r(3, 6))
       if (chance(g, 0.4)) addStat(g, 'looks', 1)
       const style = SPA_STYLE[c.countryId]
-      const text = style ? style.line : pick(g, ['A hot-stone massage, a eucalyptus steam and a nap in a robe. You are a new person.', 'Someone put cucumbers on your eyes and you fell asleep for an hour.', 'The masseuse found knots you didn\'t know you had and destroyed them.'])
+      const text = style ? style.line : pickLine(g, ['A hot-stone massage, a eucalyptus steam and a nap in a robe. You are a new person.', 'Someone put cucumbers on your eyes and you fell asleep for an hour.', 'The masseuse found knots you didn\'t know you had and destroyed them.'])
       return { title: 'Spa Day', text, log: style ? `I spent the day at ${style.place}.` : `I had a spa day at ${name}.` }
     }
     case 'tennis': {
       addStat(g, 'health', r(2, 3))
       addStat(g, 'happiness', r(1, 3))
       addHidden(g, 'athleticism', randInt(g, 1, 2))
-      let text = pick(g, ['You won a tight three-setter and shook hands like a gracious winner. Then you gloated in the car.', 'You lost 6-0, 6-0 to a 70-year-old with a wicked slice.', 'You played doubles and only hit your partner once.'])
+      let text = pickLine(g, ['You won a tight three-setter and shook hands like a gracious winner. Then you gloated in the car.', 'You lost 6-0, 6-0 to a 70-year-old with a wicked slice.', 'You played doubles and only hit your partner once.'])
       if (chance(g, 0.2)) text += ` Your doubles partner, ${meetSomeone(g, name).firstName}, invited you to play again next week.`
       return { title: 'Tennis', text, log: `I played tennis at ${name}.` }
     }
@@ -443,13 +444,13 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
         remember(g, `Hit a hole-in-one at ${name}.`)
         return { title: 'Hole in One!', text: 'HOLE IN ONE! The ball rolled in like it had somewhere to be. Your name is going on the clubhouse wall, and tradition says you buy the bar a round.', log: `I hit a hole-in-one at ${name}!` }
       }
-      let text = pick(g, ['You shot 18 over par and blamed the new clubs.', 'You hit a perfect drive on the 7th and talked about nothing else at the bar.', 'You spent more time in the sand traps than a beach volleyball team.'])
+      let text = pickLine(g, ['You shot 18 over par and blamed the new clubs.', 'You hit a perfect drive on the 7th and talked about nothing else at the bar.', 'You spent more time in the sand traps than a beach volleyball team.'])
       if (chance(g, 0.25)) text += ` You played a round with ${meetSomeone(g, name, { rich: chance(g, 0.5) }).firstName} and hit it off.`
       return { title: 'Golf', text, log: `I played 18 holes at ${name}.` }
     }
     case 'country': {
       addStat(g, 'happiness', r(3, 6))
-      let text = pick(g, ['You lounged by the pool, ordered things with "truffle" in the name and charged it all to your member number.', 'You attended a charity gala in the ballroom. You understood about half the jokes.', 'You played tennis, then golf, then napped in the lounge. A perfect club day.'])
+      let text = pickLine(g, ['You lounged by the pool, ordered things with "truffle" in the name and charged it all to your member number.', 'You attended a charity gala in the ballroom. You understood about half the jokes.', 'You played tennis, then golf, then napped in the lounge. A perfect club day.'])
       if (chance(g, 0.35)) {
         const p = meetSomeone(g, name, { occupations: RICH_OCCUPATIONS, rich: true })
         text += ` You were introduced to ${p.firstName} ${p.lastName}, ${article(p.occupation)} ${p.occupation.toLowerCase()} with a very firm handshake.`
@@ -463,7 +464,7 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
         return { title: 'Yacht Club', text: "You don't have a boat anymore, so you watched the regatta from the clubhouse bar in a blazer. Nobody asked.", log: `I watched the regatta at ${name}.` }
       }
       addStat(g, 'happiness', r(4, 7))
-      let text = pick(g, [`You raced your ${boat.name.toLowerCase()} in the club regatta and finished a respectable fourth.`, `You took your ${boat.name.toLowerCase()} out with the club fleet and nobody crashed into anybody. A great day.`])
+      let text = pickSite(g, [`You raced your ${boat.name.toLowerCase()} in the club regatta and finished a respectable fourth.`, `You took your ${boat.name.toLowerCase()} out with the club fleet and nobody crashed into anybody. A great day.`], 0xf1598295)
       if (chance(g, 0.12)) {
         count(g, 'regattasWon')
         addStat(g, 'happiness', 5)
@@ -474,7 +475,7 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
     }
     case 'private': {
       addStat(g, 'happiness', r(2, 5))
-      let text = pick(g, ['You took meetings on the rooftop terrace and felt extremely important.', 'You watched a film in the private screening room and had opinions about it afterwards.', 'You saw a famous actor in the corner and played it very cool. You did not play it cool.'])
+      let text = pickLine(g, ['You took meetings on the rooftop terrace and felt extremely important.', 'You watched a film in the private screening room and had opinions about it afterwards.', 'You saw a famous actor in the corner and played it very cool. You did not play it cool.'])
       if (chance(g, 0.4)) {
         const p = meetSomeone(g, name, { occupations: CREATIVE_OCCUPATIONS })
         text += ` You swapped numbers with ${p.firstName}, ${article(p.occupation)} ${p.occupation.toLowerCase()}.`
@@ -485,7 +486,7 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
     case 'cowork': {
       addStat(g, 'happiness', r(1, 3))
       if (chance(g, 0.3)) addStat(g, 'smarts', 1)
-      let text = pick(g, ['You got more done in a day than in a week at home. The free coffee helped.', 'You spent the morning working and the afternoon listening to someone pitch an app for dogs.', 'You booked a phone booth and took an important call. You felt very official.'])
+      let text = pickLine(g, ['You got more done in a day than in a week at home. The free coffee helped.', 'You spent the morning working and the afternoon listening to someone pitch an app for dogs.', 'You booked a phone booth and took an important call. You felt very official.'])
       if (boostJob(g, 3, 6)) text += ' Your work has never looked better.'
       if (chance(g, 0.2)) {
         const p = meetSomeone(g, name, { occupations: COWORK_OCCUPATIONS })
@@ -496,23 +497,23 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
     case 'streaming': {
       addStat(g, 'happiness', r(2, 4))
       if (chance(g, 0.25)) addStat(g, 'health', -1)
-      const show = pick(g, SHOWS)
-      return { title: 'Binge-Watching', text: pick(g, [`You watched an entire season of ${show} in one sitting. The app asked if you were still watching. Rude.`, `You finished ${show} at 4 a.m. and immediately started it again.`, `You spent 40 minutes choosing something to watch, then rewatched ${show}.`]), log: `I binge-watched ${show}.` }
+      const show = pickLine(g, SHOWS)
+      return { title: 'Binge-Watching', text: pickSite(g, [`You watched an entire season of ${show} in one sitting. The app asked if you were still watching. Rude.`, `You finished ${show} at 4 a.m. and immediately started it again.`, `You spent 40 minutes choosing something to watch, then rewatched ${show}.`], 0xe8d3e706), log: `I binge-watched ${show}.` }
     }
     case 'music': {
       addStat(g, 'happiness', r(1, 3))
-      return { title: 'Music', text: pick(g, ['You discovered a band nobody has heard of and will now be insufferable about it.', 'You made a playlist for every mood. There are 46 playlists.', 'You listened to one song on repeat 112 times. The app is concerned.']), log: 'I spent the day listening to music.' }
+      return { title: 'Music', text: pickLine(g, ['You discovered a band nobody has heard of and will now be insufferable about it.', 'You made a playlist for every mood. There are 46 playlists.', 'You listened to one song on repeat 112 times. The app is concerned.']), log: 'I spent the day listening to music.' }
     }
     case 'games': {
       addStat(g, 'happiness', r(2, 4))
       if (chance(g, 0.25)) addStat(g, 'smarts', 1)
-      return { title: 'Gaming Marathon', text: pick(g, ['You tried six new games and finished none of them. A perfect night.', 'You played online until 3 a.m. and got called a very creative name by a 12-year-old.', 'You beat a boss on your 47th attempt and screamed so loud the neighbors checked on you.']), log: 'I had a gaming marathon.' }
+      return { title: 'Gaming Marathon', text: pickLine(g, ['You tried six new games and finished none of them. A perfect night.', 'You played online until 3 a.m. and got called a very creative name by a 12-year-old.', 'You beat a boss on your 47th attempt and screamed so loud the neighbors checked on you.']), log: 'I had a gaming marathon.' }
     }
     case 'mealkit': {
       addStat(g, 'health', r(1, 2))
       addStat(g, 'happiness', r(1, 3))
       const partner = currentPartner(g)
-      let text = pick(g, ['The recipe said 30 minutes. It took 90. It was delicious.', 'You burned the garlic, salvaged the sauce and plated it like a TV chef.', 'You learned what "julienne" means. Your fingers survived.'])
+      let text = pickLine(g, ['The recipe said 30 minutes. It took 90. It was delicious.', 'You burned the garlic, salvaged the sauce and plated it like a TV chef.', 'You learned what "julienne" means. Your fingers survived.'])
       if (partner && chance(g, 0.6)) {
         addRelationship(partner, randInt(g, 2, 5))
         text += ` You cooked it with ${partner.firstName}, who only criticized your knife skills twice.`
@@ -522,7 +523,7 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
     case 'wine': {
       addStat(g, 'happiness', r(2, 4))
       if (chance(g, 0.3)) addStat(g, 'health', -1)
-      return { title: 'Wine Night', text: pick(g, ['You swirled, sniffed and declared it "oaky." You have no idea what that means.', 'You opened a bottle with friends and had very strong opinions about cheese.', 'You read the tasting notes out loud in a fancy accent. Everyone left early.']), log: 'I opened a bottle from my wine club.' }
+      return { title: 'Wine Night', text: pickLine(g, ['You swirled, sniffed and declared it "oaky." You have no idea what that means.', 'You opened a bottle with friends and had very strong opinions about cheese.', 'You read the tasting notes out loud in a fancy accent. Everyone left early.']), log: 'I opened a bottle from my wine club.' }
     }
     case 'culture': {
       const zoo = chance(g, 0.4)
@@ -536,18 +537,18 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
       }
       count(g, zoo ? 'zooVisits' : 'museumVisits')
       return zoo
-        ? { title: 'Zoo Day', text: pick(g, ['A penguin waddled right up to the glass and judged you.', 'You watched the lions nap for an hour. Relatable.', 'A monkey threw something at the crowd. You were the crowd.']), log: 'I spent the day at the zoo.' }
-        : { title: 'Museum Day', text: pick(g, ['You stared at a painting for ten minutes and felt something. Possibly hunger.', 'You learned an alarming amount about medieval plumbing.', 'You read every single placard. A guard asked if you were okay.']), log: 'I spent the day at a museum.' }
+        ? { title: 'Zoo Day', text: pickLine(g, ['A penguin waddled right up to the glass and judged you.', 'You watched the lions nap for an hour. Relatable.', 'A monkey threw something at the crowd. You were the crowd.']), log: 'I spent the day at the zoo.' }
+        : { title: 'Museum Day', text: pickLine(g, ['You stared at a painting for ten minutes and felt something. Possibly hunger.', 'You learned an alarming amount about medieval plumbing.', 'You read every single placard. A guard asked if you were okay.']), log: 'I spent the day at a museum.' }
     }
     case 'warehouse': {
       addStat(g, 'happiness', r(1, 2))
-      return { title: 'Bulk Shopping', text: pick(g, ['You went in for milk and came out with 48 rolls of toilet paper, a kayak and a rotisserie chicken.', 'You ate lunch entirely from free samples. A personal best.', 'You bought a jar of mayonnaise the size of a toddler.']), log: `I went on a bulk shopping run at ${name}.` }
+      return { title: 'Bulk Shopping', text: pickLine(g, ['You went in for milk and came out with 48 rolls of toilet paper, a kayak and a rotisserie chicken.', 'You ate lunch entirely from free samples. A personal best.', 'You bought a jar of mayonnaise the size of a toddler.']), log: `I went on a bulk shopping run at ${name}.` }
     }
     case 'jet': {
       addStat(g, 'happiness', r(5, 9))
       if (c.hidden.fame >= 20) addHidden(g, 'fame', 1)
       count(g, 'privateFlights')
-      const trip = pick(g, JET_TRIPS)
+      const trip = pickLine(g, JET_TRIPS)
       return { title: 'Wheels Up', text: `You flew private ${trip}. No lines, no shoes off, a warm cookie on takeoff.`, log: `I flew private ${trip}.` }
     }
     default:
@@ -580,7 +581,7 @@ const DATING = defineScript('member.dating', (g, choice, data) => {
     notice(g, "It's a Date!", `${partner.firstName} said yes! Your first date went so well that you're officially seeing each other.`, { emoji: '💘', tone: 'good' })
   } else {
     addStat(g, 'happiness', -randInt(g, 1, 3))
-    notice(g, 'Unmatched', pick(g, [`${k.firstName} unmatched you. Premium didn't cover that.`, `${k.firstName} replied "lol no" and blocked you.`, `${k.firstName} never replied. The read receipt haunts you.`]), { emoji: '💔', tone: 'bad' })
+    notice(g, 'Unmatched', pickSite(g, [`${k.firstName} unmatched you. Premium didn't cover that.`, `${k.firstName} replied "lol no" and blocked you.`, `${k.firstName} never replied. The read receipt haunts you.`], 0xac4c06c8), { emoji: '💔', tone: 'bad' })
   }
 })
 
@@ -858,7 +859,7 @@ export function yearlyMemberships(g: GameState): void {
       if (living > 0) {
         const saved = Math.round(living * (str(a.details.tier) === 'executive' ? 0.05 : 0.035))
         if (saved > 0) {
-          addMoney(g, saved)
+          addMoney(g, saved, 'living')
           if (chance(g, 0.4)) log(g, `Buying in bulk at ${a.name} saved me about ${formatMoney(saved)} on groceries this year.`, 'good')
         }
       }

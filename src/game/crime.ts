@@ -1,5 +1,6 @@
 import { underworldMenu } from './underworld'
 import { economyOf } from './economy'
+import { personCash } from './cash'
 // Crime: the Crime activity menu (petty theft to murder), arrests & trials, organized crime,
 // and the yearly police work (wanted level, fugitives, stolen cars, audits, prison years).
 import {
@@ -36,6 +37,7 @@ import { notePerson } from './people'
 import { addPrisonTime, cleanRefund, convictionRecord, fugitiveInfo, FUGITIVE_FLAG, gotBack, moneyScale, releaseFromPrison, sendToPrison, yearlyPrison } from './prison'
 import { addGrievance } from './activities/common'
 import { chance, pick, rand, randInt, shuffle, uid } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { hasTalent, talentHint } from './talents'
 import { localStreetName } from './data/locales'
@@ -100,7 +102,7 @@ function lieLow(g: GameState, key: string, max: number): boolean {
   notice(
     g,
     'Lie Low',
-    pick(g, [
+    pickLine(g, [
       "You've pushed your luck enough this year. Lie low until next year.",
       'Every cop in town has your description this year. Better wait until next year.',
       'Even criminals need a vacation. Try again next year.',
@@ -190,13 +192,13 @@ function commitCrime(g: GameState, crime: string, cost: CrimeCost): number {
 function pocket(g: GameState, amount: number): number {
   const n = Math.max(0, Math.round(amount))
   if (n <= 0) return 0
-  addMoney(g, n)
+  addMoney(g, n, 'crime.take')
   count(g, 'moneyStolen', n)
   const fam = crimeFamily(g)
   if (fam && n >= 1000) {
     const cut = Math.round(n * (fam.rank >= 4 ? 0 : 0.15))
     if (cut > 0) {
-      addMoney(g, -cut)
+      addMoney(g, -cut, 'crime.cost')
       fam.earnings += cut
       fam.standing = clamp(fam.standing + 2)
       log(g, `I kicked up ${formatMoney(cut)} to the ${fam.name}.`, 'neutral')
@@ -414,7 +416,7 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
     for (const p of parents(g)) addRelationship(p, -randInt(g, 3, 8))
     log(g, `The police caught me ${name === 'Disorderly Conduct' ? 'causing trouble' : `doing something I shouldn't (${name.toLowerCase()})`} and drove me home.`, 'bad')
     // No case, no conviction: whatever was held for it comes straight back.
-    if (refund > 0) addMoney(g, refund)
+    if (refund > 0) addMoney(g, refund, 'legal')
     notice(g, 'Busted', `A police officer caught you and drove you home. After a long lecture about ${name.toLowerCase()}, your parents grounded you for what feels like forever.${gotBack(refund)}`, {
       emoji: '\u{1F46E}',
       tone: 'bad',
@@ -467,11 +469,11 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
   const bribe = bribeAmount(g, sev)
   const intro =
     opts.context ??
-    pick(g, [
+    pickSite(g, [
       `The police caught you red-handed. You're under arrest for ${name.toLowerCase()}.`,
       `Sirens! An officer slapped the cuffs on you for ${name.toLowerCase()}.`,
       `"Freeze!" The police have you dead to rights for ${name.toLowerCase()}.`,
-    ])
+    ], 0x46f4682b)
   // Crime talent: you sense the way out (still a gamble).
   const runOdds = runAwayOdds(g)
   const bribeOdds = canAfford(g, bribe) ? bribeOdds0(sev) : 0
@@ -507,7 +509,7 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
       unmarkCaught(g, t)
       c.wantedLevel = clamp(c.wantedLevel + 2, 0, 5)
       log(g, 'I ran from the police and got away!', 'event')
-      outcome(g, 'Got Away!', pick(g, ['You juked the officer, hopped a fence and vanished down an alley. The police are still looking for you.', 'You ran like the wind. The officer, sadly for him, ran like a light breeze. You got away, for now.']), '\u{1F3C3}', 'good')
+      outcome(g, 'Got Away!', pickLine(g, ['You juked the officer, hopped a fence and vanished down an alley. The police are still looking for you.', 'You ran like the wind. The officer, sadly for him, ran like a light breeze. You got away, for now.']), '\u{1F3C3}', 'good')
       return
     }
     t.charges.push('Resisting Arrest')
@@ -531,14 +533,14 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
     const p = bribeOdds0(t.severity)
     if (chance(g, p)) {
       // Bribed, not cleared: the case is dropped and any refund with it.
-      spend(g, amount)
+      spend(g, amount, 'bribe')
       unmarkCaught(g, t)
       log(g, `I bribed a police officer with ${formatMoney(amount)} to let me go.`, 'event')
       outcome(g, 'Bribed', `The officer looked around, pocketed the ${formatMoney(amount)}, and told you to get lost. Nobody saw anything.`, '\u{1F4B5}', 'good')
       return
     }
     if (chance(g, 0.5)) {
-      spend(g, amount)
+      spend(g, amount, 'bribe')
       notice(g, 'Bad Cop', `The officer took your ${formatMoney(amount)}, thanked you, and arrested you anyway.`, { emoji: '\u{1F46E}', tone: 'bad' })
     } else {
       t.charges.push('Bribery')
@@ -549,7 +551,7 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
     return
   }
   if (choice === 'insult') {
-    const insult = pick(g, ['a donut-eating mall cop reject', 'a traffic cone with a badge', 'a discount action figure', "the reason your hometown's crime rate is so high"])
+    const insult = pickLine(g, ['a donut-eating mall cop reject', 'a traffic cone with a badge', 'a discount action figure', "the reason your hometown's crime rate is so high"])
     const beaten = chance(g, 0.4)
     const dmg = beaten ? hurt(g, randInt(g, 5, 12)) : 0
     if (!t.charges.includes('Disorderly Conduct') && t.crime !== 'Disorderly Conduct') t.charges.push('Disorderly Conduct')
@@ -680,7 +682,7 @@ defineScript(LAWYER_SCRIPT, (g, choice, data) => {
   const pd = t.lawyers.find((l) => l.id === 'pd') ?? { id: 'pd', name: defenderTitle(g), fee: 0, quality: 0.1, blurb: '' }
   let lawyer = t.lawyers.find((l) => l.id === choice) ?? pd
   if (lawyer.fee > 0) {
-    if (!spend(g, lawyer.fee)) {
+    if (!spend(g, lawyer.fee, 'legal')) {
       notice(g, "Can't Afford It", `You can't afford ${lawyer.name}'s ${formatMoney(lawyer.fee)} retainer. The court appointed a ${defenderTitle(g).toLowerCase()} instead.`, { emoji: '\u{1F4B8}', tone: 'bad' })
       lawyer = pd
     } else {
@@ -808,7 +810,7 @@ function acquit(g: GameState, t: TrialData): void {
   }
   // Cleared: whatever the investigation took comes back, once.
   const back = cleanRefund(t.refund)
-  if (back > 0) addMoney(g, back)
+  if (back > 0) addMoney(g, back, 'legal')
   if (t.violent === 'attempted' && t.victimId) {
     const v = getPerson(g, t.victimId)
     if (v && v.alive) {
@@ -931,10 +933,10 @@ const FENCE_SCRIPT = defineScript('crime.loot.fence', (g, choice, data) => {
   if (choice === 'pawn' && value > 0) {
     const got = pocket(g, value)
     log(g, `I pawned ${item} for ${formatMoney(got)}.`, 'good')
-    outcome(g, 'Pawn Shop', pick(g, [
+    outcome(g, 'Pawn Shop', pickSite(g, [
       `The pawn shop owner didn't ask a single question. You walked out ${formatMoney(got)} richer.`,
       `You sold ${item} to a guy behind a pawn shop counter for ${formatMoney(got)}. He winked. You did not wink back.`,
-    ]), '\u{1F4B0}', 'good')
+    ], 0x5e427f7c), '\u{1F4B0}', 'good')
     return
   }
   addStat(g, 'happiness', randInt(g, 2, 6))
@@ -1022,11 +1024,11 @@ const PICKPOCKET_RESULT = defineScript('crime.pickpocket.result', (g, result, da
     }
     const got = pocket(g, amount)
     log(g, `I pickpocketed ${who} and got ${formatMoney(got)}.`, 'good')
-    outcome(g, 'Sticky Fingers', pick(g, [
+    outcome(g, 'Sticky Fingers', pickSite(g, [
       `You slipped your hand into ${who}'s pocket and came out with ${formatMoney(amount)}${phone ? ' and a phone you sold on the spot' : ''}.`,
       `Smooth as butter. You lifted ${formatMoney(amount)} from ${who}${phone ? ', plus a phone you flipped for cash' : ''}.`,
       `${label} never felt a thing. You walked away ${formatMoney(amount)} richer${phone ? ' (the phone helped)' : ''}.`,
-    ]), t.emoji, 'good')
+    ], 0xf983dd15), t.emoji, 'good')
     if (t.id !== 'cop' && chance(g, 0.05 * caughtMult(g))) arrestPlayer(g, 'Pickpocketing', 1, { recordIndex: idx, evidence: 0.6, context: 'An undercover cop saw the whole thing.' })
     return
   }
@@ -1136,7 +1138,7 @@ const PORCH_SCRIPT = defineScript('crime.porch.pick', (g, choice, data) => {
   if (chance(g, risk)) {
     if (chance(g, 0.5)) {
       log(g, 'I got chased off a porch while stealing a package.', 'bad')
-      outcome(g, 'Caught!', pick(g, [
+      outcome(g, 'Caught!', pickLine(g, [
         `The homeowner burst out the door with a broom and chased you three blocks.`,
         `A very large dog came around the corner. You dropped the package and ran.`,
       ]), '\u{1F9F9}', 'bad')
@@ -1171,7 +1173,7 @@ const porchAction: MenuAction = {
   run: (g) => {
     if (!canAct(g) || !lieLow(g, 'crime.porch', 5)) return
     const spots = shuffle(g, PORCH_SPOTS.filter((x) => eraOk(g, x.text)).map((x) => ({ ...x, text: eraStrip(x.text) }))).slice(0, 3)
-    const options = spots.map((s, i) => ({ id: `p${i}`, spot: s.text, risk: s.risk, size: pick(g, PACKAGE_SIZES) }))
+    const options = spots.map((s, i) => ({ id: `p${i}`, spot: s.text, risk: s.risk, size: pickLine(g, PACKAGE_SIZES) }))
     scriptChoice(g, PORCH_SCRIPT, 'Porch Pirate', 'You stroll through the neighborhood. A few packages are sitting unattended. Which one do you take?', [
       ...options.map((o) => ({ id: o.id, label: `A ${o.size} on ${o.spot}`, emoji: '\u{1F4E6}' })),
       { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
@@ -1274,7 +1276,7 @@ const SHOPLIFT_COP = defineScript('crime.shoplift.cop', (g, choice, data) => {
     log(g, `I outran a ${mallCop(g)} with ${item}.`, 'event')
     c.wantedLevel = clamp(c.wantedLevel + 1, 0, 5)
     const us = g.character.countryId === 'us'
-    outcome(g, 'Escaped', pick(g, [`You bolted past the ${mallCop(g)}${us && g.year >= 2003 ? "'s Segway" : ''} and disappeared into the ${us && cars(g) ? 'parking lot' : 'crowd'} with ${item}.`, `The ${mallCop(g)} wheezed to a stop ${g.year >= 1950 ? 'at the escalator' : 'at the door'}. You got away with ${item}.`]), '\u{1F3C3}', 'good')
+    outcome(g, 'Escaped', pickSite(g, [`You bolted past the ${mallCop(g)}${us && g.year >= 2003 ? "'s Segway" : ''} and disappeared into the ${us && cars(g) ? 'parking lot' : 'crowd'} with ${item}.`, `The ${mallCop(g)} wheezed to a stop ${g.year >= 1950 ? 'at the escalator' : 'at the door'}. You got away with ${item}.`], 0xbd0cefd9), '\u{1F3C3}', 'good')
     return
   }
   arrestPlayer(g, 'Shoplifting', 1, { recordIndex, evidence: 0.9, noResist: true, extraCharges: ['Resisting Arrest'] })
@@ -1401,7 +1403,7 @@ const DELINQUENCY_SCRIPT = defineScript('crime.delinquency', (g, choice, data) =
     if (!yes) {
       addRelationship(partner, -randInt(g, 2, 6))
       log(g, `My ${relationLabel(partner).toLowerCase()} ${partner.firstName} refused to join my mischief.`, 'neutral')
-      notice(g, 'Not Interested', pick(g, [`${partner.firstName} looked at you like you'd lost your mind and said no.`, `${partner.firstName} refused and gave you a ten-minute lecture about responsibility.`]), { emoji: '\u{1F645}' })
+      notice(g, 'Not Interested', pickSite(g, [`${partner.firstName} looked at you like you'd lost your mind and said no.`, `${partner.firstName} refused and gave you a ten-minute lecture about responsibility.`], 0x613692a7), { emoji: '\u{1F645}' })
       return
     }
   }
@@ -1593,7 +1595,7 @@ const DOG_NAMES = ['Rex', 'Bella', 'Max', 'Tank', 'Princess', 'Brutus', 'Cupcake
 function generateHouse(g: GameState, tier: number): BurglaryData {
   const tpl = HOUSE_TEMPLATES[tier - 1]
   const us = g.character.countryId === 'us'
-  const street = us ? pick(g, STREETS) : localStreetName(g)
+  const street = us ? pickLine(g, STREETS) : localStreetName(g)
   const house =
     tier === 1
       ? pick(g, us ? [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, g.year >= 1955 ? `a mobile home on ${street}` : `a boarding house on ${street}`] : [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a cramped ground-floor flat on ${street}`])
@@ -1675,11 +1677,11 @@ const BURGLARY_RESULT = defineScript('crime.burglary.result', (g, result, data) 
     const names = items.map((it) => it.name.toLowerCase())
     const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] ?? 'some loot'
     log(g, `I burglarized ${house.house} and fenced the loot for ${formatMoney(got)}.`, 'good')
-    outcome(g, 'Burglary', pick(g, [
+    outcome(g, 'Burglary', pickSite(g, [
       `You slipped out of ${house.house} with ${list}. A fence gave you ${formatMoney(loot)} for the lot.`,
       `Clean job. You made off with ${list} and sold everything for ${formatMoney(loot)}.`,
       `${house.owner} is going to have a bad morning. You got away with ${list}, worth ${formatMoney(loot)} on the street.`,
-    ]), '\u{1F977}', 'good')
+    ], 0x5bcf25b5), '\u{1F977}', 'good')
     return
   }
   const by = parsed.by === 'dog' || parsed.by === 'alarm' || parsed.by === 'owner' ? parsed.by : house.ownerHome ? 'owner' : house.dog ? 'dog' : 'alarm'
@@ -1705,7 +1707,7 @@ const BURGLARY_RESULT = defineScript('crime.burglary.result', (g, result, data) 
   if (by === 'owner' && chance(g, 0.5)) {
     const dmg = hurt(g, randInt(g, 8, 22))
     log(g, `The homeowner beat me up when I tried to rob their house.`, 'bad')
-    outcome(g, 'Homeowner', `${house.owner} caught you red-handed and beat you with a ${pick(g, ['frying pan', 'golf club', 'rolling pin', 'baseball bat', 'very heavy dictionary'])}. (-${dmg} health) You fled.${lost}`, '\u{1F915}', 'bad')
+    outcome(g, 'Homeowner', `${house.owner} caught you red-handed and beat you with a ${pickLine(g, ['frying pan', 'golf club', 'rolling pin', 'baseball bat', 'very heavy dictionary'])}. (-${dmg} health) You fled.${lost}`, '\u{1F915}', 'bad')
     return
   }
   log(g, 'I fled a burglary empty-handed.', 'bad')
@@ -1811,10 +1813,10 @@ const GTA_KEEP = defineScript('crime.gta.keep', (g, choice, data) => {
   const price = Math.max(100, Math.round(car.value * (0.25 + rand(g) * 0.15)))
   const got = pocket(g, price)
   log(g, `I sold a stolen ${car.name} to a chop shop for ${formatMoney(got)}.`, 'good')
-  outcome(g, 'Chop Shop', pick(g, [
-    `A guy named ${g.character.countryId === 'us' ? pick(g, ['Sal', 'Big Mike', 'Dmitri', 'Lou', 'Toad', 'Rosa']) : randomFirstName(g, g.character.countryId, 'male')} at the chop shop handed you ${formatMoney(price)} in an envelope. The ${car.name} was in eleven pieces before you reached the door.`,
+  outcome(g, 'Chop Shop', pickSite(g, [
+    `A guy named ${g.character.countryId === 'us' ? pickLine(g, ['Sal', 'Big Mike', 'Dmitri', 'Lou', 'Toad', 'Rosa']) : randomFirstName(g, g.character.countryId, 'male')} at the chop shop handed you ${formatMoney(price)} in an envelope. The ${car.name} was in eleven pieces before you reached the door.`,
     `The chop shop paid ${formatMoney(price)} for the ${car.name}. No paperwork, no questions.`,
-  ]), '\u{1F527}', 'good')
+  ], 0x844b11d2), '\u{1F527}', 'good')
 })
 
 const GTA_PICK = defineScript('crime.gta.pick', (g, choice, data) => {
@@ -1829,10 +1831,10 @@ const GTA_PICK = defineScript('crime.gta.pick', (g, choice, data) => {
   if (!chance(g, p)) {
     count(g, 'carsStolen')
     log(g, `I stole a ${car.name}.`, 'event')
-    scriptChoice(g, GTA_KEEP, 'Grand Theft Auto', pick(g, [
+    scriptChoice(g, GTA_KEEP, 'Grand Theft Auto', pickSite(g, [
       `You hot-wired the ${car.name} ${car.spot} and peeled out. Nobody followed you. What now?`,
       `You jimmied the lock of the ${car.name} ${car.spot}, and thirty seconds later you were cruising down the highway. What now?`,
-    ]), [
+    ], 0xe25f4c2c), [
       { id: 'keep', label: 'Keep it', emoji: car.emoji },
       { id: 'chop', label: 'Sell it to a chop shop', emoji: '\u{1F527}' },
     ], { emoji: car.emoji, data: raw })
@@ -1853,7 +1855,7 @@ const GTA_PICK = defineScript('crime.gta.pick', (g, choice, data) => {
     const dmg = hurt(g, randInt(g, 6, 18))
     const owner = strangerName(g, chance(g, 0.5) ? 'male' : 'female')
     log(g, `The owner of a ${car.name} caught me trying to steal it and beat me up.`, 'bad')
-    outcome(g, 'Owner!', `${owner} came back to the ${car.name} and caught you elbow-deep in the dashboard wires. ${pick(g, ['They dragged you out by your collar and pummeled you.', 'They hit you with a tire iron.'])} (-${dmg} health)`, '\u{1F915}', 'bad')
+    outcome(g, 'Owner!', `${owner} came back to the ${car.name} and caught you elbow-deep in the dashboard wires. ${pickLine(g, ['They dragged you out by your collar and pummeled you.', 'They hit you with a tire iron.'])} (-${dmg} health)`, '\u{1F915}', 'bad')
     return
   }
   arrestPlayer(g, 'Grand Theft Auto', 2, { recordIndex: idx, evidence: 0.8, context: `${g.year >= 1930 ? 'A police cruiser pulled up' : 'A constable on a bicycle pedaled up'} just as you got the ${car.name} started.` })
@@ -2000,10 +2002,10 @@ const BANK_SCRIPT = defineScript('crime.bank.step', (g, choice, data) => {
     const got = pocket(g, take)
     const fam = crimeFamily(g)
     if (fam && crew === 'family') fam.standing = clamp(fam.standing + randInt(g, 5, 10))
-    lines.push(pick(g, [
+    lines.push(pickSite(g, [
       `The tellers emptied the drawers. You escaped ${getaway.text} with ${formatMoney(take)}${share < 1 ? ' after splitting the take' : ''}.`,
       `It went like clockwork. You vanished ${getaway.text} with ${formatMoney(take)}${share < 1 ? ' as your share' : ''}.`,
-    ]))
+    ], 0x47f3b57a))
     log(g, `I robbed ${bank.name} and got away with ${formatMoney(got)}.`, 'event')
     remember(g, `Robbed ${bank.name} and got away with ${formatMoney(take)}.`)
     outcome(g, 'Bank Robbery', lines.join(' '), '\u{1F4B0}', 'good')
@@ -2011,11 +2013,11 @@ const BANK_SCRIPT = defineScript('crime.bank.step', (g, choice, data) => {
   }
   const shot = weapon.armed && chance(g, 0.12)
   if (shot) lines.push(`A security guard fired a warning shot that wasn't much of a warning. (-${hurt(g, randInt(g, 15, 35))} health)`)
-  const how = pick(g, [
+  const how = pickSite(g, [
     'The silent alarm had already been tripped. The police surrounded the building before you could get to your getaway.',
     `A teller recognized you${disguise.id === 'none' ? ' instantly, because you had no disguise' : ''}. The police caught you in the lobby.`,
     'A dye pack exploded in the money bag and turned you bright blue. You were very easy to find.',
-  ])
+  ], 0x98cf7060)
   lines.push(how)
   arrestPlayer(g, crime, bank.tier === 3 ? 4 : 3, { recordIndex: idx, evidence: 0.9, context: lines.join(' '), extraCharges: crew !== 'solo' ? ['Conspiracy'] : [] })
 })
@@ -2034,7 +2036,7 @@ const bankAction: MenuAction = {
     const banks: (Bank & { id: string })[] = [
       { id: 'b1', tier: 1, name: us ? `${city} Community Credit Union` : `${city} Savings Bank`, lo: 5000, hi: 40000, difficulty: 0 },
       { id: 'b2', tier: 2, name: `${pick(g, us ? ['Copper Lantern', 'Blue Meridian', 'Harbor Ledger', 'Cedar Crown'] : ['Civic Ledger', 'Meridian Trade', 'Harbor Merchants', 'Juniper Cooperative'])} Bank of ${city}`, lo: 20000, hi: 150000, difficulty: 0.12 },
-      { id: 'b3', tier: 3, name: `${pick(g, ['Royal', 'Imperial', 'Sovereign', 'Golden Eagle'])} Reserve Vault`, lo: 150000, hi: 1000000, difficulty: 0.3 },
+      { id: 'b3', tier: 3, name: `${pickLine(g, ['Royal', 'Imperial', 'Sovereign', 'Golden Eagle'])} Reserve Vault`, lo: 150000, hi: 1000000, difficulty: 0.3 },
     ]
     scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'Which bank will you hit? Bigger vaults, bigger guards.', [
       ...banks.map((b) => ({ id: b.id, label: b.name, emoji: ['\u{1F3E6}', '\u{1F3DB}\u{FE0F}', '\u{1F3F0}'][b.tier - 1] })),
@@ -2062,10 +2064,10 @@ const TRAIN_TIME_SCRIPT = defineScript('crime.train.time', (g, choice, data) => 
   if (chosen < 0) return
   if (chosen !== slot) {
     log(g, `I waited by the tracks at ${TRAIN_TIMES[chosen].toLowerCase()} for a train that never came.`, 'neutral')
-    notice(g, 'No Train', pick(g, [
+    notice(g, 'No Train', pickSite(g, [
       `You waited by the tracks at ${TRAIN_TIMES[chosen].toLowerCase()} with a bandana over your face. Nothing came. A tumbleweed rolled by.`,
       `You camped beside the tracks until long after ${TRAIN_TIMES[chosen].toLowerCase()}. ${titleCase(train)} never showed. Wrong time, partner.`,
-    ]), { emoji: '\u{1F335}' })
+    ], 0xf7712ccd), { emoji: '\u{1F335}' })
     return
   }
   const idx = commitCrime(g, 'Train Robbery', { karma: 10, notoriety: 10, heat: 0.6 })
@@ -2076,10 +2078,10 @@ const TRAIN_TIME_SCRIPT = defineScript('crime.train.time', (g, choice, data) => 
     const got = pocket(g, take)
     log(g, `I robbed ${train} and made off with ${formatMoney(got)}.`, 'event')
     remember(g, `Robbed ${train} like an outlaw of old.`)
-    outcome(g, 'Train Robbery', pick(g, [
+    outcome(g, 'Train Robbery', pickSite(g, [
       `${titleCase(train)} rolled in right on time. You leapt aboard, cracked the safe, and rode off with ${cargo} worth ${formatMoney(take)}. Yee-haw.`,
       `Right at ${TRAIN_TIMES[slot].toLowerCase()}, ${train} thundered past. You swung aboard like an old-west outlaw and made off with ${formatMoney(take)} in ${cargo}.`,
-    ]), '\u{1F682}', 'good')
+    ], 0xe6341673), '\u{1F682}', 'good')
     return
   }
   if (chance(g, 0.25)) {
@@ -2116,7 +2118,7 @@ const trainAction: MenuAction = {
       const slot = randInt(g, 0, TRAIN_TIMES.length - 1)
       const accurate = chance(g, 0.75)
       const rumor = accurate ? slot : (slot + randInt(g, 1, TRAIN_TIMES.length - 1)) % TRAIN_TIMES.length
-      return { id: `t${i}`, train, slot, rumor: TRAIN_TIMES[rumor], cargo: pick(g, TRAIN_CARGO) }
+      return { id: `t${i}`, train, slot, rumor: TRAIN_TIMES[rumor], cargo: pickLine(g, TRAIN_CARGO) }
     })
     const rumors = trains.map((t) => `${titleCase(t.train)} hauls ${t.cargo} and passes through around ${t.rumor.toLowerCase()}.`).join('\n')
     scriptChoice(g, TRAIN_PICK_SCRIPT, 'Train Robbery', `${g.character.countryId === 'us' ? 'Word around the saloon' : 'Word on the street'}:\n${rumors}\n\nRumors aren't always right. Which train will you rob?`, [
@@ -2415,7 +2417,7 @@ const HITMAN_DEMAND = defineScript('crime.hitman.demand', (g, choice, data) => {
   const name = str(data.name, 'The hitman')
   const extra = num(data.extra)
   if (choice === 'pay') {
-    if (spend(g, extra)) {
+    if (spend(g, extra, 'crime.cost')) {
       if (chance(g, 0.1)) {
         const dmg = hurt(g, randInt(g, 15, 35))
         outcome(g, 'Hitman', `${name} took the extra ${formatMoney(extra)}, then roughed you up anyway "for the principle of it." (-${dmg} health)`, '\u{1F915}', 'bad')
@@ -2462,7 +2464,7 @@ const HITMAN_SCRIPT = defineScript('crime.hitman.pick', (g, choice, data) => {
     arrestPlayer(g, 'Conspiracy to Commit Murder', 4, { evidence: 0.9, noResist: true, context: `"${h.name}" was an undercover cop. The handcuffs came out before the money did.` })
     return
   }
-  if (!spend(g, h.price)) {
+  if (!spend(g, h.price, 'crime.cost')) {
     notice(g, "Can't Afford It", `${h.name} wants ${formatMoney(h.price)} up front. You don't have it.`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -2595,10 +2597,10 @@ const EMBEZZLE_SCRIPT = defineScript('crime.embezzle', (g, choice) => {
   const prev = isRecord(g.flags[EMBEZZLE_FLAG]) ? num((g.flags[EMBEZZLE_FLAG] as { [key: string]: Json }).amount) : 0
   g.flags[EMBEZZLE_FLAG] = { amount: prev + amount, company: c.job.company, record: idx }
   log(g, `I embezzled ${formatMoney(got)} from ${c.job.company}.`, 'event')
-  outcome(g, 'Embezzlement', pick(g, [
+  outcome(g, 'Embezzlement', pickSite(g, [
     `You quietly moved ${formatMoney(amount)} from ${c.job.company}'s accounts into yours. Nobody noticed. Yet.`,
     `A few creative spreadsheet entries later, ${formatMoney(amount)} of ${c.job.company}'s money is now yours.`,
-  ]), '\u{1F4CA}', 'good')
+  ], 0xf92afcb0), '\u{1F4CA}', 'good')
 })
 
 const embezzleAction: MenuAction = {
@@ -2657,7 +2659,7 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
       return
     }
     log(g, `I tried to hack ${target} and failed.`, 'bad')
-    outcome(g, 'Access Denied', pick(g, [`You typed furiously for six hours. ${target}'s security held. You did learn a lot about firewalls.`, `Your hack on ${target} crashed your own computer instead.`]), '\u{1F6AB}', 'bad')
+    outcome(g, 'Access Denied', pickSite(g, [`You typed furiously for six hours. ${target}'s security held. You did learn a lot about firewalls.`, `Your hack on ${target} crashed your own computer instead.`], 0x45e560f2), '\u{1F6AB}', 'bad')
     return
   }
   let money = 0
@@ -2675,7 +2677,7 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
       addRelationship(person, -randInt(g, 5, 15))
       addPersonStat(person, 'happiness', -randInt(g, 5, 15))
     }
-    text = `You got into ${target}'s account and posted ${pick(g, ['a love letter to a lamppost', 'twelve photos of feet', 'that pineapple belongs on pizza', 'a public apology to a pigeon'])}. Chaos ensued.`
+    text = `You got into ${target}'s account and posted ${pickLine(g, ['a love letter to a lamppost', 'twelve photos of feet', 'that pineapple belongs on pizza', 'a public apology to a pigeon'])}. Chaos ensued.`
   } else if (hack.id === 'leak') {
     if (person) {
       addRelationship(person, -randInt(g, 5, 15))
@@ -2689,7 +2691,7 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
     money = Math.round(Math.min(wealth * base, cash(g, hack.id === 'bank' ? 100000 : 20000)))
     if (hack.id === 'ransom') money = Math.max(money, cash(g, randInt(g, 300, 3000)))
     if (person) {
-      person.money = Math.max(0, person.money - money)
+      personCash(g, person, -money, 'crime.take', 0)
       addPersonStat(person, 'happiness', -randInt(g, 5, 15))
     }
     text =
@@ -2734,7 +2736,7 @@ const cyberMenu: MenuGroup = {
       emoji: '\u{1F3E2}',
       run: (gg) => {
         if (!canAct(gg) || !lieLow(gg, 'crime.cyber', 3)) return
-        cyberTarget(gg, pick(gg, CORPS), null, true)
+        cyberTarget(gg, pickLine(gg, CORPS), null, true)
       },
     },
     {
@@ -2904,7 +2906,7 @@ const JOIN_SCRIPT = defineScript('crime.mafia.join', (g, choice, data) => {
   const p = clamp(0.25 + c.hidden.notoriety / 200 + Math.min(counter(g, 'crimes'), 20) / 50 + (counter(g, 'murders') > 0 ? 0.1 : 0) + crimeEdge(g), 0.1, 0.9)
   if (!chance(g, p)) {
     log(g, `The ${str(opt.name)} turned me away.`, 'bad')
-    notice(g, 'Rejected', pick(g, [`The ${str(opt.name)} don't know you from Adam. Come back when your name means something on the street.`, `A man in a nice suit told you the ${str(opt.name)} "aren't hiring." Then he laughed for a long time.`]), {
+    notice(g, 'Rejected', pickSite(g, [`The ${str(opt.name)} don't know you from Adam. Come back when your name means something on the street.`, `A man in a nice suit told you the ${str(opt.name)} "aren't hiring." Then he laughed for a long time.`], 0xafcdcd7c), {
       emoji: '\u{1F645}',
       tone: 'bad',
     })
@@ -2984,7 +2986,7 @@ function extortViolence(g: GameState, d: { [key: string]: Json }, choice: string
     return
   }
   if (chance(g, 0.7)) {
-    extortPaid(g, business, demand, `You shook down ${owner} until ${pick(g, ['the cash register rattled', 'they saw the light', 'they found the money under the floorboards'])}.`)
+    extortPaid(g, business, demand, `You shook down ${owner} until ${pickLine(g, ['the cash register rattled', 'they saw the light', 'they found the money under the floorboards'])}.`)
     return
   }
   log(g, `I beat up the owner of a ${business}, but they still refused to pay.`, 'bad')
@@ -3017,7 +3019,7 @@ const EXTORT_REFUSED = defineScript('crime.extort.refused', (g, choice, data) =>
     const fear = 0.45 + c.hidden.notoriety / 300
     if (chance(g, fear)) {
       const offer = Math.max(100, Math.round(demand * (0.4 + rand(g) * 0.3)))
-      scriptChoice(g, EXTORT_OFFER, 'Extortion', `You ${pick(g, ['knocked over a display rack and smiled', 'mentioned how flammable the building looked', 'described their kids\' school route in great detail'])}. ${owner} went pale and offered ${formatMoney(offer)}, "all I have."`, [
+      scriptChoice(g, EXTORT_OFFER, 'Extortion', `You ${pickLine(g, ['knocked over a display rack and smiled', 'mentioned how flammable the building looked', 'described their kids\' school route in great detail'])}. ${owner} went pale and offered ${formatMoney(offer)}, "all I have."`, [
         { id: 'accept', label: `Accept ${formatMoney(offer)}`, emoji: '\u{1F4B5}' },
         { id: 'shake', label: 'Shake them down', emoji: '\u{1F44A}' },
         { id: 'whack', label: 'Whack them', emoji: '\u{26B0}\u{FE0F}' },
@@ -3094,7 +3096,7 @@ const ORDER_SCRIPT = defineScript('crime.mafia.order', (g, choice, data) => {
     if (chance(g, 0.6)) {
       fam.standing = clamp(fam.standing - 2)
       log(g, `I made an excuse to get out of a job for ${fam.name}.`, 'neutral')
-      notice(g, 'Excuse', `You told ${from} your ${pick(g, ['grandmother was sick', 'car broke down', 'dog ate the instructions', 'horoscope advised against it'])}. ${from} grunted and gave the job to someone else.`, { emoji: '\u{1F925}' })
+      notice(g, 'Excuse', `You told ${from} your ${pickLine(g, ['grandmother was sick', 'car broke down', 'dog ate the instructions', 'horoscope advised against it'])}. ${from} grunted and gave the job to someone else.`, { emoji: '\u{1F925}' })
     } else {
       fam.standing = clamp(fam.standing - 10)
       log(g, `${from} didn't buy my excuse.`, 'bad')
@@ -3546,7 +3548,7 @@ const organizedCrimeMenu: MenuGroup = {
 function yearlyFamily(g: GameState, fam: CrimeFamily): void {
   const c = g.character
   const pay = cash(g, RANK_PAY[clamp(fam.rank, 0, 4)] * (0.6 + rand(g) * 0.8))
-  addMoney(g, pay)
+  addMoney(g, pay, 'crime.take')
   fam.earnings += pay
   log(g, `${fam.name} paid me ${formatMoney(pay)} this year.`, 'neutral')
   if (fam.rank < 4) fam.standing = clamp(fam.standing - randInt(g, 2, 5))
@@ -3644,11 +3646,11 @@ function yearlyFamily(g: GameState, fam: CrimeFamily): void {
       return
     }
   }
-  log(g, pick(g, [
+  log(g, pickSite(g, [
     `I helped ${fam.name} come up with a name for a new front business: "${pick(g, ['Totally Legit Laundry', 'Honest Abe\'s Pawn', 'Nothing To See Here Bakery', ...(g.year >= 1940 ? ['Clean Money Car Wash'] : ['Spotless Linen Laundry'])])}".`,
     `I went to a ${fam.kind === 'Mafia' ? 'Sunday dinner' : 'family banquet'} with ${fam.name}. Nobody talked business. Officially.`,
     `${superior(fam)?.name ?? 'The boss'} complimented my work this year.`,
-  ]), 'neutral')
+  ], 0xe402ce13), 'neutral')
 }
 
 // ---------------------------------------------------------------------------

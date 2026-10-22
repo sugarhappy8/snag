@@ -2,16 +2,19 @@
 // year), what they owe you, how spoiled they are, what they've asked for lately, and big gifts
 // you can give on your own: a car, a trip, help with a house, seed money for their idea, a loan.
 // Menus never consume the game's RNG or change state; only run() does.
-import { addHidden, addMoney, addRelationship, count, getPerson, inPrison, log, notice, scriptChoice, spend, useYearAction } from '../core'
+import { moveCash } from '../cash'
+import { addHidden, addRelationship, count, getPerson, inPrison, log, notice, scriptChoice, spend, useYearAction } from '../core'
 import { touch } from '../love'
 import { notePerson } from '../people'
-import { chance, pick, randInt } from '../rng'
+import { chance, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import { getCountry } from '../world'
-import { cars, eraPick, flights } from './era'
+import { cars, eraPickPlain, flights } from './era'
 import { addVenture, carLabel, carPrice, setAllowance, ventureOdds, VENTURE_PARTIAL, type CarType } from './wealth-kids'
 import type { Ask } from './wealth-ask'
+import { askedPurse, payPersonWhole, wholePurse } from './purses'
 import { isEstranged } from './will-core'
 // The money-request popups' scripts (registered on import).
 import './wealth-resolve'
@@ -271,8 +274,7 @@ function repayAction(p: Person): MenuAction {
         return
       }
       const pay = Math.max(1, Math.min(t.owes, Math.floor(q.money)))
-      q.money = Math.round(q.money - pay)
-      addMoney(g, pay)
+      moveCash(g, wholePurse(q), askedPurse(g), pay, 'support')
       updateTies(g, q, (w) => {
         w.owes = Math.max(0, w.owes - pay)
         if (w.owes === 0) w.owesSince = 0
@@ -340,9 +342,8 @@ function lendAction(g: GameState, p: Person): MenuAction {
         notice(g, 'Lend Money', `You don't have ${money(Math.max(1, n))} in cash to lend.`, { emoji: '\u{1F4B8}' })
         return
       }
-      if (!useYearAction(g, `wealth.lend.${pid}`, 1) || !spend(g, amt)) return
+      if (!useYearAction(g, `wealth.lend.${pid}`, 1) || !payPersonWhole(g, q, amt, 'support')) return
       touch(g, q)
-      q.money = Math.round(q.money + amt)
       updateTies(g, q, (w) => {
         if (w.owes <= 0) w.owesSince = g.year
         w.owes += amt
@@ -417,7 +418,7 @@ defineScript(CAR_SCRIPT, (g, choice, data) => {
   if (!type) return
   const price = carPrice(g, type, p)
   const label = carLabel(g, type)
-  if (!spend(g, price)) {
+  if (!spend(g, price, 'asset.buy')) {
     notice(g, 'Buy Them a Car', `You don't have ${money(price)} in cash.`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -474,7 +475,7 @@ defineScript(TRIP_SCRIPT, (g, choice, data) => {
   if (!p || choice === 'cancel' || !g.character.alive) return
   const opt = tripOptions(g, p).find((o) => o.id === choice)
   if (!opt) return
-  if (!spend(g, opt.price)) {
+  if (!spend(g, opt.price, 'leisure')) {
     notice(g, 'Pay for a Vacation', `You don't have ${money(opt.price)} in cash.`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -488,7 +489,7 @@ defineScript(TRIP_SCRIPT, (g, choice, data) => {
   p.stats.happiness = Math.min(100, p.stats.happiness + randInt(g, 5, 12))
   if (isDescendant(p) && p.age < 30) addEntitlement(p, opt.id === 'luxury' ? 6 : opt.id === 'abroad' ? 2 : 0)
   log(g, `I paid for ${myOf(p)}'s vacation (${money(opt.price)}).`, 'good')
-  notice(g, 'Pay for a Vacation', `You sent ${p.firstName} on ${opt.label.toLowerCase()} for ${money(opt.price)}. ${cap(pr(p).he)} came back with a tan and a souvenir for you: ${pick(g, ['a fridge magnet', 'a keychain', 'a snow globe', 'a T-shirt that says someone went somewhere'])}.`, { emoji: '\u{1F3D6}\u{FE0F}', tone: 'good' })
+  notice(g, 'Pay for a Vacation', `You sent ${p.firstName} on ${opt.label.toLowerCase()} for ${money(opt.price)}. ${cap(pr(p).he)} came back with a tan and a souvenir for you: ${pickLine(g, ['a fridge magnet', 'a keychain', 'a snow globe', 'a T-shirt that says someone went somewhere'])}.`, { emoji: '\u{1F3D6}\u{FE0F}', tone: 'good' })
 })
 
 function housePrices(g: GameState, p: Person): { house: number; deposit: number } {
@@ -532,7 +533,7 @@ defineScript(HOUSE_SCRIPT, (g, choice, data) => {
   if ((readTies(g, p).marks['gift.house'] ?? 0) > 0) return
   const h = housePrices(g, p)
   const price = choice === 'whole' ? h.house : h.deposit
-  if (!spend(g, price)) {
+  if (!spend(g, price, 'property.buy')) {
     notice(g, 'Help With a House', `You don't have ${money(price)} in cash.`, { emoji: '\u{1F4B8}' })
     return
   }
@@ -595,12 +596,13 @@ function ventureAction(g: GameState, p: Person): MenuAction {
       if (!Number.isFinite(n) || n <= 0) return
       const amt = Math.min(n, max)
       if ((readTies(g, q).marks['gift.venture'] ?? 0) > g.year - 5) return
-      if (amt < 1 || !spend(g, amt)) {
+      // The seed money goes into their new company, not their pocket.
+      if (amt < 1 || !spend(g, amt, { reason: 'inject', with: 'pool:firms' })) {
         notice(g, 'Seed Money', `You don't have ${money(Math.max(1, n))} in cash.`, { emoji: '\u{1F4B8}' })
         return
       }
       touch(g, q)
-      const idea = eraPick(g, IDEAS)
+      const idea = eraPickPlain(g, IDEAS)
       const a: Ask = { k: 'menu.venture', pid: q.id, title: 'Seed Money', emoji: '\u{1F4A1}', text: '', amt, what: idea, odds: ventureOdds(q), partial: VENTURE_PARTIAL }
       addVenture(g, a, myOf(q).replace(/^my /, 'your '), amt, 'venture', q)
       updateTies(g, q, (t) => {

@@ -4,6 +4,7 @@
 import { hasTech } from '../history/timeline'
 import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { randomFirstName } from '../world'
@@ -381,12 +382,12 @@ const auditionScript = defineScript('special.actor.audition', (g, choice, data) 
     return say(
       g,
       'Audition',
-      pick(g, [
+      pickSite(g, [
         `The casting director for "${l.title}" thanked you for your time and said they were "going in a different direction".`,
         `You auditioned for "${l.title}". Halfway through your monologue, the director started ${hasTech(g, 'internet') ? 'checking emails' : 'reading the newspaper'}.`,
         `You didn't get the part in "${l.title}". They cast someone with a famous parent instead.`,
         `You forgot your lines at the "${l.title}" audition and tried to improvise. It did not work.`,
-      ]),
+      ], 0x39c43ced),
       '\u{1F3AD}',
       'bad',
     )
@@ -498,7 +499,7 @@ const practiceAction: MenuAction = {
     masterActing(g)
     setFlagSkill(g, 'acting', actingSkill(g) + gain)
     log(g, 'I practiced my acting.')
-    say(g, 'Practice', `${pick(g, ['You ran lines in front of the bathroom mirror for hours.', 'You studied old movies and copied every facial expression.', 'You practiced accents until your neighbors complained.'])} Your acting skill rose to ${actingSkill(g)}%.`, '\u{1F4D6}', 'good')
+    say(g, 'Practice', `${pickLine(g, ['You ran lines in front of the bathroom mirror for hours.', 'You studied old movies and copied every facial expression.', 'You practiced accents until your neighbors complained.'])} Your acting skill rose to ${actingSkill(g)}%.`, '\u{1F4D6}', 'good')
   },
 }
 
@@ -521,11 +522,11 @@ const developAction: MenuAction = {
     say(
       g,
       'Develop Character',
-      pick(g, [
+      pickSite(g, [
         `You stayed in character for an entire month to prepare for "${proj.title}". Your family wants their old you back.`,
         `You wrote a 40-page backstory for your character in "${proj.title}". The director was impressed.`,
         `You shadowed a real-life professional to research your role in "${proj.title}".`,
-      ]),
+      ], 0xcc3a9345),
       '\u{1F9E0}',
       'good',
     )
@@ -558,11 +559,11 @@ const costarsAction: MenuAction = {
     if (conceited && roll < 0.6) {
       addRelationship(co, -randInt(g, 5, 15))
       addStat(g, 'happiness', -4)
-      text = pick(g, [
+      text = pickSite(g, [
         `${fullName(co)} spent the whole evening talking about their skincare routine and calling you "the new kid".`,
         `${fullName(co)} demanded you not make eye contact with them between takes.`,
         `${fullName(co)} asked the director to cut your best scene.`,
-      ])
+      ], 0xb8355409)
     } else if (roll < 0.15) {
       addRelationship(co, -10)
       text = `You and ${fullName(co)} argued about who gets the better trailer. The crew picked sides.`
@@ -570,11 +571,11 @@ const costarsAction: MenuAction = {
       addRelationship(co, randInt(g, 8, 18))
       proj.buzz += 3
       addStat(g, 'happiness', 5)
-      text = pick(g, [
+      text = pickSite(g, [
         `You and ${fullName(co)} grabbed dinner after shooting. The on-screen chemistry is real now.`,
         `${fullName(co)} taught you a trick for crying on cue. You taught them a card trick.`,
         `You and ${fullName(co)} pranked the director together. Best day on set yet.`,
-      ])
+      ], 0xf6889576)
       if (chance(g, 0.15)) {
         text += ` ${co.firstName} was nervous about a big scene, so you comforted them.`
         g.flags['special.actor.comforted'] = true
@@ -606,11 +607,11 @@ const stuntAction: MenuAction = {
       say(
         g,
         'Publicity Stunt',
-        pick(g, [
+        pickSite(g, [
           `You showed up to the "${proj.title}" press tour in full costume and refused to break character. The buzz is enormous.`,
           `You "leaked" a fake behind-the-scenes feud. Everyone is talking about "${proj.title}".`,
           `You skydived into the "${proj.title}" premiere. People will definitely watch it now.`,
-        ]),
+        ], 0x95253345),
         '\u{1F4E2}',
         'good',
       )
@@ -618,7 +619,7 @@ const stuntAction: MenuAction = {
       proj.buzz -= 5
       addHidden(g, 'notoriety', 2)
       log(g, `My publicity stunt for "${proj.title}" backfired.`, 'bad')
-      say(g, 'Publicity Stunt', pick(g, [`Your stunt for "${proj.title}" was called "desperate" by every critic in the country.`, `You tried to set a world record at the "${proj.title}" premiere and fell off the stage.`]), '\u{1F4E2}', 'bad')
+      say(g, 'Publicity Stunt', pickSite(g, [`Your stunt for "${proj.title}" was called "desperate" by every critic in the country.`, `You tried to set a world record at the "${proj.title}" premiere and fell off the stage.`], 0x4a95940c), '\u{1F4E2}', 'bad')
     }
   },
 }
@@ -823,7 +824,7 @@ function awardsSeason(g: GameState, credit: Credit): void {
   } else {
     addFame(g, 2)
     log(g, `I was nominated for the ${award} for "${credit.title}".`, 'good')
-    say(g, 'Nominated', `You were nominated for the ${award} for "${credit.title}", but lost to ${pick(g, ['a veteran who has been nominated eleven times', 'a child actor', 'a dog (it was a very good dog)', 'your co-star'])}. You clapped politely.`, '\u{1F3C6}')
+    say(g, 'Nominated', `You were nominated for the ${award} for "${credit.title}", but lost to ${pickLine(g, ['a veteran who has been nominated eleven times', 'a child actor', 'a dog (it was a very good dog)', 'your co-star'])}. You clapped politely.`, '\u{1F3C6}')
   }
 }
 
@@ -835,7 +836,7 @@ function verdictFor(g: GameState, popularity: number, kind: Kind): string {
   if (popularity >= 65) return kind === 'film' ? 'a box office success' : 'a hit'
   if (popularity >= 45) return 'a modest success'
   if (popularity >= 25) return 'a flop'
-  return pick(g, ['a critical disaster', 'called the worst thing ever filmed', 'so bad it became a cult classic'])
+  return pickLine(g, ['a critical disaster', 'called the worst thing ever filmed', 'so bad it became a cult classic'])
 }
 
 export function yearlyActor(g: GameState): void {
@@ -858,7 +859,7 @@ export function yearlyActor(g: GameState): void {
       } else cr.residual = 0
     }
     if (residuals > 0) {
-      earnIncome(g, residuals)
+      earnIncome(g, residuals, 'royalty')
       log(g, `I received ${money(residuals)} in residuals.`)
     }
   }
@@ -887,7 +888,7 @@ export function yearlyActor(g: GameState): void {
   const popularity = clamp100(quality * 0.6 + fameOf(g) * 0.2 + proj.buzz + randInt(g, -15, 25))
   const cut = ap.agent?.cut ?? 0
   const pay = Math.round(proj.pay * (1 - cut))
-  earnIncome(g, pay)
+  earnIncome(g, pay, 'wage')
   const verdict = verdictFor(g, popularity, proj.kind)
   const fameGain = (proj.role === 'Extra' ? (chance(g, 0.3) ? 1 : 0) : proj.role === 'Supporting' ? 1 + Math.round(popularity / 30) : 3 + Math.round(popularity / 14)) + (hasTalent(g, 'Acting') && proj.role !== 'Extra' ? 1 : 0)
   addFame(g, fameGain)

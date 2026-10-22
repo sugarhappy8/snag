@@ -13,8 +13,9 @@ import {
   BREAK_IMPACT, BUDGET, BUDGET_LINES, DEAL_IMPACT, DEREG_COSTS, DEREG_FINANCE_CREDIT, EXPORT_BAN_IMPACT, GROUP_IDS, LAWS, LEGAL, LEGAL_IDS,
   NATIONALIZED_COSTS, NATIONALIZED_DEMAND, NEW_TAXES, NEW_TAX_IDS, PROTECTION, SANCTION_IMPACT, TARIFF_IMPACT, TAXES, TAX_IDS, TRADE_INPUT_IDS,
   BREAK_RATE, WINDFALL_RATE, INPUT_LABEL, SECTOR_LABEL, budgetAvailable, legalAvailable, newTaxAvailable, taxAvailable,
-  type GroupId, type Impact, type PublicLine, type TaxId, type TradeInput,
+  type GroupId, type Impact, type PublicLine, type TradeInput,
 } from './data'
+import { personalTax } from './rates'
 import { hasPolicy, policyOf, policyState, type CountryPolicy, type Layer } from './state'
 
 export interface Part {
@@ -290,17 +291,8 @@ const NEUTRAL = { demand: 1, costs: 1 }
 // ---------------------------------------------------------------------------
 // Taxes as rates (personal and corporate). These are what the settlement code adds to its own.
 
-/** The player's personal tax change in points (or % of value), all layers where they live. */
-export function personalTax(g: GameState, id: TaxId, country = g.character.countryId): number {
-  if (!hasPolicy(g, country) || !taxAvailable(id, g.year)) return 0
-  const p = policyOf(g, country)
-  let v = p.national.taxes[id] ?? 0
-  if (country === g.character.countryId) {
-    if (p.regional.place) v += p.regional.taxes[id] ?? 0
-    if (p.city.place && p.city.place === g.character.city) v += p.city.taxes[id] ?? 0
-  }
-  return v
-}
+// personalTax lives in ./rates (a leaf, so the markets can read it without joining the import cycles); it is re-exported here.
+export { personalTax } from './rates'
 
 /** Extra corporate tax rate (0.05 = +5 points) for an industry in a country, incl. windfall and breaks. */
 export function corporateDelta(g: GameState, country: string, industry = '', year = g.year): number {

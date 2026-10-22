@@ -3,6 +3,7 @@
 // board (mandate, budget, cash reserve, pay policy, CEO salary, dividend) with sliders for the
 // amounts. Without a board, a company with a hired CEO gets the same controls as the owner's brief
 // (no vote: the owner decides). Business talent hints: which proposals pass, and the best mandate.
+import { firmCash } from '../cash'
 import { earnIncome, formatMoney, log, notice } from '../core'
 import { payFamilyBusinessProceeds } from './dynasty-ownership'
 import { hasTalent, talentHint } from '../talents'
@@ -110,9 +111,9 @@ export function capexCaption(g: GameState, a: Asset, b: BizState, amount: number
  * Says nothing to the player. Returns the player's part.
  */
 export function payOut(g: GameState, a: Asset, b: BizState, n: number): number {
-  b.cash -= n
+  firmCash(g, b, -n, 'dividend', a.id)
   const mine = Math.round(n * b.share)
-  earnIncome(g, mine)
+  earnIncome(g, mine, 'dividend')
   payFamilyBusinessProceeds(g, b, n, true)
   if (b.public && b.sharesOut > 0) {
     b.sharePrice = round2(Math.max(0.05, b.sharePrice - (n / b.sharesOut) * classFactor(b)))

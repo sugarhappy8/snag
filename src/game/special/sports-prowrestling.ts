@@ -5,6 +5,7 @@
 // fired for going off-script. The outcomes are scripted; the bumps are real.
 import { addHidden, aThing, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
 import { hasMainCharacter, hasTalent, talentMult } from '../talents'
@@ -165,7 +166,7 @@ const debutScript = defineScript('sports.wrestle.debut', (g, choice, data) => {
     data: { tier: 0, promotion: d.promotion, push: 20, belt: '', feud: '', contractYears: 0, earned: 0, matchesThisYear: 0 },
   })
   log(g, `I debuted as "${name}" on the indie circuit.`, 'good')
-  say(g, 'Debut!', `"${name}" made their debut in a ${pick(g, ['bingo hall', 'high-school gym', 'flea market parking lot', 'bowling alley'])} for ${d.promotion} in front of ${randInt(g, 40, 300)} fans. You're a ${p.align === 'face' ? 'babyface (the good guy)' : 'heel (the bad guy)'}.${p.mask ? ' Your mask is sacred: never let anyone take it.' : ''}${quitNote(quit)}`, '\u{1F93C}', 'good')
+  say(g, 'Debut!', `"${name}" made their debut in a ${pickLine(g, ['bingo hall', 'high-school gym', 'flea market parking lot', 'bowling alley'])} for ${d.promotion} in front of ${randInt(g, 40, 300)} fans. You're a ${p.align === 'face' ? 'babyface (the good guy)' : 'heel (the bad guy)'}.${p.mask ? ' Your mask is sacred: never let anyone take it.' : ''}${quitNote(quit)}`, '\u{1F93C}', 'good')
 })
 
 const debutAction: MenuAction = {
@@ -259,7 +260,7 @@ const matchScript = defineScript('sports.wrestle.match', (g, choice) => {
       return say(g, 'Fired', `You went off-script and refused to lose to ${opp}. The bookers were furious. You were released before the trucks left the parking lot.`, '\u{1F6AB}', 'bad')
     }
   } else {
-    text = `You followed the script beat for beat against ${opp}. ${pick(g, ['Solid match. The agent gave you a thumbs up.', 'The crowd was into it. Your finisher got a big pop.', 'Smooth match. Nobody got hurt, which is a win in this business.'])}`
+    text = `You followed the script beat for beat against ${opp}. ${pickLine(g, ['Solid match. The agent gave you a thumbs up.', 'The crowd was into it. Your finisher got a big pop.', 'Smooth match. Nobody got hurt, which is a win in this business.'])}`
   }
   const rating = Math.max(0.5, Math.min(5, Math.round((quality / 20) * 2) / 2))
   p.matches += 1
@@ -444,7 +445,7 @@ function wrestlerActions(): MenuNode[] {
           log(g, 'I signed with CWE!', 'good')
           return say(g, 'Signed!', `CWE signed you to a developmental deal: ${money(job.salary)} a year at the Proving Grounds. You get a locker. With your name on tape.`, '\u{1F4CB}', 'good')
         }
-        say(g, 'Tryout', pick(g, ['The coaches said your look is "not quite there". You looked down at yourself for a long time.', 'You blew up halfway through the cardio drill and threw up in a trash can. On camera.', 'They liked you but "don’t have a spot right now".']), '\u{1F4CB}', 'bad')
+        say(g, 'Tryout', pickLine(g, ['The coaches said your look is "not quite there". You looked down at yourself for a long time.', 'You blew up halfway through the cardio drill and threw up in a trash can. On camera.', 'They liked you but "don’t have a spot right now".']), '\u{1F4CB}', 'bad')
       },
     },
   ]
@@ -529,7 +530,8 @@ export function yearlyWrestler(g: GameState): void {
   else pay = job.salary
   let merch = 0
   if (j.tier === 2) merch = tidy((p.popularity / 100) ** 3 * 2_500_000)
-  if (pay + merch > 0) earnIncome(g, pay + merch)
+  if (pay > 0) earnIncome(g, pay, 'wage')
+  if (merch > 0) earnIncome(g, merch, 'royalty')
   if (j.tier === 0) job.salary = pay
   // Crowds move on unless creative keeps featuring you; booking momentum fades too.
   p.popularity = Math.max(0, Math.min(100, Math.round(p.popularity * 0.85 + j.push * 0.12)))
@@ -542,7 +544,7 @@ export function yearlyWrestler(g: GameState): void {
   if (j.tier === 2 && p.popularity >= 70 && j.push >= 60) {
     const main = j.push >= 80
     const bonus = tidy(main ? 250_000 + p.popularity * 5_000 : 75_000)
-    earnIncome(g, bonus)
+    earnIncome(g, bonus, 'wage')
     addFame(g, main ? 6 : 2)
     if (main) honor(g, 'Headlined Colossal Clash, the biggest wrestling show of the year.', 'Colossal Clash main eventer', 'CWE', 8)
     lines.push(main ? `You MAIN-EVENTED Colossal Clash in front of 80,000 people (${short(bonus)} bonus).` : `You had a match at Colossal Clash (${short(bonus)} bonus).`)

@@ -3,6 +3,7 @@ import { makeTestGame } from './helpers'
 import { createPerson } from '../src/game/people'
 import { ensureEconomy, economyState, yearlyEconomy } from '../src/game/economy'
 import { RIVAL_LIMIT } from '../src/game/economy/actors-state'
+import { HISTORY_YEARS } from '../src/game/economy/focus'
 import { createBusinessAsset, initialProduction, newBiz } from '../src/game/business/founding'
 import { installManager, managerCandidate } from '../src/game/business/career'
 import { formGroup, groupBiz } from '../src/game/business/conglomerate-actions'
@@ -91,7 +92,7 @@ function assertIntegrity(g: GameState, groupId: string): void {
   expect(world.receipts.length).toBeLessThanOrEqual(3000)
   expect(world.rivals.length).toBeLessThanOrEqual(RIVAL_LIMIT)
   expect(new Set(world.rivals.map(a => `${a.industry}|${a.scope}|${a.id}`)).size).toBe(world.rivals.length)
-  expect(Object.values(world.history).every(rows => rows.length <= 32)).toBe(true)
+  expect(Object.values(world.history).every(rows => rows.length <= HISTORY_YEARS)).toBe(true)
   expect(world.rivals.every(a => a.history.length <= 6)).toBe(true)
   expect(new Set(g.people.map(p => p.id)).size).toBe(g.people.length)
   expect(new Set(g.assets.map(a => a.id)).size).toBe(g.assets.length)

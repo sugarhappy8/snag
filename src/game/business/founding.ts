@@ -16,7 +16,7 @@ import { outcomeTag } from '../timeMachine'
 import { becomeCeo, installManager, managerCandidate } from './career'
 import { industryHint, localEcon, openFractionFor, planFor, maxProduction, simulateYear, startupCost, valuationOf, refreshValue, niceAmount } from './economy'
 import { industryEraBlock, marketDef } from './competition-data'
-import { eraNote } from './era'
+import { eraFits, eraNote } from './era'
 import { refreshTechValue } from './deeptech-core'
 import { IPO_PROFIT } from './exit'
 import { DEFAULT_SHARES, MAX_SHARES, MIN_SHARES, retailVerdict, shareCountText } from './share-structure'
@@ -34,11 +34,26 @@ import { foundingNote } from './fund-text'
 import { investorFirm } from './flavor'
 import { foundBlock } from './gate'
 import { industryDef, isIndustry, INDUSTRIES } from './industries'
+import { landCash } from './settle'
 import { BIZ_VERSION, ceoJob, type BizState } from './state'
 import { aIndustry, aYearsOld, clampN, cleanName, industryNoun, money, num, pct, rec, runwayText, stars, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
 // Requirements
+
+/**
+ * The trade's one-line pitch in the Name popup, in the words of this country and year: a cafe before home
+ * computers is only coffee, a grocery before 1955 only sells food, and the cybersecurity pitch about hackers
+ * becomes the antivirus-floppy pitch until the internet has reached the country (the same detector as the
+ * anachronism lint decides, so no other country or year changes).
+ */
+export function industryPitch(g: GameState, industry: Industry): string {
+  const def = industryDef(industry)
+  if (industry === 'cafe' && (!hasTech(g, 'homeComputer') || g.year < 1990)) return 'Coffee, pastries and customers who never leave.'
+  if (industry === 'grocery' && g.year < 1955) return 'Everybody eats. Margins thinner than the paper bags.'
+  if (industry === 'cybersecurity' && !eraFits(g, g.character.countryId, def.blurb)) return 'Stop the viruses before they stop your clients. Paranoia as a service.'
+  return def.blurb
+}
 
 /** Why the player can't run this industry here (not counting money), or null. */
 export function industryProblem(g: GameState, industry: Industry): string | null {
@@ -681,13 +696,14 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
   const outside = p.funding === 'loan' ? p.loan : p.funding === 'investors' ? p.investor : 0
   const capital = Math.max(cost.capital, p.capital ?? 0)
   const personal = Math.max(0, capital - outside) + fees
-  if (!spend(g, personal)) {
+  // One booking: the capital and the fees go out together. The new company's opening cash is a constructor value, so it is paid into the firms' pool.
+  if (!spend(g, personal, { reason: 'inject', with: 'pool:firms' })) {
     notice(g, "Can't Afford It", `You need ${formatMoney(personal)} of your own money to open ${p.name}, and you have ${formatMoney(c.money)}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
   let loanId = ''
   if (p.funding === 'loan' && p.loan > 0) {
-    loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7 }).id
+    loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7, to: 'pool:firms' }).id
   }
   const b = newBiz(g, p.industry, p.countryId, p.city, {
     share: p.funding === 'investors' ? Math.round((1 - p.equity) * 100) / 100 : 1,
@@ -746,12 +762,12 @@ function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
   const outside = p.funding === 'loan' ? p.loan : 0
   const capital = Math.max(cost.capital, p.capital ?? 0)
   const personal = Math.max(0, capital - outside) + fees
-  if (!spend(g, personal)) {
+  if (!spend(g, personal, { reason: 'inject', with: 'pool:firms' })) {
     notice(g, "Can't Afford It", `You need ${formatMoney(personal)} of your own money to open ${p.name}, and you have ${formatMoney(c.money)}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
   let loanId = ''
-  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7 }).id
+  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7, to: 'pool:firms' }).id
   let share = 1
   if (p.cofounder) share *= 1 - COFOUNDER_EQUITY
   if (p.seed > 0) share *= 1 - p.seedEquity
@@ -898,7 +914,7 @@ function industryRow(industry: Industry): MenuAction {
       scriptInput(g, {
         title: `Name Your ${def.label}`,
         emoji: def.emoji,
-        text: `${industry === 'cafe' && (!hasTech(g, 'homeComputer') || g.year < 1990) ? 'Coffee, pastries and customers who never leave.' : industry === 'grocery' && g.year < 1955 ? 'Everybody eats. Margins thinner than the paper bags.' : def.blurb} What will you call it?`,
+        text: `${industryPitch(g, industry)} What will you call it?`,
         input: 'text',
         placeholder: defaultName(g, industry),
         defaultValue: defaultName(g, industry),
@@ -992,7 +1008,7 @@ export function listingsForSale(g: GameState): ForSale[] {
     const clone = JSON.parse(JSON.stringify(b)) as BizState
     const stmt = simulateYear(g, clone, g.year - 1, 0, 1).stmt
     clone.history = [{ year: stmt.year, revenue: stmt.revenue, profit: stmt.net, tax: stmt.corpTax, units: stmt.sold, price: stmt.price, staff: stmt.employees, valuation: 0, outlets }]
-    clone.cash = Math.max(0, Math.round(stmt.revenue * 0.05))
+    landCash(g, clone, Math.max(0, Math.round(stmt.revenue * 0.05))) // the listing's own copy of a company, never part of the world: no books
     const value = Math.max(valuationOf(clone), 10_000)
     const id = `${g.year}:${i}:${industry}`
     if (bought.includes(id)) continue
@@ -1036,12 +1052,13 @@ function finalizePurchase(g: GameState, p: Plan, runIt: boolean): void {
   if (!listing) return
   const fee = Math.round(marketOf(p.countryId).startupFee * 0.5)
   const personal = listing.price - (p.funding === 'loan' ? p.loan : 0) + fee
-  if (!spend(g, personal)) {
+  // One booking: the price less the loan, and the fee. The previous owner is paid out of the firm-sale pool, with the loan the lender creates.
+  if (!spend(g, personal, 'firm.sale')) {
     notice(g, "Can't Afford It", `You need ${formatMoney(personal)} to close the deal.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
   let loanId = ''
-  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 8 }).id
+  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 8, to: 'pool:other' }).id
   const b = listing.biz
   // Cost basis: the whole price (and fee), however much of it the acquisition loan financed.
   b.invested = personal + (p.funding === 'loan' ? p.loan : 0)

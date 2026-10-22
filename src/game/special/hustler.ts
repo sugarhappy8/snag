@@ -5,6 +5,7 @@
 import { addHidden, addMoney, addStat, count, log, remember, scriptChoice, spend, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { localeOf } from '../data/locales'
 import { hasMainCharacter, hasTalent } from '../talents'
@@ -238,7 +239,7 @@ function startHustle(g: GameState, act: Act, instrument: string, prop: string): 
     current.title = TITLES[act.kind]
     current.performance = actSkill(g, d)
     log(g, `I switched my hustle to ${actLabel(d).toLowerCase()}.`)
-    return say(g, 'New Act', `You switched your act to ${actLabel(d).toLowerCase()} on ${current.company}. ${pick(g, ['Same street, new hustle.', 'The regulars did a double take.', 'Reinvention is the hustler’s way.'])}`, act.emoji)
+    return say(g, 'New Act', `You switched your act to ${actLabel(d).toLowerCase()} on ${current.company}. ${pickLine(g, ['Same street, new hustle.', 'The regulars did a double take.', 'Reinvention is the hustler’s way.'])}`, act.emoji)
   }
   const street = pick(g, genStreets(g))
   const data: HustleData = { act: act.id, prop, instrument, street: street.name, traffic: street.traffic, police: street.police, rivals: street.rivals, earnedYear: 0, sessionsYear: 0 }
@@ -436,13 +437,13 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
         d.rivals = Math.max(1, d.rivals - 1)
         count(g, 'fights')
         log(g, 'I fought off a rival hustler.', 'good')
-        return say(g, 'Turf War', pick(g, ['You chased them off with a folding chair. The street is yours.', 'One shove and they packed up. Respect earned.']), '\u{1F44A}', 'good')
+        return say(g, 'Turf War', pickLine(g, ['You chased them off with a folding chair. The street is yours.', 'One shove and they packed up. Respect earned.']), '\u{1F44A}', 'good')
       }
       addStat(g, 'health', -randInt(g, 4, 12))
       addStat(g, 'happiness', -5)
       count(g, 'fights')
       log(g, 'A rival hustler beat me up.', 'bad')
-      return say(g, 'Turf War', pick(g, ['They hit you with a tambourine. Repeatedly.', 'You lost the fight and your dignity. They kept the spot.']), '\u{1F915}', 'bad')
+      return say(g, 'Turf War', pickLine(g, ['They hit you with a tambourine. Repeatedly.', 'You lost the fight and your dignity. They kept the spot.']), '\u{1F915}', 'bad')
     }
     case 'rival.share':
       addHidden(g, 'karma', 3)
@@ -455,7 +456,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
     }
     case 'cop.pay': {
       const fine = randInt(g, 1, 4) * 75
-      if (!spend(g, fine)) {
+      if (!spend(g, fine, 'fine')) {
         addHidden(g, 'notoriety', 1)
         return say(g, 'Busted', `The fine was ${money(fine)} and you couldn't pay. The officer confiscated your gear instead and told you to get lost.`, '\u{1F46E}', 'bad')
       }
@@ -463,7 +464,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
       return say(g, 'Fined', `You paid a ${money(fine)} fine. The officer walked off with a smug look.`, '\u{1F4B5}')
     }
     case 'cop.talk': {
-      if (chance(g, 0.25 + c.stats.smarts / 200 + c.stats.looks / 400)) return say(g, 'Smooth Talker', pick(g, ['You convinced the officer you were filming a documentary. They wished you luck.', 'You complimented the officer’s mustache. They let you off with a warning.']), '\u{1F60E}', 'good')
+      if (chance(g, 0.25 + c.stats.smarts / 200 + c.stats.looks / 400)) return say(g, 'Smooth Talker', pickLine(g, ['You convinced the officer you were filming a documentary. They wished you luck.', 'You complimented the officer’s mustache. They let you off with a warning.']), '\u{1F60E}', 'good')
       if (kind === 'scam') {
         hustleProfile(g).arrests += 1
         log(g, 'I was arrested for running a street scam.', 'bad')
@@ -471,13 +472,13 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
         return arrestPlayer(g, 'Fraud', 1, { evidence: 0.7 })
       }
       const fine = randInt(g, 1, 3) * 50
-      const paid = spend(g, fine)
+      const paid = spend(g, fine, 'fine')
       return say(g, 'Fined', paid ? `The officer didn't buy it and wrote you a ${money(fine)} ticket.` : "The officer didn't buy it and confiscated your gear.", '\u{1F46E}', 'bad')
     }
     case 'cop.run': {
       if (chance(g, 0.35 + c.hidden.athleticism / 160)) {
         log(g, 'I outran a cop.', 'good')
-        return say(g, 'Escaped', pick(g, ['You vaulted a hot dog cart and vanished into the crowd.', 'You ran six blocks and hid in a laundromat. Clean getaway.']), '\u{1F3C3}', 'good')
+        return say(g, 'Escaped', pickLine(g, ['You vaulted a hot dog cart and vanished into the crowd.', 'You ran six blocks and hid in a laundromat. Clean getaway.']), '\u{1F3C3}', 'good')
       }
       if (kind === 'scam') {
         hustleProfile(g).arrests += 1
@@ -491,7 +492,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
     case 'gang.pay': {
       const cut = Math.max(20, Math.round(d.earnedYear * 0.3))
       const paid = Math.min(cut, Math.max(0, c.money))
-      if (paid > 0) addMoney(g, -paid)
+      if (paid > 0) addMoney(g, -paid, 'crime.take')
       d.police = Math.max(1, d.police - 1)
       log(g, `I paid a street gang ${money(paid)} for protection.`, 'bad')
       return say(g, 'Protection', `You handed over ${money(paid)}. In return, the gang promised nobody would bother you. Including, apparently, the cops.`, '\u{1F4B8}')
@@ -501,7 +502,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
         addStat(g, 'health', -randInt(g, 8, 18))
         addStat(g, 'happiness', -8)
         const lost = Math.min(Math.max(0, c.money), randInt(g, 20, 200))
-        if (lost > 0) addMoney(g, -lost)
+        if (lost > 0) addMoney(g, -lost, 'crime.take')
         log(g, 'A street gang roughed me up.', 'bad')
         return say(g, 'Roughed Up', `The gang roughed you up and took ${money(lost)} from your pockets.`, '\u{1F915}', 'bad')
       }
@@ -510,7 +511,7 @@ defineScript(ENCOUNTER_SCRIPT, (g, choice) => {
     }
     case 'tourist.charge': {
       const fee = randInt(g, 5, 40)
-      addMoney(g, fee)
+      addMoney(g, fee, 'crime.take')
       d.earnedYear += fee
       return say(g, 'Photo Op', `You charged ${money(fee)} for the photo. They paid without blinking. Tourists!`, '\u{1F4B0}', 'good')
     }
@@ -542,14 +543,14 @@ function workStreet(g: GameState): void {
     if (chance(g, Math.max(0.01, busted))) {
       p.arrests += 1
       log(g, `I was arrested for running ${act.label.toLowerCase()} on ${d.street}.`, 'bad')
-      say(g, 'Busted', `${pick(g, ['An undercover cop played three rounds before flashing a badge.', 'A sore loser flagged down a patrol car.', 'The police were watching from across the street the whole time.'])}`, '\u{1F6A8}', 'bad')
+      say(g, 'Busted', `${pickLine(g, ['An undercover cop played three rounds before flashing a badge.', 'A sore loser flagged down a patrol car.', 'The police were watching from across the street the whole time.'])}`, '\u{1F6A8}', 'bad')
       arrestPlayer(g, 'Fraud', act.id === 'counterfeit' ? 2 : 1, { evidence: 0.75 })
       return
     }
     if (chance(g, 0.07)) {
       addStat(g, 'health', -randInt(g, 3, 10))
       log(g, 'A mark realized I scammed him and punched me.', 'bad')
-      return say(g, 'Sore Loser', pick(g, ['A mark figured out the trick and flipped your table. Then he flipped you.', 'A grandma caught you palming the pea and hit you with her purse. Hard.']), '\u{1F915}', 'bad')
+      return say(g, 'Sore Loser', pickLine(g, ['A mark figured out the trick and flipped your table. Then he flipped you.', 'A grandma caught you palming the pea and hit you with her purse. Hard.']), '\u{1F915}', 'bad')
     }
   }
   // Dangerous acts.
@@ -588,7 +589,7 @@ function workStreet(g: GameState): void {
   }
   // The acts are priced in US 2020s dollars. Scale the take to the era and the country.
   take = Math.max(0, Math.round(take * payScale(g)))
-  addMoney(g, take)
+  addMoney(g, take, 'crime.take')
   d.earnedYear += take
   p.totalEarned += take
   if (take > p.bestDay) p.bestDay = take
@@ -598,8 +599,8 @@ function workStreet(g: GameState): void {
   else addStat(g, 'happiness', randInt(g, 0, 2))
 
   let line: string
-  if (act.kind === 'scam') line = act.id === 'counterfeit' ? `You sold a pile of "${pick(g, FAKE_BRANDS)}" handbags to tourists who swore they were real.` : pick(g, SCAM_WIN)
-  else if (act.kind === 'busk') line = d.instrument === 'Bucket Drums' ? pick(g, ['You banged on upside-down buckets like a rock god.', 'Your bucket drum solo stopped traffic. Literally, a driver stopped to watch.']) : `You played ${d.instrument === 'Voice' ? 'your heart out' : `the ${d.instrument.toLowerCase()}`} on ${d.street}. ${pick(g, BUSK_WIN)}`
+  if (act.kind === 'scam') line = act.id === 'counterfeit' ? `You sold a pile of "${pickLine(g, FAKE_BRANDS)}" handbags to tourists who swore they were real.` : pickLine(g, SCAM_WIN)
+  else if (act.kind === 'busk') line = d.instrument === 'Bucket Drums' ? pickLine(g, ['You banged on upside-down buckets like a rock god.', 'Your bucket drum solo stopped traffic. Literally, a driver stopped to watch.']) : `You played ${d.instrument === 'Voice' ? 'your heart out' : `the ${d.instrument.toLowerCase()}`} on ${d.street}. ${pickLine(g, BUSK_WIN)}`
   else if (act.kind === 'perform') line = pick(g, PERFORM_WIN[act.id] ?? PERFORM_WIN.mime)
   else line = pick(g, g.character.countryId === 'us' ? BEG_WIN : BEG_WIN_LOCAL)
   const verdict = take < 20 ? 'You barely made enough for a bus ticket.' : take < 150 ? `You made ${money(take)}.` : `You raked in ${money(take)}!`
@@ -755,7 +756,7 @@ const quitAction: MenuAction = {
     if (!job) return
     leave(g, 'quit')
     log(g, 'I quit hustling on the streets.')
-    say(g, 'Retired Hustler', pick(g, ['You packed up your gear for the last time. The street will miss you. Probably.', 'You hung up your hustle. The pigeons on your corner look lost without you.']), '\u{1F6AA}')
+    say(g, 'Retired Hustler', pickLine(g, ['You packed up your gear for the last time. The street will miss you. Probably.', 'You hung up your hustle. The pigeons on your corner look lost without you.']), '\u{1F6AA}')
   },
 }
 

@@ -49,9 +49,12 @@ import {
 import { computerUsd } from './computer/era'
 import { employerRef, gadgetName, pickBrand, type GadgetSpec } from './shops/everyday-brands'
 import { hasTech, type TechId } from './history/timeline'
-import { eraPick } from './events/era'
+import { eraPick, eraPickPlain } from './events/era'
+import { lend, personCash } from './cash'
+import { SPREADS } from './kernel/spreads'
 import { createPerson } from './people'
-import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from './rng'
+import { bell, chance, hashString, pick, rand, randInt, seeded, uid, weightedPick, type SRng } from './rng'
+import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import type { Asset, AssetKind, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Mortgage, Person, RelationKind, StatKey } from './types'
 import { getCountry, namePoolOf, randomFirstName, randomLastName } from './world'
@@ -134,50 +137,11 @@ function capitalize(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Seeded listings: stable within a year, no g.rng consumption.
+// Seeded listings: stable within a year, no g.rng consumption. The generator itself (seeded, SRng) lives in rng.ts since R2-K5, so
+// a module that only wants a keyed, draw-free RNG need not import this file; it is re-exported here for the importers that still do.
 
-export interface SRng {
-  next(): number
-  int(min: number, max: number): number
-  float(min: number, max: number): number
-  chance(p: number): boolean
-  pick<T>(xs: readonly T[]): T
-  weighted<T>(xs: readonly T[], w: (x: T) => number): T
-}
-
-function hashString(s: string): number {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h | 0
-}
-
-export function seeded(key: string): SRng {
-  let state = hashString(key)
-  const next = (): number => {
-    const [v, s] = nextRandom(state)
-    state = s
-    return v
-  }
-  return {
-    next,
-    int: (min, max) => min + Math.floor(next() * (max - min + 1)),
-    float: (min, max) => min + next() * (max - min),
-    chance: (p) => next() < p,
-    pick: (xs) => xs[Math.floor(next() * xs.length)],
-    weighted: (xs, w) => {
-      const total = xs.reduce((s, x) => s + Math.max(0, w(x)), 0)
-      let roll = next() * total
-      for (const x of xs) {
-        roll -= Math.max(0, w(x))
-        if (roll < 0) return x
-      }
-      return xs[xs.length - 1]
-    },
-  }
-}
+export { seeded }
+export type { SRng }
 
 export function yearKey(g: GameState, what: string): string {
   const c = g.character
@@ -762,7 +726,7 @@ export function buyHouse(g: GameState, listing: HouseListing, plan: MortgagePlan
   }
   let mortgage: Mortgage | undefined
   if (!plan) {
-    if (!spend(g, listing.price)) {
+    if (!spend(g, listing.price, 'property.buy')) {
       cantAfford(g, listing.price, `this ${listing.label.toLowerCase()}`)
       return false
     }
@@ -772,8 +736,9 @@ export function buyHouse(g: GameState, listing: HouseListing, plan: MortgagePlan
       notice(g, 'Mortgage Denied', d.reason, { emoji: '🏦', tone: 'bad' })
       return false
     }
-    spend(g, d.down)
+    spend(g, d.down, 'property.buy')
     mortgage = { lender: mortgageLender(g), balance: d.principal, yearlyPayment: d.payment, yearsLeft: plan.years, rate: d.rate, rateType: 'fixed' }
+    lend(g, d.principal, 'pool:sellers') // the lender creates the loan; the sellers' pool gets the whole price
   }
   const name = houseName(listing)
   const asset: Asset = {
@@ -827,7 +792,7 @@ export function buyHouse(g: GameState, listing: HouseListing, plan: MortgagePlan
     text += ' You can move in from the Assets tab whenever you like.'
   }
   if (listing.haunted > 0) text += ' Late at night, something upstairs went thump.'
-  notice(g, pick(g, ['Home Sweet Home', 'Keys in Hand', 'New Property!']), text, { emoji: listing.emoji, tone: 'good' })
+  notice(g, pickLine(g, ['Home Sweet Home', 'Keys in Hand', 'New Property!']), text, { emoji: listing.emoji, tone: 'good' })
   return true
 }
 
@@ -989,16 +954,16 @@ export function rentApartment(g: GameState, l: RentalListing): boolean {
     notice(
       g,
       'Application Rejected',
-      pick(g, [
+      pickSite(g, [
         `The landlord, ${landlord}, ran a background check on you and stopped returning your calls.`,
         `${landlord} said they only rent to people who earn at least twice the rent. Rude, but fair.`,
         `${landlord} rejected your application. They went with a dentist who has "a very stable aura."`,
-      ]),
+      ], 0x1b8fcf9c),
       { emoji: '🚫', tone: 'bad' },
     )
     return false
   }
-  spend(g, upfront)
+  spend(g, upfront, 'rent')
   const before = c.residence.status
   c.residence = { status: 'renting', rent: yearly, description: `a ${l.label.toLowerCase()} in ${l.neighborhood}` }
   addStat(g, 'happiness', randInt(g, 3, 8))
@@ -1006,7 +971,7 @@ export function rentApartment(g: GameState, l: RentalListing): boolean {
   if (before === 'parents') remember(g, 'Moved out of my parents\' house.')
   const intro =
     before === 'parents'
-      ? pick(g, ['You finally moved out of your parents\' house!', 'You packed your stuff and left the nest.', 'Freedom! You moved out of your parents\' place.'])
+      ? pickLine(g, ['You finally moved out of your parents\' house!', 'You packed your stuff and left the nest.', 'Freedom! You moved out of your parents\' place.'])
       : before === 'homeless'
         ? 'After living on the streets, you finally have a roof over your head again.'
         : 'You moved into a new place.'
@@ -1027,14 +992,14 @@ export const moveBackHomeAction: MenuAction = {
     const c = g.character
     const parent = welcomingParent(g) ?? g.people.find((p) => p.alive && (p.relation === 'parent' || p.relation === 'stepparent') && p.relationship >= 15 && chance(g, 0.4))
     if (!parent) {
-      notice(g, 'Request Denied', pick(g, ['Your parents said you made your bed, and now you can lie in it. Preferably somewhere else.', 'Your parents turned your old room into a home gym. There is no room for you.', 'Your parents laughed, then realized you were serious, then said no.']), { emoji: '🚪', tone: 'bad' })
+      notice(g, 'Request Denied', pickLine(g, ['Your parents said you made your bed, and now you can lie in it. Preferably somewhere else.', 'Your parents turned your old room into a home gym. There is no room for you.', 'Your parents laughed, then realized you were serious, then said no.']), { emoji: '🚪', tone: 'bad' })
       return
     }
     const was = c.residence.status
     c.residence = { status: 'parents' }
     addRelationship(parent, -3)
     log(g, 'I moved back in with my parents.')
-    notice(g, 'Back Home', `Your ${relationLabel(parent).toLowerCase()} ${parent.firstName} agreed to let you move back in.${was === 'renting' ? ' You ended your lease.' : ''} ${pick(g, ['Your old bedroom smells exactly the same.', 'House rules apply. Dinner is at 6.', 'They immediately asked when you plan to leave.'])}`, { emoji: '🏠' })
+    notice(g, 'Back Home', `Your ${relationLabel(parent).toLowerCase()} ${parent.firstName} agreed to let you move back in.${was === 'renting' ? ' You ended your lease.' : ''} ${pickLine(g, ['Your old bedroom smells exactly the same.', 'House rules apply. Dinner is at 6.', 'They immediately asked when you plan to leave.'])}`, { emoji: '🏠' })
   },
 }
 
@@ -1468,7 +1433,7 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
   const name = carName(l)
   let loanId: string | undefined
   if (!plan) {
-    if (!spend(g, l.price)) {
+    if (!spend(g, l.price, 'asset.buy')) {
       cantAfford(g, l.price, `the ${name}`)
       return false
     }
@@ -1478,8 +1443,8 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
       notice(g, 'Loan Denied', f.reason, { emoji: '🏦', tone: 'bad' })
       return false
     }
-    spend(g, f.down)
-    loanId = addLoan(g, { kind: 'car', lender: realLender(g, localLenders(g, ['{w} Auto Finance', '{w} Motor Credit'], ['the dealer finance office', 'the local credit union'], AUTO_LENDERS)), principal: f.principal, rate: f.rate, years: plan.years }).id
+    spend(g, f.down, 'asset.buy')
+    loanId = addLoan(g, { kind: 'car', lender: realLender(g, localLenders(g, ['{w} Auto Finance', '{w} Motor Credit'], ['the dealer finance office', 'the local credit union'], AUTO_LENDERS)), principal: f.principal, rate: f.rate, years: plan.years, to: 'pool:retail' }).id
   }
   const asset: Asset = {
     id: uid(g, 'a'),
@@ -1503,7 +1468,7 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
   let text = `You drove a ${l.color.toLowerCase()} ${name} off the lot${loanId ? ' with a car loan' : ` for ${formatMoney(l.price)}`}. ${pick(g, ['That new car smell is intoxicating.', 'You honked at nobody, just because you could.', hasTech(g, 'smartphone') ? 'You took 40 selfies with it in the parking lot.' : 'You drove it slowly past every house you know.'])}`
   const tax = salesTaxNote(g, l.price)
   if (tax) text += ` ${tax}`
-  if (localPriceMult(g, 'car') >= 1.6) text += ` ${pick(g, ['A big chunk of the sticker price was duties and registration tax.', 'The government made more on this car than the dealer did.'])}`
+  if (localPriceMult(g, 'car') >= 1.6) text += ` ${pickLine(g, ['A big chunk of the sticker price was duties and registration tax.', 'The government made more on this car than the dealer did.'])}`
   if (!hasLicense(g, 'driver')) text += " Heads up: you don't have a driver's license, so for now it's a very expensive lawn ornament."
   notice(g, 'New Wheels!', text, { emoji: CAR_EMOJI[l.carType], tone: 'good' })
   return true
@@ -1671,7 +1636,7 @@ export function buyVehicle(g: GameState, l: VehicleListing, plan: VehicleFinance
   }
   let loanId: string | undefined
   if (!plan) {
-    if (!spend(g, l.price)) {
+    if (!spend(g, l.price, 'asset.buy')) {
       cantAfford(g, l.price, `the ${l.label.toLowerCase()}`)
       return false
     }
@@ -1681,9 +1646,9 @@ export function buyVehicle(g: GameState, l: VehicleListing, plan: VehicleFinance
       notice(g, 'Loan Denied', f.reason, { emoji: '🏦', tone: 'bad' })
       return false
     }
-    spend(g, f.down)
+    spend(g, f.down, 'asset.buy')
     const lenders = l.kind === 'boat' ? ['a marine lender', 'the regional bank'] : ['an aviation lender', 'the regional bank']
-    loanId = addLoan(g, { kind: 'personal', lender: realLender(g, localLenders(g, ['{w} Savings Bank'], [lenders[0]], lenders)), principal: f.principal, rate: f.rate, years: plan.years }).id
+    loanId = addLoan(g, { kind: 'personal', lender: realLender(g, localLenders(g, ['{w} Savings Bank'], [lenders[0]], lenders)), principal: f.principal, rate: f.rate, years: plan.years, to: 'pool:retail' }).id
   }
   const asset: Asset = {
     id: uid(g, 'a'),
@@ -1705,7 +1670,7 @@ export function buyVehicle(g: GameState, l: VehicleListing, plan: VehicleFinance
   notice(
     g,
     l.kind === 'boat' ? 'Anchors Aweigh!' : 'Cleared for Takeoff!',
-    `You bought a ${l.isNew ? 'brand-new' : 'used'} ${l.label.toLowerCase()} for ${formatMoney(l.price)}${loanId ? ' (financed)' : ''}. ${l.kind === 'boat' ? pick(g, ['You named it after your ex. Out of spite.', 'You already bought a captain\'s hat.', 'A boat: a hole in the water you throw money into.']) : pick(g, ['The salesperson saluted you on the way out.', 'You practiced your "this is your captain speaking" voice all the way home.', 'Upkeep is going to be brutal, but look at it!'])}${salesTaxNote(g, l.price) ? ` ${salesTaxNote(g, l.price)}` : ''}`,
+    `You bought a ${l.isNew ? 'brand-new' : 'used'} ${l.label.toLowerCase()} for ${formatMoney(l.price)}${loanId ? ' (financed)' : ''}. ${l.kind === 'boat' ? pickLine(g, ['You named it after your ex. Out of spite.', 'You already bought a captain\'s hat.', 'A boat: a hole in the water you throw money into.']) : pickLine(g, ['The salesperson saluted you on the way out.', 'You practiced your "this is your captain speaking" voice all the way home.', 'Upkeep is going to be brutal, but look at it!'])}${salesTaxNote(g, l.price) ? ` ${salesTaxNote(g, l.price)}` : ''}`,
     { emoji: l.emoji, tone: 'good' },
   )
   return true
@@ -2204,7 +2169,7 @@ export function buyItem(g: GameState, item: ItemListing, minAge = 18): Asset | n
     notice(g, 'Sold Out', 'That one is gone. Someone with faster thumbs got it.', { emoji: '🏷️' })
     return null
   }
-  if (!spend(g, item.price)) {
+  if (!spend(g, item.price, 'asset.buy')) {
     cantAfford(g, item.price, withArticle(item.name))
     return null
   }
@@ -2576,20 +2541,20 @@ export function searchAttic(g: GameState): Asset | null {
     return null
   }
   if (!useYearAction(g, 'attic', 1)) {
-    notice(g, 'Attic', pick(g, ['You already searched the attic this year. The spiders need time to rebuild.', 'You already turned the attic upside down this year. Nothing new has appeared. Yet.']), { emoji: '🕸️' })
+    notice(g, 'Attic', pickLine(g, ['You already searched the attic this year. The spiders need time to rebuild.', 'You already turned the attic upside down this year. Nothing new has appeared. Yet.']), { emoji: '🕸️' })
     return null
   }
   const roll = rand(g)
   if (roll < 0.04) {
     addStat(g, 'health', -randInt(g, 4, 10))
     addStat(g, 'happiness', -3)
-    notice(g, 'Ouch!', pick(g, ['You stepped between the beams and put your foot through the ceiling. Someone downstairs screamed.', 'A box of old encyclopedias fell on your head. You learned nothing.', 'You disturbed a family of bats. They did not appreciate it.']), { emoji: '🤕', tone: 'bad' })
+    notice(g, 'Ouch!', pickLine(g, ['You stepped between the beams and put your foot through the ceiling. Someone downstairs screamed.', 'A box of old encyclopedias fell on your head. You learned nothing.', 'You disturbed a family of bats. They did not appreciate it.']), { emoji: '🤕', tone: 'bad' })
     log(g, 'I hurt myself rummaging in the attic.', 'bad')
     return null
   }
   if (roll < 0.47) {
     notice(g, 'Attic', eraPick(g, ATTIC_NOTHING), { emoji: '🔦' })
-    log(g, pick(g, ['I searched the attic but found nothing.', 'I rummaged through the attic. Nothing but dust.']))
+    log(g, pickLine(g, ['I searched the attic but found nothing.', 'I rummaged through the attic. Nothing but dust.']))
     return null
   }
   const owned = new Set(g.assets.filter(isHeirloom).map((a) => str(a.details.heirloomId)))
@@ -2681,12 +2646,13 @@ function removeAsset(g: GameState, a: Asset): void {
   if (loan) g.character.loans = g.character.loans.filter((l) => l.id !== loan.id)
 }
 
-interface Offer {
+export interface Offer {
   buyer: string
   amount: number
 }
 
-function makeOffers(g: GameState, a: Asset): Offer[] {
+/** The offers a seller gets for an asset. Draws from g.rng; the clamp on a same-year house resale draws nothing. */
+export function makeOffers(g: GameState, a: Asset): Offer[] {
   const c = g.character
   const v = Math.max(1, a.value)
   const person = () => `${randomFirstName(g, c.countryId, chance(g, 0.5) ? 'male' : 'female')} ${randomLastName(g, c.countryId)}`
@@ -2713,6 +2679,11 @@ function makeOffers(g: GameState, a: Asset): Offer[] {
         { buyer: `${person()} (${a.details.commercial === true ? 'business owner' : 'first-time buyer'})`, amount: f(0.94, 1.03) },
       ]
       if (a.condition >= 20 && haunted(a) < 60) offers.push({ buyer: `${person()} (${a.details.commercial === true ? 'commercial property fund' : 'relocating family'})`, amount: f(1.0, 1.12) })
+      // A house bought this very year of age sells into the sellers' pool at its bid: no offer is above the price less the spread.
+      if (a.purchasedAge === c.age) {
+        const cap = Math.round(a.purchasePrice * (1 - SPREADS.sellers))
+        for (const o of offers) o.amount = Math.min(o.amount, cap)
+      }
       return offers
     }
     case 'car':
@@ -2758,7 +2729,7 @@ export function sellAsset(g: GameState, assetId: string, amount: number, buyer =
   }
   const wasHome = isHome(g, a)
   removeAsset(g, a)
-  addMoney(g, net)
+  addMoney(g, net, a.kind === 'house' ? 'property.sell' : 'asset.sell') // one booking: net of the payoff
   let text = `You sold your ${a.name.toLowerCase()} to ${buyer} for ${formatMoney(amount)}.`
   if (owed > 0) text += ` After paying off the ${formatMoney(owed)} you owed, you pocketed ${formatMoney(net)}.`
   if (a.kind === 'house') {
@@ -2835,7 +2806,7 @@ function insureAction(a: Asset): MenuAction | null {
         return
       }
       const premium = insurancePremium(g, asset)
-      if (!spend(g, premium)) {
+      if (!spend(g, premium, 'premium')) {
         cantAfford(g, premium, 'the first insurance premium')
         return
       }
@@ -2888,7 +2859,7 @@ export function giftAsset(g: GameState, assetId: string, personId: string): bool
   if (amountOwed(g, a) > 0) return false
   const wasHome = isHome(g, a)
   g.assets = g.assets.filter((x) => x.id !== a.id)
-  p.money = Math.round(p.money + a.value)
+  personCash(g, p, Math.round(p.money + a.value) - p.money, 'gift')
   let text: string
   if (a.kind === 'jewelry' && a.details.fake === true && chance(g, 0.45)) {
     addRelationship(p, -randInt(g, 15, 30))
@@ -2898,7 +2869,7 @@ export function giftAsset(g: GameState, assetId: string, personId: string): bool
     const delta = a.value >= 100_000 ? randInt(g, 25, 45) : a.value >= 5_000 ? randInt(g, 15, 30) : randInt(g, 5, 15)
     addRelationship(p, delta)
     addHidden(g, 'karma', 3)
-    text = `You gave your ${a.name.toLowerCase()} to your ${relationLabel(p).toLowerCase()} ${p.firstName}. ${eraPick(g, [`${p.firstName} was speechless.`, `${p.firstName} hugged you so hard your back cracked.`, `${p.firstName} cried happy tears.`, `@socialMedia ${p.firstName} immediately posted about it online.`, `@!socialMedia ${p.firstName} immediately told the whole street.`])}`
+    text = `You gave your ${a.name.toLowerCase()} to your ${relationLabel(p).toLowerCase()} ${p.firstName}. ${eraPickPlain(g, [`${p.firstName} was speechless.`, `${p.firstName} hugged you so hard your back cracked.`, `${p.firstName} cried happy tears.`, `@socialMedia ${p.firstName} immediately posted about it online.`, `@!socialMedia ${p.firstName} immediately told the whole street.`])}`
     log(g, `I gave my ${a.name.toLowerCase()} to my ${relationLabel(p).toLowerCase()} ${p.firstName}.`, 'good')
   }
   if (wasHome) text += ` ${relocateAfterLosingHome(g, a.id)}`
@@ -2926,7 +2897,7 @@ function donateAction(a: Asset): MenuAction {
       addStat(g, 'happiness', 3)
       count(g, 'donated')
       log(g, `I donated my ${asset.name.toLowerCase()} to charity.`, 'good')
-      notice(g, 'Donated', `You donated your ${asset.name.toLowerCase()} to charity. ${pick(g, ['A volunteer thanked you three times.', 'Your karma glows a little brighter.', 'Somewhere, someone is very happy right now.'])}`, { emoji: '🤲', tone: 'good' })
+      notice(g, 'Donated', `You donated your ${asset.name.toLowerCase()} to charity. ${pickLine(g, ['A volunteer thanked you three times.', 'Your karma glows a little brighter.', 'Somewhere, someone is very happy right now.'])}`, { emoji: '🤲', tone: 'good' })
     },
   }
 }
@@ -2978,7 +2949,7 @@ function payOffAction(a: Asset): MenuAction | null {
       const asset = findAsset(g, a.id)
       if (!asset) return
       const owed = amountOwed(g, asset)
-      if (!spend(g, owed)) {
+      if (!spend(g, owed, 'loan.repay')) {
         cantAfford(g, owed, 'paying it off')
         return
       }
@@ -3044,7 +3015,7 @@ function renovateMenu(a: Asset): MenuGroup {
               return
             }
             const estimate = renovationCost(gg, asset, r.cost)
-            if (!spend(gg, estimate)) {
+            if (!spend(gg, estimate, 'purchase')) {
               gg.yearActions[`renovate:${asset.id}`] = 0
               cantAfford(gg, estimate, 'the renovation')
               return
@@ -3055,13 +3026,13 @@ function renovateMenu(a: Asset): MenuGroup {
             let paid = estimate
             if (roll <= 20) {
               const refund = nicePrice(estimate * (randInt(gg, 10, 20) / 100))
-              addMoney(gg, refund)
+              addMoney(gg, refund, 'purchase')
               paid -= refund
               costNote = `They came in under budget and refunded you ${formatMoney(refund)}.`
             } else if (roll > 75) {
               const extra = nicePrice(estimate * (randInt(gg, 10, 40) / 100))
               const taken = Math.min(extra, Math.max(0, gg.character.money))
-              addMoney(gg, -taken)
+              addMoney(gg, -taken, 'purchase')
               paid += taken
               costNote = taken < extra ? `They went ${formatMoney(extra)} over budget. You scraped together ${formatMoney(taken)} and they grumbled about the rest.` : `They went ${formatMoney(extra)} over budget, of course.`
             }
@@ -3155,7 +3126,7 @@ function amenitiesMenu(a: Asset): MenuGroup {
             const asset = findAsset(gg, a.id)
             if (!asset || amenities(asset).includes(am.id)) return
             const price = amenityPrice(gg, asset, am)
-            if (!spend(gg, price)) {
+            if (!spend(gg, price, 'purchase')) {
               cantAfford(gg, price, `a ${am.label.toLowerCase()}`)
               return
             }
@@ -3165,12 +3136,12 @@ function amenitiesMenu(a: Asset): MenuGroup {
             let paid = price
             if (roll <= 15) {
               const refund = nicePrice(price * 0.12)
-              addMoney(gg, refund)
+              addMoney(gg, refund, 'purchase')
               paid -= refund
               note = `They finished under budget and refunded ${formatMoney(refund)}.`
             } else if (roll > 80) {
               const extra = Math.min(nicePrice(price * (randInt(gg, 10, 35) / 100)), Math.max(0, gg.character.money))
-              addMoney(gg, -extra)
+              addMoney(gg, -extra, 'purchase')
               paid += extra
               note = extra > 0 ? `They went over budget by ${formatMoney(extra)}. Classic.` : 'They tried to bill you extra, but you had nothing left to give.'
             }
@@ -3210,7 +3181,7 @@ function enjoyAmenitiesAction(a: Asset): MenuAction {
       for (const [k, v] of Object.entries(totals) as [StatKey, number][]) addStat(g, k, v)
       const names = list.slice(0, 3).map((x) => x.label.toLowerCase())
       log(g, `I enjoyed the ${names.join(' and ')} at my ${asset.name.toLowerCase()}.`, 'good')
-      notice(g, 'Living Large', `You spent a lazy day enjoying the ${names.join(', ')} at your ${asset.name.toLowerCase()}. ${pick(g, ['Life is good.', 'You felt like a celebrity.', 'You could get used to this.'])}`, { emoji: list[0]?.emoji ?? '😎', tone: 'good' })
+      notice(g, 'Living Large', `You spent a lazy day enjoying the ${names.join(', ')} at your ${asset.name.toLowerCase()}. ${pickLine(g, ['Life is good.', 'You felt like a celebrity.', 'You could get used to this.'])}`, { emoji: list[0]?.emoji ?? '😎', tone: 'good' })
     },
   }
 }
@@ -3222,7 +3193,7 @@ const PARTY_POLICE = defineScript('assets.partyPolice', (g, choice) => {
       log(g, 'The police shut down my house party.')
     } else {
       const fine = nicePrice(250 * goodsMult(g))
-      addMoney(g, -Math.min(fine, Math.max(0, g.character.money)))
+      addMoney(g, -Math.min(fine, Math.max(0, g.character.money)), 'fine')
       notice(g, 'Noise Complaint', `You apologized, but this was the third complaint this year. The officer wrote you a ${formatMoney(fine)} ticket for disturbing the peace.`, { emoji: '👮', tone: 'bad' })
       log(g, 'I got a ticket for my loud house party.', 'bad')
     }
@@ -3233,7 +3204,7 @@ const PARTY_POLICE = defineScript('assets.partyPolice', (g, choice) => {
       log(g, 'I talked the cops out of shutting down my party.', 'good')
     } else {
       const fine = nicePrice(800 * goodsMult(g))
-      addMoney(g, -Math.min(fine, Math.max(0, g.character.money)))
+      addMoney(g, -Math.min(fine, Math.max(0, g.character.money)), 'fine')
       addStat(g, 'happiness', -6)
       notice(g, 'Noise Complaint', `You argued with the officer. Big mistake. The party got shut down and you were fined ${formatMoney(fine)} for disorderly conduct.`, { emoji: '🚔', tone: 'bad' })
       log(g, 'I got fined after arguing with the police at my party.', 'bad')
@@ -3274,7 +3245,7 @@ function partyAction(a: Asset): MenuAction {
       const guest = `${randomFirstName(g, c.countryId, chance(g, 0.5) ? 'male' : 'female')}`
       if (roll <= 8) {
         addStat(g, 'happiness', -6)
-        notice(g, 'Party of One', pick(g, ['Nobody came to your party. You ate 40 mini sausage rolls alone.', 'You threw a party and nobody showed. Even the pizza guy just left it at the door.']), { emoji: '😢', tone: 'bad' })
+        notice(g, 'Party of One', pickLine(g, ['Nobody came to your party. You ate 40 mini sausage rolls alone.', 'You threw a party and nobody showed. Even the pizza guy just left it at the door.']), { emoji: '😢', tone: 'bad' })
         log(g, 'Nobody showed up to my house party.', 'bad')
         return
       }
@@ -3286,18 +3257,18 @@ function partyAction(a: Asset): MenuAction {
         return
       }
       if (roll <= 45) {
-        scriptChoice(g, PARTY_INJURY, 'Party Accident', `${guest} fell ${pick(g, ['off the kitchen counter while dancing', 'down the stairs', 'into the empty pool', 'through the coffee table'])} at your party. What do you do?`, [
+        scriptChoice(g, PARTY_INJURY, 'Party Accident', `${guest} fell ${pickLine(g, ['off the kitchen counter while dancing', 'down the stairs', 'into the empty pool', 'through the coffee table'])} at your party. What do you do?`, [
           { id: 'hospital', label: 'Take them to the hospital', emoji: '🏥' },
           { id: 'kick', label: 'Kick them out', emoji: '🚪' },
         ], { emoji: '🤕', data: { guest } })
         return
       }
       addStat(g, 'happiness', randInt(g, 8, 15))
-      let text = pick(g, [
+      let text = pickSite(g, [
         `Your party at your ${asset.name.toLowerCase()} was legendary. People will be talking about it for weeks.`,
         'Everyone had a great time at your house party. Someone did a backflip off the couch.',
         'The party was a hit! The DJ played until 3 AM and nobody broke anything important.',
-      ])
+      ], 0x3b3c396d)
       if (chance(g, 0.3)) {
         const p = createPerson(g, { relation: 'friend', age: Math.max(18, c.age + randInt(g, -5, 5)), relationship: randInt(g, 55, 75) })
         text += ` You also hit it off with ${p.firstName} ${p.lastName}, who is now your friend.`
@@ -3452,7 +3423,7 @@ export const TENANT_DEFAULT = defineScript('assets.tenantDefault', (g, choice, d
     notice(g, 'Evicted', `You served ${tenant} an eviction notice. They moved out in the middle of the night, taking the shower head with them.`, { emoji: '🚪' })
   } else {
     addHidden(g, 'karma', 3)
-    notice(g, 'Second Chance', `You gave ${tenant} another chance. They promised to catch up on rent. ${pick(g, ['They seemed sincere.', 'They swore on their grandmother. Both of them.', 'They brought you cookies as collateral.'])}`, { emoji: '🤝' })
+    notice(g, 'Second Chance', `You gave ${tenant} another chance. They promised to catch up on rent. ${pickLine(g, ['They seemed sincere.', 'They swore on their grandmother. Both of them.', 'They brought you cookies as collateral.'])}`, { emoji: '🤝' })
   }
 })
 
@@ -3472,7 +3443,7 @@ const exorciseAction = (a: Asset): MenuAction => ({
       return
     }
     const cost = nicePrice(randInt(g, 1_500, 5_000) * goodsMult(g))
-    if (!spend(g, cost)) {
+    if (!spend(g, cost, 'purchase')) {
       g.yearActions[`exorcise:${asset.id}`] = 0
       cantAfford(g, cost, 'an exorcism')
       return
@@ -3508,7 +3479,7 @@ function moveInAction(a: Asset): MenuAction {
       g.character.residence = { status: 'owned', assetId: asset.id, description: asset.name }
       addStat(g, 'happiness', 3)
       log(g, `I moved into my ${asset.name.toLowerCase()}.`)
-      notice(g, 'Moved In', `You moved into your ${asset.name.toLowerCase()}${was === 'renting' ? ' and ended your lease' : ''}. ${pick(g, ['Unpacking can wait until next year.', 'You christened it with takeout on the floor.', 'It already feels like home.'])}`, { emoji: '📦', tone: 'good' })
+      notice(g, 'Moved In', `You moved into your ${asset.name.toLowerCase()}${was === 'renting' ? ' and ended your lease' : ''}. ${pickLine(g, ['Unpacking can wait until next year.', 'You christened it with takeout on the floor.', 'It already feels like home.'])}`, { emoji: '📦', tone: 'good' })
     },
   }
 }
@@ -3542,7 +3513,7 @@ function driveAction(a: Asset): MenuAction {
       const risk = asset.condition < 25 ? 0.12 : asset.condition < 50 ? 0.05 : 0.02
       if (asset.kind === 'car' && !hasLicense(g, 'driver') && chance(g, 0.35)) {
         const fine = nicePrice(randInt(g, 300, 900) * goodsMult(g))
-        addMoney(g, -Math.min(fine, Math.max(0, c.money)))
+        addMoney(g, -Math.min(fine, Math.max(0, c.money)), 'fine')
         addStat(g, 'happiness', -5)
         notice(g, 'Pulled Over', `A cop pulled you over in your ${asset.name}. When you couldn't produce a driver's license, they wrote you a ${formatMoney(fine)} ticket and made you call someone for a ride.`, { emoji: '🚓', tone: 'bad' })
         log(g, 'I got a ticket for driving without a license.', 'bad')
@@ -3565,7 +3536,7 @@ function driveAction(a: Asset): MenuAction {
         if (!c.conditions.some((x) => x.name === injury)) {
           c.conditions.push({ id: uid(g, 'c'), name: injury, kind: 'injury', severity: randInt(g, 10, 25), yearsHad: 0, curable: true, diagnosed: true, age: c.age })
         }
-        const what = asset.kind === 'boat' ? `You hit a sandbar in your ${asset.name.toLowerCase()} and were thrown overboard.` : `You crashed your ${asset.name} into a ${pick(g, ['lamppost', 'mailbox', 'parked ice cream truck', 'ditch'])}.`
+        const what = asset.kind === 'boat' ? `You hit a sandbar in your ${asset.name.toLowerCase()} and were thrown overboard.` : `You crashed your ${asset.name} into a ${pickLine(g, ['lamppost', 'mailbox', 'parked ice cream truck', 'ditch'])}.`
         notice(g, 'Accident!', `${what} You ended up with ${injury.toLowerCase()}.`, { emoji: '💥', tone: 'bad' })
         log(g, asset.kind === 'boat' ? `I had a boating accident.` : `I crashed my ${asset.name}.`, 'bad')
         return
@@ -3601,7 +3572,7 @@ function maintainAction(a: Asset): MenuAction {
         return
       }
       const cost = maintenanceCost(g, asset)
-      if (!spend(g, cost)) {
+      if (!spend(g, cost, 'purchase')) {
         g.yearActions[`maint:${asset.id}`] = 0
         cantAfford(g, cost, 'the maintenance')
         return
@@ -3647,7 +3618,7 @@ function scrapAction(a: Asset): MenuAction {
       if (!asset) return
       const scrap = nicePrice(Math.max(100, asset.value * 0.15))
       g.assets = g.assets.filter((x) => x.id !== asset.id)
-      addMoney(g, scrap)
+      addMoney(g, scrap, 'purchase')
       log(g, `I scrapped my ${asset.name.toLowerCase()} for ${formatMoney(scrap)}.`)
       notice(g, 'Scrapped', `The scrapyard gave you ${formatMoney(scrap)} for your ${asset.name.toLowerCase()}. They crushed it into a cube while you watched. It was oddly moving.`, { emoji: '♻️' })
     },
@@ -3671,7 +3642,7 @@ function appraiseAction(a: Asset): MenuAction {
         return
       }
       const fee = nicePrice(Math.max(25, Math.min(500, asset.value * 0.01)))
-      if (!spend(g, fee)) {
+      if (!spend(g, fee, 'purchase')) {
         g.yearActions[`appraise:${asset.id}`] = 0
         cantAfford(g, fee, 'the appraisal fee')
         return
@@ -3716,19 +3687,19 @@ function useItemAction(a: Asset): MenuAction {
         asset.condition = Math.max(0, asset.condition - randInt(g, 1, 5))
         addStat(g, 'happiness', randInt(g, 2, 4))
         log(g, `I spent the day on my ${asset.name.toLowerCase()}.`)
-        notice(g, label, pick(g, [`You lost a whole weekend to your ${asset.name.toLowerCase()}.`, `You played with your ${asset.name.toLowerCase()} until the battery died.`, `Your ${asset.name.toLowerCase()} made you very happy and slightly less productive.`]), { emoji: asset.emoji, tone: 'good' })
+        notice(g, label, pickSite(g, [`You lost a whole weekend to your ${asset.name.toLowerCase()}.`, `You played with your ${asset.name.toLowerCase()} until the battery died.`, `Your ${asset.name.toLowerCase()} made you very happy and slightly less productive.`], 0x13e34dff), { emoji: asset.emoji, tone: 'good' })
         return
       }
       if (a.kind === 'jewelry' || cat === 'luxury') {
         addStat(g, 'happiness', randInt(g, 2, 4))
         addStat(g, 'looks', chance(g, 0.4) ? 1 : 0)
         log(g, `I showed off my ${asset.name.toLowerCase()} around town.`)
-        notice(g, 'Looking Good', pick(g, [`You wore your ${asset.name.toLowerCase()} out and got three compliments.`, `Everyone noticed your ${asset.name.toLowerCase()}. One person asked if it was real.`, `You felt like a million bucks wearing your ${asset.name.toLowerCase()}.`]), { emoji: asset.emoji, tone: 'good' })
+        notice(g, 'Looking Good', pickSite(g, [`You wore your ${asset.name.toLowerCase()} out and got three compliments.`, `Everyone noticed your ${asset.name.toLowerCase()}. One person asked if it was real.`, `You felt like a million bucks wearing your ${asset.name.toLowerCase()}.`], 0xedfe5f13), { emoji: asset.emoji, tone: 'good' })
         return
       }
       addStat(g, 'happiness', randInt(g, 1, 4))
       log(g, `I admired my ${asset.name.toLowerCase()}.`)
-      notice(g, 'Collector', pick(g, [`You stared at your ${asset.name.toLowerCase()} for an hour. Worth it.`, `You showed off your ${asset.name.toLowerCase()} to a friend, who pretended to care.`, `You dusted your ${asset.name.toLowerCase()} with a tiny brush. Pure bliss.`]), { emoji: asset.emoji, tone: 'good' })
+      notice(g, 'Collector', pickSite(g, [`You stared at your ${asset.name.toLowerCase()} for an hour. Worth it.`, `You showed off your ${asset.name.toLowerCase()} to a friend, who pretended to care.`, `You dusted your ${asset.name.toLowerCase()} with a tiny brush. Pure bliss.`], 0xe6716eda), { emoji: asset.emoji, tone: 'good' })
     },
   }
 }
@@ -3798,7 +3769,7 @@ function refurbishAction(a: Asset): MenuAction {
       if (!asset) return
       const cost = num(asset.details.refurbCost)
       if (cost <= 0 || asset.condition >= 100) return
-      if (!spend(g, cost)) {
+      if (!spend(g, cost, 'purchase')) {
         cantAfford(g, cost, 'the refurbishment')
         return
       }
@@ -4116,7 +4087,7 @@ const CAR_BREAKDOWN = defineScript('assets.carBreakdown', (g, choice, data) => {
   const asset = assetId ? findAsset(g, assetId) : undefined
   if (!asset) return
   if (choice === 'repair') {
-    if (!spend(g, cost)) {
+    if (!spend(g, cost, 'purchase')) {
       cantAfford(g, cost, 'the repair')
       asset.condition = Math.max(0, asset.condition - 10)
       return
@@ -4133,7 +4104,7 @@ const CAR_BREAKDOWN = defineScript('assets.carBreakdown', (g, choice, data) => {
       return
     }
     removeAsset(g, asset)
-    addMoney(g, scrap - owed)
+    addMoney(g, scrap - owed, 'purchase') // one booking: net of the payoff
     log(g, `I scrapped my broken-down ${asset.name}.`)
     notice(g, 'Scrapped', `You sold your ${asset.name} to the scrapyard for ${formatMoney(scrap)}${owed > 0 ? ` and paid off the ${formatMoney(owed)} left on the loan` : ''}. Rest in pieces.`, { emoji: '♻️' })
   } else {
@@ -4221,7 +4192,7 @@ function auction(g: GameState, a: Asset, reason: string): void {
   const owed = amountOwed(g, a)
   const wasHome = isHome(g, a)
   removeAsset(g, a)
-  addMoney(g, price - owed)
+  addMoney(g, price - owed, a.kind === 'house' ? 'property.sell' : 'asset.sell') // one booking: net of the payoff
   let text = `${reason} Your ${a.name.toLowerCase()} was auctioned off for ${formatMoney(price)}${owed > 0 ? `, and ${formatMoney(owed)} of that went to pay off what was owed` : ''}.`
   if (wasHome) text += ` ${relocateAfterLosingHome(g, a.id)}`
   notice(g, 'Auctioned', text, { emoji: '🔨' })
@@ -4235,7 +4206,7 @@ function payMortgage(g: GameState, a: Asset): number {
   const interest = Math.round(m.balance * m.rate)
   const due = Math.min(m.yearlyPayment, m.balance + interest)
   if (c.money >= due) {
-    addMoney(g, -due)
+    addMoney(g, -due, 'loan.repay')
     m.balance = Math.max(0, Math.round(m.balance + interest - due))
     m.yearsLeft = Math.max(0, m.yearsLeft - 1)
     a.details.missedPayments = 0
@@ -4276,12 +4247,12 @@ function foreclose(g: GameState, a: Asset): void {
   const shortfall = Math.max(0, owed - sale)
   g.flags.creditDefaults = (typeof g.flags.creditDefaults === 'number' ? g.flags.creditDefaults : 0) + 1
   if (shortfall > 0) {
-    const deficiency = addLoan(g, { kind: 'personal', lender: m?.lender ?? 'The bank', principal: shortfall, rate: m?.rate ?? .08, years: 5 })
+    const deficiency = addLoan(g, { kind: 'personal', lender: m?.lender ?? 'The bank', principal: shortfall, rate: m?.rate ?? .08, years: 5, noMint: true })
     if (typeof a.details.countryId === 'string') deficiency.countryId = a.details.countryId
   }
   const wasHome = isHome(g, a)
   g.assets = g.assets.filter((x) => x.id !== a.id)
-  if (leftover > 0) addMoney(g, leftover)
+  if (leftover > 0) addMoney(g, leftover, 'property.sell')
   let text = `${lender} foreclosed on your ${a.name.toLowerCase()} after you missed two payments in a row. It sold at auction for ${formatMoney(sale)}${leftover > 0 ? ` and you got the ${formatMoney(leftover)} left after the loan was repaid` : ''}.`
   if (shortfall > 0) text += ` The auction did not cover your debt. You still owe ${formatMoney(shortfall)}, restructured as a five-year loan.`
   if (wasHome) text += ` ${relocateAfterLosingHome(g, a.id)}`
@@ -4321,10 +4292,10 @@ function randomAssetEvent(g: GameState): void {
       const cost = nicePrice(Math.max(1_000 * m, h.value * (ev === 'pipe' ? 0.012 : 0.02)))
       if (isInsured(h) && ev === 'pipe') {
         const ded = Math.min(nicePrice(500 * m), cost)
-        addMoney(g, -Math.min(ded, Math.max(0, c.money)))
+        addMoney(g, -Math.min(ded, Math.max(0, c.money)), 'purchase')
         notice(g, 'Burst Pipe', `A pipe burst at your ${h.name.toLowerCase()} and flooded the kitchen. Insurance covered the ${formatMoney(cost)} repair, minus your ${formatMoney(ded)} deductible.`, { emoji: '💧' })
       } else if (c.money >= cost) {
-        addMoney(g, -cost)
+        addMoney(g, -cost, 'purchase')
         notice(g, ev === 'pipe' ? 'Burst Pipe' : 'Termites!', ev === 'pipe' ? `A pipe burst at your ${h.name.toLowerCase()} and flooded the kitchen. The plumber charged ${formatMoney(cost)} and said "whoever installed this should be in prison."` : `Termites were eating your ${h.name.toLowerCase()}. Fumigation and repairs cost ${formatMoney(cost)}.`, { emoji: ev === 'pipe' ? '💧' : '🐜', tone: 'bad' })
       } else {
         h.condition = Math.max(0, h.condition - randInt(g, 10, 20))
@@ -4362,7 +4333,7 @@ function randomAssetEvent(g: GameState): void {
       g.assets = g.assets.filter((x) => x.id !== item.id)
       if (isInsured(h) || isInsured(item)) {
         const payout = nicePrice(item.value * 0.9)
-        addMoney(g, payout)
+        addMoney(g, payout, 'claim')
         notice(g, 'Burglary', `Burglars broke into your ${h.name.toLowerCase()} and stole your ${item.name.toLowerCase()}. Insurance reimbursed you ${formatMoney(payout)}.`, { emoji: '🦹', tone: 'bad' })
       } else {
         addStat(g, 'happiness', -6)
@@ -4374,7 +4345,7 @@ function randomAssetEvent(g: GameState): void {
     case 'ghost': {
       const h = pick(g, houses.filter((x) => haunted(x) > 0))
       addStat(g, 'happiness', -randInt(g, 3, 8))
-      notice(g, 'Spooky', pick(g, [`You heard chains rattling in the attic of your ${h.name.toLowerCase()} at 3 AM.`, `Every cabinet in your ${h.name.toLowerCase()} opened at once while you were making toast.`, `A voice in the walls of your ${h.name.toLowerCase()} whispered your full name. Including your middle name.`, `You found tiny handprints on the inside of the windows of your ${h.name.toLowerCase()}. You don't have kids.`]), { emoji: '👻', tone: 'bad' })
+      notice(g, 'Spooky', pickSite(g, [`You heard chains rattling in the attic of your ${h.name.toLowerCase()} at 3 AM.`, `Every cabinet in your ${h.name.toLowerCase()} opened at once while you were making toast.`, `A voice in the walls of your ${h.name.toLowerCase()} whispered your full name. Including your middle name.`, `You found tiny handprints on the inside of the windows of your ${h.name.toLowerCase()}. You don't have kids.`], 0xd6983ab9), { emoji: '👻', tone: 'bad' })
       log(g, `Something haunted my ${h.name.toLowerCase()}.`, 'event')
       return
     }
@@ -4384,11 +4355,11 @@ function randomAssetEvent(g: GameState): void {
       car.condition = Math.max(0, car.condition - randInt(g, 5, 15))
       if (isInsured(car)) {
         const ded = Math.min(nicePrice(500 * m), cost)
-        addMoney(g, -Math.min(ded, Math.max(0, c.money)))
+        addMoney(g, -Math.min(ded, Math.max(0, c.money)), 'purchase')
         notice(g, 'Fender Bender', `Someone backed into your ${car.name} in a parking lot. Insurance covered it after your ${formatMoney(ded)} deductible.`, { emoji: '💥' })
       } else {
         const paid = Math.min(cost, Math.max(0, c.money))
-        addMoney(g, -paid)
+        addMoney(g, -paid, 'purchase')
         notice(g, 'Fender Bender', paid >= cost ? `You rear-ended someone at a red light in your ${car.name}. Without insurance, the ${formatMoney(cost)} repair came out of your pocket.` : `You rear-ended someone in your ${car.name}. Without insurance you could only pay ${formatMoney(paid)} of the ${formatMoney(cost)} repair, so the dent stays.`, { emoji: '💥', tone: 'bad' })
       }
       log(g, `I got into a fender bender in my ${car.name}.`, 'bad')
@@ -4400,7 +4371,7 @@ function randomAssetEvent(g: GameState): void {
       g.assets = g.assets.filter((x) => x.id !== car.id)
       if (isInsured(car)) {
         const payout = nicePrice(car.value * 0.85)
-        addMoney(g, payout)
+        addMoney(g, payout, 'claim')
         notice(g, 'Car Stolen', `Your ${car.name} was stolen from right outside your place. Insurance paid out ${formatMoney(payout)}.${car.details.loanId ? ' You still owe the rest of the loan, of course.' : ''}`, { emoji: '🚓', tone: 'bad' })
       } else {
         addStat(g, 'happiness', -10)
@@ -4414,7 +4385,7 @@ function randomAssetEvent(g: GameState): void {
       const car = cars.filter((x) => x.condition < 45).sort((a, b) => a.condition - b.condition)[0]
       if (!car) return
       const cost = nicePrice(Math.max(400 * m, Math.min(car.value * 0.5, randInt(g, 700, 3_500) * m)))
-      scriptChoice(g, CAR_BREAKDOWN, 'Breakdown', `Your ${car.name} broke down ${pick(g, ['on the highway', 'in a drive-thru', 'in the middle of an intersection', 'on the way to work'])}. The mechanic says it'll cost ${formatMoney(cost)} to fix. It's worth about ${formatMoney(car.value)}.`, [
+      scriptChoice(g, CAR_BREAKDOWN, 'Breakdown', `Your ${car.name} broke down ${pickLine(g, ['on the highway', 'in a drive-thru', 'in the middle of an intersection', 'on the way to work'])}. The mechanic says it'll cost ${formatMoney(cost)} to fix. It's worth about ${formatMoney(car.value)}.`, [
         { id: 'repair', label: `Repair it (${formatMoney(cost)})`, emoji: '🔧' },
         { id: 'scrap', label: 'Scrap it', emoji: '♻️' },
         { id: 'ignore', label: 'Ignore the problem', emoji: '🙈' },
@@ -4425,7 +4396,7 @@ function randomAssetEvent(g: GameState): void {
       const v = pick(g, craft)
       const cost = nicePrice(Math.max(1_000 * m, v.value * 0.04))
       if (c.money >= cost) {
-        addMoney(g, -cost)
+        addMoney(g, -cost, 'purchase')
         notice(g, 'Engine Trouble', `Your ${v.name.toLowerCase()} needed engine work. The repair bill was ${formatMoney(cost)}. You wept quietly.`, { emoji: '🔧', tone: 'bad' })
       } else {
         v.condition = Math.max(0, v.condition - randInt(g, 15, 30))
@@ -4440,11 +4411,11 @@ function randomAssetEvent(g: GameState): void {
       g.assets = g.assets.filter((x) => x.id !== j.id)
       if (isInsured(j)) {
         const payout = nicePrice(j.value * 0.9)
-        addMoney(g, payout)
-        notice(g, 'Lost Jewelry', `You lost your ${j.name.toLowerCase()} ${pick(g, ['down a storm drain', 'at the beach', 'somewhere between the gym and home'])}. Insurance paid ${formatMoney(payout)}.`, { emoji: '😩' })
+        addMoney(g, payout, 'claim')
+        notice(g, 'Lost Jewelry', `You lost your ${j.name.toLowerCase()} ${pickLine(g, ['down a storm drain', 'at the beach', 'somewhere between the gym and home'])}. Insurance paid ${formatMoney(payout)}.`, { emoji: '😩' })
       } else {
         addStat(g, 'happiness', -5)
-        notice(g, 'Lost Jewelry', `You lost your ${j.name.toLowerCase()} ${pick(g, ['down a storm drain', 'at the beach', 'somewhere between the gym and home'])}. It's gone forever.`, { emoji: '😩', tone: 'bad' })
+        notice(g, 'Lost Jewelry', `You lost your ${j.name.toLowerCase()} ${pickLine(g, ['down a storm drain', 'at the beach', 'somewhere between the gym and home'])}. It's gone forever.`, { emoji: '😩', tone: 'bad' })
       }
       log(g, `I lost my ${j.name.toLowerCase()}.`, 'bad')
       return
@@ -4476,7 +4447,7 @@ export function yearlyAssets(g: GameState): void {
 
   // Rent from tenants (taxed at the marginal rate).
   const rent = collectRent(g)
-  if (rent > 0) log(g, pick(g, [`I collected ${formatMoney(rent)} in rent from my tenants.`, `My tenants paid me ${formatMoney(rent)} in rent.`]), 'good')
+  if (rent > 0) log(g, pickSite(g, [`I collected ${formatMoney(rent)} in rent from my tenants.`, `My tenants paid me ${formatMoney(rent)} in rent.`], 0x2ffdb78c), 'good')
 
   // Upkeep: property tax, maintenance, insurance, fuel, docking, hangar fees...
   let upkeep = 0
@@ -4487,10 +4458,13 @@ export function yearlyAssets(g: GameState): void {
       auction(g, a, `As a minor, you couldn't cover the ${formatMoney(due)} yearly upkeep.`)
       continue
     }
-    addMoney(g, -due)
+    // Upkeep and insurance are one yearly number: the premium is booked on its own, the rest is upkeep.
+    const premium = isInsured(a) ? Math.min(due, Math.max(0, Math.round(insurancePremium(g, a)))) : 0
+    if (due - premium > 0) addMoney(g, -(due - premium), 'purchase')
+    if (premium > 0) addMoney(g, -premium, 'premium')
     upkeep += due
   }
-  if (upkeep >= 100) log(g, pick(g, [`I spent ${formatMoney(upkeep)} on upkeep for my things.`, `Property taxes, insurance and maintenance cost me ${formatMoney(upkeep)}.`]))
+  if (upkeep >= 100) log(g, pickSite(g, [`I spent ${formatMoney(upkeep)} on upkeep for my things.`, `Property taxes, insurance and maintenance cost me ${formatMoney(upkeep)}.`], 0x3d1ba445))
 
   // Mortgages.
   let mortgage = 0

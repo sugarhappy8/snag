@@ -3,7 +3,8 @@
 // company store, a sewing machine on payments, the vacuum salesman, the party line, victory
 // gardens, ration-book temptations and the blackout warden. Ids start with 'era.1900.'.
 import { jobIsManual } from './era-pack-jobs'
-import { chance, pick } from '../rng'
+import { chance } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState } from '../types'
 import { aParent, ch, defineEvents, money, say } from './helpers'
 import { at, homeFrontNow, poorFamily, rationed } from './era-pack-where'
@@ -445,7 +446,7 @@ export const ADULT_EVENTS_1900 = defineEvents([
       }
     },
     resolve: {
-      go: (g, x) => say(g, x, 'The Wonder of It', pick(g, ['You walked for miles along avenues of white buildings and saw a machine that could add up a column of figures. You came home exhausted and full of ideas.', 'You rode the big wheel, ate a candy you had never heard of and watched a demonstration of a machine that could wash dishes. The future looked bright, and slightly noisy.']), 'I went to the world’s fair.', { money: -x.n('fee'), happiness: 8, smarts: 3 }, 'good'),
+      go: (g, x) => say(g, x, 'The Wonder of It', pickLine(g, ['You walked for miles along avenues of white buildings and saw a machine that could add up a column of figures. You came home exhausted and full of ideas.', 'You rode the big wheel, ate a candy you had never heard of and watched a demonstration of a machine that could wash dishes. The future looked bright, and slightly noisy.']), 'I went to the world’s fair.', { money: -x.n('fee'), happiness: 8, smarts: 3 }, 'good'),
       read: (g, x) => say(g, x, 'Armchair Traveler', 'You read every word the papers printed about it and told your friends all the details. It was almost as good as going, you said, and nobody believed you.', 'I followed the world’s fair in the newspapers.', { happiness: 1, smarts: 2 }),
     },
   },

@@ -10,12 +10,15 @@
 // Profit is paid to you as taxable income (your share); losses come out of the company's cash,
 // then your pocket. Events: outages, going viral, clones, a big customer, acquisition offers,
 // data breaches, co-founder drama, investors, and type-specific chaos.
-import { cycleOf } from '../business/economy'
+import { firmCash } from '../cash'
 import { COMPANY_WORDS } from '../data/jobs'
+import { economicCycle } from '../economy'
 import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, formatCents, formatMoney, log, notice, peopleBy, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal, localPick, localTerm } from '../data/locales'
 import { worldYear } from '../invest/engine'
+import type { Reason } from '../kernel/reasons'
 import { chance, pick, rand, randFloat, randInt, shuffle, uid, weightedPick } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { totalFollowers } from '../special/social'
 import { hasTalent } from '../talents'
@@ -206,7 +209,7 @@ function pull(v: VentureData): number {
 function econOf(g: GameState, v: VentureData): number {
   const w = worldYear(fam(g), g.year)
   const world = between((1 + 0.05 * w.z) * (w.crash ? 0.85 : 1) * (w.boom ? 1.08 : 1), 0.7, 1.25)
-  const local = cycleOf(g, v.countryId, g.year)
+  const local = economicCycle(g, v.countryId, g.year)
   const ls = localShare(v)
   return between(ls * (Number.isFinite(local) ? local : 1) + (1 - ls) * world, 0.5, 1.4)
 }
@@ -439,7 +442,7 @@ const NAME_SCRIPT = defineScript('computer.dev.venture.name', (g, input, data) =
   if (g.character.money < cost) {
     return notice(g, "Can't Afford It", `You need ${formatMoney(cost)} to get it going.`, { emoji: '\u{1F4B8}', tone: 'bad' })
   }
-  addMoney(g, -cost)
+  addMoney(g, -cost, 'purchase')
   const name = cleanName(input) || suggestName(g, type, str(idea.key, 'Idea'))
   const hired = d.hired === true
   const a = createVenture(g, type, name, { text: str(idea.text, name), key: str(idea.key, 'Idea'), mult: num(idea.mult, 1), product: str(idea.product) }, { hired, invested: cost })
@@ -448,7 +451,7 @@ const NAME_SCRIPT = defineScript('computer.dev.venture.name', (g, input, data) =
   remember(g, `Founded ${name}: ${v.idea}.`)
   log(g, `I started ${vd.noun}: ${name}.`, 'good')
   const kid = g.character.age < 18
-  const parentNote = kid && guardians(g).length ? ` ${pick(g, [`${capWord(parentWord(guardians(g)[0]))} asked if this is "one of those pyramid things." It is not.`, 'Your parents told the whole family you\'re "basically a CEO now."', 'Your parents co-signed the paperwork and asked for 10% "for the electricity."'])}` : ''
+  const parentNote = kid && guardians(g).length ? ` ${pickSite(g, [`${capWord(parentWord(guardians(g)[0]))} asked if this is "one of those pyramid things." It is not.`, 'Your parents told the whole family you\'re "basically a CEO now."', 'Your parents co-signed the paperwork and asked for 10% "for the electricity."'], 0xc30b7e3a)}` : ''
   const how =
     type === 'store'
       ? `Your store is open with ${unitWord(v, v.users)} (mostly people who owe you favors).`
@@ -495,7 +498,7 @@ export function startVenture(g: GameState, type: VentureType): void {
     g,
     IDEA_SCRIPT,
     `Start ${vd.noun}`,
-    type === 'store' ? 'What will you sell?' : `Pick an idea. ${pick(g, ['Every unicorn started as a weird idea.', 'Most of these will fail. One of them might not.', 'Your gut says one of these is genius. Your gut is often hungry.'])}`,
+    type === 'store' ? 'What will you sell?' : `Pick an idea. ${pickLine(g, ['Every unicorn started as a weird idea.', 'Most of these will fail. One of them might not.', 'Your gut says one of these is genius. Your gut is often hungry.'])}`,
     [...ideas.map((idea, i) => ({ id: `idea${i}`, label: idea.text, emoji: '\u{1F4A1}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' }],
     { emoji: vd.emoji, data: { type, ideas: toJson(ideas) } },
   )
@@ -568,7 +571,7 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
     // Building costs: contractors (and ads to build hype before launch).
     const spendNeeded = contractors + ads
     const before = Math.max(0, c.money)
-    const paid = coverCosts(g, v, spendNeeded)
+    const paid = coverCosts(g, a, v, spendNeeded)
     if (ads > 0 && paid >= spendNeeded) v.hype = between(v.hype + 10 * v.ad, 0, 100)
     if (paid < spendNeeded) cutBack(v)
     else {
@@ -583,7 +586,7 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
       res.line = launchLine(a.name, v)
       if (v.type === 'game' && v.revenue > 0) {
         res.payout = whole(v.revenue * v.stake)
-        if (res.payout > 0) earnIncome(g, res.payout)
+        if (res.payout > 0) earnIncome(g, res.payout, 'royalty')
         res.revenue = v.revenue
         v.history.push({ y: g.year, users: v.users, revenue: v.revenue, profit: v.revenue })
       }
@@ -672,7 +675,7 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
   // Unpaid fines come out of the company account first.
   if (v.owed > 0 && v.cash > 0) {
     const x = Math.min(v.cash, v.owed)
-    v.cash -= x
+    firmCash(g, v, -x, 'fine', a.id)
     v.owed -= x
   }
 
@@ -681,12 +684,12 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
     const due = Math.min(v.owed, profit)
     v.owed -= due
     const payout = whole((profit - due) * v.stake)
-    if (payout > 0) earnIncome(g, payout)
+    if (payout > 0) earnIncome(g, payout, 'royalty')
     res.payout = payout
     v.strain = 0
   } else {
     const before = Math.max(0, c.money)
-    const paid = coverCosts(g, v, -profit)
+    const paid = coverCosts(g, a, v, -profit)
     if (paid < -profit) cutBack(v)
     else {
       v.strain = 0
@@ -726,15 +729,15 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
 }
 
 /** Pay costs from company cash, then the owner's money. Returns how much was covered. */
-function coverCosts(g: GameState, v: VentureData, amount: number): number {
+function coverCosts(g: GameState, a: Asset, v: VentureData, amount: number): number {
   const need = whole(amount)
   if (need <= 0) return 0
   const fromCash = Math.min(v.cash, need)
-  v.cash -= fromCash
+  firmCash(g, v, -fromCash, 'inputs', a.id)
   const rest = need - fromCash
   const fromYou = Math.min(rest, Math.max(0, g.character.money))
   if (fromYou > 0) {
-    addMoney(g, -fromYou)
+    addMoney(g, -fromYou, 'inputs')
     v.invested += fromYou
   }
   return fromCash + fromYou
@@ -908,7 +911,7 @@ function fireEvent(g: GameState, ctx: EventCtx, ev: EventId): void {
       const social = hasTech(g, 'socialMedia')
       const who = v.type === 'store' ? (social ? 'a fashion influencer' : 'a fashion magazine') : pick(g, social ? ['a huge tech creator', 'a celebrity with 30 million followers', 'a viral video', 'a popular newsletter'] : ['a morning TV segment', 'a famous tech columnist', 'a popular email newsletter', 'a magazine cover story'])
       const boost = adBudget(v.countryId, 2)
-      show('Going Viral', `${capWord(who)} just featured ${name}. Traffic is exploding. ${pick(g, ['Your server is sweating.', 'Your phone has not stopped buzzing.', 'Your aunt saw it before you did.'])}`, [
+      show('Going Viral', `${capWord(who)} just featured ${name}. Traffic is exploding. ${pickLine(g, ['Your server is sweating.', 'Your phone has not stopped buzzing.', 'Your aunt saw it before you did.'])}`, [
         { id: 'ride', label: `Pour ${formatMoney(boost)} into ads while it's hot`, emoji: '\u{1F4E3}' },
         { id: 'calm', label: 'Enjoy the ride', emoji: '\u{1F60E}' },
         { id: 'price', label: 'Raise prices while demand is high', emoji: '\u{1F4B0}' },
@@ -957,7 +960,7 @@ function fireEvent(g: GameState, ctx: EventCtx, ev: EventId): void {
       return
     }
     case 'cofounderDrama': {
-      const want = pick(g, ['pivot the whole company to crypto', `move to ${localPick(g, 'getaway') || 'the beach'} and work "async"`, 'double their equity', 'rename the company to something with "AI" in it'])
+      const want = pickSite(g, ['pivot the whole company to crypto', `move to ${localPick(g, 'getaway') || 'the beach'} and work "async"`, 'double their equity', 'rename the company to something with "AI" in it'], 0x1313c4fe)
       show('Co-Founder Drama', `${v.cofounder}, your co-founder, wants to ${want}. You've had better meetings.`, [
         { id: 'buyout', label: `Buy out their share (${money(niceAmount(v.valuation * cofounderStake(a) * 0.8))})`, emoji: '\u{1F4B5}' },
         { id: 'equity', label: 'Give them more equity', emoji: '\u{1F370}' },
@@ -978,7 +981,7 @@ function fireEvent(g: GameState, ctx: EventCtx, ev: EventId): void {
     case 'cofounderOffer': {
       const f = friendFor(g)
       if (!f) return
-      show('Co-Founder?', `${f.firstName} ${f.lastName}, your friend, wants to join ${name} as a co-founder for 30% of the company. ${pick(g, ['They can code.', 'They are extremely good at talking to people.', 'They have a lot of energy and a whiteboard.'])}`, [
+      show('Co-Founder?', `${f.firstName} ${f.lastName}, your friend, wants to join ${name} as a co-founder for 30% of the company. ${pickLine(g, ['They can code.', 'They are extremely good at talking to people.', 'They have a lot of energy and a whiteboard.'])}`, [
         { id: 'accept', label: 'Welcome aboard!', emoji: '\u{1F91D}' },
         { id: 'decline', label: 'Keep it solo', emoji: '\u{1F64B}' },
       ], { personId: f.id, name: `${f.firstName} ${f.lastName}` }, '\u{1F46F}')
@@ -986,7 +989,7 @@ function fireEvent(g: GameState, ctx: EventCtx, ev: EventId): void {
     }
     case 'counterfeit': {
       const product = str(a.details.product, 'sneakers')
-      show('Fakes!', `A batch of ${product} from your supplier turned out to be counterfeit. ${pick(g, ['The logo is spelled wrong.', 'One of them squeaks.', 'The "leather" smells like a swimming pool.'])} Some already shipped.`, [
+      show('Fakes!', `A batch of ${product} from your supplier turned out to be counterfeit. ${pickLine(g, ['The logo is spelled wrong.', 'One of them squeaks.', 'The "leather" smells like a swimming pool.'])} Some already shipped.`, [
         { id: 'refund', label: 'Refund everyone who bought one', emoji: '\u{1F4B8}' },
         { id: 'sell', label: 'Sell the rest anyway', emoji: '\u{1F92B}' },
       ], { cost: niceAmount(Math.max(50 * pl, v.revenue * 0.1)) }, '\u{1F45F}')
@@ -1010,7 +1013,7 @@ function fireEvent(g: GameState, ctx: EventCtx, ev: EventId): void {
       return
     }
     case 'reviewBomb': {
-      const why = pick(g, ['you changed the font', 'a character they love got a haircut', 'the cat in the game cannot be petted', 'someone thinks it is too hard (it is)'])
+      const why = pickLine(g, ['you changed the font', 'a character they love got a haircut', 'the cat in the game cannot be petted', 'someone thinks it is too hard (it is)'])
       show('Review Bombed', `Players are review-bombing ${name} because ${why}.`, [
         { id: 'patch', label: 'Patch it fast', emoji: '\u{1FA79}' },
         { id: 'reply', label: 'Reply to every review personally', emoji: '\u{1F4AC}' },
@@ -1079,14 +1082,14 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
     const base = v.type === 'game' ? Math.max(v.tail, v.users * 0.05) : v.users
     addUsers(Math.max(1, base * frac * 5 + marketCap(v) * frac * 0.1 * Math.min(1.5, pull(v))))
   }
-  const payNow = (amount: number): boolean => {
+  const payNow = (amount: number, reason: Reason = 'purchase'): boolean => {
     if (amount <= 0) return true
     const fromCash = Math.min(v.cash, amount)
     const rest = amount - fromCash
     if (c.money < rest) return false
-    v.cash -= fromCash
+    firmCash(g, v, -fromCash, reason, a.id)
     if (rest > 0) {
-      addMoney(g, -rest)
+      addMoney(g, -rest, reason)
       v.invested += rest
     }
     return true
@@ -1094,10 +1097,10 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
   /** A fine: company cash, then your savings; whatever is left is owed and comes out of future profits. Returns the unpaid part. */
   const payFine = (amount: number): number => {
     const fromCash = Math.min(v.cash, amount)
-    v.cash -= fromCash
+    firmCash(g, v, -fromCash, 'fine', a.id)
     const fromYou = Math.min(amount - fromCash, Math.max(0, c.money))
     if (fromYou > 0) {
-      addMoney(g, -fromYou)
+      addMoney(g, -fromYou, 'fine')
       v.invested += fromYou
     }
     const rest = whole(amount - fromCash - fromYou)
@@ -1156,7 +1159,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
       return
     case 'viral':
       if (choice === 'ride') {
-        if (payNow(cost)) {
+        if (payNow(cost, 'marketing')) {
           gain(randFloat(g, 0.04, 0.1))
           // Ads bought while everyone is already looking go twice as far (if people want the thing).
           addUsers((cost / cacOf(v)) * 2 * Math.sqrt(v.fit) * Math.max(0, 1 - v.users / marketCap(v)))
@@ -1200,7 +1203,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
         done()
         say('Price War', `You cut prices to ${tierOf(v).label}. Your customers stayed. Your margins cried quietly.`)
       } else if (choice === 'sue') {
-        if (!payNow(cost)) {
+        if (!payNow(cost, 'legal')) {
           lose(randFloat(g, 0.05, 0.12))
           done()
           say('No Lawyer', `You couldn't afford ${formatMoney(cost)} for a lawyer. The clone took a chunk of your ${def(v).unit[1]}.`, 'bad')
@@ -1302,7 +1305,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
     case 'cofounderDrama': {
       const cs = cofounderStake(a)
       if (choice === 'buyout') {
-        if (cs > 0 && payNow(cost)) {
+        if (cs > 0 && payNow(cost, 'firm.sale')) {
           v.stake = between(v.stake + cs, 0.01, 1)
           a.details.cofounderStake = 0
           const who = v.cofounder
@@ -1353,7 +1356,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
       const cs = cofounderStake(a)
       v.stake = between(v.stake * (1 - pct), 0.01, 1)
       if (cs > 0) a.details.cofounderStake = between(cs * (1 - pct), 0, 0.95)
-      v.cash += amount
+      firmCash(g, v, amount, 'inject', a.id)
       v.valuation = Math.max(v.valuation, whole(amount / pct))
       done()
       count(g, 'fundraises')
@@ -1392,7 +1395,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
         addHidden(g, 'karma', -6)
         if (chance(g, 0.5)) {
           const extra = whole(cost * 0.8)
-          if (extra > 0) earnNow(g, extra)
+          if (extra > 0) earnNow(g, extra, 'crime.take')
           done()
           say('Got Away With It', `Nobody noticed. You made an extra ${formatMoney(extra)} and a little bit of your soul left your body.`, 'neutral')
         } else {
@@ -1427,7 +1430,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
       const revenue = whole(extra * price * 0.7)
       v.users += extra
       v.hype = between(v.hype + 40, 0, 100)
-      if (revenue > 0) earnNow(g, whole(revenue * v.stake))
+      if (revenue > 0) earnNow(g, whole(revenue * v.stake), 'royalty')
       done()
       say('Sales Spike', `${capWord(plural(extra, 'new player'))} bought ${name} in a week, bringing in ${formatMoney(revenue)}.${choice === 'sale' ? ' The sale made it an impulse buy.' : ''}`, 'good')
       return
@@ -1520,7 +1523,7 @@ export function yearlyVentures(g: GameState, popupBudget: number): number {
       const v = readVenture(g, a)
       used++
       const verdict = v.type === 'game' ? `Reviews: "${reviewLabel(v.quality)}." ${capWord(unitWord(v, v.users))} bought it in the first year.` : `${capWord(unitWord(v, v.users))} signed up in the first few weeks.`
-      notice(g, 'Launch Day!', `${a.name} is live! ${verdict} ${pick(g, ['You refreshed the dashboard until your thumb went numb.', 'Your first ever customer email was a complaint. You framed it.', 'Your family pretended to understand what it does.'])}`, { emoji: a.emoji, tone: 'good' })
+      notice(g, 'Launch Day!', `${a.name} is live! ${verdict} ${pickLine(g, ['You refreshed the dashboard until your thumb went numb.', 'Your first ever customer email was a complaint. You framed it.', 'Your family pretended to understand what it does.'])}`, { emoji: a.emoji, tone: 'good' })
     }
     return used
   }
@@ -1559,7 +1562,7 @@ function workOn(g: GameState, id: string): void {
   if (v.type === 'store') {
     v.quality = between(v.quality + randInt(g, 3, 7), 5, 100)
     v.users += randInt(g, 1, 6)
-    text = pick(g, [`You restocked, photographed everything on a bedsheet backdrop and wrote very convincing descriptions.`, `You packed 80 orders at the kitchen table and only taped your hand to a box once.`, `You found a great deal on new stock and took 300 photos of it.`])
+    text = pickLine(g, [`You restocked, photographed everything on a bedsheet backdrop and wrote very convincing descriptions.`, `You packed 80 orders at the kitchen table and only taped your hand to a box once.`, `You found a great deal on new stock and took 300 photos of it.`])
   } else if (v.stage === 'building') {
     const add = Math.round(d.buildRate * (0.4 + skill / 100) * 0.45 * randFloat(g, 0.8, 1.2))
     v.progress = between(v.progress + add, 0, 99)
@@ -1571,7 +1574,7 @@ function workOn(g: GameState, id: string): void {
     // Inherited (or freelancer-built) code you can't read: you do the non-coding work instead.
     v.quality = between(Math.min(v.quality + 1, Math.max(v.quality, 40)), 5, 100)
     v.hype = between(v.hype + 4, 0, 100)
-    text = pick(g, [
+    text = pickLine(g, [
       "You can't read a line of the code, so you answered 200 support emails and wrote very enthusiastic release notes for features you don't understand.",
       "You opened the code, closed it, and spent the week on customer calls instead. Customers liked you. The bugs did not notice.",
     ])
@@ -1581,7 +1584,7 @@ function workOn(g: GameState, id: string): void {
     v.debt = between(v.debt + randInt(g, 2, 5), 0, 100)
     v.hype = between(v.hype + 5, 0, 100)
     practice(g, 2, bestLanguageFor(g, d.use)?.id ?? null, 1.2)
-    text = pick(g, [`You shipped a big update. ${up >= 5 ? 'Users loved it.' : 'Users noticed. Some of them.'}`, `You shipped the feature everyone asked for. Now they're asking for a different one.`, `You rewrote the onboarding. Fewer people get lost now.`])
+    text = pickSite(g, [`You shipped a big update. ${up >= 5 ? 'Users loved it.' : 'Users noticed. Some of them.'}`, `You shipped the feature everyone asked for. Now they're asking for a different one.`, `You rewrote the onboarding. Fewer people get lost now.`], 0xb4a4a670)
   }
   writeVenture(a, v)
   log(g, `I worked on ${a.name}.`, 'good')
@@ -1603,7 +1606,7 @@ function fixDebt(g: GameState, id: string): void {
   v.lastWorked = g.year
   practice(g, 2, bestLanguageFor(g, def(v).use)?.id ?? null, 1)
   writeVenture(a, v)
-  notice(g, 'Cleanup Sprint', `${pick(g, ['You deleted 4,000 lines of code and everything still works. Mostly.', 'You finally renamed the variable called "thing2."', 'You wrote tests. Several of them even pass.'])} Tech debt: ${v.debt}/100.`, { emoji: '\u{1F9F9}', tone: 'good' })
+  notice(g, 'Cleanup Sprint', `${pickLine(g, ['You deleted 4,000 lines of code and everything still works. Mostly.', 'You finally renamed the variable called "thing2."', 'You wrote tests. Several of them even pass.'])} Tech debt: ${v.debt}/100.`, { emoji: '\u{1F9F9}', tone: 'good' })
 }
 
 function promote(g: GameState, id: string): void {
@@ -1704,7 +1707,7 @@ function hire(g: GameState, id: string, delta: number): void {
   v.contractors = next
   writeVenture(a, v)
   const cost = contractorCost(v.countryId, v.type)
-  const who = v.type === 'store' ? pick(g, ['a part-time packer', 'a product photographer', 'a customer-service whiz']) : pick(g, ['a freelance developer', 'a designer who only wears black', 'a backend contractor', 'a QA tester who breaks everything'])
+  const who = v.type === 'store' ? pickLine(g, ['a part-time packer', 'a product photographer', 'a customer-service whiz']) : pickLine(g, ['a freelance developer', 'a designer who only wears black', 'a backend contractor', 'a QA tester who breaks everything'])
   notice(g, delta > 0 ? 'Hired' : 'Let Go', delta > 0 ? `You hired ${who} for ${a.name} at about ${formatMoney(cost)} a year. Team size: ${v.contractors}.` : `You let a contractor go. Team size: ${v.contractors}. They took the office plant.`, { emoji: '\u{1F477}' })
 }
 
@@ -1782,10 +1785,10 @@ function shutDown(g: GameState, id: string): void {
   // Salvage is what the domain and code fetch; any company cash goes back to the investors first.
   const salvage = whole(Math.max(0, v.valuation - v.cash) * v.stake * 0.03)
   closeVenture(g, a, v, 'was closed by its founder')
-  if (salvage > 0) addMoney(g, salvage)
+  if (salvage > 0) addMoney(g, salvage, 'firm.sale')
   addStat(g, 'happiness', -randInt(g, 2, 6))
   const investors = v.cash > 0 ? ` The ${formatMoney(v.cash)} left in the company account went back to your investors, who sent a very short email.` : ''
-  notice(g, 'Shut Down', `You shut down ${a.name}. ${salvage > 0 ? `You sold the domain name and the code for ${formatMoney(salvage)}.` : 'You kept the domain name. For sentimental reasons.'}${investors} ${pick(g, ['You wrote a long post about "lessons learned."', 'You still have 40 branded hoodies.', 'Your users were sad. Well, three of them.'])}`, { emoji: '\u{1FAA6}' })
+  notice(g, 'Shut Down', `You shut down ${a.name}. ${salvage > 0 ? `You sold the domain name and the code for ${formatMoney(salvage)}.` : 'You kept the domain name. For sentimental reasons.'}${investors} ${pickLine(g, ['You wrote a long post about "lessons learned."', 'You still have 40 branded hoodies.', 'Your users were sad. Well, three of them.'])}`, { emoji: '\u{1FAA6}' })
 }
 
 /** Dashboard rows for a venture. */

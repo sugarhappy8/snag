@@ -95,9 +95,13 @@ describe('podcast audience ceiling', () => {
   })
 
   it('leaves the early years alone: the same audience and the same ads as before at year 10', () => {
-    // Measured on v4.0.2, before the cap, where the cap does not bind. No rand call was added or moved.
-    const listenersAtTen = [7_718_721, 2_394_063, 4_386_985, 5_389_965, 2_535_263]
-    const incomeAtTen = [3_892_655, 1_956_152, 1_927_710, 3_088_109, 1_587_102]
+    // Measured on v4.0.2, before the cap, where the cap does not bind. No rand call was added or moved by the cap.
+    // Re-pinned at the R2 rebaseline: text draws left g.rng (the episode topic is a pickLine), so every roll after the first
+    // episode reads another g.rng position. The v4.0.2 values (listeners 7,718,721 / 2,394,063 / 4,386,985 / 5,389,965 /
+    // 2,535,263, ads 3,892,655 / 1,956,152 / 1,927,710 / 3,088,109 / 1,587,102) return to the digit when pickLine takes its
+    // draw from g.rng again, so the move is the rebaseline and not the cap. None of the five audiences gets near 30,000,000.
+    const listenersAtTen = [2_070_070, 2_797_247, 3_128_612, 4_047_924, 1_328_690]
+    const incomeAtTen = [1_651_102, 1_741_757, 1_498_566, 3_438_735, 670_805]
     SEEDS.forEach((seed, i) => {
       const g = podcastLife(seed)
       let income = 0

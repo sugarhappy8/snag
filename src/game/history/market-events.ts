@@ -9,6 +9,7 @@
 // effects here are small; valuations were not, so value effects carry the boom or the bust.
 
 import type { GameState, Json } from '../types'
+import { techAdoption, type TechId } from './timeline'
 
 /** The markets an event can hit hardest. An industry belongs to at most one. */
 export type Exposure = 'oil' | 'fuel' | 'clean' | 'property' | 'banking' | 'investing' | 'internet' | 'chips' | 'ai' | 'travel' | 'outings' | 'retail'
@@ -51,6 +52,14 @@ export interface MarketEvent {
   /** Countries where it hits at full strength; elsewhere at `abroad`. Omitted: everywhere. */
   home?: readonly string[]
   abroad?: number
+  /**
+   * The technology the story is about. The markets still move everywhere (the boom was worldwide), but
+   * where the technology hasn't arrived (under 2% adoption, the hasTech bar) every line uses `plain`
+   * instead, so no notice or market line talks about the internet in a country that has none.
+   */
+  needs?: TechId
+  /** The name and text where `needs` hasn't arrived yet. */
+  plain?: { name: string; text: string }
   /** What every company feels. */
   everyone: Effect
   /** The last year `everyone` applies (the AI boom's broad lift is history, not the present). */
@@ -104,10 +113,11 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
   },
   {
     id: 'dotcomBoom', name: 'The dot-com boom', emoji: '\u{1F680}',
-    years: { 1995: 0.3, 1996: 0.45, 1997: 0.6, 1998: 0.75, 1999: 1 }, home: ['us'], abroad: 0.7,
+    years: { 1995: 0.3, 1996: 0.45, 1997: 0.6, 1998: 0.75, 1999: 1 }, home: ['us'], abroad: 0.7, needs: 'internet',
     everyone: { demand: 0.01, value: 0.12 },
     markets: { internet: { demand: 0.15, value: 1.1 }, chips: { demand: 0.12, value: 0.8 }, ai: { value: 0.3 }, investing: { demand: 0.1, value: 0.2 } },
     text: 'Investors pour money into anything with ".com" in its name: internet and chip companies trade at sky-high valuations.',
+    plain: { name: 'The tech share boom', text: 'Investors abroad bid up technology shares, and the rally lifts stock markets here too.' },
   },
   {
     id: 'asia1997', name: 'The Asian financial crisis', emoji: '\u{1F4B1}',
@@ -118,10 +128,11 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
   },
   {
     id: 'dotcomCrash', name: 'The dot-com crash', emoji: '\u{1F4A5}',
-    years: { 2000: 0.55, 2001: 1, 2002: 0.85, 2003: 0.2 }, home: ['us'], abroad: 0.7,
+    years: { 2000: 0.55, 2001: 1, 2002: 0.85, 2003: 0.2 }, home: ['us'], abroad: 0.7, needs: 'internet',
     everyone: { demand: -0.02, value: -0.12 },
     markets: { internet: { demand: -0.2, value: -0.55 }, chips: { demand: -0.2, value: -0.5 }, ai: { value: -0.3 }, investing: { demand: -0.15, value: -0.3 } },
     text: 'The dot-com bubble bursts: internet start-ups run out of cash, tech shares lose most of their value and advertising budgets are slashed.',
+    plain: { name: 'The tech share crash', text: 'Technology shares abroad lose most of their value, and stock markets here fall with them.' },
   },
   {
     id: 'housing2008', name: 'The housing crash and financial crisis', emoji: '\u{1F3DA}\u{FE0F}',
@@ -281,6 +292,12 @@ export function eventStrength(e: MarketEvent, country: string, year: number): nu
   const i = e.years[Math.round(year)] ?? 0
   if (!i) return 0
   return e.home ? i * (e.home.includes(country) ? 1 : (e.abroad ?? 0)) : i
+}
+
+/** The words for an event in a country and year: its own, or `plain` before the technology it is about arrives. */
+export function eventWords(e: MarketEvent, country: string, year: number): { name: string; text: string } {
+  if (e.needs && e.plain && techAdoption(country, e.needs, year) < 0.02) return e.plain
+  return { name: e.name, text: e.text }
 }
 
 /** The events at work in a country's markets this year, strongest first. */

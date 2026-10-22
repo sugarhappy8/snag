@@ -1,3 +1,4 @@
+import { firmCash } from '../cash'
 import { formatMoney, notice, useYearAction, yearActionsUsed } from '../core'
 import { randInt } from '../rng'
 import type { Asset, GameState, MenuNode } from '../types'
@@ -19,7 +20,7 @@ export function purchaseTraining(g: GameState, a: Asset, b: BizState): number {
   const k = yearActionsUsed(g, `biz.training.${a.id}`), cost = staffTrainingCost(b, k)
   if (!(cost > 0) || b.cash < cost) return 0
   useYearAction(g, `biz.training.${a.id}`, Number.MAX_SAFE_INTEGER)
-  b.cash -= cost; b.yearCosts += cost
+  firmCash(g, b, -cost, 'inputs', a.id); b.yearCosts += cost
   const gain = repeatProgramGain(k)
   b.quality = clampN(b.quality + Math.max(1, Math.round(randInt(g, 3, 6) * gain)), 0, 100)
   b.morale = clampN(b.morale + Math.max(0, Math.round(randInt(g, 2, 5) * gain)), 0, 100)
@@ -30,7 +31,7 @@ export function purchaseEquipmentUpgrade(g: GameState, a: Asset, b: BizState): n
   const k = yearActionsUsed(g, `biz.upgrade.${a.id}`), cost = equipmentUpgradeCost(b, k)
   if (!(cost > 0) || b.cash < cost) return 0
   useYearAction(g, `biz.upgrade.${a.id}`, Number.MAX_SAFE_INTEGER)
-  b.cash -= cost; b.yearCosts += cost
+  firmCash(g, b, -cost, 'capex', a.id); b.yearCosts += cost
   const gain = repeatProgramGain(k)
   b.quality = clampN(b.quality + Math.max(1, Math.round(randInt(g, 6, 11) * gain)), 0, 100)
   grantSupplyAutomation(b, g.year, .08 * gain)
@@ -52,11 +53,11 @@ export function inputContractQuote(g: GameState, b: BizState, year = g.year): In
     fee: Math.max(1, Math.round(quantity * spotPrice * .04)), spotPrice }
 }
 /** Low-level paid transaction; callers enforce authority and any board cash reserve. */
-export function purchaseInputContract(b: BizState, quote: InputContractQuote): boolean {
+export function purchaseInputContract(g: GameState, a: Asset, b: BizState, quote: InputContractQuote): boolean {
   if (!(quote.fee > 0) || !Number.isFinite(quote.fee) || b.cash < quote.fee) return false
   const p = readSupplyPolicy(b)
   if (p.contract && p.contract.until >= quote.contract.from) return false
-  b.cash -= quote.fee; b.yearCosts += quote.fee
+  firmCash(g, b, -quote.fee, 'inputs', a.id); b.yearCosts += quote.fee
   p.contract = { ...quote.contract }; saveSupplyPolicy(b, p)
   return true
 }
@@ -72,7 +73,7 @@ export function signInputContract(g: GameState, assetId: string): boolean {
   const a = findBusiness(g, assetId)
   if (!a || manageBlock(g, a)) return false
   const b = bizOf(g, a), quote = inputContractQuote(g, b)
-  return !!quote && purchaseInputContract(b, quote)
+  return !!quote && purchaseInputContract(g, a, b, quote)
 }
 
 export function supplyPolicyNodes(g: GameState, a: Asset): MenuNode[] {

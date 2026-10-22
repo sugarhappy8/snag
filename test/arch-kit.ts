@@ -20,7 +20,7 @@ export interface Violation {
   hint: string
 }
 
-const SEAMS = 'make the import type-only, move the shared value into a leaf module, or register through a seam (see YEARLY_HOOKS and registerFamily)'
+const SEAMS = 'make the import type-only, move the shared value into a leaf module, or register through a seam (see registerModule in kernel/registry.ts, the old YEARLY_HOOKS, and registerFamily)'
 const UPDATE_COMMAND = 'UPDATE_ARCH_BASELINE=1 npx vitest run --maxWorkers=1 test/architecture.test.ts'
 
 /** The stdin entry only exists to pull every module into one bundle. esbuild keys it by this name, relative to wherever it runs. */
@@ -216,6 +216,29 @@ export function shrinkBaseline(current: readonly string[][], baseline: ArchBasel
     throw new Error(`The baseline can't take a new module into an import cycle. Fix the import instead: ${added.join(', ')}`)
   }
   return { v: 1, components: baseline.components.map((c) => c.filter((m) => live.has(m))).filter((c) => c.length > 0) }
+}
+
+/**
+ * The baseline split into the current components (R2-K6): one entry per real cycle, in the order given (largest first, as
+ * cycleComponents lists them), each sorted. R1's shrinkBaseline keeps the baseline's grouping, so a cut that splits a cycle in two
+ * leaves the two halves in one baseline group, and a later import between them would pass as "the same cycle"; this writes the
+ * halves apart, so joining them is a fusion again. Throws on a module the baseline doesn't hold, and on a cycle whose modules sit
+ * in two baseline groups (a fusion), so a regenerate can never write a new cycle or hide a merge. Never changes its input.
+ */
+export function splitBaseline(current: readonly string[][], baseline: ArchBaseline): ArchBaseline {
+  const home = new Map<string, number>()
+  baseline.components.forEach((comp, i) => comp.forEach((m) => home.set(m, i)))
+  const added = current.flat().filter((m) => !home.has(m)).sort(byPath)
+  if (added.length > 0) {
+    throw new Error(`The baseline can't take a new module into an import cycle. Fix the import instead: ${added.join(', ')}`)
+  }
+  for (const comp of current) {
+    const parts = new Set(comp.map((m) => home.get(m)!))
+    if (parts.size > 1) {
+      throw new Error(`${parts.size} baseline cycles now fuse into one (${[...comp].sort(byPath).slice(0, 4).join(', ')} and others). Fix the import instead; a split never writes a fusion.`)
+    }
+  }
+  return { v: 1, components: current.map((comp) => [...comp].sort(byPath)) }
 }
 
 /** One shortest import path from `from` back to itself ([from, ..., from]), or [] when `from` is not in a cycle. */

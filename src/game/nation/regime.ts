@@ -3,7 +3,7 @@
 // rivals, a loyal security force and, at the end of the road, a self-coup. Every step costs
 // legitimacy, raises fear and invites courts, protests, sanctions and coups (consequences.ts).
 // Strong institutions make the worst of it impossible: the army and the courts would not go along.
-import { addHidden, count, formatMoney, log, notice, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, count, formatMoney, log, notice, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { typicalIncome } from '../events/wealth-core'
 import { chance } from '../rng'
@@ -135,7 +135,7 @@ function pay(g: GameState, me: ReturnType<typeof editMe>, cost: number): boolean
   const fromDirty = Math.min(me.dirty, cost)
   if (fromDirty + Math.max(0, g.character.money) < cost) return false
   me.dirty -= fromDirty
-  g.character.money -= cost - fromDirty
+  addMoney(g, -(cost - fromDirty), 'bribe')
   return true
 }
 

@@ -77,7 +77,7 @@ export function licenseMusicMaster(g: GameState, id: string): boolean {
   if (m.stage !== 'released' || m.licenseUntil > g.year || m.audience < 100) return false
   const advance = Math.round(m.audience * .12)
   m.advance = advance; m.unrecouped = advance; m.licenseUntil = g.year + 5
-  earnIncome(g, advance); m.receipts += advance; a.value = Math.max(0, a.value - advance); save(a, m)
+  earnIncome(g, advance, 'royalty'); m.receipts += advance; a.value = Math.max(0, a.value - advance); save(a, m)
   notice(g, 'Five-Year Master License', `Advance ${formatMoney(advance)} paid now. You receive 35% of licensed sales; that share first recoups the advance. You keep ownership. Distribution rights revert in ${m.licenseUntil}; any unrecouped balance then expires without personal debt.`, { emoji: '📜' }); return true
 }
 export function marketMusicMaster(g: GameState, id: string): boolean {
@@ -96,7 +96,7 @@ export function sellMusicMaster(g: GameState, id: string): boolean {
   const value = Math.round(a.value * .7)
   // Advance obligations stay with the licensed master; a buyer discounts that claim.
   const price = Math.max(0, value)
-  earnIncome(g, price); g.assets = g.assets.filter(x => x.id !== id)
+  earnIncome(g, price, 'royalty'); g.assets = g.assets.filter(x => x.id !== id)
   notice(g, 'Master Rights Sold', `Received ${formatMoney(price)} after the buyer discounted any unrecouped advance. Ownership and all future income transferred; you no longer collect royalties.`, { emoji: '📜' }); return true
 }
 export function yearlyMusicRights(g: GameState): void {
@@ -114,7 +114,7 @@ export function yearlyMusicRights(g: GameState): void {
     m.unrecouped -= recoup; m.lastGross = gross; m.lastPaid = net; m.copies += units; m.receipts += net; m.marketing = 0
     if (licensed && m.licenseUntil === g.year) { m.licenseUntil = 0; m.unrecouped = 0; log(g, `Distribution rights to “${a.name}” reverted to me after the final licensed year.`) }
     m.audience = Math.round(m.audience * (m.quality >= 85 ? .72 : .52)); a.value = Math.max(0, Math.round(m.audience * .8 - m.unrecouped))
-    if (net > 0) earnIncome(g, net)
+    if (net > 0) earnIncome(g, net, 'royalty')
     paid += net; save(a, m)
   }
   if (paid > 0) log(g, `My owned master recordings paid ${formatMoney(paid)} after distribution and advance recoupment.`, 'good')

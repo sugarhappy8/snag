@@ -3,8 +3,9 @@
 // number utilities. Everything stored lives in g.flags.computerMoney as plain JSON.
 import { timelineFamily } from '../timeMachine'
 import { seeded } from '../assets'
-import { canUseComputer } from '../computer'
+import { canUseComputer } from './access'
 import { addLoan, offeredRate } from '../finance'
+import { counterparty, REASONS, type Reason } from '../kernel/reasons'
 import { addMoney, addRelationship, addStat, count, formatMoney, log, parents, relationLabel } from '../core'
 import { brandAvailable, brandsInCategory } from '../data/brands'
 import { PRESENT_YEAR } from '../history/timeline'
@@ -570,17 +571,18 @@ export function seizeComputer(g: GameState, years = 1): number {
 
 /**
  * Pay a bill from cash; whatever can't be covered becomes a personal loan from `lender`
- * (adults) or is simply waived for minors. Returns the part that went on a loan.
+ * (adults) or is simply waived for minors. Returns the part that went on a loan. `reason` says what the bill is: the cash
+ * and the lender's new money both go to the party that reason names (the markets, the courts, the government).
  */
-export function payOrBorrow(g: GameState, amount: number, lender: string): number {
+export function payOrBorrow(g: GameState, amount: number, lender: string, reason: Reason): number {
   const due = dollars(amount)
   if (due <= 0) return 0
   const cash = Math.max(0, g.character.money)
   const paid = Math.min(cash, due)
-  if (paid > 0) addMoney(g, -paid)
+  if (paid > 0) addMoney(g, -paid, reason)
   const rest = due - paid
   if (rest <= 0 || g.character.age < 18) return 0
-  addLoan(g, { kind: 'personal', lender, principal: rest, rate: offeredRate(g, 'personal'), years: 5 })
+  addLoan(g, { kind: 'personal', lender, principal: rest, rate: offeredRate(g, 'personal'), years: 5, to: counterparty(REASONS[reason].pay, g.character.countryId) })
   return rest
 }
 

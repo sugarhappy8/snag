@@ -6,6 +6,7 @@ import { noteCashGift } from '../events/wealth-core'
 import { addMoney, addStat, formatMoney, fullName, getPerson, hasLicense, inPrison, log, notice, relationLabel, shortMoney, useYearAction } from '../core'
 import { brandById, brandsFor } from '../data/brands'
 import { chance, pick, randInt } from '../rng'
+import { pickSite } from '../text/pick'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
@@ -168,7 +169,7 @@ function enjoyAction(a: Asset): MenuAction {
       if (joyful) addStat(g, 'happiness', randInt(g, 2, 6))
       const fame = WEARABLE.includes(cat(cur)) || veh ? showOffFame(g) : 0
       log(g, `I enjoyed my ${cur.name}.`)
-      notice(g, enjoyVerb(cur), `${pick(g, [`You and your ${cur.name} had a lovely day out.`, `Heads turned. You pretended not to notice.`, `Someone asked what it was. You told them. Slowly.`])}${fame ? ' A few people will remember who you are.' : ''}`, { emoji: cur.emoji, tone: 'good' })
+      notice(g, enjoyVerb(cur), `${pickSite(g, [`You and your ${cur.name} had a lovely day out.`, `Heads turned. You pretended not to notice.`, `Someone asked what it was. You told them. Slowly.`], 0x54cd925f)}${fame ? ' A few people will remember who you are.' : ''}`, { emoji: cur.emoji, tone: 'good' })
     },
   }
 }
@@ -410,7 +411,7 @@ export function yearlyBrandAssets(g: GameState, budget: PopupBudget): void {
     // Premium: the policy lapses if you can't pay it.
     if (a.details.luxIns === true && a.details.insured !== true) {
       const prem = insurePremium(a)
-      if (c.money >= prem) addMoney(g, -prem)
+      if (c.money >= prem) addMoney(g, -prem, 'premium')
       else {
         a.details.luxIns = false
         log(g, `My insurance on the ${a.name} lapsed because I couldn't pay the premium.`, 'bad')
@@ -423,7 +424,7 @@ export function yearlyBrandAssets(g: GameState, budget: PopupBudget): void {
       const insured = insuredNow(a)
       const pay = insured ? claimPayout(a) : 0
       g.assets = g.assets.filter((x) => x.id !== a.id)
-      if (pay > 0) addMoney(g, pay)
+      if (pay > 0) addMoney(g, pay, 'claim')
       log(g, `My ${a.name} was ${portable ? 'lost' : 'stolen'}${pay > 0 ? `; the insurer paid ${formatMoney(pay)}` : ''}.`, 'bad')
       losses.push(
         `${portable ? pick(g, LOSS_LINES)(a.name) : `Thieves took your ${a.name} from where it was kept.`} ${pay > 0 ? `The insurer paid ${formatMoney(pay)} after the ${formatMoney(deductibleOf(a))} deductible.` : insured && isFake(a) ? 'The insurer found it was a counterfeit and paid nothing.' : 'It was not insured, so it is simply gone.'}`,

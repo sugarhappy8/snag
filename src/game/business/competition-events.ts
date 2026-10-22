@@ -3,8 +3,11 @@
 // (fines, settlements, court fights and forced break-ups, by country and era). Every choice gets
 // the Business talent's purple hint from the same odds and amounts its resolver uses.
 import { seeded } from '../assets'
+import { firmCash } from '../cash'
 import { addHidden, count, formatMoney, log, notice, scriptChoice } from '../core'
+import type { Reason } from '../kernel/reasons'
 import { chance, pick, rand } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
@@ -44,9 +47,9 @@ function tell(g: GameState, title: string, text: string, emoji: string, tone: 'g
 }
 
 /** Pay from company cash as a cost of the year (it may go negative; the year-end review deals with that). */
-function pay(b: BizState, amount: number): number {
+function pay(g: GameState, a: Asset, b: BizState, amount: number, reason: Reason): number {
   const n = Math.max(0, Math.round(amount))
-  b.cash -= n
+  firmCash(g, b, -n, reason, a.id)
   b.yearCosts += n
   return n
 }
@@ -104,7 +107,7 @@ const BID = defineScript('business.comp.bid', (g, choice, data) => {
   }
   if (chance(g, blockP)) {
     const fee = Math.round(price * 0.03)
-    b.cash += fee
+    firmCash(g, b, fee, 'legal', a.id)
     // One-off income like any settlement: on the year's statement and taxed with it.
     b.yearIncome += fee
     log(g, `Regulators blocked ${name}'s takeover of ${a.name}.`, 'neutral')
@@ -179,10 +182,10 @@ const COPYCAT = defineScript('business.comp.copycat', (g, choice, data) => {
   const id = str(d.rivalId)
   const product = str(d.product, 'your product')
   if (choice === 'sue') {
-    const cost = pay(b, suitCost(b))
+    const cost = pay(g, a, b, suitCost(b), 'legal')
     if (chance(g, suitWinP(b))) {
       const damages = Math.round(cost * 1.5)
-      b.cash += damages
+      firmCash(g, b, damages, 'legal', a.id)
       b.yearIncome += damages
       modRival(b, id, 0.75, g.year + 1)
       log(g, `${a.name} won a copycat lawsuit against ${name}.`, 'good')
@@ -194,7 +197,7 @@ const COPYCAT = defineScript('business.comp.copycat', (g, choice, data) => {
     return
   }
   if (choice === 'innovate') {
-    const cost = pay(b, innovateCost(b))
+    const cost = pay(g, a, b, innovateCost(b), 'rnd')
     b.quality = clampN(b.quality + 5, 0, 100)
     shiftLineQuality(b, product, INNOVATE_LINE)
     setEdge(b, 1.06, g.year + 1, g.year)
@@ -202,7 +205,7 @@ const COPYCAT = defineScript('business.comp.copycat', (g, choice, data) => {
     return
   }
   if (choice === 'market') {
-    const cost = pay(b, marketCost(b))
+    const cost = pay(g, a, b, marketCost(b), 'marketing')
     b.brand = clampN(b.brand + 4, 0, 100)
     setEdge(b, 1.04, g.year + 1, g.year)
     tell(g, 'Out-Marketed', `You spent ${formatMoney(cost)} reminding everyone why ${product} came first. Brand is up to ${b.brand}%, and ${name}'s launch got a lot less attention than it hoped for.`, '\u{1F4E3}', 'good')
@@ -284,7 +287,7 @@ const PRICE_WAR = defineScript('business.comp.priceWar', (g, choice, data) => {
     return
   }
   if (choice === 'differentiate') {
-    const cost = pay(b, differentiateCost(b))
+    const cost = pay(g, a, b, differentiateCost(b), 'marketing')
     b.brand = clampN(b.brand + 6, 0, 100)
     setEdge(b, 0.93, g.year, g.year)
     tell(g, 'Worth Every Penny', `Instead of cutting prices you spent ${formatMoney(cost)} telling the world why ${a.name} is worth paying for. Brand is up to ${b.brand}%. The bargain hunters left anyway.`, '\u{2728}')
@@ -347,14 +350,14 @@ const SCANDAL = defineScript('business.comp.scandal', (g, choice, data) => {
   const { a, b, d } = x
   const name = str(d.rival, 'a rival')
   if (choice === 'pounce') {
-    const cost = pay(b, pounceCost(b))
+    const cost = pay(g, a, b, pounceCost(b), 'marketing')
     setEdge(b, 1.15, g.year + 1, g.year)
     b.brand = clampN(b.brand + 2, 0, 100)
     tell(g, 'Pounce!', `Your ${formatMoney(cost)} campaign ("${a.name}: we'd never") ran everywhere ${name}'s customers were looking for a way out. Plenty found one.`, '\u{1F406}', 'good')
     return
   }
   if (choice === 'poach') {
-    const cost = pay(b, poachCost(b))
+    const cost = pay(g, a, b, poachCost(b), 'payroll')
     if (isDeepTech(b)) {
       const t = techOf(b)
       t.level = clampN(t.level + 4, 0, 100)
@@ -381,7 +384,7 @@ function presentScandal(g: GameState, a: Asset, b: BizState): void {
   const r = pick(g, pool)
   // Customers flee the rival whatever you do.
   modRival(b, r.id, 0.7, g.year + 1)
-  const what = pick(g, SCANDALS)
+  const what = pickLine(g, SCANDALS)
   const choices: ChoiceOption[] = [
     { id: 'pounce', label: `Pounce on their customers (~${money(pounceCost(b))})`, emoji: '\u{1F406}' },
     { id: 'poach', label: `Hire their best people (~${money(poachCost(b))})`, emoji: '\u{1F6A3}' },
@@ -428,7 +431,7 @@ const RIVAL_MOVE = defineScript('business.comp.rivalMove', (g, choice, data) => 
   const { a, b, d } = x
   const name = str(d.rival, 'a rival')
   if (choice === 'promote') {
-    const cost = pay(b, surgeCost(b))
+    const cost = pay(g, a, b, surgeCost(b), 'marketing')
     setEdge(b, 1.06, g.year + 1, g.year)
     b.brand = clampN(b.brand + 2, 0, 100)
     tell(g, 'Counter-Programming', `You spent ${formatMoney(cost)} on a promotion of your own the week ${name} made its move. Customers stayed put, mostly.`, '\u{1F4E3}', 'good')
@@ -530,7 +533,7 @@ const NEWCOMER = defineScript('business.comp.newcomer', (g, choice, data) => {
       tell(g, 'Not Enough Cash', `${a.name} couldn't scrape together ${formatMoney(price)} in time. ${name} took the investors' money instead.`, '\u{1F4B8}', 'bad')
       return
     }
-    b.cash -= price
+    firmCash(g, b, -price, 'firm.sale', a.id)
     const st = marketOfBiz(b)
     st.gone = [...st.gone, id].slice(-60)
     saveMarket(b, st)
@@ -540,7 +543,7 @@ const NEWCOMER = defineScript('business.comp.newcomer', (g, choice, data) => {
     return
   }
   if (choice === 'outspend') {
-    const cost = pay(b, outspendCost(b))
+    const cost = pay(g, a, b, outspendCost(b), 'marketing')
     setEdge(b, 1.1, g.year + 1, g.year)
     b.brand = clampN(b.brand + 3, 0, 100)
     tell(g, 'Shock and Awe', `You spent ${formatMoney(cost)} making sure nobody even heard ${name}'s launch over yours.`, '\u{1F4E2}', 'good')
@@ -692,7 +695,7 @@ function divest(g: GameState, a: Asset, b: BizState, forced: boolean): string {
     }
     b.outlets = b.outlets.filter((o) => o.count > 0)
   }
-  b.cash += t.proceeds
+  firmCash(g, b, t.proceeds, 'firm.sale', a.id)
   const s = seeded(`${familyId(g.lifeId)}|spinoff|${a.id}|${g.year}`)
   const name = `${a.name.replace(/\s+(Inc\.?|Ltd\.?|Co\.?)$/i, '')} ${s.pick(['Spinco', 'Holdings', 'Partners', 'Next', 'Group'])}`
   const roster = st.extra.filter((x) => x.name !== name)
@@ -717,7 +720,7 @@ const ANTITRUST = defineScript('business.comp.antitrust', (g, choice, data) => {
     saveMarket(b, s)
   }
   if (choice === 'settle') {
-    const paid = pay(b, fine * 0.6)
+    const paid = pay(g, a, b, fine * 0.6, 'fine')
     // Remedies: prices capped at today's level and rivals get a fair shot for two years.
     fined(paid, g.year + 1)
     promisePrice(g, a.id, b.price)
@@ -727,14 +730,14 @@ const ANTITRUST = defineScript('business.comp.antitrust', (g, choice, data) => {
     return
   }
   if (choice === 'fight') {
-    const fees = pay(b, legalFees(b))
+    const fees = pay(g, a, b, legalFees(b), 'legal')
     if (chance(g, courtWinP(b, r))) {
       b.brand = clampN(b.brand + 2, 0, 100)
       log(g, `${a.name} beat an antitrust case in court.`, 'good')
       tell(g, 'Case Dismissed!', `After ${formatMoney(fees)} in legal fees, the court ruled that ${a.name} is big because customers like it, not because it cheated. Champagne in the legal department.`, '\u{2696}\u{FE0F}', 'good')
       return
     }
-    const paid = pay(b, fine * 1.5)
+    const paid = pay(g, a, b, fine * 1.5, 'fine')
     fined(paid)
     const split = r.breakUp ? ` ${divest(g, a, b, true)}` : ''
     log(g, `${a.name} lost an antitrust case.`, 'bad')
@@ -747,14 +750,14 @@ const ANTITRUST = defineScript('business.comp.antitrust', (g, choice, data) => {
     return
   }
   // Lobby: legal, expensive, and only as good as the regulator is pliable.
-  const cost = pay(b, legalFees(b) * 0.8)
+  const cost = pay(g, a, b, legalFees(b) * 0.8, 'legal')
   addHidden(g, 'karma', -4)
   if (chance(g, lobbyWinP(r))) {
     log(g, `${a.name}'s lobbyists made an antitrust case disappear.`, 'neutral')
     tell(g, 'Case Closed (Quietly)', `${formatMoney(cost)} of lobbying later, ${r.name} decided the case "no longer warranted resources".`, '\u{1F92B}')
     return
   }
-  const paid = pay(b, fine * 1.2)
+  const paid = pay(g, a, b, fine * 1.2, 'fine')
   fined(paid)
   tell(g, 'Lobbying Backfired', `${cap(r.name)} did not appreciate the dinner invitations. ${a.name} paid ${formatMoney(paid)} on top of ${formatMoney(cost)} in lobbying bills.`, '\u{1F4F0}', 'bad')
 })
@@ -799,7 +802,7 @@ export function maybeAntitrust(g: GameState, a: Asset, b: BizState, year: number
   saveMarket(b, s)
   count(g, 'antitrustCases')
   if (managed || g.character.prison) {
-    const paid = pay(b, fine * 0.6)
+    const paid = pay(g, a, b, fine * 0.6, 'fine')
     const s2 = marketOfBiz(b)
     s2.antitrust.fined += paid
     saveMarket(b, s2)

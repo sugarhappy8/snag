@@ -17,6 +17,7 @@ import { localMarket } from '../data/markets'
 import { startDating } from '../love'
 import { createPerson, notePerson } from '../people'
 import { bell, chance, pick, randInt } from '../rng'
+import { pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, GameState, Gender, Json, Person } from '../types'
 import { randomFirstName, randomLastName } from '../world'
@@ -141,11 +142,11 @@ export function cantAfford(g: GameState, price: number, what: string): void {
   notice(
     g,
     'Insufficient Funds',
-    pick(g, [
+    pickSite(g, [
       `${capitalize(what)} costs ${formatMoney(price)} and you have ${formatMoney(Math.max(0, g.character.money))}. Even rich people have limits.`,
       `Your private banker called. ${capitalize(what)} costs ${formatMoney(price)}, and the answer is no.`,
       `You can't afford ${what} (${formatMoney(price)}). The concierge pretended not to notice.`,
-    ]),
+    ], 0xc72abde2),
     { emoji: '\u{1F4B8}', tone: 'bad' },
   )
 }
@@ -296,7 +297,7 @@ const ROMANCE = defineScript('luxury.celebRomance', (g, choice, data) => {
   const odds = Math.min(0.85, Math.max(0.15, 0.3 + (c.stats.looks - 50) / 150 + c.hidden.fame / 250 + (c.money >= 50_000_000 ? 0.1 : 0)))
   if (!chance(g, odds)) {
     log(g, `I asked out ${name} and got turned down.`, 'bad')
-    notice(g, 'Rejected', pick(g, [`${name} laughed, said "you're sweet," and walked away to find ${pronouns(spec.gender).his} publicist.`, `${name} said ${he} doesn't date outside the industry. Ouch.`, `${name}'s manager stepped in and said ${he} isn't taking new relationships this quarter.`]), { emoji: '\u{1F494}', tone: 'bad' })
+    notice(g, 'Rejected', pickSite(g, [`${name} laughed, said "you're sweet," and walked away to find ${pronouns(spec.gender).his} publicist.`, `${name} said ${he} doesn't date outside the industry. Ouch.`, `${name}'s manager stepped in and said ${he} isn't taking new relationships this quarter.`], 0x1b5d1ca3), { emoji: '\u{1F494}', tone: 'bad' })
     return
   }
   const p = createPerson(g, {

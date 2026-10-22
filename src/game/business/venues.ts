@@ -1,5 +1,6 @@
 // Owner-facing hospitality stories. Entertainment businesses keep their normal corporate
 // accounts; these choices change service, staff welfare, reputation and licensed operations.
+import { firmCash } from '../cash'
 import { addStat, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { isIndustryLegal } from '../data/markets'
 import { chance, pick, uid } from '../rng'
@@ -54,9 +55,9 @@ function locationNotice(g: GameState, b: BizState): void {
   notice(g, 'Visit the Venue', `Travel to an owned outlet in ${getCountry(b.countryId).name} to meet guests and staff in person. Your manager can handle operations while you are away.`, { emoji: '🌍' })
 }
 
-function spendCompany(b: BizState, cost: number): boolean {
+function spendCompany(g: GameState, a: Asset, b: BizState, cost: number): boolean {
   if (!Number.isFinite(cost) || cost <= 0 || b.cash < cost) return false
-  b.cash -= cost; b.yearCosts += cost
+  firmCash(g, b, -cost, 'capex', a.id); b.yearCosts += cost
   return true
 }
 
@@ -90,7 +91,7 @@ const OWNER_SCRIPT = defineScript('venue.owner.scene', (g, choice, data) => {
   const { a, b, v } = live, scene = v.pending
   if (!scene || scene.token !== d?.token || scene.year !== g.year) return
   if (!atVenue(g, b)) return locationNotice(g, b)
-  if (choice === 'invest' && !spendCompany(b, venueUpgradeCost(b))) {
+  if (choice === 'invest' && !spendCompany(g, a, b, venueUpgradeCost(b))) {
     notice(g, 'Company Budget Changed', 'The company can no longer fund that option. The request remains in Owner Conversations; you can still listen or delegate.', { emoji: '📋' })
     return
   }
@@ -143,7 +144,7 @@ export function improveVenue(g: GameState, assetId: string, what: 'safety' | 'en
   const { a, b, v } = live
   if (yearActionsUsed(g, `venue.improve.${a.id}`) >= 2) return
   const cost = venueUpgradeCost(b)
-  if (!spendCompany(b, cost)) return notice(g, 'Venue Budget', `The improvement needs ${formatMoney(cost)} in company cash.`, { emoji: '💼' })
+  if (!spendCompany(g, a, b, cost)) return notice(g, 'Venue Budget', `The improvement needs ${formatMoney(cost)} in company cash.`, { emoji: '💼' })
   useYearAction(g, `venue.improve.${a.id}`, 2)
   v[what] = Math.min(100, v[what] + 12)
   if (what === 'welfare') b.morale = Math.min(100, b.morale + 4)
@@ -180,7 +181,7 @@ export function prepareVenueYear(g: GameState, a: Asset, b: BizState, year: numb
   if (v.pending && v.pending.year < g.year) { diary(v, `${g.year}: An unanswered owner request expired.`); v.pending = null }
   if (v.safety < 30 && chance(g, .25)) {
     const cost = Math.min(Math.max(0, b.cash), venueUpgradeCost(b) * 2)
-    if (cost > 0) { b.cash -= cost; b.yearCosts += cost }
+    if (cost > 0) { firmCash(g, b, -cost, 'inputs', a.id); b.yearCosts += cost }
     b.brand = Math.max(0, b.brand - 5)
     diary(v, `${g.year}: A safety complaint cost ${formatMoney(cost)}.`)
     log(g, `${a.name} lost guests after a safety complaint and paid ${formatMoney(cost)} for remediation.`, 'bad')

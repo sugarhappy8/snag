@@ -48,7 +48,7 @@ import {
   statusOf,
   updateImm,
 } from './immigration-state'
-import { currentPartner, log, notice } from '../core'
+import { addMoney, currentPartner, log, notice } from '../core'
 
 export { relocationCost }
 
@@ -362,7 +362,7 @@ function statusNodes(g: GameState): MenuNode[] {
         notice(d, 'Going Home', `You can't afford the ${money(relocationCost(d, getCountry(home)))} it costs to move.`, { emoji: '\u{1F4B8}', tone: 'bad' })
         return
       }
-      d.character.money = Math.round(d.character.money - relocationCost(d, getCountry(home)))
+      addMoney(d, -relocationCost(d, getCountry(home)), 'purchase')
       leaveFor(d, home, `You decided it was time to go home.`, overstayBan(d))
     },
   })
@@ -396,7 +396,7 @@ function legalizeByMarriage(g: GameState): void {
     return
   }
   g.yearActions['imm.legalize'] = 1
-  c.money = Math.round(c.money - fee)
+  addMoney(g, -fee, 'legal')
   const country = getCountry(c.countryId)
   if (chance(g, marriageOdds(g))) {
     const direct = ['us', 'pr', 'ca', 'nz'].includes(c.countryId)

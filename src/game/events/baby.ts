@@ -2,6 +2,7 @@
 // tantrums at the grocery store... Mostly harmless, a little bit of smarts/looks.
 import { locale, localPick } from '../data/locales'
 import { chance, pick } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import { aParent, ch, defineEvents, mother, say, siblings, v } from './helpers'
 import { cars, common, landline } from './era'
@@ -246,8 +247,8 @@ export const BABY_EVENTS = defineEvents([
     minAge: 2,
     maxAge: 6,
     setup: (g) => {
-      const toy = pick(g, ['teddy bear', 'toy dinosaur', 'race car', 'stuffed bunny', 'action figure', 'rubber duck'])
-      const boy = pick(g, ['little boy', 'little girl'])
+      const toy = pickLine(g, ['teddy bear', 'toy dinosaur', 'race car', 'stuffed bunny', 'action figure', 'rubber duck'])
+      const boy = pickLine(g, ['little boy', 'little girl'])
       return {
         text: `You're playing with some kids when suddenly a ${boy} grabs your ${toy} right out of your hands. How will you react?`,
         choices: [ch('let', 'Let them play with it'), ch('cry', 'Cry'), ch('grab', 'Grab it back'), ch('tattle', 'Be a tattletale')],
@@ -337,7 +338,7 @@ export const BABY_EVENTS = defineEvents([
     setup: (g) => {
       const p = aParent(g)
       if (!p) return null
-      const snack = pick(g, SNACKS)
+      const snack = pickLine(g, SNACKS)
       return {
         text: `Your ${p.gender === 'female' ? 'mother' : 'father'} is refusing to buy you a ${snack} on a trip to the grocery store. What will you do?`,
         choices: [ch('steal', 'Steal it'), ch('tantrum', 'Throw a tantrum'), ch('cool', 'Stay cool')],

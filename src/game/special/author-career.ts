@@ -163,7 +163,7 @@ export function publishAuthorWork(g: GameState, id: string, route: Publishing): 
     if (!offer.available) return notice(g, 'Publishers Passed', 'No publisher offered a contract this year. Your manuscript is still yours: revise it, self-publish, or pitch again next year.', { emoji: '📨' })
   }
   const cost = route === 'self' ? authorSelfPublishCost(g, current) : 0
-  if (cost > 0 && !spend(g, cost)) return notice(g, 'Publishing Costs', `You need ${money(cost)} for editing, production, and distribution. A publisher can cover these costs if it accepts your work.`, { emoji: '📖' })
+  if (cost > 0 && !spend(g, cost, 'purchase')) return notice(g, 'Publishing Costs', `You need ${money(cost)} for editing, production, and distribution. A publisher can cover these costs if it accepts your work.`, { emoji: '📖' })
   const p = authorMut(g), w = p.works.find((x) => x.id === id)!
   const f = formatDef(w.format)
   w.stage = f.serial ? 'serial' : 'published'
@@ -174,7 +174,7 @@ export function publishAuthorWork(g: GameState, id: string, route: Publishing): 
   w.spent += cost
   w.tail = f.serial ? 0 : launchCopies(g, p, w)
   if (route === 'publisher') {
-    earnIncome(g, offer.advance)
+    earnIncome(g, offer.advance, 'royalty')
     w.earned += offer.advance
   }
   if (f.serial) w.readers = Math.max(50, Math.round(launchCopies(g, p, w) * .15))
@@ -270,7 +270,7 @@ export function licenseAuthorAdaptation(g: GameState, id: string): void {
   w.adaptationBase = offer.annual
   w.adaptationEarned += offer.fee
   w.earned += offer.fee
-  earnIncome(g, offer.fee)
+  earnIncome(g, offer.fee, 'royalty')
   saveAuthor(g, p)
   count(g, 'authorAdaptations')
   notice(g, 'Adaptation Licensed', `${w.title}: ${money(offer.fee)} signing fee plus up to five annual royalty payments, based on adaptation performance. This is a five-year license, not a sale of your story IP.`, { emoji: '🎬', tone: 'good' })
@@ -292,7 +292,7 @@ function settleReceipts(g: GameState, w: AuthorWork, gross: number): number {
   const paid = royalty - recoup
   w.gross += receipts
   w.earned += paid
-  if (paid > 0) earnIncome(g, paid)
+  if (paid > 0) earnIncome(g, paid, 'royalty')
   return paid
 }
 
@@ -405,7 +405,7 @@ export function yearlyAuthor(g: GameState): void {
       // An old save may hold a base from before the ceiling; the cap applies at read, to the base and to the roll.
       const cap = adaptationYearCap(g, w)
       const royalties = Math.min(cap, Math.max(0, Math.round(Math.min(w.adaptationBase, cap) * randFloat(g, .5, 1.5))))
-      if (royalties > 0) earnIncome(g, royalties)
+      if (royalties > 0) earnIncome(g, royalties, 'royalty')
       earned += royalties
       w.earned += royalties
       w.adaptationEarned += royalties

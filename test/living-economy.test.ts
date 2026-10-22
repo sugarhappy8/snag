@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
 import { economyOf, economyState, ensureEconomy, yearlyEconomy, initialCountry, lendingConditions, recordEconomicActivity, enactEconomicPolicy, industryConditions, economyMarketFactor } from '../src/game/economy'
 import { storeEconomy, SECTORS, type CountryEconomy } from '../src/game/economy/model'
+import { HISTORY_YEARS } from '../src/game/economy/focus'
 import { advanceCountry, worldConditions } from '../src/game/economy/simulation'
 import { addLoan, creditScore, refinanceDebt, refinanceQuote, yearlyFinance, offeredRate, gameIncomeTax } from '../src/game/finance'
 import { moneyContextOf } from '../src/game/core'
@@ -139,7 +140,8 @@ describe('one shared, persistent economy', () => {
       }
     }
     expect(economyState(g)).toEqual(economyState(copy))
-    expect(economyState(g)?.history.us).toHaveLength(32)
+    // A.K9: the economy keeps 16 years of history per country (it kept 32); the 240 years of this life fill every row.
+    expect(economyState(g)?.history.us).toHaveLength(HISTORY_YEARS)
     expect(JSON.stringify(g).length).toBeLessThan(3000000)
     expect(economyOf(g).unemployment).toBeLessThan(.15)
     expect(economyMarketFactor(g, 'us', g.year)).toBe(economyOf(g).market)

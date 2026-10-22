@@ -2,14 +2,15 @@
 // quietInbox. It restates the release gate in one file, so the lead can flip both defaults on the strength of it.
 // Criteria 4 and 8 live here in full. Criterion 9 (pickLine draws like pick, a bag never repeats before it is spent,
 // the memory caps hold, hpick draws nothing) is proved line by line in test/text-pick.test.ts and test/text-hash.test.ts;
-// this file adds the one-draw check against nextRandom and the cap checks on hostile saves, in (a) below. The groups:
+// this file adds the no-g.rng-draw check (R2-B2; before it was a one-draw check against nextRandom) and the cap checks on hostile saves, in (a) below. The groups:
 //   (a) a hostile inbox, text memory and queued weight or link survive a save round trip and stay inside their caps;
 //   (b) the digest merge never writes g.queue;
 //   (c) the never-route table: bad-tone, health, legal and large-money notices stay popups, in the pure policy and
 //       through the real store;
 //   (d) Quiet Mode toggles through the real store;
 //   (e) the v4.0.2 fixture loads with an empty inbox and an empty text memory;
-//   (f) a seeded life played headless never routes (routing is store-only) and its text memory holds only the flavor ring.
+//   (f) a seeded life played headless never routes (routing is store-only) and its text memory holds the flavor ring and the
+//       pools of the converted sites (R2-A3; before the codemod it held only the flavor ring).
 // Every case runs inside withFlags with both flags on, so it passes now, while the defaults are still dark, and after
 // the release commit. Nothing here flips a flag or edits src/game/flags.ts.
 import { readFileSync } from 'node:fs'
@@ -31,7 +32,6 @@ import {
 } from '../src/game/inbox'
 import { createNewLife } from '../src/game/life'
 import { neverRoute, routesToInbox } from '../src/game/notice-policy'
-import { nextRandom } from '../src/game/rng'
 import { migrateSave, SAVE_SCHEMA } from '../src/game/save-schema'
 import { TEXT_MEM_LIMITS, familyStats, pickLine, readTextMem, type TextMem } from '../src/game/text'
 import type { ChoiceModal, GameState, InputModal, Json, MinigameModal, ModalItem, NoticeModal } from '../src/game/types'
@@ -347,7 +347,7 @@ describe('(a) a hostile inbox', () => {
 
 describe('(a) a hostile text memory', () => {
   for (const [name, raw] of HOSTILE_MEM) {
-    sweep(`${name}: survives a save round trip, reads inside the caps and pickLine repairs it with one draw`, () => {
+    sweep(`${name}: survives a save round trip, reads inside the caps and pickLine repairs it with one text draw`, () => {
       const g = loaded(lifeWith((x) => (x.flags.textMem = asJson(raw))))
       const before = JSON.stringify(g.flags)
 
@@ -364,7 +364,8 @@ describe('(a) a hostile text memory', () => {
       const bag = ['one', 'two', 'three', 'four']
       const rng = g.rng
       expect(bag).toContain(pickLine(g, bag, 'accept.bag'))
-      expect(g.rng).toBe(nextRandom(rng)[1])
+      // R2-B2: the pick draws from the text stream, so g.rng does not move (it used to advance by exactly one draw).
+      expect(g.rng).toBe(rng)
       const wide = Array.from({ length: 20 }, (_, i) => `line ${i}`)
       expect(wide).toContain(pickLine(g, wide))
       // Hostile family names fall back to the pool's own key.
@@ -757,7 +758,7 @@ describe('(e) the v4.0.2 fixture', () => {
     const g = result.game
     expect(result.from).toBe(1)
     expect(g.schemaVersion).toBe(SAVE_SCHEMA)
-    expect(SAVE_SCHEMA).toBe(2)
+    expect(SAVE_SCHEMA).toBe(3)
     expect(g.flags.inbox).toBeUndefined()
     expect(g.flags.textMem).toBeUndefined()
     expect(readInbox(g)).toEqual({ v: 1, total: 0, seen: 0, items: [] })
@@ -784,7 +785,7 @@ describe('(f) a seeded 25-year life through ageUp', () => {
   const SEED = 21
   const BIRTH = 2000
 
-  sweep('never routes: no inbox, no quietMode change, and the text memory holds only the flavor ring', () => {
+  sweep('never routes: no inbox, no quietMode change, and the text memory holds the flavor ring and the pools the kit wrote', () => {
     store.updateSettings({ quietMode: true })
     const { g, years } = playLife({ seed: SEED, birthYear: BIRTH, untilAge: 25 })
     expect(g.character.age).toBe(25)
@@ -799,12 +800,15 @@ describe('(f) a seeded 25-year life through ageUp', () => {
     // Minor notices reached the player as popups, as they always did.
     const popups = years.flatMap((y) => y.popups)
     expect(popups.some((p) => p.kind === 'notice' && p.weight === 'minor')).toBe(true)
-    // The text memory is the flavor ring and nothing else.
+    // The text memory is the flavor ring and the pools of the converted sites (R2-A3: before the codemod nothing but flavor used
+    // the kit, so this said "the ring and nothing else"). A site that names its pool notes a family (pickSite never names one);
+    // R2-P10 named one, the promotion line of an NPC's year (defineLines('npc.promotion') in text/pools.ts), so it is the only family.
     const mem = g.flags.textMem as unknown as TextMem
     expect(mem).toBeDefined()
     expect(textMemProblems(mem)).toEqual([])
-    expect(mem.p).toEqual({})
-    expect(mem.f).toEqual({})
+    expect(Object.keys(mem.p).length).toBeGreaterThan(0)
+    expect(Object.keys(mem.p).length).toBeLessThanOrEqual(TEXT_MEM_LIMITS.pools)
+    expect(mem.f).toEqual({ 'npc.promotion': '2019,2025' })
     expect(Object.keys(mem.r)).toEqual(['flavor'])
     expect(mem.r.flavor.length).toBeGreaterThan(0)
     expect(JSON.stringify(g.flags)).not.toContain('flavorRecent')

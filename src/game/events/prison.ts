@@ -3,6 +3,7 @@
 import { peopleBy } from '../core'
 import { releaseFromPrison } from '../prison'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import type { GameState, Person } from '../types'
 import { anyOf, ch, defineEvents, isUS, relWord, say, strangerName, term, v, type Ctx } from './helpers'
 import { common } from './era'
@@ -238,7 +239,7 @@ export const PRISON_EVENTS = defineEvents([
     where: 'prison',
     setup: (g) => {
       const name = inmate(g)
-      const plan = pick(g, ['digging a tunnel with a plastic spoon', 'mailing themselves out in a laundry cart', 'disguising themselves as a guard using cardboard', 'catapulting over the wall with a mattress spring'])
+      const plan = pickLine(g, ['digging a tunnel with a plastic spoon', 'mailing themselves out in a laundry cart', 'disguising themselves as a guard using cardboard', 'catapulting over the wall with a mattress spring'])
       return {
         text: `An inmate named ${name} asks for your honest opinion on their escape plan: ${plan}. What will you do?`,
         choices: [ch('nohelp', "Don't help", '🙅'), ch('feedback', 'Give some objective feedback', '📝'), ch('discourage', 'Encourage them not to try', '🛑')],
@@ -533,7 +534,7 @@ export const PRISON_EVENTS = defineEvents([
     where: 'prison',
     cooldown: 12,
     setup: (g) => {
-      const design = pick(g, ['a teardrop', 'a spider web on your elbow', 'your mom’s name', 'a skull wearing a crown', 'a very wobbly dolphin', 'your prisoner number'])
+      const design = pickLine(g, ['a teardrop', 'a spider web on your elbow', 'your mom’s name', 'a skull wearing a crown', 'a very wobbly dolphin', 'your prisoner number'])
       return {
         text: g.year >= 1970 ? `An inmate with a homemade tattoo gun built from a guitar string and a cassette motor offers to give you ${design}. What will you do?` : `An inmate with a sewing needle and a jar of soot ink offers to give you ${design}. What will you do?`,
         choices: [ch('ink', 'Get the tattoo', '🖋️'), ch('decline', 'No way', '🙅')],

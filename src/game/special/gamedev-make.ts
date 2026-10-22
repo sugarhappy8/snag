@@ -8,13 +8,15 @@
 // State: the profile's projects (in development) and games (released credits), see
 // gamedev-state.ts. Money: your own games pay you taxable income; launch-week sales are paid
 // (and taxed) right away, the rest of the year's sales arrive with the yearly tick.
+import { gameMakingMenu } from '../computer/contract'
 import { computerBlock, earnNow, firstReason, useComputer } from '../computer/dev-common'
 import { practice } from '../computer/dev-learn'
 import { buildProject, PROJECT_KINDS } from '../computer/dev-projects'
 import { localFee, niceAmount, onlinePrice, wealthOf } from '../computer/dev-state'
 import { bestLanguageFor, codingSkill } from '../computer/skills'
-import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { pick, rand, randFloat, randInt, shuffle } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -467,10 +469,10 @@ export function workOnGame(g: GameState, id: string, crunch = false): void {
   const done = pr.progress >= 100 && before < 100
   log(g, `I worked on "${pr.title}" (${Math.round(pr.progress)}% done).`, 'good')
   const line = polishing
-    ? pick(g, ['You fixed the bug where the hat floats away.', 'You polished the menus until they sparkled.', 'You tuned the difficulty curve. It is now a curve, not a cliff.'])
+    ? pickLine(g, ['You fixed the bug where the hat floats away.', 'You polished the menus until they sparkled.', 'You tuned the difficulty curve. It is now a curve, not a cliff.'])
     : crunch
-      ? pick(g, ['You coded for three days straight on energy drinks and spite.', 'You crunched all weekend. The code is held together by hope.'])
-      : pick(g, [`You built the ${pick(g, ['boss fight', 'inventory', 'save system', 'main menu', 'first level', 'music player'])}.`, 'You spent the evening on one jump animation. It is a perfect jump.', 'You fixed one bug and made two new ones. Classic.'])
+      ? pickLine(g, ['You coded for three days straight on energy drinks and spite.', 'You crunched all weekend. The code is held together by hope.'])
+      : pickSite(g, [`You built the ${pickLine(g, ['boss fight', 'inventory', 'save system', 'main menu', 'first level', 'music player'])}.`, 'You spent the evening on one jump animation. It is a perfect jump.', 'You fixed one bug and made two new ones. Classic.'], 0x0b43cd4f)
   say(
     g,
     crunch ? 'Crunch Session' : polishing ? 'Polishing' : 'Dev Session',
@@ -492,7 +494,7 @@ function devlog(g: GameState, id: string, paid: boolean): void {
     const fromBudget = Math.min(pr.budget, cost)
     if (g.character.money < cost - fromBudget) return tell(g, "Can't Afford It", `A proper trailer costs ${money(cost)}.`, '\u{1F4B8}')
     pr.budget -= fromBudget
-    g.character.money -= cost - fromBudget
+    addMoney(g, -(cost - fromBudget), 'purchase')
     pr.spent += cost - fromBudget
   } else {
     useComputer(g, 1)
@@ -503,8 +505,8 @@ function devlog(g: GameState, id: string, paid: boolean): void {
     g,
     paid ? 'Trailer Drop' : 'Devlog Posted',
     paid
-      ? `You cut a trailer for "${pr.title}" with dramatic music and a release window you will probably miss. ${pick(g, ['The comments were mostly "wishlisted!"', 'Someone made a reaction video. Your mom watched it twice.', 'A big streamer said "huh, neat."'])} Hype ${Math.round(pr.hype)}/100. (${money(cost)}${pr.budget > 0 ? ', partly from the project budget' : ''}.)`
-      : `You posted a devlog about "${pr.title}" showing ${pick(g, ['a GIF of a frog doing a backflip', 'your messy level editor', 'the bug where every character is a chair'])}. ${pick(g, ['A few hundred people liked it.', 'One comment: "this is my most anticipated game." It was your cousin.', 'It got shared by a small game newsletter!'])} Hype ${Math.round(pr.hype)}/100.`,
+      ? `You cut a trailer for "${pr.title}" with dramatic music and a release window you will probably miss. ${pickLine(g, ['The comments were mostly "wishlisted!"', 'Someone made a reaction video. Your mom watched it twice.', 'A big streamer said "huh, neat."'])} Hype ${Math.round(pr.hype)}/100. (${money(cost)}${pr.budget > 0 ? ', partly from the project budget' : ''}.)`
+      : `You posted a devlog about "${pr.title}" showing ${pickLine(g, ['a GIF of a frog doing a backflip', 'your messy level editor', 'the bug where every character is a chair'])}. ${pickLine(g, ['A few hundred people liked it.', 'One comment: "this is my most anticipated game." It was your cousin.', 'It got shared by a small game newsletter!'])} Hype ${Math.round(pr.hype)}/100.`,
     paid ? '\u{1F3AC}' : '\u{1F4DD}',
     'good',
   )
@@ -526,7 +528,7 @@ function contractor(g: GameState, id: string, delta: number): void {
     if (g.character.money + pr.budget < cost) return tell(g, "Can't Afford It", `A freelance artist or composer costs about ${money(cost)} a year, paid up front. You have ${money(Math.max(0, g.character.money))}${pr.budget > 0 ? ` plus ${money(pr.budget)} in the project budget` : ''}.`, '\u{1F4B8}')
     const fromBudget = Math.min(pr.budget, cost)
     pr.budget -= fromBudget
-    g.character.money -= cost - fromBudget
+    addMoney(g, -(cost - fromBudget), 'purchase')
     pr.spent += cost - fromBudget
     pr.contractorsPaid = next
     charged = cost
@@ -536,7 +538,7 @@ function contractor(g: GameState, id: string, delta: number): void {
     g,
     delta > 0 ? 'Freelancer Hired' : 'Freelancer Let Go',
     delta > 0
-      ? `You hired ${pick(g, ['a pixel artist who only communicates in GIFs', 'a composer who sends 4 AM voice memos', 'a 3D artist who is very particular about polygons', 'a sound designer who recorded a cabbage for the punch sounds'])} for "${pr.title}" (${charged > 0 ? `${money(charged)} for the year, paid up front` : "a seat you'd already paid for this year"}). Team: you + ${pr.contractors}.`
+      ? `You hired ${pickLine(g, ['a pixel artist who only communicates in GIFs', 'a composer who sends 4 AM voice memos', 'a 3D artist who is very particular about polygons', 'a sound designer who recorded a cabbage for the punch sounds'])} for "${pr.title}" (${charged > 0 ? `${money(charged)} for the year, paid up front` : "a seat you'd already paid for this year"}). Team: you + ${pr.contractors}.`
       : `You let a freelancer go. This year's fee is already spent. Team: you + ${pr.contractors}.`,
     '\u{1F3A8}',
   )
@@ -568,7 +570,7 @@ const CROWD_SCRIPT = defineScript('gamedev.make.crowdfund', (g, choice, data) =>
     pr.raised = 1
     addStat(g, 'happiness', -4)
     log(g, `My crowdfunding campaign for "${pr.title}" failed.`, 'bad')
-    return say(g, 'Campaign Failed', `"${pr.title}" raised ${money(raised)} of its ${money(goal)} goal. It's all or nothing, so you got nothing. ${pick(g, ['Your pitch video had 400 views, 380 of them yours.', 'The top comment was "is this a scam?" It was not, but thanks.'])}`, '\u{1F4C9}', 'bad')
+    return say(g, 'Campaign Failed', `"${pr.title}" raised ${money(raised)} of its ${money(goal)} goal. It's all or nothing, so you got nothing. ${pickLine(g, ['Your pitch video had 400 views, 380 of them yours.', 'The top comment was "is this a scam?" It was not, but thanks.'])}`, '\u{1F4C9}', 'bad')
   }
   pr.raised = raised
   pr.backers = backers
@@ -684,7 +686,7 @@ function pitchPublishers(g: GameState, id: string): void {
   if (!useYearAction(g, `gamedev.pitch.${id}`, 1)) return tell(g, 'Publishers', 'You already pitched this game to publishers this year.', '\u{1F91D}')
   const offers = publisherOffers(g, pr, p)
   if (!offers.length) {
-    return say(g, 'Publishers Passed', `You pitched "${pr.title}" to every publisher with an email address. ${pick(g, ['"Not for us at this time."', 'One replied "lol". Then unsent it.', 'They loved the art but "the market for this is tricky."'])} Maybe self-publish, or come back with a better demo.`, '\u{1F4E7}', 'bad')
+    return say(g, 'Publishers Passed', `You pitched "${pr.title}" to every publisher with an email address. ${pickLine(g, ['"Not for us at this time."', 'One replied "lol". Then unsent it.', 'They loved the art but "the market for this is tricky."'])} Maybe self-publish, or come back with a better demo.`, '\u{1F4E7}', 'bad')
   }
   scriptChoice(
     g,
@@ -777,7 +779,7 @@ export function releaseGame(g: GameState, id: string): GdCredit | null {
       return null
     }
     pr.budget -= fromBudget
-    c.money -= cert - fromBudget
+    addMoney(g, -(cert - fromBudget), 'purchase')
     pr.spent += cert - fromBudget
   }
   const unfinished = Math.max(0, 100 - pr.progress)
@@ -867,10 +869,10 @@ export function releaseGame(g: GameState, id: string): GdCredit | null {
           ? `Reviews are solid.`
           : r.critic >= 45
             ? `Reviews are mixed.`
-            : pick(g, ['Critics were brutal. One review was just the word "why."', 'It is being called "a war crime against fun."'])
+            : pickLine(g, ['Critics were brutal. One review was just the word "why."', 'It is being called "a war crime against fun."'])
   const extra = [
     fatigue < 1 ? 'Your last release is still on the front page, so this one got less attention than it deserved.' : '',
-    c.age < 18 ? pick(g, ["Your parents set up the store account and now introduce you as \"our little CEO.\"", 'The store account is in your mom\'s name. She has already read every review out loud at dinner.']) : '',
+    c.age < 18 ? pickLine(g, ["Your parents set up the store account and now introduce you as \"our little CEO.\"", 'The store account is in your mom\'s name. She has already read every review out loud at dinner.']) : '',
     leftover > 0 ? `${money(leftover)} left in the project budget is yours.` : '',
     milestone > 0 ? `${pr.publisher} paid the final ${money(milestone)} of your advance.` : pr.advanceDue > 0 ? `${pr.publisher} withheld the final ${money(pr.advanceDue)} milestone payment over the quality.` : '',
     tax > 0 ? `${money(tax)} went to taxes.` : '',
@@ -923,7 +925,7 @@ function patchGame(g: GameState, id: string): void {
   const up = Math.min(room, randInt(g, 3, 8))
   x.players = Math.round(clampN(x.players + up, 0, 99))
   if (x.tail > 0) x.tail = whole(x.tail * 1.08)
-  say(g, 'Patch Released', `You shipped patch 1.0.${randInt(g, 2, 9)} for "${x.title}": ${pick(g, ['fixed the floating hat', 'the final boss no longer clips into the ceiling', 'you can now actually pet the dog', 'saves no longer delete themselves on Tuesdays'])}. ${up > 0 ? `Player rating up to ${x.players} ("${playerLabel(x.players)}").` : 'Players appreciated it, but it is about as good as it gets.'}`, '\u{1FA79}', 'good')
+  say(g, 'Patch Released', `You shipped patch 1.0.${randInt(g, 2, 9)} for "${x.title}": ${pickLine(g, ['fixed the floating hat', 'the final boss no longer clips into the ceiling', 'you can now actually pet the dog', 'saves no longer delete themselves on Tuesdays'])}. ${up > 0 ? `Player rating up to ${x.players} ("${playerLabel(x.players)}").` : 'Players appreciated it, but it is about as good as it gets.'}`, '\u{1FA79}', 'good')
 }
 
 function releaseDlc(g: GameState, id: string): void {
@@ -942,7 +944,7 @@ function releaseDlc(g: GameState, id: string): void {
   x.lastDlc = g.year
   if (q < 40) {
     x.players = Math.round(clampN(x.players - 4, 0, 99))
-    return say(g, 'DLC Flopped', `The "${pick(g, ['Horse Armor', 'Fishing', 'Season Pass', 'Hat Pack'])}" expansion for "${x.title}" was called "a cash grab" in ${randInt(g, 3, 40)} languages. Player rating down to ${x.players}.`, '\u{1F41F}', 'bad')
+    return say(g, 'DLC Flopped', `The "${pickLine(g, ['Horse Armor', 'Fishing', 'Season Pass', 'Hat Pack'])}" expansion for "${x.title}" was called "a cash grab" in ${randInt(g, 3, 40)} languages. Player rating down to ${x.players}.`, '\u{1F41F}', 'bad')
   }
   x.dlcs += 1
   const extra = whole(x.copies * 0.12 * (qualityFactor(q) / qualityFactor(70)) * Math.pow(0.75, x.dlcs - 1))
@@ -950,7 +952,7 @@ function releaseDlc(g: GameState, id: string): void {
   x.players = Math.round(clampN(x.players + randInt(g, 0, 3), 0, 99))
   trainDesign(g, p, 2)
   log(g, `I released an expansion for "${x.title}".`, 'good')
-  say(g, 'Expansion Out', `"${x.title}: ${pick(g, ['The Lost Isles', 'Beyond the Rift', 'Return of the Goblin', 'Winter Tales', 'Into the Deep'])}" is out. Reviews: "${playerLabel(q)}". Sales should pick up this year.`, '\u{1F381}', 'good')
+  say(g, 'Expansion Out', `"${x.title}: ${pickLine(g, ['The Lost Isles', 'Beyond the Rift', 'Return of the Goblin', 'Winter Tales', 'Into the Deep'])}" is out. Reviews: "${playerLabel(q)}". Sales should pick up this year.`, '\u{1F381}', 'good')
 }
 
 function runSale(g: GameState, id: string): void {
@@ -1053,7 +1055,7 @@ function study(g: GameState, kind: 'videos' | 'course' | 'draw' | 'artClass'): v
   const cost = kind === 'course' ? onlinePrice(g, 300) : kind === 'artClass' ? localFee(g, 400) : 0
   if (cost > 0) {
     if (g.character.money < cost) return tell(g, "Can't Afford It", `That costs ${money(cost)}. You have ${money(Math.max(0, g.character.money))}.`, '\u{1F4B8}')
-    g.character.money -= cost
+    addMoney(g, -cost, 'tuition')
   }
   let gain = 0
   let text = ''
@@ -1068,7 +1070,7 @@ function study(g: GameState, kind: 'videos' | 'course' | 'draw' | 'artClass'): v
     text = `You finished ${eraOpen(g, ONLINE_COURSE_GATE) ? 'an online' : 'a night-school'} game design course (${money(cost)}). Final project: a board game about tax fraud. You got an A.`
   } else if (kind === 'draw') {
     gain = trainArt(g, p, 3)
-    text = pick(g, ['You drew 200 hands. Three of them look like hands.', 'You practiced pixel art: a sword, a slime, and a very determined potato.', 'You filled a sketchbook with goblins.'])
+    text = pickLine(g, ['You drew 200 hands. Three of them look like hands.', 'You practiced pixel art: a sword, a slime, and a very determined potato.', 'You filled a sketchbook with goblins.'])
   } else {
     gain = trainArt(g, p, 7)
     text = `You took an art class (${money(cost)}). The teacher said your perspective is "brave."`
@@ -1087,7 +1089,7 @@ function streamDev(g: GameState): void {
   const gain = addGamerFame(p, randInt(g, 0, 2) + (followers >= 100_000 ? 2 : followers >= 5_000 ? 1 : 0))
   for (const pr of p.projects) pr.hype = clampN(pr.hype + 6, 0, 100)
   const viewers = Math.max(1, Math.round((3 + p.gamerFame * 20 + followers * 0.01) * randFloat(g, 0.5, 1.5)))
-  say(g, 'Live Dev Stream', `You streamed yourself making a game. Peak viewers: ${viewers.toLocaleString('en-US')}. ${pick(g, ['Chat named a bug after you.', `Someone donated ${money(5)} to make you add a hat to the boss. You did.`, 'Chat watched you debug for two hours and cheered when it worked.'])}${gain > 0 ? ' More gamers know your name now.' : ''}`, '\u{1F3A5}', 'good')
+  say(g, 'Live Dev Stream', `You streamed yourself making a game. Peak viewers: ${viewers.toLocaleString('en-US')}. ${pickSite(g, ['Chat named a bug after you.', `Someone donated ${money(5)} to make you add a hat to the boss. You did.`, 'Chat watched you debug for two hours and cheered when it worked.'], 0xbd566ce5)}${gain > 0 ? ' More gamers know your name now.' : ''}`, '\u{1F3A5}', 'good')
 }
 
 // ---------------------------------------------------------------------------
@@ -1134,7 +1136,7 @@ export function yearlyMakeGames(g: GameState): MakeYear {
       const due = keep * each
       const fromBudget = Math.min(pr.budget, due)
       pr.budget -= fromBudget
-      c.money -= due - fromBudget
+      addMoney(g, -(due - fromBudget), 'purchase')
       pr.spent += due - fromBudget
       if (keep < pr.contractors) log(g, `I couldn't afford to renew ${pr.contractors - keep === 1 ? 'a freelancer' : `${pr.contractors - keep} freelancers`} on "${pr.title}", so they moved on.`, 'bad')
       pr.contractors = keep
@@ -1165,7 +1167,7 @@ export function yearlyMakeGames(g: GameState): MakeYear {
   }
   tidy(p)
   if (out.paid > 0) {
-    earnIncome(g, out.paid)
+    earnIncome(g, out.paid, 'royalty')
     count(g, 'gameRoyalties', out.paid)
     log(g, `My games sold ${copiesLabel(out.sold)} this year and made me ${money(out.paid)}.`, 'good')
   } else if (out.sold > 0) {
@@ -1460,5 +1462,8 @@ export const makeGamesMenu: MenuGroup = {
     return nodes
   },
 }
+
+// The computer's Make Games shortcut asks for this menu through a port (computer/contract.ts), so it need not import this file.
+gameMakingMenu.use(() => makeGamesMenu)
 
 export const makeInternals = { SCOPE_SCRIPT, GENRE_SCRIPT, PLATFORM_SCRIPT, ENGINE_SCRIPT, NAME_SCRIPT, CROWD_SCRIPT, PUB_SCRIPT, devlog, contractor, crowdfund, pitchPublishers, earlyAccess, shelve, patchGame, releaseDlc, runSale, study, streamDev, eaPayout }

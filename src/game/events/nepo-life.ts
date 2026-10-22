@@ -5,6 +5,7 @@
 // press. At most one popup a year, and it shares the family business's popup budget
 // (business/nepo-year.ts). A parent who owns a company gets the ask popups from business/nepo-asks.ts
 // instead.
+import { personCash } from '../cash'
 import { addMoney, addRelationship, addStat, formatMoney, log, notice, scriptChoice } from '../core'
 import { businessAssets } from '../business/state'
 import { internWord } from '../business/nepo-roles'
@@ -199,7 +200,7 @@ function resolve(g: GameState, p: Person, kind: string, choice: string): void {
       notice(g, 'Lessons', `You cannot spare ${formatMoney(cost)} for lessons right now.`, { emoji: '\u{1F3AD}' })
       return
     }
-    addMoney(g, -cost)
+    addMoney(g, -cost, 'tuition')
     p.data.nepoCraft = (typeof p.data.nepoCraft === 'number' ? p.data.nepoCraft : 0) + 1
     p.stats.happiness = Math.min(100, p.stats.happiness + 4)
     addRelationship(p, 4)
@@ -214,7 +215,7 @@ function resolve(g: GameState, p: Person, kind: string, choice: string): void {
       addEntitlement(p, -6)
       p.stats.smarts = Math.min(100, p.stats.smarts + 2)
       addRelationship(p, 4)
-      p.money = Math.round(p.money + wage(g, p, k === 'summer' ? 0.08 : 0.25))
+      personCash(g, p, Math.round(p.money + wage(g, p, k === 'summer' ? 0.08 : 0.25)) - p.money, 'wage')
       notePerson(p, `Found work alone at ${p.age} when ${p.gender === 'male' ? 'he' : 'she'} could have used your name.`)
       log(g, `${p.firstName} found ${p.gender === 'male' ? 'his' : 'her'} own job without using my name.`, 'good')
       notice(g, 'On Their Own', `${p.firstName} found something alone. It is smaller than the one you could have arranged and entirely ${p.gender === 'male' ? 'his' : 'hers'}. ${p.gender === 'male' ? 'He' : 'She'} mentioned it at dinner four times.`, { emoji: '\u{1F4AA}', tone: 'good' })
@@ -238,7 +239,7 @@ function resolve(g: GameState, p: Person, kind: string, choice: string): void {
   p.data.nepoArranged = g.year
   const o = outlookFor(p, k === 'summer' ? 0 : k === 'intern' ? 0 : 1)
   const shines = o.fit >= 6
-  p.money = Math.round(p.money + wage(g, p, k === 'screen' ? 0.6 : k === 'summer' ? 0.1 : 0.3))
+  personCash(g, p, Math.round(p.money + wage(g, p, k === 'screen' ? 0.6 : k === 'summer' ? 0.1 : 0.3)) - p.money, 'wage')
   if (shines) {
     p.stats.smarts = Math.min(100, p.stats.smarts + 1)
     addRelationship(p, 6)
@@ -260,7 +261,7 @@ function resolve(g: GameState, p: Person, kind: string, choice: string): void {
   if (chance(g, 0.3)) {
     const cost = Math.round(Math.min(perceivedWealth(g) * 0.003, typicalIncome(g) * 0.5) / 10) * 10
     if (cost > 0 && g.character.money >= cost) {
-      addMoney(g, -cost)
+      addMoney(g, -cost, 'donation')
       extra += ` Your friend called the favor in: a ${formatMoney(cost)} donation to their favorite cause.`
     }
   }

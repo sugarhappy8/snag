@@ -107,7 +107,7 @@ export function filePatent(g: GameState, t: Target, scope: PatentScope): Asset |
   const b = benchFor(g, ws, t)
   if (!b) return null
   const cost = patentCost(g, b, scope)
-  if (!spend(g, cost)) return null
+  if (!spend(g, cost, 'legal')) return null
   const law = patentLaw(b.country, g.year)
   let a: Asset
   if (b.a && b.inv && b.patent) {
@@ -310,7 +310,7 @@ export function acceptOffer(g: GameState, t: Target, buyer: string, amount: numb
   const ws = mutWorkshop(g)
   const b = benchFor(g, ws, t)!
   useYearAction(g, 'workshop.launch', launchLimit(g))
-  earnIncome(g, amount)
+  earnIncome(g, amount, 'royalty')
   ws.earned += amount
   ws.launches += 1
   gone(g, ws, b)
@@ -409,7 +409,7 @@ export function acceptPitch(g: GameState, t: Target, cut: number, cash: number, 
   const ws = mutWorkshop(g)
   const b = benchFor(g, ws, t)!
   useYearAction(g, 'workshop.launch', launchLimit(g))
-  earnIncome(g, cash)
+  earnIncome(g, cash, 'royalty')
   ws.earned += cash
   const s = pitchStream(g, ws, b)
   const a = commitLaunch(g, ws, b, { route: 'pitch', rate: Math.round(s.rate * (1 - cut) * 10_000) / 10_000, maker: `${investor}'s partners`, boost: PITCH_BOOST })
@@ -493,7 +493,7 @@ export function runCrowd(g: GameState, t: Target, tier: number): 'flop' | 'deliv
     return 'botched'
   }
   const profit = Math.round(pledges * margin)
-  earnIncome(g, profit)
+  earnIncome(g, profit, 'royalty')
   ws.earned += profit
   commitLaunch(g, ws, b, { route: 'crowd', rate: margin, maker: 'your own small factory' })
   notice(g, '\u{1F389} Funded!', `Backers pledged ${formatMoney(pledges)} for the ${b.def.name}! You shipped on time and kept ${formatMoney(profit)}. Now you make every one yourself.`, { emoji: '\u{1F389}', tone: 'good' })
@@ -573,7 +573,7 @@ export function sellStream(g: GameState, id: string): number {
   const ws = mutWorkshop(g)
   const o = findInvention(g, id)!
   const amount = Math.round(o.a.value)
-  earnIncome(g, amount)
+  earnIncome(g, amount, 'royalty')
   ws.earned += amount
   g.assets = g.assets.filter((x) => x.id !== id)
   notice(g, '\u{1F4B5} Sold', `You sold your share of the ${o.def.name} for ${formatMoney(amount)}. (Taxed as income.)${minorNote(g)}`, { emoji: '\u{1F4B5}', tone: 'good' })

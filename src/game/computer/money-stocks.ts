@@ -13,7 +13,8 @@ import { coinDef, companyDef, cryptoYear, eraIdentity, exchangeByKey, exchangeIn
 import { gutLikes, listPicks, marketInstinct } from '../invest/instinct'
 import { orderFlowFactor, shockFactor } from '../invest/shocks'
 import { seeded, type SRng } from '../assets'
-import { chance, pick, uid } from '../rng'
+import { chance, uid } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -369,10 +370,10 @@ export function settleBets(g: GameState, st: MoneyState): News | null {
         back = 0
       } else if (pay < 0) {
         const owed = -pay
-        const financed = payOrBorrow(g, owed, `${bet.crony} (an insistent friend)`)
+        const financed = payOrBorrow(g, owed, `${bet.crony} (an insistent friend)`, 'trade.buy')
         t.lines.push(`${bet.crony} lost more than you put up on ${bet.symbol} and made you cover ${formatMoney(owed)}${financed ? `, ${formatMoney(financed)} of it on a payment plan` : ''}.`)
       }
-      if (back > 0) addMoney(g, back)
+      if (back > 0) addMoney(g, back, 'trade.sell')
       const net = back - bet.premium - (pay < 0 ? -pay : 0)
       t.crony += net
       if (net >= local(g, 10_000)) t.big = true
@@ -386,7 +387,7 @@ export function settleBets(g: GameState, st: MoneyState): News | null {
     else {
       // A short that owes more than the cash put up: the whole stake plus the bill is a loss.
       st.lossCarry = dollars(st.lossCarry + bet.premium - pay)
-      const financed = payOrBorrow(g, -pay, `${st.broker || brokerName(g.character.countryId, g.year)} margin desk`)
+      const financed = payOrBorrow(g, -pay, `${st.broker || brokerName(g.character.countryId, g.year)} margin desk`, 'trade.buy')
       if (financed > 0) {
         t.margin += financed
         count(g, 'marginCalls')
@@ -481,7 +482,7 @@ export function placeBet(g: GameState, spec: BetSpec): StockBet | null {
     units = dollars(stake / stockOptionPrice(inf, def, dir, strike, st.skill, own ? sharpSpread(st) : 0, g.year))
   }
   const before = g.character.money
-  addMoney(g, -(stake + fee))
+  addMoney(g, -(stake + fee), 'trade.buy')
   const bet: StockBet = {
     id: uid(g, 'bet'),
     via: spec.via,
@@ -640,7 +641,7 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
   notice(
     g,
     'Bet Placed',
-    `You put ${formatMoney(bet.premium)} into ${what} (${bet.symbol}${bet.asset === 'stock' ? `, about ${lev >= 10 ? Math.round(lev) : lev.toFixed(1)}x leverage` : ''}). It settles when the year ends. ${pick(g, ['Your heart rate is now a technical indicator.', 'You set a price alert, then twelve more.', 'You told nobody. Wise.'])}`,
+    `You put ${formatMoney(bet.premium)} into ${what} (${bet.symbol}${bet.asset === 'stock' ? `, about ${lev >= 10 ? Math.round(lev) : lev.toFixed(1)}x leverage` : ''}). It settles when the year ends. ${pickLine(g, ['Your heart rate is now a technical indicator.', 'You set a price alert, then twelve more.', 'You told nobody. Wise.'])}`,
     { emoji: kind === 'put' || kind === 'short' ? '\u{1F4C9}' : '\u{1F4C8}' },
   )
 })

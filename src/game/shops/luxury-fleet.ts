@@ -5,9 +5,11 @@
 // maintenance, insurance, sell) keep working; this module adds cruises, flights, parties,
 // charters, renaming and the yearly fleet events.
 import { conditionLabel, nicePrice, seeded, yearKey } from '../assets'
+import type { Reason } from '../kernel/reasons'
 import { addHidden, addMoney, addStat, count, earnIncome, formatMoney, hasLicense, log, notice, remember, scriptChoice, scriptInput, shortMoney, spend, useYearAction } from '../core'
 import { taxAdditionalIncome } from '../finance'
 import { chance, pick, randInt } from '../rng'
+import { pickLine, pickSite } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brandsFor } from '../data/brands'
@@ -282,7 +284,7 @@ export function buyYacht(g: GameState, l: YachtListing, interiorId: string): Ass
   }
   const interior = interiorsFor('megayacht', l.lengthM, g.year).find((x) => x.id === interiorId) ?? YACHT_INTERIORS[0]
   const price = buildPrice(l.price, interior)
-  if (!spend(g, price)) {
+  if (!spend(g, price, 'asset.buy')) {
     cantAfford(g, price, `a ${l.lengthM} m ${l.label.toLowerCase()}`)
     return null
   }
@@ -351,7 +353,7 @@ export function buyJet(g: GameState, l: JetListing, interiorId: string): Asset |
   const cls = jetClass(l.classId)
   const interior = interiorsFor('jet', l.seats, g.year).find((x) => x.id === interiorId) ?? JET_INTERIORS[0]
   const price = buildPrice(l.price, interior)
-  if (!spend(g, price)) {
+  if (!spend(g, price, 'asset.buy')) {
     cantAfford(g, price, `the ${l.model}`)
     return null
   }
@@ -512,8 +514,8 @@ function interiorOf(a: Asset): Interior | undefined {
 }
 
 /** Earn money mid-year and pay the income tax on it right away. Returns the tax. */
-function earnTaxedNow(g: GameState, amount: number): number {
-  earnIncome(g, amount)
+function earnTaxedNow(g: GameState, amount: number, reason: Reason): number {
+  earnIncome(g, amount, reason)
   return taxAdditionalIncome(g, amount)
 }
 
@@ -548,7 +550,7 @@ function cruiseAction(a: Asset): MenuAction {
         return
       }
       const cost = cruiseCost(cur)
-      if (!spend(g, cost)) {
+      if (!spend(g, cost, 'leisure')) {
         g.yearActions[`luxury.cruise.${cur.id}`] = 0
         cantAfford(g, cost, 'a cruise')
         return
@@ -568,7 +570,7 @@ function cruiseAction(a: Asset): MenuAction {
         ])
         if (bad.fine) {
           const fine = nicePrice(randInt(g, 50_000, 400_000))
-          addMoney(g, -Math.min(fine, Math.max(0, g.character.money)))
+          addMoney(g, -Math.min(fine, Math.max(0, g.character.money)), 'fine')
           addHidden(g, 'karma', -2)
           notice(g, 'Rough Cruise', `${bad.text} The bill: ${formatMoney(fine)}.`, { emoji: '🌊', tone: 'bad' })
         } else {
@@ -583,7 +585,7 @@ function cruiseAction(a: Asset): MenuAction {
       const interior = str(cur.details.interior)
       if (interior === 'sub' && chance(g, 0.25)) {
         const found = nicePrice(randInt(g, 80_000, 900_000))
-        addMoney(g, found)
+        addMoney(g, found, 'luck')
         count(g, 'treasureFound')
         notice(g, 'Sunken Treasure', `You took the submarine down in ${sea} and found a wreck with a chest of old coins wedged in the sand. A museum paid ${formatMoney(found)} for it, and named a display case after you.`, { emoji: '🐠', tone: 'good' })
         return
@@ -623,7 +625,7 @@ function yachtPartyAction(a: Asset): MenuAction {
         return
       }
       const cost = yachtPartyCost(cur)
-      if (!spend(g, cost)) {
+      if (!spend(g, cost, 'leisure')) {
         g.yearActions[`luxury.yachtParty.${cur.id}`] = 0
         cantAfford(g, cost, 'a yacht party')
         return
@@ -637,13 +639,13 @@ function yachtPartyAction(a: Asset): MenuAction {
         addHidden(g, 'fame', 1)
         cur.condition = Math.max(0, cur.condition - randInt(g, 2, 6))
         log(g, `My party on ${name} turned into a tabloid story.`, 'bad')
-        notice(g, 'Party Foul', pick(g, [`A guest drove the tender into the dock at 3 AM and the coast guard ended the party. You were on the evening news in a captain's hat.`, `Someone set off a flare inside the main salon. The sprinklers ruined the carpet, the DJ and the ice sculpture of your face.`, `Your party on ${name} got so loud that a neighboring yacht filed a noise complaint with three different countries.`]), { emoji: '🚨', tone: 'bad' })
+        notice(g, 'Party Foul', pickSite(g, [`A guest drove the tender into the dock at 3 AM and the coast guard ended the party. You were on the evening news in a captain's hat.`, `Someone set off a flare inside the main salon. The sprinklers ruined the carpet, the DJ and the ice sculpture of your face.`, `Your party on ${name} got so loud that a neighboring yacht filed a noise complaint with three different countries.`], 0xb03fa420), { emoji: '🚨', tone: 'bad' })
         return
       }
       addStat(g, 'happiness', randInt(g, 6, 12))
       addHidden(g, 'fame', randInt(g, 1, club ? 5 : 3))
       log(g, `I threw a huge party on my yacht, ${name}.`, 'good')
-      const text = pick(g, [`The party on ${name} went until sunrise.${club ? ' The dance floor rose out of the deck right on cue.' : ''} Fireworks, a jazz band and one guest who swore he was a prince.`, `Every influencer in the marina tried to get on ${name}. Only the ones who brought gifts made it past your crew.`, `Champagne towers, a seafood buffet the size of a whale and a conga line that went around the helipad twice.`])
+      const text = pickSite(g, [`The party on ${name} went until sunrise.${club ? ' The dance floor rose out of the deck right on cue.' : ''} Fireworks, a jazz band and one guest who swore he was a prince.`, `Every influencer in the marina tried to get on ${name}. Only the ones who brought gifts made it past your crew.`, `Champagne towers, a seafood buffet the size of a whale and a conga line that went around the helipad twice.`], 0x430b0ab8)
       if (roll >= 75) {
         meetCeleb(g, rollCeleb(g, undefined, chance(g, 0.5)), `a party on ${name}`, text)
         return
@@ -686,7 +688,7 @@ function flightAction(a: Asset): MenuAction {
         return
       }
       const cost = tripCost(cur)
-      if (!spend(g, cost)) {
+      if (!spend(g, cost, 'leisure')) {
         g.yearActions[`luxury.jetTrip.${cur.id}`] = Math.max(0, (g.yearActions[`luxury.jetTrip.${cur.id}`] ?? 1) - 1)
         cantAfford(g, cost, 'the fuel')
         return
@@ -696,7 +698,7 @@ function flightAction(a: Asset): MenuAction {
       const island = luxuryAssets(g, 'island').find((x) => strFeatures(x).includes('airstrip') || str(cur.details.jetClass) === 'amphib')
       const toIsland = !!island && chance(g, 0.4)
       const islandName = island ? str(island.details.islandName, 'your island') : ''
-      const spot = pick(g, FLIGHT_SPOTS)
+      const spot = pickLine(g, FLIGHT_SPOTS)
       const where = toIsland ? `your island, ${islandName}` : spot
       const city = toIsland ? islandName : spot.split(' for ')[0].split(' to ')[0]
       const selfFly = hasLicense(g, 'pilot')
@@ -704,10 +706,10 @@ function flightAction(a: Asset): MenuAction {
       addStat(g, 'happiness', randInt(g, 5, 10))
       if (interior === 'spa' || interior === 'gym' || interior === 'suite') addStat(g, 'health', randInt(g, 1, 3))
       log(g, toIsland ? `I flew my jet, ${name}, to my island, ${islandName}.` : `I flew my jet, ${name}, to ${spot}.`, 'good')
-      const how = selfFly ? `You flew ${name} yourself, made your own announcements and gave yourself a round of applause on landing.` : `Your crew flew ${name} while you ${pick(g, ['napped in a real bed', 'ate caviar off a gold spoon', 'watched three movies', 'took a call you could have taken from home'])}.`
+      const how = selfFly ? `You flew ${name} yourself, made your own announcements and gave yourself a round of applause on landing.` : `Your crew flew ${name} while you ${pickLine(g, ['napped in a real bed', 'ate caviar off a gold spoon', 'watched three movies', 'took a call you could have taken from home'])}.`
       if (interior === 'boardroom' && chance(g, 0.3)) {
         const deal = nicePrice(randInt(g, 50_000, 600_000))
-        const tax = earnTaxedNow(g, deal)
+        const tax = earnTaxedNow(g, deal, 'sales')
         notice(g, 'Deal at 40,000 Feet', `${how} On the way to ${where} you closed a consulting deal over the conference table: ${formatMoney(deal)}${tax > 0 ? ` (${formatMoney(tax)} went to taxes)` : ''}.`, { emoji: '💼', tone: 'good' })
         return
       }
@@ -822,7 +824,7 @@ const CREW_DRAMA = defineScript('luxury.fleet.crew', (g, choice, data) => {
   const name = a ? vesselName(a) : 'your yacht'
   const bonus = Math.max(0, num(field<number>(data, 'bonus') ?? 0))
   if (choice === 'pay') {
-    if (!spend(g, bonus)) {
+    if (!spend(g, bonus, 'wage')) {
       cantAfford(g, bonus, 'the crew bonus')
       return
     }
@@ -849,7 +851,7 @@ const ACTIVISTS = defineScript('luxury.fleet.activists', (g, choice, data) => {
   const name = field<string>(data, 'name') ?? 'your jet'
   if (choice === 'offset') {
     const cost = nicePrice(Math.max(50_000, num(field<number>(data, 'cost') ?? 0)))
-    if (!spend(g, cost)) {
+    if (!spend(g, cost, 'purchase')) {
       cantAfford(g, cost, 'the carbon offsets')
       return
     }

@@ -10,6 +10,7 @@ import {
   QUARANTINE_SLOTS,
   quarantineRecord,
   readQuarantine,
+  replaceQuarantine,
   scanQuarantine,
 } from '../src/game/save-quarantine'
 import type { SaveNotice, SaveNoticeKind } from '../src/game/save-quarantine'
@@ -382,6 +383,57 @@ describe('readQuarantine', () => {
       },
     })
     expect(await readQuarantine(localSaveBackend(), SLOT_1)).toBeNull()
+  })
+})
+
+describe('replaceQuarantine', () => {
+  it('swaps the text of a slot copy and of an overflow copy, and says so', async () => {
+    installStorage()
+    const real = await openIdb()
+    await keep(real, 4)
+    expect(await replaceQuarantine(real, SLOT_2, 'whole game')).toBe(true)
+    expect(await readQuarantine(real, SLOT_2)).toBe('whole game')
+    expect(await replaceQuarantine(real, 'bad-1', 'whole game 2')).toBe(true)
+    expect(await readQuarantine(real, 'bad-1')).toBe('whole game 2')
+    // The others are untouched.
+    expect(await readQuarantine(real, SLOT_1)).toBe('copy 1')
+    expect(await readQuarantine(real, SLOT_3)).toBe('copy 3')
+  })
+
+  it('changes nothing, and says false, for a copy that is not kept, the main save, and an overflow id without overflow', async () => {
+    const storage = installStorage({ [SAVE_KEY]: 'the save' })
+    const backend = localSaveBackend()
+    expect(await replaceQuarantine(backend, SLOT_1, 'x')).toBe(false)
+    expect(await replaceQuarantine(backend, SAVE_KEY, 'x')).toBe(false)
+    expect(await replaceQuarantine(backend, 'bad-1', 'x')).toBe(false)
+    expect(Object.fromEntries(storage.data)).toEqual({ [SAVE_KEY]: 'the save' })
+    const real = await openIdb()
+    expect(await replaceQuarantine(real, 'bad-1', 'x')).toBe(false)
+    expect(await real.overflow.keys()).toEqual([])
+  })
+
+  it('puts the old text back when the new one is refused or read back differently', async () => {
+    const storage = installStorage()
+    const backend = localSaveBackend()
+    await keep(backend, 1)
+    const set = storage.setItem.bind(storage)
+    vi.spyOn(storage, 'setItem').mockImplementation((key: string, value: string) => {
+      if (value === 'too big') throw full()
+      if (value === 'garbled') set(key, 'something else')
+      else set(key, value)
+    })
+    expect(await replaceQuarantine(backend, SLOT_1, 'too big')).toBe(false)
+    expect(storage.data.get(SLOT_1)).toBe('copy 1')
+    expect(await replaceQuarantine(backend, SLOT_1, 'garbled')).toBe(false)
+    expect(storage.data.get(SLOT_1)).toBe('copy 1')
+
+    installStorage()
+    const real = await openIdb()
+    await keep(real, 4)
+    const put = real.overflow.put
+    const flaky: AsyncSaveBackend = { ...real, overflow: { ...real.overflow, put: (key, record) => put(key, record === 'garbled' ? 'something else' : record) } }
+    expect(await replaceQuarantine(flaky, 'bad-1', 'garbled')).toBe(false)
+    expect(await real.overflow.get('bad-1')).toBe('copy 4')
   })
 })
 

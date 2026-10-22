@@ -6,7 +6,7 @@
 // Pure data and functions of (sector/country, year). From PRESENT_YEAR on (and for the modern
 // era of each sector) everything returns the modern identity unchanged, so the present plays
 // exactly as before. invest/engine.ts eraIdentity() applies these to listed companies.
-import { PRESENT_YEAR, techAdoption, type TechId } from '../history/timeline'
+import { PRESENT_YEAR, TECH, techAdoption, type TechId } from '../history/timeline'
 import { getCountry } from '../world'
 import type { SectorId } from './engine'
 
@@ -314,6 +314,17 @@ export function reitSince(home: string): number {
   const known = REIT_SINCE[home]
   if (known !== undefined) return known
   return (getCountry(home).wealth ?? 0.5) >= 0.5 ? 2005 : 2010
+}
+
+/**
+ * The first year coins trade in a country. The first coins were traded in the richest markets from the day they
+ * existed (the same wealth line as the index funds); everywhere else they arrive with the tech table's own rollout,
+ * the year 2% of adults have the technology (Mexico 2015, the poorest countries 2016).
+ */
+export function cryptoSince(home: string): number {
+  if ((getCountry(home).wealth ?? 0.5) >= 0.8) return TECH.crypto.invented
+  for (let y = TECH.crypto.invented; y < TECH.crypto.invented + 60; y++) if (techAdoption(home, 'crypto', y) >= 0.02) return y
+  return TECH.crypto.invented + 60
 }
 
 /** How much more brokers charged in `year` than today (fixed commissions before the mid-1970s). */

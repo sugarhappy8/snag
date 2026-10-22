@@ -3,6 +3,7 @@
 // call five years after a great career, and the Trophy Cabinet keeps everything you won.
 import { addHidden, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, randInt } from '../rng'
+import { pickLine } from '../text/pick'
 import { defineScript } from '../scripts'
 import type { GameState, Job, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
@@ -221,7 +222,7 @@ export function legacyJobNodes(g: GameState): MenuNode[] {
           if (!job) return
           if (!useYearAction(gg, 'sports.coach.practice', 1)) return tell(gg, 'Practice', 'Your players are already sore enough this year.', '\u{1F971}')
           bump(job, randInt(gg, 5, 10))
-          say(gg, 'Practice', pick(gg, ['You ran a practice so organized it had color-coded cones.', 'Three hours of film study. Two players fell asleep. One learned something.']), '\u{1F4CB}', 'good')
+          say(gg, 'Practice', pickLine(gg, ['You ran a practice so organized it had color-coded cones.', 'Three hours of film study. Two players fell asleep. One learned something.']), '\u{1F4CB}', 'good')
         },
       },
       {
@@ -311,7 +312,7 @@ export function yearlyLegacy(g: GameState): void {
     syncTenure(g, coach)
     const d = cj(coach)
     d.seasons += 1
-    earnIncome(g, coach.salary)
+    earnIncome(g, coach.salary, 'wage')
     const perf = coach.performance + randInt(g, -15, 15)
     const won = perf >= 85 && chance(g, 0.3 + d.level * 0.05)
     if (won) {
@@ -345,7 +346,7 @@ export function yearlyLegacy(g: GameState): void {
   if (pundit) {
     syncTenure(g, pundit)
     const d = pj(pundit)
-    earnIncome(g, pundit.salary)
+    earnIncome(g, pundit.salary, 'wage')
     if (pundit.performance < 30) d.bad += 1
     else d.bad = 0
     if (d.bad >= 2) {
