@@ -56,6 +56,24 @@ const PALETTE: Zone = {
   loads: 'src/ui/nav/Palette.tsx',
 }
 
+/** The games zone (INT-fog-mig, the bundle budget): the six table and street games. The Annual Report and the Nation Report are not in it. */
+const GAMES_ZONE = [
+  'src/ui/minigames/Blackjack.tsx',
+  'src/ui/minigames/Burglary.tsx',
+  'src/ui/minigames/HorseRace.tsx',
+  'src/ui/minigames/Pickpocket.tsx',
+  'src/ui/minigames/PrisonEscape.tsx',
+  'src/ui/minigames/Slots.tsx',
+]
+
+const GAMES: Zone = {
+  name: 'minigames',
+  inZone: (p) => GAMES_ZONE.includes(p),
+  gate: 'src/ui/minigames/lazy.tsx',
+  needsGate: (members) => members.includes('src/ui/minigames/Blackjack.tsx'),
+  loads: 'src/ui/minigames/Blackjack.tsx',
+}
+
 /** A path relative to the root, with forward slashes. */
 function rel(root: string, file: string): string {
   return relative(root, file).split(sep).join('/')
@@ -171,6 +189,10 @@ describe('lazy chunks and zones in the real src', () => {
 
   it('9: only src/ui/nav/lazy.tsx reaches the palette zone, and it does so dynamically', () => {
     expect(zoneViolations(ROOT, PALETTE)).toEqual([])
+  })
+
+  it('11: only src/ui/minigames/lazy.tsx reaches the six games, and it does so dynamically', () => {
+    expect(zoneViolations(ROOT, GAMES)).toEqual([])
   })
 })
 

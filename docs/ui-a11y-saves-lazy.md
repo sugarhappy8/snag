@@ -214,6 +214,12 @@ zone.
 |---|---|---|
 | charts | everything in `src/ui/charts/` | `src/ui/charts/lazy.tsx` |
 | palette | `Palette.tsx`, `paletteModel.ts`, `searchIndex.ts`, `searchRank.ts`, `useSearchIndex.ts` in `src/ui/nav/` | `src/ui/nav/lazy.tsx` |
+| minigames | `Blackjack.tsx`, `HorseRace.tsx`, `Slots.tsx`, `Burglary.tsx`, `PrisonEscape.tsx`, `Pickpocket.tsx` in `src/ui/minigames/` | `src/ui/minigames/lazy.tsx` |
+
+The minigames zone came with R3 (v5.1.0), when the fog and effort code put the initial bundle over the budget; it took 12,733
+bytes out of the entry. MinigameCard draws a game inside its PopupFrame, so a game that has not loaded shows the busy box under the
+title, and the idle prefetch normally has the six chunks in long before one is offered. The Annual Report and the Nation Report
+stay in the entry: both come every year, and `test/annualReport.test.ts` pins `MINIGAMES.annualReport` to the component.
 
 Nothing outside a zone imports a zone file at run time except through its gate, and the gate imports the zone only with
 `import()`. `import type` is free. A screen that needs a chart imports `LazyChartView`, `LazyKpiTile` or `LazySparkline`
