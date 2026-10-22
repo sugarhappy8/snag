@@ -2,6 +2,7 @@
 // Inventor of the Year award, the school science fair and a rival inventor. Owner-scoped and
 // once each (per invention or per life); at most one popup a year. Odds shown in purple hints
 // are the exact probabilities the handlers roll against.
+import { firmCash } from '../cash'
 import { addHidden, addMoney, addStat, earnIncome, formatMoney, log, notice, remember as rememberLife, scriptChoice, spend } from '../core'
 import { goodsMult } from '../assets'
 import { hasTech } from '../history/timeline'
@@ -146,7 +147,7 @@ export function yearlyWorkshopEvent(g: GameState, ws: Workshop): boolean {
   if (ws.events.award === undefined && ws.rep >= 55 && (owned.length > 0 || ws.launches >= 3) && rand(g) < 0.2) {
     ws.events.award = year
     const prize = Math.round(25_000 * goodsMult(g))
-    earnIncome(g, prize)
+    earnIncome(g, prize, 'prize')
     ws.earned += prize
     addFame(g, 8)
     addRep(ws, 8)
@@ -196,12 +197,12 @@ const KNOCKOFF = defineScript('workshop.knockoff', (g, choice, data) => {
   const ws = mutWorkshop(g)
   const { o, d } = x
   const cost = num(d.cost)
-  if (choice === 'sue' && !spend(g, cost)) notice(g, 'No Lawyer', "You couldn't afford a lawyer, so the knockoffs carried on.", { emoji: '\u{1F937}' })
+  if (choice === 'sue' && !spend(g, cost, 'legal')) notice(g, 'No Lawyer', "You couldn't afford a lawyer, so the knockoffs carried on.", { emoji: '\u{1F937}' })
   else if (choice === 'sue') {
     const p = sueOdds(o, g.year)
     if (rand(g) < p) {
       const damages = Math.round(Math.max(o.inv.lastIncome, cost) * 1.5)
-      earnIncome(g, damages)
+      earnIncome(g, damages, 'legal')
       ws.earned += damages
       addRep(ws, 3)
       notice(g, '\u{2696}\u{FE0F} You Won!', `The judge sided with you. Copycat Kings Ltd. paid ${formatMoney(damages)} in damages and shut down.`, { emoji: '\u{2696}\u{FE0F}', tone: 'good' })
@@ -237,10 +238,10 @@ const RECALL = defineScript('workshop.recall', (g, choice, data) => {
       const company = businessAssets(g).find((a) => a.id === o.inv.company)
       if (company) {
         const b = bizOf(g, company)
-        b.cash -= cost
+        firmCash(g, b, -cost, 'purchase', company.id)
         b.yearCosts += cost
       }
-    } else if (cost > 0) addMoney(g, -cost)
+    } else if (cost > 0) addMoney(g, -cost, 'purchase')
     addRep(ws, -3)
     o.inv.hit = Math.round(o.inv.hit * 0.85 * 100) / 100
     storeInv(g, o.a, o.inv, ws.rep)
@@ -266,7 +267,7 @@ const TROLL = defineScript('workshop.troll', (g, choice, data) => {
   const pay = num(d.pay)
   const fight = num(d.fight)
   const payUp = (amount: number) => {
-    if (spend(g, amount)) return true
+    if (spend(g, amount, 'legal')) return true
     o.inv.hit = Math.round(o.inv.hit * 0.5 * 100) / 100
     storeInv(g, o.a, o.inv, ws.rep)
     notice(g, 'Injunction', `You couldn't pay, so a court froze half the ${o.def.name} sales.`, { emoji: '\u{1F9CC}', tone: 'bad' })
@@ -293,7 +294,7 @@ const BUYOUT = defineScript('workshop.buyout', (g, choice, data) => {
   const ws = mutWorkshop(g)
   const { o, d } = x
   const offer = num(d.offer)
-  earnIncome(g, offer)
+  earnIncome(g, offer, 'royalty')
   ws.earned += offer
   g.assets = g.assets.filter((a) => a.id !== o.a.id)
   notice(g, '\u{1F4BC} Sold', `You sold your share of the ${o.def.name} for ${formatMoney(offer)}.`, { emoji: '\u{1F4B0}', tone: 'good' })
@@ -306,7 +307,7 @@ const FAIR = defineScript('workshop.fair', (g, choice) => {
   const score = fairBase(g, ws) + rand(g) * 30
   if (score >= 110) {
     const prize = Math.round(250 * goodsMult(g))
-    earnIncome(g, prize)
+    earnIncome(g, prize, 'prize')
     addRep(ws, 6)
     addStat(g, 'happiness', 8)
     addStat(g, 'smarts', 2)

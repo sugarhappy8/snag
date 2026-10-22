@@ -4,9 +4,11 @@
 // seized. Every scheme shows its take and its odds of being caught this year (the resolver rolls
 // exactly that), and leaves evidence in a case file that can surface for years. Sizes are capped by
 // the economy, the office and how corrupt the country is.
+import { firmCash } from '../cash'
 import { addHidden, count, earnIncome, formatMoney, log, notice, useYearAction, yearActionsUsed } from '../core'
 import { marketOf } from '../data/markets'
 import { typicalIncome } from '../events/wealth-core'
+import { ref } from '../kernel/ids'
 import { chance } from '../rng'
 import { bizOf, businessAssets, readBiz } from '../business/state'
 import { refreshValue, valuationOf } from '../business/economy'
@@ -174,7 +176,8 @@ export function steerContract(g: GameState, assetId: string): boolean {
     return false
   }
   const b = bizOf(g, a)
-  b.cash += q.markup
+  // The state pays the steered contract.
+  firmCash(g, b, q.markup, { reason: 'sales', with: ref('gov', g.character.countryId) }, a.id)
   b.yearIncome += q.markup
   b.valuation = valuationOf(b)
   refreshValue(a, b)
@@ -218,7 +221,7 @@ export function launder(g: GameState, assetId: string): boolean {
     return false
   }
   const b = bizOf(g, a)
-  b.cash += q.kept
+  firmCash(g, b, q.kept, 'crime.take', a.id)
   b.yearIncome += q.kept
   b.valuation = valuationOf(b)
   refreshValue(a, b)
@@ -277,7 +280,7 @@ export function bringHome(g: GameState, amount: number): boolean {
   }
   me.laundered += net
   writeMe(g, me)
-  earnIncome(g, net)
+  earnIncome(g, net, { reason: 'crime.take', with: 'abroad' })
   notice(g, 'Consulting Fees', `${formatMoney(net)} arrived as consulting fees and counts as taxable income.`, { emoji: '💼' })
   return true
 }

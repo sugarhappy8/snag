@@ -212,7 +212,7 @@ export function settleBlackjack(g: GameState, result: string, data: Json | undef
   let net = blackjackNet(bet, r)
   // Never take more than you have (the UI only allows doubling when you can cover it).
   if (net < 0) net = -Math.min(-net, Math.max(0, c.money))
-  addMoney(g, net)
+  addMoney(g, net, 'gamble')
   const stake = bet * (r.doubled ? 2 : 1)
   recordGamble(g, stake, net, before)
   const amt = formatMoney(Math.abs(net))
@@ -345,7 +345,7 @@ export function settleSlots(g: GameState, data: Json | undefined): void {
   const before = c.money
   let net = Math.round(bet * mult) - bet
   if (net < 0) net = -Math.min(-net, Math.max(0, c.money))
-  addMoney(g, net)
+  addMoney(g, net, 'gamble')
   recordGamble(g, bet, net, before)
   const emojis = reelIds.map((id) => SLOT_SYMBOLS.find((s) => s.id === id)?.emoji ?? '❔').join(' ')
   if (mult >= 15) {
@@ -545,7 +545,7 @@ export function settleRace(g: GameState, data: Json | undefined): void {
   } else {
     net = -Math.min(bet, Math.max(0, c.money))
   }
-  addMoney(g, net)
+  addMoney(g, net, 'gamble')
   recordGamble(g, bet, net, before)
   if (net > 0) {
     log(g, `I won ${formatMoney(net)} at the horse races by betting on ${myName}!`, 'good')
@@ -580,7 +580,7 @@ export function startRace(g: GameState, idx: number, input: string | undefined):
     tooMuchGambling(g, 'track')
     return
   }
-  addMoney(g, -ADMISSION)
+  addMoney(g, -ADMISSION, 'gamble')
   const race = runRace(g, card)
   // Lucky dice in your pocket: a runner-up pick sometimes finds an extra gear.
   if (idx >= 0 && race.order[1] === idx && idx !== race.dnf && hasLuckyCharm(g) && chance(g, 0.25)) {
@@ -821,7 +821,7 @@ export function buyLottery(g: GameState, gameId: string, n: number): LotteryOutc
     return null
   }
   const before = c.money
-  addMoney(g, -cost)
+  addMoney(g, -cost, 'gamble')
   count(g, 'lotteryTickets', n)
   count(g, 'moneyGambled', cost)
   const jackpot = lotteryJackpot(g, game)
@@ -843,7 +843,7 @@ export function buyLottery(g: GameState, gameId: string, n: number): LotteryOutc
       if (t.jackpot) hitJackpot = true
     }
   }
-  addMoney(g, won)
+  addMoney(g, won, 'gamble')
   const what = game.scratch ? (n === 1 ? 'a scratch-off ticket' : `${n} scratch-off tickets`) : n === 1 ? 'a lottery ticket' : `${n} lottery tickets`
   if (hitJackpot) {
     count(g, 'lotteryJackpots')

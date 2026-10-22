@@ -25,6 +25,7 @@ import {
   useYearAction,
   yearActionsUsed,
 } from './core'
+import { personCash } from './cash'
 import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
 import { professionalMenu } from './professions'
 import { workplaceMenu } from './workplace/menu'
@@ -1361,7 +1362,7 @@ function yearForJob(g: GameState, slot: Slot): void {
     return
   }
 
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   job.yearsAtCompany += 1
   job.yearsInRole += 1
   recordWorkExperience(g, job)
@@ -1424,7 +1425,7 @@ function yearForJob(g: GameState, slot: Slot): void {
   if (def && def.until !== undefined && g.year > def.until && (job.category === 'fulltime' || job.category === 'parttime')) {
     const severance = round100(job.salary * randInt(g, 5, 15) / 100)
     endJob(g, slot, 'laid off')
-    if (severance > 0) earnIncome(g, severance)
+    if (severance > 0) earnIncome(g, severance, 'severance')
     addStat(g, 'happiness', -8)
     remember(g, `My job as ${job.title} disappeared when the world moved on.`)
     log(g, `My job as ${job.title} was made obsolete.`, 'bad')
@@ -1437,7 +1438,7 @@ function yearForJob(g: GameState, slot: Slot): void {
   if (slot === 'job' && chance(g, Math.min(0.15, 0.006 * (1 + 4 * pressure)))) {
     const severance = round100(job.salary * randInt(g, 5, 20) / 100)
     endJob(g, slot, 'laid off')
-    earnIncome(g, severance)
+    earnIncome(g, severance, 'severance')
     addStat(g, 'happiness', -10)
     remember(g, `Laid off from my job as ${job.title}.`)
     // Layoffs are never pinned on a real company: a real brand becomes "the company" in these lines.
@@ -1638,7 +1639,7 @@ export function yearlyCareer(g: GameState): void {
 
   // A pension resumes once you stop working again.
   if (!c.retired && c.pension > 0 && !c.job) c.retired = true
-  if (c.retired && c.pension > 0 && !c.job) earnIncome(g, c.pension)
+  if (c.retired && c.pension > 0 && !c.job) earnIncome(g, c.pension, 'pension')
 
   if (c.job && c.job.category === 'fulltime') yearForJob(g, 'job')
   if (!c.alive) return
@@ -1874,7 +1875,9 @@ function reportToHR(g: GameState, personId: string): void {
   }
   if (roll < 0.85) {
     addRelationship(target, -randInt(g, 15, 25))
-    target.money = Math.max(0, Math.round(target.money - randInt(g, 200, 1500)))
+    // The pay that is docked goes back to the employers; the floor and the rounding are the ones the line always had.
+    const docked = Math.max(0, Math.round(target.money - randInt(g, 200, 1500)))
+    personCash(g, target, docked - target.money, 'wage', 0)
     log(g, `I reported ${name} to HR and they had their wages docked.`, 'neutral')
     notice(g, 'Human Resources', `You reported ${name} for ${gripe}. HR docked ${pronouns(target.gender).his} wages. Justice is served, lukewarm, like the office coffee.`, { emoji: '\u{1F4B8}' })
     return
@@ -2140,7 +2143,7 @@ function doGig(g: GameState, gig: GigDef, input?: string): void {
   let tip = 0
   if (roll > 0.9) tip = Math.max(5, Math.round(pay * randInt(g, 10, 30) / 100))
   pay += tip
-  addMoney(g, pay)
+  addMoney(g, pay, 'wage')
   addStat(g, 'happiness', roll > 0.4 ? 2 : -1)
   log(g, `I ${gig.verbed} ${client} for ${hours} hours and earned ${formatMoney(pay)}.`, 'good')
   const flavor = roll > 0.4 ? eraPick(g, outcomes.good) : eraPick(g, outcomes.bad)

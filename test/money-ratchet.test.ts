@@ -64,6 +64,27 @@ const MIGRATED: readonly string[] = [
   'src/game/npc-lives.ts',
   'src/game/relationships.ts',
   'src/game/royalty.ts',
+  // R2-L7: body, law, work, workshop, nation, advisors
+  'src/game/advisors/year.ts',
+  'src/game/careers.ts',
+  'src/game/crime.ts',
+  'src/game/cv.ts',
+  'src/game/education.ts',
+  'src/game/effects.ts',
+  'src/game/finance.ts',
+  'src/game/gambling.ts',
+  'src/game/health.ts',
+  'src/game/nation/drama.ts',
+  'src/game/nation/govern.ts',
+  'src/game/nation/graft.ts',
+  'src/game/nation/regime.ts',
+  'src/game/nation/yearly.ts',
+  'src/game/prison.ts',
+  'src/game/underworld.ts',
+  'src/game/workshop/build.ts',
+  'src/game/workshop/events.ts',
+  'src/game/workshop/launch.ts',
+  'src/game/workshop/yearly.ts',
 ]
 
 /** The comment that says a raw `.cash` or `.money` write is not a purse. */

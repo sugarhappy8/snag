@@ -2,7 +2,9 @@
 // disasters, bank crises) with two or three choices, rivals with their own goals, lobbyists, the
 // player's own companies asking for favours (conflicts of interest) and relatives wanting posts.
 // At most one popup a year comes from here.
+import { firmCash } from '../cash'
 import { addHidden, addRelationship, count, formatMoney, log, notice, scriptChoice } from '../core'
+import { ref } from '../kernel/ids'
 import { economyOf } from '../economy'
 import { typicalIncome } from '../events/wealth-core'
 import { warsAt, homeFrontAt } from '../history/events-wars'
@@ -267,7 +269,7 @@ defineScript(COMPANY_SCRIPT, (g, choice, data) => {
       const b = bizOf(g, a)
       const loan = Math.max(0, Math.round(Number(d.bailout) || 0))
       // A rescue loan: cash now, debt the company must repay. Never income.
-      b.cash += loan
+      firmCash(g, b, loan, { reason: 'loan.principal', with: ref('gov', g.character.countryId) }, a.id)
       b.debt += loan
       addCase(g, me, { kind: 'conflict', label: `Steered a public rescue loan to your own ${d.name ?? 'company'}`, evidence: .35, amount: loan })
       writeMe(g, me)

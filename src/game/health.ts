@@ -770,7 +770,7 @@ function giveInEffects(g: GameState, cond: Condition): string {
     case 'gambling': {
       const cash = Math.max(0, g.character.money)
       const loss = Math.min(cash, Math.round(cash * randFloat(g, 0.05, 0.2) + randInt(g, 100, 1500)))
-      if (loss > 0) addMoney(g, -loss)
+      if (loss > 0) addMoney(g, -loss, 'gamble')
       log(g, loss > 0 ? `I lost ${formatMoney(loss)} feeding my gambling habit.` : 'I tried to gamble, but I was too broke to place a bet.', 'bad')
       return loss > 0 ? `You lost ${formatMoney(loss)} chasing the big win. It was definitely due any minute now.` : "You were itching to gamble, but you didn't have a cent to bet. Silver linings."
     }
@@ -997,7 +997,7 @@ const GLASSES = defineScript('health.glasses', (g, choice, data) => {
   }
   if (choice === 'lasik') {
     const cost = d.lasikCost ?? 0
-    if (cost > 0 && !spend(g, cost)) return tooBroke(g, 'laser eye surgery', cost)
+    if (cost > 0 && !spend(g, cost, 'health')) return tooBroke(g, 'laser eye surgery', cost)
     if (chance(g, 0.92)) {
       g.flags.eyesight = 'good'
       g.flags.eyesightCorrected = true
@@ -1014,7 +1014,7 @@ const GLASSES = defineScript('health.glasses', (g, choice, data) => {
   }
   if (choice === 'contacts') {
     const cost = d.contactsCost ?? 0
-    if (cost > 0 && !spend(g, cost)) return tooBroke(g, 'contact lenses', cost)
+    if (cost > 0 && !spend(g, cost, 'health')) return tooBroke(g, 'contact lenses', cost)
     g.flags.eyewear = 'Contact lenses'
     g.flags.eyesightCorrected = true
     notice(g, 'Contact Lenses', 'You can see clearly now, and nobody can tell. The first week of poking yourself in the eye was rough, though.', { emoji: '\u{1F441}\u{FE0F}', tone: 'good' })
@@ -1024,7 +1024,7 @@ const GLASSES = defineScript('health.glasses', (g, choice, data) => {
   const frame = FRAMES.find((f) => f.id === choice)
   if (!frame) return
   const cost = d.glassesCost ?? 0
-  if (cost > 0 && !spend(g, cost)) return tooBroke(g, 'new glasses', cost)
+  if (cost > 0 && !spend(g, cost, 'health')) return tooBroke(g, 'new glasses', cost)
   g.flags.eyewear = frame.id
   g.flags.eyesightCorrected = true
   const delta = randInt(g, -3, 4)
@@ -1332,7 +1332,7 @@ function visitDoctor(g: GameState, doc: DoctorInfo): void {
     )
     return
   }
-  spend(g, fee)
+  spend(g, fee, 'health')
   count(g, 'doctorVisits')
   const parent = c.age < 18 ? aliveParent(g) : undefined
   // Before the 1960s, in countries that had them, the family doctor came to the house with his black bag.
@@ -1447,7 +1447,7 @@ const TREAT = defineScript('health.doctor.treat', (g, choice, data) => {
   const cond = g.character.conditions.find((x) => x.id === choice)
   if (!cond) return
   const cost = d.costs?.[choice] ?? 0
-  if (cost > 0 && !spend(g, cost)) return tooBroke(g, `the treatment for ${conditionLabel(cond.name)}`, cost)
+  if (cost > 0 && !spend(g, cost, 'health')) return tooBroke(g, `the treatment for ${conditionLabel(cond.name)}`, cost)
   const def = defFor(cond)
   let p = def.cure * qualityFactor(d.quality ?? 3)
   p *= Math.max(.75, Math.min(1.15, economyOf(g).services))
@@ -1470,7 +1470,7 @@ function emergencyRoom(g: GameState): void {
     notice(g, 'Emergency Room', 'The triage nurse recognized you from your last visit and sent you home with an ice pack. Come back next year.', { emoji: '\u{1F3E5}' })
     return
   }
-  spend(g, cost)
+  spend(g, cost, 'health')
   count(g, 'doctorVisits')
   const parts: string[] = []
   const parent = c.age < 18 ? aliveParent(g) : undefined
@@ -1543,7 +1543,7 @@ function visitAlt(g: GameState, alt: AltDef): void {
     notice(g, alt.label, "You've had enough alternative medicine for one year. Even the incense is tired of you.", { emoji: alt.emoji })
     return
   }
-  spend(g, cost)
+  spend(g, cost, 'health')
   count(g, 'doctorVisits')
   addStat(g, 'health', randInt(g, 1, 5))
   addStat(g, 'happiness', randInt(g, 1, 4))
@@ -1583,7 +1583,7 @@ function counseling(g: GameState): void {
     notice(g, 'Psychiatrist', "Your psychiatrist is fully booked until next year. They suggest journaling. You've never journaled in your life.", { emoji: '\u{1F6CB}\u{FE0F}' })
     return
   }
-  spend(g, cost)
+  spend(g, cost, 'health')
   count(g, 'doctorVisits')
   addStat(g, 'happiness', randInt(g, 4, 12))
   const mental = c.conditions.filter((x) => x.kind === 'mental').sort((a, b) => b.severity - a.severity)
@@ -1619,7 +1619,7 @@ function shockTherapy(g: GameState): void {
     notice(g, 'Shock Therapy', "You've been zapped enough this year. Your hair still hasn't recovered.", { emoji: '\u{26A1}' })
     return
   }
-  spend(g, cost)
+  spend(g, cost, 'health')
   count(g, 'doctorVisits')
   const pain = randInt(g, 10, 100)
   addStat(g, 'health', -Math.round(pain / 12))
@@ -1678,7 +1678,7 @@ function witchDoctor(g: GameState): void {
     notice(g, 'Witch Doctor', 'The witch doctor is "consulting the spirits" and will not see you again this year.', { emoji: '\u{1F9D9}' })
     return
   }
-  spend(g, cost)
+  spend(g, cost, 'health')
   count(g, 'doctorVisits')
   const remedy = pick(g, REMEDIES)
   const intro = pickSite(g, [
@@ -1725,7 +1725,7 @@ function optometrist(g: GameState): void {
     notice(g, 'Optometrist', "You've had your eyes checked enough this year. They're not going anywhere.", { emoji: '\u{1F441}\u{FE0F}' })
     return
   }
-  spend(g, examCost)
+  spend(g, examCost, 'health')
   count(g, 'doctorVisits')
   if (g.flags.eyesight !== 'poor') {
     addStat(g, 'happiness', 4)
@@ -1818,7 +1818,7 @@ function donatePlasma(g: GameState): void {
     return
   }
   const pay = Math.max(10, Math.round(randInt(g, 35, 60) * priceFactor(g)))
-  addMoney(g, pay)
+  addMoney(g, pay, 'wage')
   count(g, 'plasmaDonations')
   addHidden(g, 'karma', randInt(g, 1, 3))
   addStat(g, 'health', -randInt(g, 1, 3))

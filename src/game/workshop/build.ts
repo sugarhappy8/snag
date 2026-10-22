@@ -131,7 +131,7 @@ export function resolveBuild(g: GameState, t: Target, approach: Approach): { res
   const bench = benchOf(g, ws, t)
   if (!bench) return null
   const cost = buildCost(g, bench.def, approach)
-  if (!spend(g, cost)) return null
+  if (!spend(g, cost, 'purchase')) return null
   useYearAction(g, 'workshop.build', buildLimit(g))
   // Main Character Syndrome: the first build lifts inventing skill to what this age allows.
   ws.skill = liftSkill(g, 'workshop.inventing', 'craft', 'inventing', ws.skill, ageCeiling(g.character.age, SKILL_CEILING))

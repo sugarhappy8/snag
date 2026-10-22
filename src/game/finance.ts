@@ -4,6 +4,7 @@
 //
 // Also home to the small money helpers the assets / gambling code shares: loan maths,
 // a credit score, marginal tax on extra income and "where do I live now" logic.
+import { moveCash, personPurse, playerPurse, writeoff } from './cash'
 import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember } from './core'
 import { hasMarketData, marketOf } from './data/markets'
 import { historicalInflation, historicalMortgageRate, inHistory, investingBlocked } from './history/markets'
@@ -164,7 +165,7 @@ export function taxAdditionalIncome(g: GameState, amount: number): number {
   const before = Math.max(0, total - amount)
   const extra = Math.max(0, gameIncomeTax(g, before + amount) - gameIncomeTax(g, before))
   if (extra > 0) {
-    addMoney(g, -extra)
+    addMoney(g, -extra, 'tax.income')
     g.flags.taxesPaid = num(g.flags.taxesPaid) + extra
     count(g, 'taxesPaid', extra)
   }
@@ -380,7 +381,7 @@ export function payOffLoan(g: GameState, loanId: string): boolean {
   const loan = c.loans.find((l) => l.id === loanId)
   if (!loan) return false
   if (c.money < loan.balance) return false
-  addMoney(g, -loan.balance)
+  addMoney(g, -loan.balance, 'loan.repay')
   c.loans = c.loans.filter((l) => l.id !== loanId)
   clearLoanMisses(g, loanId)
   return true
@@ -415,7 +416,7 @@ export function refinanceDebt(g: GameState, id: string, mortgage: boolean, varia
   if (!q.ok) return false
   const debt = mortgage ? g.assets.find(a => a.id === id)?.mortgage : g.character.loans.find(l => l.id === id)
   if (!debt || g.character.money < q.fee) return false
-  addMoney(g, -q.fee)
+  addMoney(g, -q.fee, 'fee.bank')
   debt.rate = q.rate; debt.yearlyPayment = q.payment; debt.yearsLeft = q.years
   debt.rateType = variable ? 'variable' : 'fixed'; debt.rateMargin = q.rate - economyOf(g).rate
   if ('kind' in debt) debt.countryId = g.character.countryId
@@ -604,7 +605,7 @@ export function settleIncomeTax(g: GameState): number {
   const due = gameIncomeTax(g, num(g.flags.taxableIncome))
   const tax = Math.max(0, due - num(g.flags.taxesPaid))
   if (tax > 0) {
-    addMoney(g, -tax)
+    addMoney(g, -tax, 'tax.income')
     g.flags.taxesPaid = num(g.flags.taxesPaid) + tax
     count(g, 'taxesPaid', tax)
   }
@@ -634,7 +635,7 @@ export function yearlyFinance(g: GameState): void {
     } else {
       const rent = Math.max(0, Math.round(c.residence.rent ?? 0))
       if (rent > 0) {
-        addMoney(g, -rent)
+        addMoney(g, -rent, 'rent')
         if (changedALot(g, 'lastRentLogged', rent)) log(g, pick(g, RENT_LINES)(formatMoney(rent)))
       }
     }
@@ -644,7 +645,7 @@ export function yearlyFinance(g: GameState): void {
   const baseLiving = livingCost(g)
   if (baseLiving > 0) {
     const living = Math.round(baseLiving * (0.9 + randInt(g, 0, 20) / 100))
-    addMoney(g, -living)
+    addMoney(g, -living, 'living')
     // Mentioned now and then, not as a yearly receipt.
     const lastLiving = num(g.flags.livingLineAge, -99)
     if (living >= 500 && (c.age - lastLiving >= 5 || lastLiving > c.age) && chance(g, 0.35)) {
@@ -749,12 +750,14 @@ function yearlyLoans(g: GameState): void {
     if (loan.yearsLeft !== undefined) loan.yearsLeft = Math.max(1, loan.yearsLeft - 1)
     const due = Math.min(loan.yearlyPayment, loan.balance)
     if (due <= 0) {
+      // A debt that still has a balance but no payment due is removed unpaid: the lender's loss destroys the deposit it created.
+      if (loan.balance >= 1) writeoff(g, loan.balance)
       c.loans = c.loans.filter((l) => l !== loan)
       continue
     }
     const pay = Math.max(0, Math.min(due, c.money))
     if (pay > 0) {
-      addMoney(g, -pay)
+      addMoney(g, -pay, 'loan.repay')
       loan.balance = Math.round(loan.balance - pay)
       paidTotal += pay
     }
@@ -800,7 +803,7 @@ function repossessFinancedAsset(g: GameState, loan: Loan): boolean {
   const sale = Math.round(Math.max(0, asset.value) * .75)
   const surplus = Math.max(0, sale - loan.balance)
   loan.balance = Math.max(0, loan.balance - sale)
-  if (surplus > 0) addMoney(g, surplus)
+  if (surplus > 0) addMoney(g, surplus, 'asset.sell')
   if (loan.balance <= 0) c.loans = c.loans.filter((l) => l.id !== loan.id)
   else {
     loan.kind = 'personal'
@@ -839,8 +842,7 @@ function handleDebt(g: GameState): void {
   const parent = parents(g).find((p) => p.relationship >= 60 && p.money > -c.money * 2)
   if (parent && chance(g, 0.3)) {
     const amount = -c.money
-    parent.money = Math.round(parent.money - amount)
-    addMoney(g, amount)
+    moveCash(g, personPurse(parent), playerPurse(g), amount, 'gift')
     addRelationship(parent, -8)
     const pr = pronouns(parent.gender)
     notice(g, 'Bailed Out', `Your ${relationLabel(parent).toLowerCase()} ${parent.firstName} paid off your ${debt} debt. ${pr.He} made you promise to "get your life together." ${pr.He} will be bringing this up at every holiday.`, { emoji: '🫶', tone: 'good' })
@@ -908,7 +910,8 @@ function seizeAssetsForDebt(g: GameState): void {
     g.assets = g.assets.filter((x) => x.id !== a.id)
     businessGone(g, a)
     if (loan) c.loans = c.loans.filter((l) => l !== loan)
-    addMoney(g, proceeds)
+    // One booking: net of the payoff. A shortfall comes out of the cash, so it is paid and not written off.
+    addMoney(g, proceeds, 'asset.sell')
     seized.push(a.name)
     if (c.residence.status === 'owned' && c.residence.assetId === a.id) lostHome = true
   }

@@ -711,7 +711,7 @@ export function yearlyPrison(g: GameState): boolean {
   if (p.gang) p.respect = clamp(p.respect + 3)
 
   if (pl.job && pl.jobWage > 0) {
-    addMoney(g, pl.jobWage)
+    addMoney(g, pl.jobWage, 'wage')
     pl.behavior = clamp(pl.behavior + 3)
   }
 
@@ -1491,7 +1491,7 @@ function appealAction(firm: AppealFirm): MenuAction {
       } else {
         p.appealed = true
       }
-      spend(g, f.fee)
+      spend(g, f.fee, 'legal')
       const pl = prisonLife(g)
       const odds = clamp(f.odds - (pl.severity - 2) * 0.04 + (c.hidden.karma - 50) / 500, 0.03, 0.7)
       const roll = rand(g)
@@ -1605,7 +1605,7 @@ function markOverturned(g: GameState, crime: string): number {
     rec.convicted = false
     back = cleanRefund(rec.refund)
     delete rec.refund
-    if (back > 0) addMoney(g, back)
+    if (back > 0) addMoney(g, back, 'legal')
   }
   count(g, 'appealsWon')
   return back
@@ -1884,7 +1884,7 @@ function gangNodes(g: GameState): MenuNode[] {
             return
           }
           const cut = Math.round(randInt(gg, 100, 900) * moneyScale(gg))
-          addMoney(gg, cut)
+          addMoney(gg, cut, 'crime.take')
           pp.respect = clamp(pp.respect + randInt(gg, 3, 7))
           const goods = pick(gg, ['cigarettes', 'instant coffee', gg.year >= 2000 ? 'contraband phones' : 'jailhouse moonshine', 'hot sauce', 'smuggled snacks', 'romance novels'])
           log(gg, `I smuggled ${goods} for the ${gang} and made ${formatMoney(cut)}.`, 'event')
@@ -2303,12 +2303,12 @@ const BRIBE_SCRIPT = defineScript('prison.bribe', (g, choice) => {
       addPrisonTime(g, 1, 'Bribery')
       lines.push('1 year was added to your sentence for bribery.')
     }
-    spend(g, price)
+    spend(g, price, 'bribe')
     log(g, 'I tried to bribe a guard and got reported.', 'bad')
     notice(g, 'Double-Crossed', lines.join(' '), { emoji: '\u{1F46E}', tone: 'bad' })
     return
   }
-  spend(g, price)
+  spend(g, price, 'bribe')
   if (choice === 'snacks') {
     addStat(g, 'happiness', randInt(g, 4, 8))
     log(g, 'I bribed a guard to smuggle in snacks.', 'neutral')

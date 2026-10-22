@@ -3,6 +3,7 @@
 // company's cash AND yearIncome, which the business sim books without moving cash again),
 // retires inventions that left the shelves, closes the history race, sparks new ideas and
 // rolls at most one event popup.
+import { firmCash } from '../cash'
 import { earnIncome, formatMoney, log, notice, scriptChoice } from '../core'
 import { economicRoll, recordEconomicActivity } from '../economy'
 import { anachronistic, cars, common } from '../events/era'
@@ -51,7 +52,7 @@ export function settleInventions(g: GameState, ws: Workshop): void {
     if (company) {
       income = Math.round(revenue * inv.margin)
       const b = bizOf(g, company)
-      b.cash += income
+      firmCash(g, b, income, 'royalty', company.id)
       b.yearIncome += income
       if (units > 0) b.brand = Math.min(100, b.brand + 1)
       inv.companyEarned += income
@@ -78,7 +79,7 @@ export function settleInventions(g: GameState, ws: Workshop): void {
     storeInv(g, o.a, inv, ws.rep)
   }
   if (personal > 0) {
-    earnIncome(g, personal)
+    earnIncome(g, personal, 'royalty')
     ws.earned += personal
     log(g, `My inventions earned me ${formatMoney(personal)} last year.`, 'good')
   }
