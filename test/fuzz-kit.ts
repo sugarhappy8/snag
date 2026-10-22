@@ -28,6 +28,7 @@ import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
 import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import { forgetFuture, loadGame, loadSnapshot, memorySnapshotBackend, saveGame, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
+import { cloneForAct } from '../src/game/save-clone'
 import { hasScript, runScript } from '../src/game/scripts'
 import { ALL_TALENT_IDS, MAIN_CHARACTER } from '../src/game/talents'
 import { arriveInPast, jumpsUsed, TIME_MACHINE_JUMPS } from '../src/game/timeMachine'
@@ -815,7 +816,7 @@ function runAction(ctx: Ctx, g: GameState, f: Found, d: Driver): GameState {
   // store.runMenuAction: the menu was built from the committed (frozen) state; run() gets a
   // draft. A closure that writes to an object it captured from the committed state throws here.
   if (!Object.isFrozen(g)) deepFreeze(g)
-  const draft = structuredClone(g)
+  const draft = cloneForAct(g)
   bindMoneyContext(draft)
   try {
     if (!draft.character.alive || draft.queue.length > 0) return g
