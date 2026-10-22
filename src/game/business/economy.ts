@@ -16,6 +16,8 @@ import { outcomeTag } from '../timeMachine'
 import { publicBusinessShockFactor } from '../invest/shocks'
 import { seeded } from '../assets'
 import { exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
+import { localPay } from '../data/local-pay'
+import { revalueCompany } from './contract'
 import { businessFloor } from '../mastery'
 import { bell, chance, rand } from '../rng'
 import { hasTalent, talentHint, type TalentId } from '../talents'
@@ -91,18 +93,8 @@ export interface LocalEcon {
   demandMult: number
 }
 
-/**
- * Local yearly pay for a job that pays `usPay` in the US. Skilled jobs (engineers, doctors,
- * executives) are priced closer to global rates than cooks and cleaners; never below the
- * minimum wage.
- */
-export function localPay(countryId: string, usPay: number): number {
-  const m = marketOf(countryId)
-  const labor = clampN(m.laborCost, 0.05, 3)
-  const skilled = clampN((usPay - 30_000) / 80_000, 0, 1)
-  const f = labor <= 1 ? Math.pow(labor, 1 - 0.4 * skilled) : 1 + (labor - 1) * (1 - 0.7 * skilled)
-  return Math.round(Math.max(usPay * f, Math.max(0, m.minWage)))
-}
+// localPay moved to data/local-pay.ts (R2-K5: the home computer and the game-making math read it without importing this file).
+export { localPay }
 
 /** Big first-listed cities cost more and sell more. */
 export function cityFactor(countryId: string, city: string): { rent: number; demand: number } {
@@ -995,6 +987,12 @@ export function refreshValue(a: Asset, b: BizState): void {
   a.value = stakeValue(b)
   a.upkeep = 0
 }
+
+// The port the underworld calls instead of importing this file (business/contract.ts). Bound here, at load, with an arrow.
+revalueCompany.use((a, b) => {
+  b.valuation = valuationOf(b)
+  refreshValue(a, b)
+})
 
 /**
  * Close the books of a fiscal year into the company's history. Call it after evolve(), so cash and debt are the books-close

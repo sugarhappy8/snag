@@ -1,6 +1,6 @@
 // The money team's year-end step: the advisor's retainer, the manager's invoice and trades, the catch of a manager
 // who padded the bills, the advisor's review and one statement. It runs once a year after rent, tax and upkeep
-// are paid (aging.ts YEARLY_HOOKS), so the cash it spends is real and the manager's reserve protects the living costs.
+// are paid (the yearly registry, modules/yearly-aging.ts), so the cash it spends is real and the manager's reserve protects the living costs.
 //
 // This is the only code of the feature that draws from g.rng, and only after a manager has been paid: one chance
 // for the blunder, one for its direction when it fires, one for the catch when a crook has padded a bill. A game

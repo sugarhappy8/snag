@@ -28,6 +28,7 @@ import {
 import { personCash } from './cash'
 import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
 import { professionalMenu } from './professions'
+import { ordinaryJobs } from './workplace/contract'
 import { workplaceMenu } from './workplace/menu'
 import { workplaceContext } from './workplace/model'
 import { yearlyWorkplace } from './workplace/year'
@@ -842,6 +843,10 @@ export function hireForJob(g: GameState, job: InterviewJob): Job {
   masterFirstTime(g, `job.${j.defId}`, 'job', `${article(j.title)} ${j.title}`)
   return j
 }
+
+// Special careers that end in an ordinary job (the model who turns photographer) reach the job market through this port
+// (workplace/contract.ts), so they import neither this file nor each other.
+ordinaryJobs.use(() => ({ companyName, eraPayShape, jobRequirementProblem, hireForJob }))
 
 /** Why a full-time job is off the table right now (school, a special career or the military), or null. */
 function fullTimeSchoolBlocker(g: GameState): string | null {

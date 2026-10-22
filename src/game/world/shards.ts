@@ -4,6 +4,7 @@
 // The hub lives apart from world/state.ts on purpose: every shard module imports state.ts, so state.ts importing a shard module
 // would be a two-module cycle. A test or module that calls normalizeWorld or worldShard imports this file for its effect.
 import { normalizeLedger } from '../kernel/ledger'
+import './facts'
 import { normalizeFirms } from './firms'
 import { normalizeHoldings } from './holdings'
 import { normalizeHomes } from './homes'

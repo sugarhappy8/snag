@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { familyId } from '../src/game/business/competition-roster'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { advanceTechWaves, landRivalWaves, readTechWaves, rivalWave, waveDraw, type TechWave } from '../src/game/business/tech-waves'
@@ -20,6 +20,7 @@ import type { Asset, GameState, Json } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { makeTestGame } from './helpers'
 import { adult, company, nextYear } from './market-kit'
+import { agingNames, withAging } from './kernel-kit'
 
 const W = (o: Partial<TechWave> = {}): TechWave => ({ id: 'deeptech:ai:2031:x', kind: 'ai', name: 'Frontier AI', source: 'deeptech', year: 2031, market: 'world', size: 0.5, hype: 0.8, delivery: 0.6, last: 2031, ...o })
 const J = (v: unknown): Json => v as Json
@@ -54,14 +55,13 @@ function handOff(g: GameState, heirId: string): GameState {
 
 describe('the yearly hook and the business year', () => {
   it('sits right after business and leaves the hedge pin alone', () => {
-    const names = YEARLY_HOOKS.map(([k]) => k)
+    const names = agingNames()
     expect(names.indexOf('techWaves')).toBe(names.indexOf('business') + 1); expect(names.indexOf('hedge')).toBe(names.indexOf('investments') + 1)
   })
   it('a life with no company is byte-identical to a twin without the hook, and stores nothing', () => {
     const g = makeTestGame(7, { age: 40, money: 300_000 }); g.log = [{ age: 40, year: 2026, entries: [] }]; const twin = structuredClone(g)
     ageUp(g)
-    const i = YEARLY_HOOKS.findIndex(([k]) => k === 'techWaves'), [hook] = YEARLY_HOOKS.splice(i, 1)
-    try { ageUp(twin) } finally { YEARLY_HOOKS.splice(i, 0, hook) }
+    withAging((es) => es.filter((e) => e.id !== 'yearly.techWaves'), () => ageUp(twin))
     expect(JSON.stringify(g)).toBe(JSON.stringify(twin)); expect(['techWaves', 'techBase'].filter((k) => k in g.flags)).toEqual([])
     const r = adult(5, 2030, 'us'); company(r, 'restaurant'); nextYear(r); nextYear(r)
     expect(['techWaves', 'techBase'].filter((k) => k in r.flags)).toEqual([]); expect(readMarketNews(r)).toEqual([])

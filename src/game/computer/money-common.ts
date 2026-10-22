@@ -3,7 +3,7 @@
 // number utilities. Everything stored lives in g.flags.computerMoney as plain JSON.
 import { timelineFamily } from '../timeMachine'
 import { seeded } from '../assets'
-import { canUseComputer } from '../computer'
+import { canUseComputer } from './access'
 import { addLoan, offeredRate } from '../finance'
 import { counterparty, REASONS, type Reason } from '../kernel/reasons'
 import { addMoney, addRelationship, addStat, count, formatMoney, log, parents, relationLabel } from '../core'

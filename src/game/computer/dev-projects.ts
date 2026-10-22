@@ -10,7 +10,7 @@ import { defineScript } from '../scripts'
 import { stableChoice } from '../special/common'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { makeGamesMenu } from '../special/gamedev-make'
+import { gameMakingMenu } from './contract'
 import { ageBlock, computerBlock, firstReason, useComputer } from './dev-common'
 import { practice } from './dev-learn'
 import { PROJECT_KINDS, type ProjectKind } from './dev-kinds'
@@ -163,8 +163,8 @@ const makeGamesLink: MenuGroup = {
   emoji: '\u{1F3AE}',
   subtitle: 'Moved to Special Careers › Game Industry · tap for a shortcut',
   header: () => 'Scratch games, mods, game jams and real game releases now live in Occupation › Special Careers › Game Industry. Here is a shortcut.',
-  disabledReason: (g) => makeGamesMenu.disabledReason?.(g) ?? null,
-  children: (g) => makeGamesMenu.children(g),
+  disabledReason: (g) => gameMakingMenu()?.disabledReason?.(g) ?? null,
+  children: (g) => gameMakingMenu()?.children(g) ?? [],
 }
 
 export const projectsMenu: MenuGroup = {
