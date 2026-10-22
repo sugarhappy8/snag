@@ -42,9 +42,9 @@ export const FLAG_DEFS = {
   // The IndexedDB boot (K.5a).
   idbSaves: { default: true, ships: '4.1.0' },
   // The year close in the store flow (R3, E.D2): ageUpAction closes the year with a card, folds the small notices into the log and
-  // budgets the unrequested choices, when Quiet Mode is on too. Headless ageUp is never touched. Ships dark in 5.1.0 until the lead's
-  // release commit flips it with the version.
-  yearCard: { default: false, ships: '5.1.0' },
+  // budgets the unrequested choices, when Quiet Mode is on too. Headless ageUp is never touched. On since 5.1.0: the release commit
+  // flipped it together with the version.
+  yearCard: { default: true, ships: '5.1.0' },
 } as const satisfies Record<string, FlagDef>
 
 export type FlagKey = keyof typeof FLAG_DEFS

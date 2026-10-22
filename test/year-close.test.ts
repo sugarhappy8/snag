@@ -86,8 +86,8 @@ function cardLines(c: YearCard): number {
 
 // ---------------------------------------------------------------------------
 describe('the flag and the table', () => {
-  it('the flag is the ninth key: dark until the release commit flips it', () => {
-    expect(FLAG_DEFS.yearCard).toEqual({ default: false, ships: '5.1.0' })
+  it('the flag is the ninth key: on since the release commit flipped it with the version', () => {
+    expect(FLAG_DEFS.yearCard).toEqual({ default: true, ships: '5.1.0' })
   })
 
   it('only the three scripts of the plan may wait, and they are the real script ids', () => {

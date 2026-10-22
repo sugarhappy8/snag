@@ -183,3 +183,5 @@ Lead decision L2: a popup family at most 6 times a life. The ask families are he
 
 | file | test | before | after | why |
 |---|---|---|---|---|
+| test/year-close.test.ts | the flag and the table > the flag is the ninth key (renamed: ... on since the release commit flipped it with the version) | `FLAG_DEFS.yearCard` equals `{ default: false, ships: '5.1.0' }` | `FLAG_DEFS.yearCard` equals `{ default: true, ships: '5.1.0' }` | D4, the release commit: the flag is flipped together with the package version 5.1.0, which `test/flags.test.ts` checks (the release rule); the `ships` version is the same |
+| test/year-close-store.test.ts | ageUpAction with the flag off > plays the year the old way: no close, no card, no year book | the case relied on the default of `yearCard`, which was off, and set only `quietInbox` | the case sets `yearCard: false` first; every assertion is the same | D4, the release commit: the default is on now, so a case that is about the flag off says so itself (its sibling case, `it.each`, already did) |

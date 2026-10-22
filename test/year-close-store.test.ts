@@ -86,6 +86,7 @@ afterEach(() => {
 
 describe('ageUpAction with the flag off', () => {
   it('plays the year the old way: no close, no card, no year book', () => {
+    setFlags({ yearCard: false })
     store.ageUpAction()
     expect(game().character.age).toBe(26)
     expect(wrapped.closeYear).not.toHaveBeenCalled()

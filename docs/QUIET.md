@@ -72,7 +72,8 @@ reads the one the book kept. The Life log folds a busy year the same way: `viewY
 
 ## The flag
 
-`yearCard` in `src/game/flags.ts` (`FLAG_DEFS`) ships in 5.1.0 and is off until the release commit flips its default with the version.
+`yearCard` in `src/game/flags.ts` (`FLAG_DEFS`) ships in 5.1.0 and is on by default since the release commit flipped it with the version
+(`?flags=-yearCard` turns it off for one visit).
 With it off, `ageUpAction` plays the year as it always did (`test/quiet-integration.test.ts` plays 12 years both ways). With it on and
 Quiet Mode on, the year closes. Settings, under Quiet Mode, says so in one sentence while the flag is on.
 
