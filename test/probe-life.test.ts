@@ -6,13 +6,13 @@ import { probeLife } from './probe-life'
 import { findSeed } from './seed-kit'
 
 describe('probeLife', () => {
-  it('builds an adult with the requested companies and a previous-year economy for its own countries', () => {
+  it('builds an adult with the requested companies and a populated previous-year economy', () => {
     const seed = findSeed((s) => probeLife({ seed: s, birthYear: 1996, businesses: 2, years: 3 }).character.alive, { label: 'a founder born in 1996 who is alive three years into two companies' })
     const g = probeLife({ seed, birthYear: 1996, businesses: 2, years: 3 })
     expect(g.character.alive).toBe(true)
     expect(businessAssets(g)).toHaveLength(2)
-    // R2-S10 (A.K9): last year's frame is kept for the countries a reader can name, not for all 102. The founder lives in one
-    // country, so the residence is there and the count is far under the 40 that the focus allows.
+    // R2-S10 (A.K9): populated means the countries a reader can name, not all 102. The founder lives in one country, so the
+    // residence is there and the count is far under the 40 that the focus allows. (The title is the name moved-seeds.md row 11 holds.)
     const previous = Object.keys(economyState(g)!.previous)
     expect(previous).toContain(g.character.countryId)
     expect(previous.length).toBeLessThanOrEqual(40)
