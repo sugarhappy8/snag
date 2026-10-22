@@ -8,7 +8,7 @@
 //   livesParity()                       wave 0's trace (test/r2-parity-kit.ts) of four lives, the v4.0.2 save played five years, and
 //                                       one digest of the executed hook names per life
 //   menusParity()                       the four canned lives of test/nav-kit.ts walked through the menus: one digest per tab and top group
-//   viewsParity()                       the company view (businessView) of every industry and of five special companies: one digest each
+//   viewsParity()                       the company view (businessView) of every id of INDUSTRY_IDS and of five special companies: one digest each
 //
 // A digest of a list is { n, h }: n items and h = fnv1a (src/game/text/hash.ts) of the items joined by newlines, as 8 hex digits. Menu
 // and view digests hold ids only (no number), so they cannot differ between machines; the lives are digested by wave 0's parityDigests.
@@ -248,7 +248,7 @@ export const VIEW_VARIANTS: Readonly<Record<string, () => { g: GameState; a: Ass
   },
 }
 
-/** Every industry (33) first, then the five variants. */
+/** Every id of INDUSTRY_IDS first, then the five variants. */
 export const VIEW_KEYS: readonly string[] = [...INDUSTRY_IDS, ...Object.keys(VIEW_VARIANTS)]
 
 /** The ids of businessView and, inside each menu node, the ids one level down. Pure: a read of `g`. */

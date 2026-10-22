@@ -11,12 +11,14 @@
 // is a failure that names this command: it never writes silently. Say why in the commit message. The kit's header says why the
 // seeds are pinned here.
 //
-// About 45 s on a free machine (four lives, the v4.0.2 save, four menu walks, 38 company views), so it is not in the fast tier.
+// About 10 to 45 s on a free machine (four lives, the v4.0.2 save, four menu walks, a company view for every industry and five special
+// companies), so it is not in the fast tier.
 import { execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { INDUSTRY_IDS } from '../src/game/data/markets'
 import {
   KERNEL_LIFE_IDS,
   MENU_STATES,
@@ -242,11 +244,11 @@ describe('kernel parity: menus', () => {
 
 describe('kernel parity: company views', () => {
   it(
-    'the view of a company in each of the 33 industries has the recorded digest',
+    'the view of a company in each industry (every id of INDUSTRY_IDS) has the recorded digest',
     () => {
       const want = loadFixture().views
       const industries = VIEW_KEYS.filter((k) => !(k in VIEW_VARIANTS))
-      expect(industries).toHaveLength(33)
+      expect(industries).toEqual([...INDUSTRY_IDS])
       expect(digestMoves(Object.fromEntries(industries.map((k) => [k, want[k]!])), Object.fromEntries(industries.map((k) => [k, viewResult(k)])))).toEqual([])
     },
     TIMEOUT,
