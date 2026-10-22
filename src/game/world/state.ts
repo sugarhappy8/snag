@@ -107,7 +107,7 @@ export function worldShard<T = unknown>(g: Pick<GameState, 'world'>, name: strin
 }
 
 /** Nodes of `value`, each value one node (the way the save loader counts), stopping as soon as the count passes `limit` (cycles end there too). */
-function nodeCount(value: unknown, limit: number): number {
+export function nodeCount(value: unknown, limit: number): number {
   let n = 0
   const stack: unknown[] = [value]
   while (stack.length) {
