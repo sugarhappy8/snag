@@ -128,6 +128,17 @@ export interface StreamRow {
   age?: number
   /** No code draws from the tag yet, so the tap cannot hit. The row exists so the guard passes; remove `idle` when a caller lands (the test says so). */
   idle?: boolean
+  /**
+   * The year argument the module passes to stream or outcomeStream when it is not the calendar year of the tap: a stream that is not
+   * tied to a year passes 0 (lod does). Default: the calendar year the row taps.
+   */
+  year?: number
+  /**
+   * A module draws from the tag, but no played life calls it yet (a library that a later release wires in), so the test calls its
+   * entry point itself, once, in the tapped year (DRIVERS in test/stream-isolation.test.ts). The call is a pure read, so by itself it
+   * moves no slice, and the row says which slices the stream may move once the module writes what it draws.
+   */
+  driven?: boolean
 }
 
 /**
@@ -147,7 +158,8 @@ export const STREAM_SLICES: Readonly<Record<string, StreamRow>> = {
   },
   lod: {
     slices: [],
-    why: 'Ledger-world R2-L16 seededEntity draws from stream(g, "lod", 0, kind:key) and nothing calls it in R2',
-    idle: true,
+    why: 'R2-L16 seededEntity draws a stranger from stream(g, "lod", 0, kind:key); only promote makes one persist, and no played life calls either in R2',
+    year: 0,
+    driven: true,
   },
 }

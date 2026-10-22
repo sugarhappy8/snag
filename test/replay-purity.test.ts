@@ -4,6 +4,8 @@
 //   reload   JSON.parse(JSON.stringify(g)) through migrateSave, aged, against g aged (what a saved game suffers: an `undefined`
 //            key, a NaN, a Map or a Date in the state is exactly what this finds)
 //   fork     takeSnapshot(g), then loadSnapshot(lifeId, age) at the same age (so no outcomeTag re-roll), aged, against g aged
+//   store    (R2-P11, once the save store of save v3 landed) saveGame(g) on a memory backend, which writes a head and chunks, then
+//            loadGame(): what a player gets back by closing the tab, aged, against g aged
 // After each of the five years the nine slice digests (test/golden-kit.ts) of both branches must be equal; a difference prints
 // where it is (explainMove). The queue is emptied before every year, as test/probe-life.ts does, so no popup waits on an answer.
 //
@@ -15,8 +17,10 @@ import { currencyInflation } from '../src/game/data/currencies'
 import { ECONOMY_VERSION, economyState, initialCountry, normalizeCountry, pointOf } from '../src/game/economy/model'
 import { HISTORY_START, PRESENT_YEAR } from '../src/game/history/timeline'
 import { COUNTRIES } from '../src/game/world'
-import { loadSnapshot, memorySnapshotBackend, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
+import { loadGame, loadSnapshot, memorySnapshotBackend, saveGame, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
+import { memorySaveBackend } from '../src/game/save-backends'
 import { migrateSave } from '../src/game/save-schema'
+import { resetSaveStoreForTests, setSaveBackend } from '../src/game/save-store'
 import type { GameState } from '../src/game/types'
 import { installStorageShim } from './fuzz-kit'
 import { SLICES, explainMove, movedSlices, sliceDigests, type SliceDigests } from './golden-kit'
@@ -132,6 +136,32 @@ describe('replay purity (RF5): the same five years, three ways', () => {
         const original = ageAhead(g)
         expect(original).toHaveLength(AHEAD)
         sameLife(`${l.id} fork`, original, ageAhead(back))
+      },
+      TIMEOUT,
+    )
+  }
+
+  for (const cut of CUTS) {
+    const l = spec(cut.id)
+    it(
+      `${l.id}: saved through the save store and read back with loadGame gives the same ${AHEAD} years (store reload)`,
+      () => {
+        installStorageShim()
+        resetSaveStoreForTests()
+        setSaveBackend(memorySaveBackend())
+        try {
+          const g = stateAfter(l, cut.years)
+          alive(g, l.id)
+          expect(saveGame(g), `${l.id}: saveGame refused the state`).toBe(true)
+          const back = loadGame()
+          if (back === null) throw new Error(`${l.id}: loadGame does not read back what saveGame wrote`)
+          const original = ageAhead(g)
+          expect(original).toHaveLength(AHEAD)
+          sameLife(`${l.id} store reload`, original, ageAhead(back))
+        } finally {
+          setSaveBackend(null)
+          resetSaveStoreForTests()
+        }
       },
       TIMEOUT,
     )

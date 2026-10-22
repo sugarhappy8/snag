@@ -5,7 +5,10 @@
 //   - then it is played: for each reseed, YEARS times the queue is emptied and ageUp runs. After every year each number in the
 //     state is finite, the state is plain JSON (no NaN, no undefined in an array, no Map, no class instance; an undefined
 //     property passes, as JSON drops it), a JSON round trip gives the same text, the node count is still under the limit, and
-//     the character is alive or the death was recorded (a ribbon).
+//     the character is alive or the death was recorded (a ribbon);
+//   - R2-P11: the world (Ledger-world) is earned by play, never invented by the migration (an old save that had none still has none
+//     after it, and its first played year leaves balanced books with nothing healed), and the save store carries it: saved through the
+//     chunked save v3 (a memory backend) and read back with loadGame, the fixture has the same nine slice digests and the same next year.
 // A reseed k of 0 keeps the saved rng; k above 0 puts a mix of k in g.rng, so the same old state is lived with other dice.
 //
 // A fixture that cannot run is the finding, not a flake: it goes to the track that owns the migration (Save).
@@ -13,11 +16,17 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
+import { checkLedger, peekLedger } from '../src/game/kernel/ledger'
+import { loadGame, saveGame } from '../src/game/save'
+import { memorySaveBackend } from '../src/game/save-backends'
 import { migrateSave } from '../src/game/save-schema'
+import { resetSaveStoreForTests, setSaveBackend } from '../src/game/save-store'
 import type { GameState } from '../src/game/types'
 import { countNodes, firstDiff } from '../scripts/r1-parity-lib.mjs'
+import { installStorageShim } from './fuzz-kit'
+import { explainMove, movedSlices, sliceDigests } from './golden-kit'
 import { writeMetrics } from './nightly-metrics'
 import { ROOT } from './scan-kit'
 
@@ -175,6 +184,11 @@ describe('the soundness check can fail', () => {
   })
 })
 
+afterEach(() => {
+  setSaveBackend(null)
+  resetSaveStoreForTests()
+})
+
 describe.each(FIXTURES)('old save %s', (name) => {
   it(
     'migrates to a ready game under the node limit, and migrating it again changes nothing',
@@ -189,6 +203,56 @@ describe.each(FIXTURES)('old save %s', (name) => {
         if (again.kind !== 'ready') return
         expect(firstDiff(first.game, again.game)).toBeNull()
         fixturesRun++
+      }),
+    TIMEOUT,
+  )
+
+  it(
+    'invents no world when it migrates, and the first year it plays leaves balanced books with nothing healed',
+    () =>
+      counted(() => {
+        const raw = readFixture(name)
+        const hadWorld = raw.world !== undefined
+        const first = migrateSave(raw)
+        expect(first.kind, `${name} did not migrate`).toBe('ready')
+        if (first.kind !== 'ready') return
+        const g = first.game
+        if (!hadWorld) expect(g.world, `${name} had no world and the migration gave it one: an opening balance nobody booked`).toBeUndefined()
+        g.queue = []
+        ageUp(g)
+        yearsPlayed++
+        const report = checkLedger(g)
+        expect(report.problems, `${name}: the books after its first year`).toEqual([])
+        const ledger = peekLedger(g)
+        expect(ledger.m.heal ?? 0, `${name}: the ledger healed a mint`).toBe(0)
+        expect(ledger.b.heal ?? 0, `${name}: the ledger healed a burn`).toBe(0)
+        expect(g.world, `${name}: a played year leaves a world`).toBeDefined()
+      }),
+    TIMEOUT,
+  )
+
+  it(
+    'goes through the save store (a chunked save v3 on a memory backend) and reads back with the same digests and the same next year',
+    () =>
+      counted(() => {
+        installStorageShim()
+        const g = migrated(name)
+        resetSaveStoreForTests()
+        setSaveBackend(memorySaveBackend())
+        expect(saveGame(g), `${name}: saveGame refused the state`).toBe(true)
+        const back = loadGame()
+        if (back === null) throw new Error(`${name}: loadGame does not read back what saveGame wrote`)
+        const same = (label: string): void => {
+          const moved = movedSlices(sliceDigests(g), sliceDigests(back))
+          if (moved.length > 0) throw new Error(`${name} ${label}: slice(s) ${moved.join(', ')} differ after the store: ${moved.map((s) => `${s} ${explainMove(g, back, s)}`).join('; ')}`)
+        }
+        same('as loaded')
+        g.queue = []
+        back.queue = []
+        ageUp(g)
+        ageUp(back)
+        yearsPlayed += 2
+        same('one year on')
       }),
     TIMEOUT,
   )

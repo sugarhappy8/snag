@@ -8,8 +8,15 @@
 // `limit`. `at` says which case that was ("ng in 1950"), so a failure points at the input and not only at the term.
 //
 // To cover a new cap: add the entry to test/ceiling-list.json and a row here in the same commit.
+import { ECONOMY_VERSION, initialCountry } from '../src/game/economy/model'
 import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
 import { realWealthFactor } from '../src/game/history/events-people'
+import { buySecurity, investmentHoldings, investmentListing, yearlyInvestments } from '../src/game/investments'
+import { BURNS, LEDGER_CAPS, MINTS, book, bookBurn, bookMint, checkLedger, peekLedger, playerAcct, type AcctRef } from '../src/game/kernel/ledger'
+import { REASONS, type BurnName, type MintName, type Reason } from '../src/game/kernel/reasons'
+import { SPREADS, ask, bid } from '../src/game/kernel/spreads'
+import { transactionsLevy } from '../src/game/nation/rates'
+import { editPolicy, writePolicy } from '../src/game/nation/state'
 import { authorAdaptationOffer } from '../src/game/special/author-career'
 import { normalizeAuthor } from '../src/game/special/author-state'
 import { ownerKey } from '../src/game/special/common'
@@ -20,7 +27,13 @@ import { payScale } from '../src/game/special/pay-scale'
 import { dealCeiling } from '../src/game/special/sports-core'
 import type { GameState } from '../src/game/types'
 import { COUNTRIES } from '../src/game/world'
+import { readFirms } from '../src/game/world/firms'
+import { readHomes } from '../src/game/world/homes'
+import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod'
+import { readPeople } from '../src/game/world/people'
+import '../src/game/world/shards'
 import { makeTestGame } from './helpers'
+import { flowTotal } from './ledger-kit'
 
 export interface CeilingProbe {
   /** An id of test/ceiling-list.json, or 'extra.<name>' for a probe the list does not name. */
@@ -154,7 +167,7 @@ function fameYear(profile: Record<string, unknown>): { podcast: { listeners: num
 
 const TAIL_SCOPES: readonly ScopeId[] = ['jam', 'small', 'indie', 'aa', 'aaa']
 
-export const CEILING_PROBES: readonly CeilingProbe[] = [
+const LIFE_ROWS: readonly CeilingProbe[] = [
   {
     id: 'pay-scale',
     cap: 'pay follows the era and country typical income, and the country wealth stops at 1.6 (R0-12)',
@@ -257,3 +270,217 @@ export const CEILING_PROBES: readonly CeilingProbe[] = [
     },
   },
 ]
+
+// ---------------------------------------------------------------------------------------------- the world rows (R2-P11)
+// The seven caps Ledger-world adds to the list (R2-L2, R2-L13, R2-L16). Each row feeds the cap's input `scale` times what a life
+// reaches and reads the number the cap protects from the module's own books, so a moved internal does not move the row.
+
+/** The mints and the burns by name, in table order. */
+const MINT_NAMES = Object.keys(MINTS) as MintName[]
+const BURN_NAMES = Object.keys(BURNS) as BurnName[]
+/** What a sink with a yearly cap of 0 is offered, per booking, to see that it takes none. */
+const OFFER_TO_AN_OFF_SINK = 1_000_000_000
+
+/** A fresh life in 2026 whose ledger is empty. */
+const ledgerLife = (): GameState => lifeIn('us', 2026)
+
+/**
+ * Offers a sink `scale` times its yearly cap, two ways: one booking of the whole volume (as far as a booking may go, 1e15) and
+ * `scale` bookings of one cap each. Reads what the sink created or destroyed this year from the ledger's own yearly counter.
+ */
+function sinkRow(id: string, cap: string, names: readonly string[], limitOf: (name: string) => number, offer: (g: GameState, name: string, acct: AcctRef, amount: number) => number, yearly: (g: GameState, name: string) => number): CeilingProbe {
+  return {
+    id,
+    cap,
+    run: (scale) => {
+      const t = tightest()
+      for (const name of names) {
+        const g = ledgerLife()
+        const limit = limitOf(name)
+        const step = limit > 0 ? limit : OFFER_TO_AN_OFF_SINK
+        offer(g, name, playerAcct(g), Math.min(LEDGER_CAPS.maxBooking, step * scale))
+        for (let i = 0; i < scale; i++) offer(g, name, playerAcct(g), step)
+        t.add(yearly(g, name), limit, `${name} offered ${scale} times its cap`)
+      }
+      return t.result()
+    },
+  }
+}
+
+/** Two-year volumes of a row: the number of years it is replayed for at `scale` (a roll must not let a cap reset early). */
+const yearsFor = (scale: number): number => Math.max(1, Math.min(30, Math.round(Math.log10(scale * 10))))
+
+/** A scratch person id (the ledger needs a valid ref), and the same for any other kind. */
+const refOf = (kind: string, i: number): AcctRef => `${kind}:s${i}` as AcctRef
+
+/** A bond held for one more year at `scale * 1_000` units with a mark `scale` times par, and what the government paid on redemption. */
+function bondRedemption(scale: number): { paid: number; units: number; face: number } {
+  const g = makeTestGame(7, { age: 30, money: 100_000, countryId: 'us', residence: { status: 'renting', rent: 0 } })
+  g.lifeId = 'ceiling-bond'
+  const bond = investmentListing(g).find((q) => q.type === 'bond')
+  if (!bond) throw new Error('no bond for sale in 2026')
+  if (!buySecurity(g, bond.secId, 10_000, true)) throw new Error('the probe cannot buy a bond')
+  const held = investmentHoldings(g)[0]!
+  const face = bond.price
+  const units = scale * 1_000
+  const d = held.details
+  d.units = units
+  d.price = face * scale
+  d.yield = 0
+  d.maturity = g.year + 1
+  held.value = units * face * scale
+  // The next year, with prices flat (inflation 0, so dep is 0): the live economy of the country says so.
+  const next = g.year + 1
+  const flat = { ...initialCountry('us', next), inflation: 0 }
+  g.flags.worldEconomy = { v: ECONOMY_VERSION, year: next, countries: { us: flat }, previous: {}, history: {} } as never
+  g.year = next
+  g.character.age += 1
+  g.yearActions = {}
+  g.queue = []
+  yearlyInvestments(g)
+  return { paid: -flowTotal(g, 'bond.redeem', 'gov'), units, face }
+}
+
+/** The most ids the probe walks through `promote` itself: it rewrites a shard on every call (about 125 microseconds), so 400,000 calls take a minute. */
+const PROMOTE_WALK = 1_000
+
+/** The rows the reader of each shard keeps (the hard bound of a hostile load), and the rows the yearly sweep leaves (what R2 names of the kind). */
+const READ_CAP: Readonly<Record<LodKind, number>> = { person: LOD_CAPS.people, firm: LOD_CAPS.firms, home: LOD_CAPS.homes }
+const SWEEP_CAP: Readonly<Record<LodKind, number>> = { person: LOD_CAPS.intimate, firm: LOD_CAPS.firms, home: LOD_CAPS.homes }
+const READERS = { person: readPeople, firm: readFirms, home: readHomes } as const
+const SHARD_OF = { person: 'people', firm: 'firms', home: 'homes' } as const
+
+/** Promotes up to PROMOTE_WALK made-up ids of one kind through `promote`, then sweeps, and reports the rows the shard holds before and after the sweep. */
+function lodWalk(kind: LodKind, count: number): { before: number; after: number } {
+  const g = ledgerLife()
+  for (let i = 0; i < Math.min(count, PROMOTE_WALK); i++) promote(g, kind, refOf(kind, i) as never)
+  const before = READERS[kind](g).rows.length
+  lodSweep(g)
+  return { before, after: READERS[kind](g).rows.length }
+}
+
+/** A world that came in with `count` rows of one kind (a hostile or damaged save): what the reader keeps, then what the sweep leaves. */
+function lodFlood(kind: LodKind, count: number): { read: number; after: number } {
+  const g = ledgerLife()
+  const owner = refOf('person', 0)
+  const rows = Array.from({ length: count }, (_, i) => {
+    const id = refOf(kind, i)
+    return kind === 'person' ? { id, seen: g.year } : kind === 'firm' ? { id, form: 'npc', owner, seen: g.year } : { id, owner, seen: g.year }
+  })
+  g.world = { v: 1, [SHARD_OF[kind]]: { v: 1, rows, over: 0 } } as never
+  const read = READERS[kind](g).rows.length
+  lodSweep(g)
+  return { read, after: READERS[kind](g).rows.length }
+}
+
+const WORLD_ROWS: readonly CeilingProbe[] = [
+  sinkRow(
+    'mint-caps',
+    'every mint has a yearly cap: lending 1e12 (it was 2.5e9 until the R2-L5 probe saw founding loans of 40e9), printing 0, immigrants 5e8, revaluation 1e12 (R2-L2)',
+    MINT_NAMES,
+    (n) => MINTS[n as MintName].cap,
+    (g, n, acct, amount) => bookMint(g, n as MintName, acct, amount),
+    (g, n) => peekLedger(g).ym[n] ?? 0,
+  ),
+  sinkRow(
+    'burn-caps',
+    'every burn has a yearly cap of 1e12: emigration, inflation, writeoff (R2-L2)',
+    BURN_NAMES,
+    (n) => BURNS[n as BurnName].cap,
+    (g, n, acct, amount) => bookBurn(g, n as BurnName, acct, amount),
+    (g, n) => peekLedger(g).yb[n] ?? 0,
+  ),
+  {
+    id: 'ledger-caps',
+    cap: '500 accounts, 480 flow rows, 1e15 per booking, 9e15 per balance (R2-L2)',
+    run: (scale) => {
+      const t = tightest()
+      const g = ledgerLife()
+      const reasons = Object.keys(REASONS) as Reason[]
+      const accounts = LEDGER_CAPS.accounts * scale
+      // Every booking pairs a new person with a new firm, so a booking opens two accounts, and a new country opens a new flow key.
+      for (let i = 0; i < accounts / 2; i++) book(g, 'gift', refOf('person', i), refOf('firm', i), 1)
+      // The roll below folds the smallest accounts, so the peak is read here, before any year changes.
+      t.add(checkLedger(g).accounts, LEDGER_CAPS.accounts, `${accounts} accounts offered, before a roll`)
+      // A flow key is (year, country, reason): offer `480 * scale` of them in one year.
+      const flows = LEDGER_CAPS.flowRows * scale
+      for (let i = 0; i < flows; i++) book(g, reasons[i % reasons.length]!, 'pool:other', 'abroad', 1, undefined, `c${Math.floor(i / reasons.length)}`)
+      t.add(checkLedger(g).flowRows, LEDGER_CAPS.flowRows, `${flows} flow keys offered, in one year`)
+      // And across years, so the roll that keeps two years is exercised: the rows of a year never pass the cap either.
+      let widest = 0
+      for (let y = 1; y <= yearsFor(scale); y++) {
+        g.year += 1
+        for (let i = 0; i < 40; i++) book(g, reasons[(i + y) % reasons.length]!, 'pool:other', refOf('person', i), 1, undefined, `y${y}c${i % 12}`)
+        widest = Math.max(widest, checkLedger(g).flowRows)
+      }
+      const r = checkLedger(g)
+      t.add(r.accounts, LEDGER_CAPS.accounts, `${accounts} accounts offered`)
+      t.add(Math.max(r.flowRows, widest), LEDGER_CAPS.flowRows, `${flows} flow keys offered`)
+      if (!r.ok) t.add(1, 0, `the books after the bookings do not balance: ${r.problems.join('; ')}`)
+      t.add(Object.keys(peekLedger(g).a).length, LEDGER_CAPS.accounts, 'accounts held')
+      return t.result()
+    },
+  },
+  {
+    id: 'pool-spreads',
+    cap: 'no pool round trip is free: a buy then a sale to the same pool loses the spread twice (R2-L2)',
+    // The value is the least the round trip has to lose (twice the spread of the mid price); the limit is what it did lose. A loss
+    // short of it, or a pool with no spread at all, puts the value over the limit. The 1e-9 is the noise of two float products.
+    run: (scale) => {
+      const t = tightest()
+      const mid = scale * 10_000
+      for (const [pool, s] of Object.entries(SPREADS)) {
+        const lost = ask(mid, pool as keyof typeof SPREADS) - bid(mid, pool as keyof typeof SPREADS)
+        t.add(2 * s * mid * (1 - 1e-9), lost, `a round trip of ${mid} in pool ${pool}`)
+        if (!(s > 0)) t.add(1, 0, `pool ${pool} has no spread`)
+      }
+      return t.result()
+    },
+  },
+  {
+    id: 'bond-par',
+    cap: 'a bond redeems at its eroded face value, never at its marked price, and the face never passes three times the issue (F37, R2-L13)',
+    run: (scale) => {
+      const { paid, units, face } = bondRedemption(scale)
+      return { value: paid, limit: units * face, at: `${units} units marked at ${scale} times par, redeemed with prices flat` }
+    },
+  },
+  {
+    id: 'transaction-levy',
+    cap: '0.1 percent of a trade per level of the law, levels 0 to 3 (R2-L13)',
+    run: (scale) => {
+      const t = tightest()
+      // A damaged level (99) is held to 3, so no law reads more than 0.3 percent. Whole dollars round half a dollar either way.
+      for (const level of [0, 1, 2, 3, 99]) {
+        const g = lifeIn('us', 2026)
+        const p = editPolicy(g, 'us')
+        p.newTaxes.transactions = { level, industry: '' }
+        writePolicy(g, p)
+        for (const amount of [1, 999, 1_234, 100_000, 7_654_321, 123_456_789_012]) {
+          t.add(transactionsLevy(g, amount * scale), 0.003 * amount * scale + 0.5, `level ${level} on ${amount * scale}`)
+        }
+      }
+      return t.result()
+    },
+  },
+  {
+    id: 'lod-caps',
+    cap: '400 people (80 intimate), 60 firms (20 full), 150 homes, 600 job slots: no list of named entities grows past these (R2-L16)',
+    run: (scale) => {
+      const t = tightest()
+      const ids = scale * 400
+      for (const kind of ['person', 'firm', 'home'] as const) {
+        const walk = lodWalk(kind, ids)
+        t.add(walk.before, SWEEP_CAP[kind], `${Math.min(ids, PROMOTE_WALK)} ${kind} ids through promote`)
+        t.add(walk.after, SWEEP_CAP[kind], `${Math.min(ids, PROMOTE_WALK)} ${kind} ids through promote, then the yearly sweep`)
+        const flood = lodFlood(kind, ids)
+        t.add(flood.read, READ_CAP[kind], `a save with ${ids} ${kind} rows, as the reader keeps it`)
+        t.add(flood.after, SWEEP_CAP[kind], `a save with ${ids} ${kind} rows, after the yearly sweep`)
+      }
+      return t.result()
+    },
+  },
+]
+
+/** Every row: the R0 and R1 growth terms, then the world rows. */
+export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS]

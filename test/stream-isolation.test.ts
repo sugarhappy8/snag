@@ -20,6 +20,7 @@ import type { GameState } from '../src/game/types'
 import { SLICES, explainMove, type SliceName } from './golden-kit'
 import { GOLDEN_PLANS, compareGolden, playGolden, type GoldenLife, type LifeDigests, type Moved } from './golden-run'
 import { K_ID, K_STR, closeParen, isId, isPunct, lineOf, loadSources, splitArgs, toSource, type SourceFile } from './scan-kit'
+import { seededEntity } from '../src/game/world/lod'
 import { makeTestGame } from './helpers'
 import { STREAM_SLICES, tap, type StreamRow, type TapRule } from './stream-tap'
 
@@ -58,6 +59,23 @@ interface Played {
 /** The calendar year in which a row taps a life. */
 function tapYear(l: GoldenLife, row: StreamRow): number {
   return l.birthYear + (l.kind === 'founder' ? FOUNDER_AGE : 0) + (row.age ?? DEFAULT_AGE)
+}
+
+/** The year the tap rule carries: the calendar year of the tap, or the argument the module itself passes (row.year). */
+const ruleYear = (l: GoldenLife, row: StreamRow): number => row.year ?? tapYear(l, row)
+
+/**
+ * For each `driven` row (test/stream-tap.ts): the entry point of the module that draws from the tag, called once in the tapped year of
+ * a played life. Every driver is a pure read: it writes nothing to the state, so a move of any slice would come from the extra draw.
+ */
+const DRIVERS: Readonly<Record<string, (g: GameState) => void>> = {
+  lod: (g) => void seededEntity(g, 'person', 'probe', (rand) => rand()),
+}
+
+/** The hook of a row that is driven: calls its driver after the years the row taps at, in every life. Undefined for a row that is not. */
+function driveFor(tag: string, row: StreamRow): ((l: GoldenLife, g: GameState, yearsPlayed: number) => void) | undefined {
+  const drive = row.driven ? DRIVERS[tag] : undefined
+  return drive ? (_l, g, years) => { if (years === (row.age ?? DEFAULT_AGE)) drive(g) } : undefined
 }
 
 /**
@@ -174,14 +192,47 @@ describe('stream isolation: the tap reaches pickLine', () => {
   })
 })
 
+describe('stream isolation: the tap reaches seededEntity', () => {
+  // No played life calls seededEntity, so the lod row is driven. This pins the drive itself: the tap sees the call, and only a rule
+  // for the tag and the year 0 the module passes.
+  const stranger = (g: GameState): number => seededEntity(g, 'person', 'z1', (rand) => rand())
+  const tapped = (rule: TapRule | null, g: GameState): { out: number; hits: number } => {
+    tap.rule = rule
+    tap.hits = 0
+    try {
+      return { out: stranger(g), hits: tap.hits }
+    } finally {
+      tap.rule = null
+    }
+  }
+
+  it('takes one step of the lod stream when the rule is lod and year 0, and then gives another stranger; g.rng and the state stay put', () => {
+    const g = makeTestGame(1)
+    const before = JSON.stringify(g)
+    const plain = tapped(null, g)
+    const hit = tapped({ tag: 'lod', year: 0 }, g)
+    expect(hit.hits, 'seededEntity did not draw from the tap: ask the lead whether R2-L16 moved it off stream(g, "lod", 0, ...)').toBe(1)
+    expect(plain.hits).toBe(0)
+    expect(hit.out).not.toBe(plain.out)
+    expect(JSON.stringify(g)).toBe(before)
+  })
+
+  it('does not tap for another tag, or for a calendar year (the module passes 0)', () => {
+    const g = makeTestGame(1)
+    expect(tapped({ tag: 'lod', year: g.year }, g).hits).toBe(0)
+    expect(tapped({ tag: 'flavor.milestone', year: 0 }, g).hits).toBe(0)
+  })
+})
+
 describe('stream isolation: one extra draw on a named stream moves only the slices it feeds', () => {
   for (const [tag, row] of Object.entries(STREAM_SLICES)) {
     it(
-      `${tag}: ${row.slices.length ? `only ${row.slices.join(', ')}` : 'nothing'} moves${row.idle ? ' (idle: no module draws from it yet)' : ''}`,
+      `${tag}: ${row.slices.length ? `only ${row.slices.join(', ')}` : 'nothing'} moves${row.idle ? ' (idle: no module draws from it yet)' : ''}${row.driven ? ' (driven: the test calls the module itself)' : ''}`,
       () => {
-        const ruleFor = (l: GoldenLife): TapRule => ({ tag, year: tapYear(l, row) })
-        const tapped = play(ruleFor)
-        const years = LIVES.map((l) => tapYear(l, row)).join(' and ')
+        const ruleFor = (l: GoldenLife): TapRule => ({ tag, year: ruleYear(l, row) })
+        const drive = driveFor(tag, row)
+        const tapped = play(ruleFor, drive)
+        const years = LIVES.map((l) => ruleYear(l, row)).join(' and ')
         if (row.idle) {
           expect(tapped.hits, `stream '${tag}' is marked idle but a module drew from it in ${years}: remove idle from its row of STREAM_SLICES and say which slices its output reaches`).toBe(0)
         } else {
@@ -190,7 +241,7 @@ describe('stream isolation: one extra draw on a named stream moves only the slic
         const { moves, all } = movedIn(base().run, tapped.run)
         const leaks = all.filter((s) => !row.slices.includes(s))
         if (leaks.length > 0) {
-          const first = leaks.map((s) => explain(moves.find((m) => m.slice === s)!, ruleFor)).join('\n  ')
+          const first = leaks.map((s) => explain(moves.find((m) => m.slice === s)!, ruleFor, drive)).join('\n  ')
           throw new Error(
             `one extra draw on stream '${tag}' (${years}) moved slice(s) ${leaks.join(', ')}, which the row allows only ${row.slices.join(', ') || 'none'}.\n  ${first}\n` +
               `A leak is prose that is really simulation state (a name, a number: restore its g.rng draw in the owning module, wave 0's codemod scope) or prose the golden kit forgot to mask (add it to the text rule of test/golden-kit.ts). Never widen the row to make the test pass.`,
@@ -367,8 +418,20 @@ describe('stream isolation: the guard scan', () => {
     expect(calls.some((c) => c.tag === 'flavor.milestone' && c.path === 'src/game/events/flavor.ts')).toBe(true)
   })
 
+  it('has a driver for every driven row and a driven row for every driver, and no row is both idle and driven', () => {
+    for (const [tag, row] of Object.entries(STREAM_SLICES)) {
+      expect(Boolean(row.driven), `${tag}: driven and DRIVERS disagree`).toBe(tag in DRIVERS)
+      expect(row.idle && row.driven, `${tag}: a row with a caller to drive is not idle`).toBeFalsy()
+    }
+    for (const tag of Object.keys(DRIVERS)) expect(STREAM_SLICES[tag], `${tag}: a driver with no row`).toBeDefined()
+  })
+
   it('has a well formed table: a real reason, real slices, a plausible age', () => {
     for (const [tag, row] of Object.entries(STREAM_SLICES)) {
+      if (row.year !== undefined) {
+        expect(Number.isInteger(row.year), `${tag}: year`).toBe(true)
+        expect(row.year).toBeGreaterThanOrEqual(0)
+      }
       expect(tag, tag).toMatch(/^[a-z][a-z0-9._-]{0,31}$/)
       expect(row.why.length, `${tag}: why`).toBeGreaterThanOrEqual(12)
       for (const s of row.slices) expect(SLICES, `${tag}: ${s}`).toContain(s)

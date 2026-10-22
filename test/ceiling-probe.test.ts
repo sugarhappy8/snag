@@ -18,13 +18,20 @@ import { ROOT } from './scan-kit'
 const listIds = (): string[] => (JSON.parse(readFileSync(join(ROOT, 'test', 'ceiling-list.json'), 'utf8')) as { id: string }[]).map((c) => c.id)
 const deep = process.env.CEILING_PROBE === 'deep'
 const scales = deep ? SCALES.deep : SCALES.light
+// A row at 1000 times books half a million accounts and flow keys (ledger-caps takes about 9 s on its own), more than vitest's
+// default 15 s, so a deep run gives each case room and a pull request keeps a generous one for a slow runner.
+const TIMEOUT = deep ? 300_000 : 60_000
 
 describe('ceiling probes: the real rows', () => {
   const live = CEILING_PROBES.filter((p) => !isExempt(p))
 
-  it.each(live.map((p) => [p.id, p] as const))('%s holds at every scale', (_id, probe) => {
-    expect(probeFailures(probe, scales)).toEqual([])
-  })
+  it.each(live.map((p) => [p.id, p] as const))(
+    '%s holds at every scale',
+    (_id, probe) => {
+      expect(probeFailures(probe, scales)).toEqual([])
+    },
+    TIMEOUT,
+  )
 
   it('has a row for every id of test/ceiling-list.json, none for an id it does not name, and few exemptions', () => {
     expect(guardProblems(CEILING_PROBES, listIds())).toEqual([])
@@ -34,26 +41,30 @@ describe('ceiling probes: the real rows', () => {
     expect(CEILING_PROBES.filter(isExempt).length).toBeLessThanOrEqual(MAX_EXEMPT)
   })
 
-  it('measures something at every scale: a positive, finite value against a positive, finite limit', () => {
-    for (const p of live) {
-      for (const scale of scales) {
-        const r = p.run(scale)
-        expect(Number.isFinite(r.value) && r.value > 0, `${p.id} at ${scale}: value ${r.value}`).toBe(true)
-        expect(Number.isFinite(r.limit) && r.limit > 0, `${p.id} at ${scale}: limit ${r.limit}`).toBe(true)
+  it(
+    'measures something at every scale: a positive, finite value against a positive, finite limit',
+    () => {
+      for (const p of live) {
+        for (const scale of scales) {
+          const r = p.run(scale)
+          expect(Number.isFinite(r.value) && r.value > 0, `${p.id} at ${scale}: value ${r.value}`).toBe(true)
+          expect(Number.isFinite(r.limit) && r.limit > 0, `${p.id} at ${scale}: limit ${r.limit}`).toBe(true)
+        }
       }
-    }
-  })
+    },
+    TIMEOUT,
+  )
 
   it('presses on the cap where the scaled input must reach it: these rows touch their limit at 100 times', () => {
     // If a probe stopped scaling its input, its value would fall back to the 1x value and the row would pass for no reason.
-    const touching = ['pay-scale', 'olympic-bonus', 'studio-tail', 'podcast-audience', 'fame-ledger']
+    const touching = ['pay-scale', 'olympic-bonus', 'studio-tail', 'podcast-audience', 'fame-ledger', 'mint-caps', 'burn-caps', 'ledger-caps', 'pool-spreads', 'bond-par', 'transaction-levy', 'lod-caps']
     for (const id of touching) {
       const p = CEILING_PROBES.find((x) => x.id === id)
       expect(p, id).toBeDefined()
       const r = p!.run(100)
       expect(r.value, `${id}: ${r.value} against ${r.limit}`).toBeGreaterThanOrEqual(r.limit * 0.999)
     }
-  })
+  }, TIMEOUT)
 
   it('moves the 1x value of a scaled row off the 100x one for the rows whose input is a country wealth', () => {
     // pay-scale at 1x is the tightest real country, well under the 1.6 clamp; at 100x every rich country sits on it.
@@ -65,7 +76,7 @@ describe('ceiling probes: the real rows', () => {
     const before = COUNTRIES.map((c) => c.wealth)
     for (const p of CEILING_PROBES.filter((x) => !isExempt(x))) p.run(100)
     expect(COUNTRIES.map((c) => c.wealth)).toEqual(before)
-  })
+  }, TIMEOUT)
 
   it('scales every country wealth for the call and restores it even when the call throws', () => {
     const before = COUNTRIES.map((c) => c.wealth)
