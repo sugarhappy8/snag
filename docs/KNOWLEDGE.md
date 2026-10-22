@@ -4,7 +4,7 @@ Since R3 (v5.1.0) the game stops handing the player every hidden number. A marke
 odds of a vote, what a private company is worth: each is something the player estimates, and a better source narrows the estimate for
 a price. This page is the model, the rules, the vocabulary and the recipes for the next author. The code is `src/game/knowledge/`
 (a layer 3 domain with one door, `knowledge/contract.ts`), the Settings card is `src/ui/components/InfoSettings.tsx`, and the guards
-are listed at the end.
+are listed at the end. The screens that call it, which numbers they fog and which stay exact are in `docs/FOG.md`.
 
 Three promises hold everywhere, and the tests check each one.
 
