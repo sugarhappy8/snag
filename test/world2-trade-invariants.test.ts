@@ -5,6 +5,7 @@ import { normalizeCountry, storeEconomy, type CountryEconomy } from '../src/game
 import { countryTrade, normalizeTrade, sectorTrade, TRADE_INPUTS } from '../src/game/economy/trade'
 import { economyMenu } from '../src/game/economy/menu'
 import { HISTORY_YEARS } from '../src/game/economy/focus'
+import { SAVE_SCHEMA } from '../src/game/core'
 import { createPerson } from '../src/game/people'
 import { LOCAL_SNAPSHOT_BUDGET, loadSnapshot, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot, timeStops, type SnapshotBackend } from '../src/game/save'
 import { TIME_MACHINE_STOPS } from '../src/game/timeMachine'
@@ -15,6 +16,8 @@ const validCountries = new Set(COUNTRIES.map(c => c.id))
 
 function fixture(): GameState {
   const g = makeTestGame(437, { age: 30, money: 123456 })
+  // Every game the engine makes says its schema; a snapshot restores through migrateSave (R2-S9), which stamps one that does not.
+  g.schemaVersion = SAVE_SCHEMA
   g.lifeId = 'world2-trade-invariants'
   g.year = 2030
   g.log = [{ age: 30, year: 2030, entries: [] }]
