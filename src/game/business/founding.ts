@@ -16,7 +16,7 @@ import { outcomeTag } from '../timeMachine'
 import { becomeCeo, installManager, managerCandidate } from './career'
 import { industryHint, localEcon, openFractionFor, planFor, maxProduction, simulateYear, startupCost, valuationOf, refreshValue, niceAmount } from './economy'
 import { industryEraBlock, marketDef } from './competition-data'
-import { eraNote } from './era'
+import { eraFits, eraNote } from './era'
 import { refreshTechValue } from './deeptech-core'
 import { IPO_PROFIT } from './exit'
 import { DEFAULT_SHARES, MAX_SHARES, MIN_SHARES, retailVerdict, shareCountText } from './share-structure'
@@ -40,6 +40,20 @@ import { aIndustry, aYearsOld, clampN, cleanName, industryNoun, money, num, pct,
 
 // ---------------------------------------------------------------------------
 // Requirements
+
+/**
+ * The trade's one-line pitch in the Name popup, in the words of this country and year: a cafe before home
+ * computers is only coffee, a grocery before 1955 only sells food, and the cybersecurity pitch about hackers
+ * becomes the antivirus-floppy pitch until the internet has reached the country (the same detector as the
+ * anachronism lint decides, so no other country or year changes).
+ */
+export function industryPitch(g: GameState, industry: Industry): string {
+  const def = industryDef(industry)
+  if (industry === 'cafe' && (!hasTech(g, 'homeComputer') || g.year < 1990)) return 'Coffee, pastries and customers who never leave.'
+  if (industry === 'grocery' && g.year < 1955) return 'Everybody eats. Margins thinner than the paper bags.'
+  if (industry === 'cybersecurity' && !eraFits(g, g.character.countryId, def.blurb)) return 'Stop the viruses before they stop your clients. Paranoia as a service.'
+  return def.blurb
+}
 
 /** Why the player can't run this industry here (not counting money), or null. */
 export function industryProblem(g: GameState, industry: Industry): string | null {
@@ -900,7 +914,7 @@ function industryRow(industry: Industry): MenuAction {
       scriptInput(g, {
         title: `Name Your ${def.label}`,
         emoji: def.emoji,
-        text: `${industry === 'cafe' && (!hasTech(g, 'homeComputer') || g.year < 1990) ? 'Coffee, pastries and customers who never leave.' : industry === 'grocery' && g.year < 1955 ? 'Everybody eats. Margins thinner than the paper bags.' : def.blurb} What will you call it?`,
+        text: `${industryPitch(g, industry)} What will you call it?`,
         input: 'text',
         placeholder: defaultName(g, industry),
         defaultValue: defaultName(g, industry),
