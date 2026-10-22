@@ -7,6 +7,7 @@ import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/type
 import { rovingMove, rovingStop } from '../a11y/roving'
 import { LazyChartView, LazySparkline } from '../charts/lazy'
 import { getApp, runMenuAction } from '../store'
+import { ConfChip } from './ConfChip'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
 import {
   confirmText,
@@ -14,6 +15,7 @@ import {
   infoText,
   isMultiline,
   nodeBadge,
+  nodeConf,
   nodeDisabled,
   nodeHint,
   nodeSubtitle,
@@ -369,10 +371,12 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
         continue
       }
       if (!text) continue
+      const sure = nodeConf(node, g)
       current.rows.push(
         <div className={node.emoji === HINT_EMOJI ? 'menu-info menu-info-hint' : 'menu-info'} key={key}>
           {node.emoji ? <span className="menu-info-emoji">{node.emoji}</span> : null}
           <span>{text}</span>
+          {sure ? <ConfChip conf={sure.conf} asOf={sure.asOf} /> : null}
         </div>,
       )
       continue
@@ -449,6 +453,7 @@ export function MenuRow({
   const hint = nodeHint(node, g)
   const badge = reason ? null : nodeBadge(node, g)
   const trend = nodeSpark(node, g)
+  const sure = nodeConf(node, g)
   const cls = ['menu-row', reason ? 'is-disabled' : '', hint ? 'has-hint' : ''].filter(Boolean).join(' ')
   return (
     <button
@@ -469,6 +474,7 @@ export function MenuRow({
         <span className="menu-row-label">{node.label}</span>
         {badge ? <span className="menu-row-badge">{badge}</span> : null}
         {subtitle ? <span className="menu-row-sub">{subtitle}</span> : null}
+        {sure ? <ConfChip conf={sure.conf} asOf={sure.asOf} /> : null}
         {hint ? <TalentHint text={hint} className="menu-row-hint" /> : null}
       </span>
       <span className="menu-row-end" aria-hidden>
