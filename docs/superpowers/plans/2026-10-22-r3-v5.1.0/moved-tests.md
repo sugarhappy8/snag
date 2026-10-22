@@ -167,6 +167,12 @@ No fixture moved (the same checks as fix 1: no golden digest, no `kernel-parity`
 | test/effort-ops.test.ts | who is working > a lean owner who is worn out takes a year longer at a one-year program, and the start and the screen say the same (new) | (the assertions of the old test: the quote says 2 years, `startOps` stores 2, the row says "2 years") | the same assertions, for a lean owner whose household fatigue is 80 (a pace of 0.77, 1.297 years: a slowdown over the quarter of a year, so the second year stays) | keeps the old test's whole claim (the quote, the start and the screen agree on a longer program) on the case where the new rule still adds the year |
 | test/effort-task.test.ts | limits > holds every number of the table | 31 constants | 32: `YEARS_GRACE` is 0.25 | R3 engine fix: the grace of the years rounding is a constant of limits.ts, with its row in docs/EFFORT.md section 6 (`effort-api` fails on a constant without one) |
 
+## quiet fix (r3-fix-quiet: the audit fee, the year close, the popup count)
+
+| file | test | before | after | why |
+|---|---|---|---|---|
+| test/fog-valuation.test.ts | the kind `val` > finds the truth of a private company, and none for a listed one or a stranger | `kind.scope(g, key)` equals `{ tier: 1, country: 'us', deal: 4_200_000 }` | it equals `{ tier: 1, country: 'us' }` | whole-diff review, finding 2: the audit of the player's own company was `max(8,000 x wealth, 2% of its valuation)`, so the fee grew with the company with no ceiling ($2B at a $100B valuation) while the analyst stayed at $30K. The scope names the country alone; the 2% of a deal stays in `priceOf` for a target the buyer does not own. A new case plays the audit at 1x, 100x and 10,000x the valuation, and the ceiling row `intel-price` probes the real `val` scope at 100x with a limit that does not grow with the scale |
+
 ## integration (rows added by the lead when a track merges into release/v5.1.0)
 
 | file | test | before | after | why |

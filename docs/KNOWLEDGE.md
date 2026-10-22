@@ -164,7 +164,9 @@ refused, so nothing averages the noise away, and a different source helps only t
 
 - **Price** is `round100(base x [1, 2.2, 4.5][tier - 1] x (1 + .25 (countries - 1)) x clamp(country wealth, .3, 1.5))`: the scope of the
   keys and the wealth of the country read, never the buyer's cash. A hundred times the money pays the same fee. A key kind says its scope
-  (tier 1 a business or a street, 2 a country, 3 the world, how many countries, the deal size for diligence).
+  (tier 1 a business or a street, 2 a country, 3 the world, how many countries, the deal size for diligence). The deal size is for a
+  target the buyer does not own: the audit of the player's own company (`val` keys) names its country and no size, so it costs
+  8,000 x the country's wealth at a $4M valuation and at $4T alike.
 - **Sharpness** of a reading is `base x (1.5 - quality) x (spend / ref)^-.35`, times .8 on a talent key, never below the floor.
 - **`buyIntel(g, src, keys)`** refuses, writing nothing, in this order: Exact mode (nothing to buy), the dead, a source that is not for
   sale, the era (a research trade needs its decade, a hacker needs the internet), a key with no provider truth, prison for an illegal

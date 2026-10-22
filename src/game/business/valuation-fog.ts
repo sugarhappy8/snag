@@ -15,7 +15,8 @@
 // reading is a hashed draw (knowledge/normal.ts), and a bought one is the record Knowledge keeps in flags.know.
 //
 // The kind `val` is registered below with the truth of every private company of the player, which is what makes buyIntel and Look closer
-// work for these keys. The scope of a read is the company's country and, for an audit, its size (Knowledge prices it: never the buyer's cash).
+// work for these keys. The scope of a read is the company's country alone (Knowledge prices it: never the buyer's cash, and never the size
+// of the company, so a hundred times the valuation pays the same fee).
 import { hashKey } from '../kernel/streams'
 import { know, lookCloser, registerKeyKind, wordsFor } from '../knowledge/contract'
 import type { Asset, GameState, MenuGroup, MenuNode } from '../types'
@@ -71,7 +72,10 @@ registerKeyKind({
   },
   scope: (g, key) => {
     const p = privateOf(g, key)
-    return p ? { tier: 1, country: p.b.countryId, deal: Math.max(0, p.b.valuation) } : { tier: 1 }
+    // The country and nothing about the size: an audit of the player's own company is 8,000 x the wealth of its country at $4M and at $4T alike.
+    // The 2% of a deal in Knowledge's diligence rule is the cost of looking at someone else's target; here the object is the player's own
+    // asset, so its worth would make the fee a share of the buyer's wealth (the owner rule: intel never costs by wealth).
+    return p ? { tier: 1, country: p.b.countryId } : { tier: 1 }
   },
 })
 
