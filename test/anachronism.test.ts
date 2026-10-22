@@ -8,11 +8,13 @@
 import { describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
+import { scriptChoice } from '../src/game/core'
 import { createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
 import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
+import { hire } from '../src/game/special/common'
 import {
   anachronismsIn,
   byEra,
@@ -26,7 +28,7 @@ import {
   reachVerb,
   screenThing,
 } from '../src/game/events/era'
-import type { AnnualReportData, GameState, MenuAction, MenuGroup, MenuNode, MinigameModal, ModalItem } from '../src/game/types'
+import type { AnnualReportData, GameState, Json, MenuAction, MenuGroup, MenuNode, MinigameModal, ModalItem } from '../src/game/types'
 import { makeTestGame } from './helpers'
 import { mergedSlices, ownedHere, readSlice, recordSlice, seedSlice } from './shard-kit'
 
@@ -332,6 +334,73 @@ if (ownedHere('anachronism:units', slice)) describe('era vocabulary', () => {
     g.year = PRESENT_YEAR
     expect(eraLines(g, lines)).toEqual(['You checked your phone.', 'You watched the news.', 'You went to bed.'])
     expect(byEra(g, [['smartphone', 'app'], ['tv', 'set']], 'none')).toBe('app')
+  })
+})
+
+// Politicians speak to the public through what their year carries: television, then the radio, else the press and the crowd.
+// The lint found a 1945 Brazilian debate "on live TV" and a "televised speech" once the text draws left g.rng; the lines were
+// always ungated (the old draws never reached them), so this block builds the situation instead of searching for a life.
+if (ownedHere('anachronism:units', slice)) describe('political broadcasts', () => {
+  const PER_YEAR = 24
+
+  /** A mayor in `year` and `countryId`; the life id gives each life its own text draws, the spread seed its own rolls. */
+  function mayor(n: number, year: number, countryId: string): GameState {
+    const g = makeTestGame(n * 104729, { age: 45, countryId, stats: { happiness: 70, health: 90, smarts: 100, looks: 70 } })
+    g.year = year
+    g.lifeId = `political-air-${year}-${countryId}-${n}`
+    hire(g, { defId: 'politician', title: 'Mayor', company: 'City Hall', salary: 40_000, data: { office: 'school' } })
+    return g
+  }
+
+  /** Answers a scripted popup the way the menu would: queue it, take it back and run its script. */
+  function answer(g: GameState, scriptId: string, choice: string, data?: Json): void {
+    scriptChoice(g, scriptId, 'Test', 'Test', [{ id: choice, label: choice }], { data })
+    const m = g.queue.pop()!
+    runScript(g, scriptId, choice, m.kind === 'choice' ? m.data : undefined, m)
+  }
+
+  /** Everything the player read after the script ran: popups and the new log lines. */
+  function read(g: GameState): string[] {
+    const popups = g.queue.flatMap((m) => ('text' in m && m.text ? [m.text] : []))
+    return [...popups, ...g.log.flatMap((y) => y.entries.map((e) => e.text))]
+  }
+
+  const campaign: Json = { office: 'school', party: 'independent', issue: 'economy', budget: 1000, poll: 50, round: 1, opponent: 'Pat Rivers', oppParty: 'centrist', incumbentRun: false }
+
+  /** Plays one life's worth of broadcasts: a debate, four speeches (the fourth is turned away), a pardon and an apology. */
+  function broadcasts(n: number, year: number, countryId: string): string[] {
+    const g = mayor(n, year, countryId)
+    const out: string[] = []
+    const play = (scriptId: string, choice: string, data?: Json): void => {
+      answer(g, scriptId, choice, data)
+      out.push(...read(g))
+      g.queue = []
+    }
+    play('special.pol.trail', 'debate', campaign)
+    for (const issue of ['jobs', 'economy', 'taxes', 'housing']) play('special.pol.speech', issue)
+    play('special.pol.order', 'pardon')
+    play('special.pol.scandal', 'apologize', { what: 'a scandal' })
+    return out
+  }
+
+  it('never mention television before it exists where the player lives', () => {
+    for (const [year, countryId] of [[1905, 'us'], [1935, 'us'], [1945, 'br']] as const) {
+      for (let n = 1; n <= PER_YEAR; n++) {
+        for (const text of broadcasts(n, year, countryId)) expect(anachronismsIn(text, year, [countryId]), `${year} ${countryId}: ${text}`).toEqual([])
+      }
+    }
+  })
+
+  it('speak of the debate hall before radio, the radio before TV, and live TV once it exists', () => {
+    const all = (year: number, countryId: string): string => Array.from({ length: PER_YEAR }, (_, i) => broadcasts(i + 1, year, countryId).join('\n')).join('\n')
+    expect(all(1905, 'us')).toMatch(/in the debate hall/)
+    expect(all(1905, 'us')).toMatch(/I gave a public speech/)
+    expect(all(1935, 'us')).toMatch(/on the radio/)
+    expect(all(1945, 'br')).toMatch(/I gave a radio speech/)
+    const now = all(PRESENT_YEAR, 'us')
+    expect(now).toMatch(/on live TV/)
+    expect(now).toMatch(/I gave a televised speech/)
+    expect(now).toMatch(/changing the channel/)
   })
 })
 
