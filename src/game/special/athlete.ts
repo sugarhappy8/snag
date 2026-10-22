@@ -605,7 +605,7 @@ const fanScript = defineScript('special.athlete.fans', (g, choice) => {
   } else if (choice === 'heckler') {
     p.respect = clamp100(p.respect - 8)
     addFame(g, 1)
-    text = 'You roasted a heckler in the stands. The clip went viral, but the league fined you.'
+    text = hasTech(g, 'internet') ? 'You roasted a heckler in the stands. The clip went viral, but the league fined you.' : 'You roasted a heckler in the stands. The papers ran it the next morning, and the league fined you.'
   } else {
     p.respect = clamp100(p.respect - 4)
     text = 'You walked past your fans without stopping. A kid in your jersey started crying.'

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { anachronismsIn } from '../src/game/events/era'
 import { runScript } from '../src/game/scripts'
 import { specialCareersMenu, specialJobNodes, yearlySpecial } from '../src/game/special'
 import { hire, ownerKey } from '../src/game/special/common'
@@ -899,5 +900,29 @@ describe('review fixes: copy and contracts', () => {
     const tt = lines.find((l) => l.startsWith('Table Tennis'))
     expect(tt).toMatch(/age 21–22, 1 title$/)
     expect(lines.find((l) => l.startsWith('MMA'))).toMatch(/age 25–26/)
+  })
+})
+
+describe('athlete fans, by era', () => {
+  /** The Fans notice after roasting a heckler as a pro athlete of `countryId` in `year`. */
+  function roast(year: number, countryId: string): string {
+    const g = game(30, { countryId })
+    g.year = year
+    hire(g, { defId: 'athlete', title: 'Basketball Player', company: 'Boston Clovers', salary: 2_000_000, data: { league: 'hoops', team: 'Boston Clovers', teamStrength: 70, position: 'Center', contractYears: 2, doping: false, injured: 0, practiced: [], standings: [], champion: null } })
+    run(g, 'athlete.fans', sportsJobNodes(g))
+    const seen = drain(g, (m) => (m.scriptId === 'special.athlete.fans' ? 'heckler' : undefined))
+    const fans = seen.find((m) => m.kind === 'notice' && m.title === 'Fans')
+    if (!fans || fans.kind !== 'notice') throw new Error('no Fans notice')
+    return fans.text
+  }
+
+  it('a roasted heckler goes viral only where the internet exists (found by the nightly anachronism lint)', () => {
+    const early = roast(1945, 'ng')
+    expect(early).toMatch(/roasted a heckler/)
+    expect(early).not.toMatch(/viral|clip/)
+    expect(anachronismsIn(early, 1945, ['ng'])).toEqual([])
+    const late = roast(2026, 'us')
+    expect(late).toMatch(/clip went viral/)
+    expect(anachronismsIn(late, 2026, ['us'])).toEqual([])
   })
 })
