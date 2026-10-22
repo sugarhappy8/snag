@@ -17,6 +17,7 @@ import {
   buildCard,
   foldLogEntries,
   groupOf,
+  headlineOf,
   moneyFacts,
   moneyLine,
   noticeWeight,
@@ -430,7 +431,7 @@ describe('the year card', () => {
     expect(card.v).toBe(1)
     expect(card.year).toBe(g.year)
     expect(card.age).toBe(g.character.age)
-    expect(card.head).toBe('Just Married!: You said yes.')
+    expect(card.head).toBe('You said yes.')
     expect(card.stories).toEqual(['Sold it: It went for $5M.', 'Promotion: A raise.', 'Debt: Paid.'])
     expect(card.world).toBe('1999: Something happened far away.')
     expect(card.money).toBe(moneyLine(moneyFacts(g)!))
@@ -463,7 +464,7 @@ describe('the year card', () => {
     const g = life()
     delete g.flags.lifeSeries
     const card = buildCard(g, [], [S('a')], [])
-    expect(card.head).toBe('Story a: Text of a.')
+    expect(card.head).toBe('Text of a.')
     expect(card.stories).toEqual([])
     expect('people' in card).toBe(false)
     expect('world' in card).toBe(false)
@@ -535,6 +536,85 @@ describe('the year card', () => {
     g.year = 2005
     expect(moneyFacts(g)).toBeNull()
     expect('money' in buildCard(g, [], [S('a')], [])).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe('the headline: one plain line, the story itself', () => {
+  const YEAR = 2027
+  /** The text the milestones popup writes (business/milestones.ts announce): the year, a line, then one line for each milestone. */
+  const MILESTONES = `${YEAR}: A big day at the office.\n\u{1F4B0} Harbor Fashion: $1M in yearly sales`
+
+  it('reads the Milestones popup as its story: no title, no colon, no year of the card, no emoji', () => {
+    const g = life(YEAR)
+    const st = storyOf(N('m', { title: 'Milestones!', s: 'business', tone: 'good', text: MILESTONES }))
+    const want = 'A big day at the office. Harbor Fashion: $1M in yearly sales'
+    expect(headlineOf(st, YEAR)).toBe(want)
+    // As a kept popup and as a folded one, and through the planner the close uses.
+    expect(buildCard(g, [st], [], []).head).toBe(want)
+    expect(buildCard(g, [], [st], []).head).toBe(want)
+    for (const w of [0, 2] as const) {
+      const popup = N('m', { title: 'Milestones!', s: 'business', tone: 'good', text: MILESTONES, w })
+      const plan = planNotices(g, [popup])
+      const kept = plan.keep.has('m') ? [storyOf(popup)] : []
+      expect(buildCard(g, kept, plan.merged, []).head, `weight ${w}`).toBe(want)
+    }
+  })
+
+  it('never leaks "Title:" or "!:" into the headline, and keeps it one line of at most 90 characters', () => {
+    const g = life(YEAR)
+    const titles = ['Milestones!', 'Just Married!', 'You Won!!', 'Heads Up! Wait', 'Promotion', 'Big News', `T ${'word '.repeat(40)}`]
+    const texts = [MILESTONES, 'You said yes.', '', `${YEAR}:   ${'word '.repeat(60)}`, '\u{1F389} It happened.\n\nTwice.', `${YEAR}: `, `   ${YEAR}:   ${YEAR} sales rose.`]
+    let heads = 0
+    for (const title of titles) {
+      for (const text of texts) {
+        const st = storyOf(N('x', { title, text, s: 'business' }))
+        for (const card of [buildCard(g, [st], [], []), buildCard(g, [], [st], [])]) {
+          const why = `${JSON.stringify(title.slice(0, 20))} ${JSON.stringify(text.slice(0, 20))}`
+          expect(card.head, why).not.toContain(`${title}:`)
+          expect(card.head, why).not.toContain(`${st.title}:`)
+          expect(card.head, why).not.toMatch(/!:/)
+          expect(card.head, why).not.toMatch(/!\s*$/)
+          expect(card.head, why).not.toMatch(new RegExp(`^${YEAR}\\s*:`))
+          expect(card.head, why).not.toMatch(/[\n\p{Extended_Pictographic}]/u)
+          expect(card.head.length, why).toBeGreaterThan(0)
+          expect(card.head.length, why).toBeLessThanOrEqual(YEAR_LIMITS.head)
+          heads++
+        }
+      }
+    }
+    expect(heads).toBe(titles.length * texts.length * 2)
+  })
+
+  it('says a title alone without its exclamation mark, and the year of another year as it is', () => {
+    const g = life(YEAR)
+    expect(buildCard(g, [], [storyOf(N('a', { title: 'Just Married!', text: '' }))], []).head).toBe('Just Married')
+    expect(headlineOf(storyOf(N('a', { title: 'News', text: '1999: Something happened far away.' })), YEAR)).toBe('1999: Something happened far away.')
+    expect(headlineOf(storyOf(N('a', { title: 'News', text: `${YEAR} sales rose.` })), YEAR)).toBe(`${YEAR} sales rose.`)
+  })
+
+  it('tells a merged story by its own title, with the total as a second sentence', () => {
+    const g = life(YEAR)
+    const full = [N('k1', { w: 3 }), N('k2', { w: 3 }), N('k3', { w: 3 })]
+    const plan = planNotices(g, [...full, N('a', { title: 'Kindness!', s: 'events', w: 1, a: 100 }), N('b', { title: 'Kindness!', s: 'events', w: 1, a: 1_200_250 })])
+    expect(plan.merged).toHaveLength(1)
+    expect(buildCard(g, [], plan.merged, []).head).toBe(`Kindness, 2 times. ${shortMoney(1_200_350)} in all.`)
+    const loans = planNotices(g, [...full, ...[1, 2].map((i) => N(`l${i}`, { title: 'Emergency Loan', s: 'business' }))])
+    expect(buildCard(g, [], loans.merged, []).head).toBe('2 companies took emergency loans')
+  })
+
+  it('does not count the headline again as a line of a group', () => {
+    const g = life(YEAR)
+    const st = storyOf(N('a', { title: 'Milestones!', s: 'business', text: `${YEAR}: Sales passed the mark.` }))
+    const card = buildCard(g, [st], [], [L('x', 'Sales passed the mark.', { s: 'business', w: 2 }), L('y', 'I walked the dog.', { s: 'events', w: 0 })])
+    expect(card.head).toBe('Sales passed the mark.')
+    expect(card.groups).toEqual([{ k: 'life', n: 1, lines: ['I walked the dog.'] }])
+  })
+
+  it('leaves the story lines as they were: "title: text" is still how a story is listed', () => {
+    const st = storyOf(N('a', { title: 'Promotion', text: 'A raise.' }))
+    expect(storyLine(st)).toBe('Promotion: A raise.')
+    expect(headlineOf(st, YEAR)).toBe('A raise.')
   })
 })
 

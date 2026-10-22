@@ -175,6 +175,10 @@ export function GameScreen({ initialSheet }: GameScreenProps) {
     setSheet({ kind: target.sheet, reopen: target })
   }
 
+  // The year card of a year whose popup has been shown ten times (R3-Q6). It is a block of the feed, right above the newest year, and goes
+  // with the year: the feed scrolls with it, so it never shares the screen's height with the log (LifeLog.tsx, the lead slot).
+  const yearCard = <YearCardInline card={inlineCard(g.flags.yearBook, g.year)} />
+
   const kind = sheet?.kind ?? null
   const reopen = sheet?.reopen
   const sheetKey = `${kind}:${sheet?.nonce ?? 0}`
@@ -195,9 +199,7 @@ export function GameScreen({ initialSheet }: GameScreenProps) {
         </div>
       ) : (
         <>
-          {/* The year card of a year whose popup has been shown ten times (R3-Q6): above the log, gone with the year. */}
-          <YearCardInline card={inlineCard(g.flags.yearBook, g.year)} />
-          <LifeLog key={g.lifeId} log={g.log} reserveBottom={target !== null || showTimeMachine} />
+          <LifeLog key={g.lifeId} log={g.log} reserveBottom={target !== null || showTimeMachine} lead={yearCard} leadKey={g.year} />
           <div className={showTimeMachine ? 'return-dock has-tm' : 'return-dock'}>
             {target ? <ReturnChip key={`${target.sheet}:${target.personId ?? ''}`} target={target} onReturn={goBackThere} onDismiss={clearReturnPoint} /> : null}
             {showTimeMachine ? <TimeMachineButton g={g} onOpen={() => setTimeMachineOpen(true)} /> : null}

@@ -392,7 +392,7 @@ describe('the card', () => {
     expect(last.modal.s).toBeUndefined()
     expect(last.card.year).toBe(g.year)
     expect(last.card.age).toBe(g.character.age)
-    expect(last.card.head).toContain('Big News')
+    expect(last.card.head).toBe('It happened.')
     expect(cardLines(last.card)).toBeLessThanOrEqual(YEAR_LIMITS.lines)
     expect(g.queue.filter((m) => m.kind === 'notice' && m.digest)).toHaveLength(1)
   })
@@ -468,7 +468,8 @@ describe('the card', () => {
     expect(g.queue).toEqual([])
     const stored = readYearBook(g).cards[0]!
     expect(stored.inline).toBe(true)
-    expect(JSON.stringify(stored)).toContain('Small Gift')
+    expect(stored.head).toBe('A friend sent a gift.')
+    expect(JSON.stringify(stored)).toContain('A friend sent a gift.')
   })
 
   it('the money line is the books: cash from the player account, and the card line is the plan line', () => {
