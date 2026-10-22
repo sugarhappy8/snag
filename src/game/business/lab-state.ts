@@ -6,6 +6,8 @@
 // A stored lab is never changed in place. Readers call readLab(), which returns a shared, frozen,
 // normalized copy cached by the identity of the stored object. Writers take draftLab() (a mutable copy),
 // change it and hand it to saveLab(), which stores a NEW object, so a cached read can never go stale.
+import { normalizeFx } from '../effort/fx'
+import type { Fx } from '../effort/types'
 import type { Json } from '../types'
 import { LAB_FADE, LAB_LEVEL_MAX, LAB_WIN_DECAY, labTierOf, OPS_PROGRAMS, OPS_TIER, opsProgram, RUNG_GAIN, TEAM_STEP, type OpsProgram } from './lab-data'
 import type { FieldMarket, Shield } from './product-market'
@@ -40,6 +42,12 @@ export interface LabProgram {
   price: number
   /** The research grant it will pay when the work is done, win or flop (fixed when it starts). */
   grant: number
+  /**
+   * The program's own record of its effort (effort/fx.ts), when it keeps one: nine numbers, each bounded, read through `normalizeFx`
+   * (a value that is not a record is dropped). Optional and never written by default, so a lab that played at the default actor
+   * saves what v5.0.0 saved; a program that carries one is booked against its stamp (a year already stepped is a replay).
+   */
+  fx?: Fx
 }
 
 export interface LabPatent {
@@ -136,7 +144,7 @@ function readProgram(v: Json): LabProgram | null {
   const started = yearOf(x.started)
   if (Number.isNaN(started)) return null
   const years = Math.round(clampN(num(x.years, 1), 1, 4))
-  return {
+  const program: LabProgram = {
     id: def.id,
     started,
     years,
@@ -145,6 +153,9 @@ function readProgram(v: Json): LabProgram | null {
     price: dollarsOf(x.price),
     grant: dollarsOf(x.grant),
   }
+  // The effort record is kept only when the stored one is a record; whatever is in it is cut to its caps.
+  if (rec(x.fx)) program.fx = normalizeFx(x.fx)
+  return program
 }
 
 function readPatent(v: Json): LabPatent | null {

@@ -6,19 +6,24 @@
 // g.rng, and a year booked is never booked again (`lab.booked`).
 import { firmCash } from '../cash'
 import { log, notice } from '../core'
+import { quote } from '../effort/engine'
+import { causeOf } from '../effort/step'
+import type { Outcome, StepResult } from '../effort/types'
+import { causeLine, payoffLine } from '../effort/why'
 import type { Reason } from '../kernel/reasons'
-import { chance } from '../rng'
+import { rand } from '../rng'
 import type { Asset, GameState } from '../types'
 import { boardAllows } from './board'
 import { marketCtxFor } from './economy'
 import { manageBlock } from './gate'
 import { heavyEligible } from './heavy-rd'
-import { BOOK_FADE, labCreditRate, labGrantAmount, labTierOf, LAB_CREDIT_CAP, LAB_GRANT_GAP, LAB_GRANT_SITES, LICENSE_X, opsProgram, ROYALTY_CAP_X } from './lab-data'
-import { licenseBlock, opsBlock, opsOdds, opsPrice, opsValue, opsYears, patentBlock, patentTerms, patentValue, teamBlock, teamFee, teamPay, teamValue } from './lab-rules'
+import { BOOK_FADE, labCreditRate, labGrantAmount, labTierOf, LAB_CREDIT_CAP, LAB_GRANT_GAP, LAB_GRANT_SITES, LICENSE_X, opsProgram, ROYALTY_CAP_X, type OpsProgram } from './lab-data'
+import { licenseBlock, opsBlock, opsPrice, opsSetup, opsValue, patentBlock, patentTerms, patentValue, teamBlock, teamFee, teamPay, teamValue } from './lab-rules'
 import { applyWin, draftLab, LAB_LIMITS, readLab, saveLab, type LabPatent, type LabProgram, type LabRow, type LabState } from './lab-state'
 import { LAB_LABEL, LAB_LOG, LAB_SAY } from './lab-text'
 import { fieldFor } from './product-market'
 import { rdProjects } from './rd'
+import { bookResearch, type BookCtx } from './research-effort'
 import { bizOf, findBusiness, runsIt, totalOutlets, type BizState } from './state'
 import { clampN, money, plural, rec } from './util'
 
@@ -131,9 +136,12 @@ export function startOps(g: GameState, a: Asset, b: BizState, id: string, pay: b
     notice(g, 'R&D', why ?? LAB_SAY.pickProgram(), { emoji: '\u{1F9EA}' })
     return null
   }
+  // One quote of the engine for the whole start: the years and the odds of this company's try, at the price it is about to pay.
+  const setup = opsSetup(g, b, def.rung, def.track, a, false)
+  const q = quote(g, setup.task, setup.input)
   const price = opsPrice(b, def.rung)
-  const years = opsYears(b, def.rung)
-  const odds = Math.round(opsOdds(g, b, def.rung) * 1000) / 1000
+  const years = q.years
+  const odds = Math.round(q.p * 1000) / 1000
   const d = draftLab(b)
   // One grant every few years, for a company still small enough to need it, paid when the work is done. Claimed now, so two starts can't both have one.
   let grant = 0
@@ -154,19 +162,43 @@ export function startOps(g: GameState, a: Asset, b: BizState, id: string, pay: b
 }
 
 /**
+ * Books a finished program through the engine (`step`, by way of the research seam): a failure banks know-how in the company's own map
+ * under the program's track, so the next try on that track is likelier (at most 15 points in all); a win banks none, and for the
+ * player's own run lifts their ambition a little. Only a company with an asset learns: an NPC company (`a` is null) books nothing and
+ * moves no state, so the NPC economy and the golden digests keep today's bytes. Draws nothing and moves no money; the caller made the
+ * roll (`u`, against `odds`) and says how it came out.
+ *
+ * Returns the words a failure adds to the results notice: the cause, read from the quote's own reasons, and what the failure taught.
+ * Empty for a win, for an NPC company and for a year already booked (a program whose `fx` was last stepped this year).
+ */
+function settleOps(g: GameState, a: Asset | null, b: BizState, def: OpsProgram, p: LabProgram, year: number, roll: { won: boolean; odds: number; u: number }): string {
+  if (a === null) return ''
+  const { task, input } = opsSetup(g, b, def.rung, def.track, a, false)
+  const margin = (roll.odds - roll.u) * 100
+  const outcome: Outcome = roll.won ? { kind: 'works', margin, cause: null, done: 1 } : { kind: 'fail', margin, cause: causeOf(quote(g, task, input).reasons), done: 1 }
+  const ctx: BookCtx = { year, k: 1 }
+  if (p.fx !== undefined) ctx.fx = p.fx
+  const result: StepResult | null = bookResearch(g, a, task, outcome, ctx)
+  if (roll.won || result === null || result.replay || outcome.cause === null) return ''
+  return ` ${causeLine(outcome.cause, LAB_LABEL.track[def.track])} ${payoffLine(task, outcome, result)}`
+}
+
+/**
  * Year end (economy.evolve through rd.ts advanceRd; `year` is the fiscal year just booked): every program
  * gets a year of work, and each one that is finished rolls once, in track order (cost, yield, quality),
- * the only draw of g.rng the lab makes. A win lifts the track's level; a flop loses the price and leaves
- * the program available. Win or flop, the grant the program earned is due with the next booking. A year
- * is stepped once (`stepped`), so replaying it changes nothing and draws nothing; a company with no lab
- * is left alone.
+ * the only draw of g.rng the lab makes. A win lifts the track's level; a flop loses the price, leaves the
+ * program available and teaches (settleOps): the owner's notice says what went wrong and what was learned.
+ * Win or flop, the grant the program earned is due with the next booking. A year is stepped once
+ * (`stepped`), so replaying it changes nothing and draws nothing; a company with no lab is left alone.
  */
 export function advanceLab(g: GameState, b: BizState, year: number): void {
   if (!b.lab || !heavyEligible(b)) return
   if (readLab(b).stepped >= year) return
   const d = draftLab(b)
   d.stepped = year
-  const name = g.assets.find((x) => (x.details as unknown) === b)?.name ?? 'The company'
+  const a = g.assets.find((x) => (x.details as unknown) === b) ?? null
+  const name = a?.name ?? 'The company'
+  const taught: string[] = []
   for (const p of d.programs) p.progress = Math.min(p.years, p.progress + 1)
   // The stored programs are already in track order (readLab sorts them), which is the order they roll.
   const finished = d.programs.filter((p) => p.progress >= p.years)
@@ -175,10 +207,18 @@ export function advanceLab(g: GameState, b: BizState, year: number): void {
     d.due.grant += p.grant
     const def = opsProgram(p.id)
     if (!def) continue
-    if (chance(g, clampN(p.odds, 0.02, 0.98))) {
+    // The roll is the game's own `chance`, with its draw kept to hand to the engine as the margin: `rand(g) < odds`, one draw.
+    const odds = clampN(p.odds, 0.02, 0.98)
+    const u = rand(g)
+    if (u < odds) {
       applyWin(d, def, year)
       log(g, LAB_LOG.worked(name, def.label), 'good')
-    } else log(g, LAB_LOG.failed(name, def.label), 'bad')
+      settleOps(g, a, b, def, p, year, { won: true, odds, u })
+    } else {
+      log(g, LAB_LOG.failed(name, def.label), 'bad')
+      const learned = settleOps(g, a, b, def, p, year, { won: false, odds, u })
+      if (learned !== '') taught.push(`${LAB_LOG.failed(name, def.label)}${learned}`)
+    }
   }
   // Patents: the book fades a tenth a year; one whose shield doesn't reach the new year is dropped (its family stays in `filed`).
   d.patents = d.patents.filter((p) => {
@@ -188,6 +228,7 @@ export function advanceLab(g: GameState, b: BizState, year: number): void {
   })
   for (const p of d.patents) p.book = Math.round(p.book * BOOK_FADE)
   saveLab(b, d)
+  if (taught.length > 0 && a !== null && runsIt(g, a) && g.character.alive) notice(g, `${name}: Operations Results`, taught.join('\n'), { emoji: '\u{1F4A5}', tone: 'bad' })
 }
 
 /**

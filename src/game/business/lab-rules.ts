@@ -3,19 +3,25 @@
 // (the hypothetical companies below are shallow copies that are thrown away). Prices are fixed per trade
 // and rung (rd.ts rdSiteScale): nothing here reads the company's cash, sales or valuation, except the
 // cash a program needs to start and the worth it is judged against.
-import type { GameState } from '../types'
+import { quote } from '../effort/engine'
+import { revealPolicyOf } from '../effort/hooks'
+import type { EffortInput, Quote, Reason, Task } from '../effort/types'
+import { oddsLine } from '../effort/why'
+import type { Asset, GameState } from '../types'
 import { patentLaw } from '../workshop/market'
 import { marketKey } from './competition-core'
 import { bizWorth, localEcon, marketCtxFor, type Worth } from './economy'
 import { eraFits } from './era'
 import { breakthroughByName } from './heavy-data'
 import { heavyEligible, readHeavy } from './heavy-rd'
-import { IP_SHARE, LAB_LEVEL_MAX, LAB_FADE, labTierOf, LICENSE_X, OPS_COOLDOWN, OPS_MAX_RUNG, OPS_PROGRAMS, OPS_TIER, opsProgram, PATENT_AGE, PATENT_FEE_X, ROYALTY_CAP_X, RUNG_PENALTY, RUNG_X, RUNG_YEARS, SHIELD, TEAM_CAP, TEAM_FEE_X, TEAM_MIN_YEARS, TEAM_PAY_X, type OpsProgram } from './lab-data'
+import { IP_SHARE, LAB_LEVEL_MAX, LAB_FADE, labTierOf, LICENSE_X, OPS_COOLDOWN, OPS_MAX_RUNG, OPS_PROGRAMS, opsProgram, PATENT_AGE, PATENT_FEE_X, ROYALTY_CAP_X, RUNG_X, SHIELD, TEAM_CAP, TEAM_FEE_X, TEAM_MIN_YEARS, TEAM_PAY_X, type OpsProgram } from './lab-data'
+import { OPS_NOMINAL_COST, opsField, opsTaskOf, opsTerms } from './lab-effort'
 import { draftLab, LAB_LIMITS, levelOf, opsEffectsOf, readLab, saveLab, shieldsOf, winLevel, type LabTrack } from './lab-state'
 import { LAB_LABEL, LAB_SAY } from './lab-text'
 import { fieldFor, fieldOf, infoOf, productPull, type FieldMarket } from './product-market'
 import { productIdeas } from './products'
-import { baseYears, bestRdIdea, DISCOUNT, HORIZON, launchP, pullValue, rdCost, rdProjects, rdReserve, rdSiteScale, RD_BASE, roundBudget } from './rd'
+import { baseYears, bestRdIdea, DISCOUNT, HORIZON, launchP, pullValue, rdCost, rdProjects, rdReserve, rdSiteScale, RD_BASE, researchState, roundBudget } from './rd'
+import { researchInputs } from './research-effort'
 import { MAX_STORED_PROJECTS, type BizState } from './state'
 import { clampN, money } from './util'
 
@@ -29,15 +35,75 @@ export function opsPrice(b: BizState, rung: 1 | 2 | 3): number {
   return roundBudget(opsBase(b) * RUNG_X[rung - 1])
 }
 
-/** Booked years a program takes (1 to 4): the trade's usual project time, longer for the higher rungs. */
-export function opsYears(b: BizState, rung: 1 | 2 | 3): number {
-  return clampN(Math.ceil(baseYears(b.industry) * RUNG_YEARS[rung - 1] - 1e-9), 1, 4)
+/**
+ * `quote` reads the game only for the player's own record (`who: 'you'`), and a read at the default actor has none to read, so the
+ * years of a trade need no game: this stands in for it where there is none.
+ */
+const NO_GAME = null as unknown as GameState
+
+/**
+ * The asset a company's state belongs to, or null: an NPC company, or a normalized copy made for display (which has no asset: the
+ * caller that has one passes it). A shallow copy (the hypothetical companies below) shares its outlets list with its company, so it
+ * is found too. Pure.
+ */
+export function labAsset(g: GameState, b: BizState): Asset | null {
+  for (const x of g.assets) {
+    const d = x.details as unknown as BizState
+    if (d === b || (Array.isArray(b.outlets) && d.outlets === b.outlets)) return x
+  }
+  return null
 }
 
-/** The chance a program works when it is done: the company's R&D skill, the tier's ease, less the rung's difficulty. */
-export function opsOdds(g: GameState, b: BizState, rung: 1 | 2 | 3): number {
-  const tier = labTierOf(b.industry)
-  return clampN(0.9 * launchP(g, b) + (tier ? OPS_TIER[tier].odds : 0) - RUNG_PENALTY[rung - 1], 0.15, 0.92)
+/**
+ * The Task and the input of one program for this company, ready for `quote`: a budget of one (the price is fixed), the crew, the
+ * company's know-how on this track (a failed try banks it) and the lines that say what the base is made of (skill, team). `track` is
+ * the program's track (absent: the lab-wide key, which holds no know-how); `a` is the company's asset when the caller has it (a menu
+ * reads a copy of the state and says which asset it is), without it the stored asset is looked up, and none means an NPC company:
+ * steady, nothing banked. Pure.
+ */
+export function opsSetup(g: GameState, b: BizState, rung: 1 | 2 | 3, track?: LabTrack, a?: Asset | null, terms = true): { task: Task; input: EffortInput } {
+  const s = researchState(g, b)
+  const task = opsTaskOf({ track, rung, tier: labTierOf(b.industry), cost: opsPrice(b, rung), baseYears: baseYears(b.industry), launch: launchP(g, b) })
+  const input = researchInputs(g, s, a === undefined ? labAsset(g, b) : a, opsField(track), 1)
+  if (terms) input.baseTerms = [...(input.baseTerms ?? []), ...opsTerms(s)]
+  return { task, input }
+}
+
+/** The Task a program is for the engine (cost the fixed price, odds and years calibrated to this company). Pure. */
+export function opsTask(g: GameState, b: BizState, rung: 1 | 2 | 3, track?: LabTrack, a?: Asset | null): Task {
+  return opsSetup(g, b, rung, track, a, false).task
+}
+
+/**
+ * What a program comes to for this company: the odds it works, the years, the price (`spend`) and the labelled reasons. Pure: it
+ * draws nothing and writes nothing.
+ */
+export function opsQuote(g: GameState, b: BizState, rung: 1 | 2 | 3, track?: LabTrack, a?: Asset | null): Quote {
+  const { task, input } = opsSetup(g, b, rung, track, a)
+  return quote(g, task, input)
+}
+
+/** The labelled lines of a program's odds ("skill +3, team +6, know-how +8"), in odds points. Pure. */
+export function opsWhy(g: GameState, b: BizState, rung: 1 | 2 | 3, track?: LabTrack, a?: Asset | null): readonly Reason[] {
+  return opsQuote(g, b, rung, track, a).reasons
+}
+
+/** The odds line a player reads ("Odds 46%: skill +3, team +6"): what the reveal policy lets them see. Pure. */
+export function opsWhyLine(g: GameState, b: BizState, rung: 1 | 2 | 3, track?: LabTrack, a?: Asset | null): string {
+  return oddsLine(opsQuote(g, b, rung, track, a), revealPolicyOf(g))
+}
+
+/** Booked years a program takes (1 to 4) at the default actor: the trade's usual project time, longer for the higher rungs. */
+export function opsYears(b: BizState, rung: 1 | 2 | 3): number {
+  // The odds the task is built with and its price play no part in the years; a placeholder stands in for both.
+  const task = opsTaskOf({ rung, tier: null, cost: OPS_NOMINAL_COST, baseYears: baseYears(b.industry), launch: 0.5 })
+  return quote(NO_GAME, task, { k: 1 }).years
+}
+
+/** The chance a program works when it is done: the company's R&D skill, the tier's ease, less the rung's difficulty (and what know-how adds). */
+export function opsOdds(g: GameState, b: BizState, rung: 1 | 2 | 3, track?: LabTrack, a?: Asset | null): number {
+  const { task, input } = opsSetup(g, b, rung, track, a, false)
+  return quote(g, task, input).p
 }
 
 /** The programs on offer now: product companies only, from each program's first year, as far up the rungs as the tier goes. */
@@ -97,10 +163,10 @@ function channelChange(track: LabTrack, now: { cost: number; capacity: number; d
  * ("0.04": unit costs 4% lower, output or demand 4% higher). `effect` is the number the screen shows after
  * "up to"; every later year's change fades 5% from it.
  */
-export function opsGain(g: GameState, b: BizState, id: string): { years: number; gain: number; effect: number } {
+export function opsGain(g: GameState, b: BizState, id: string, a?: Asset | null): { years: number; gain: number; effect: number } {
   const p = opsProgram(id)
   if (!p) return { years: 0, gain: 0, effect: 0 }
-  const years = opsYears(b, p.rung)
+  const years = opsQuote(g, b, p.rung, p.track, a).years
   const st = readLab(b)
   const fiscal = g.year + years - 1
   const first = fiscal + 1
@@ -118,10 +184,10 @@ export function opsGain(g: GameState, b: BizState, id: string): { years: number;
  * contribution only to the extent the company sells all it can make; demand is worth contribution.
  * Pure, and the same numbers the year rolls.
  */
-export function opsValue(g: GameState, b: BizState, id: string, w: Worth = bizWorth(g, b)): number {
+export function opsValue(g: GameState, b: BizState, id: string, w: Worth = bizWorth(g, b), a?: Asset | null): number {
   const p = opsProgram(id)
   if (!p) return 0
-  const { years, gain } = opsGain(g, b, id)
+  const { years, gain } = opsGain(g, b, id, a)
   const price = opsPrice(b, p.rung)
   const st = readLab(b)
   const bound = clampN((w.util - 0.85) * 6, 0, 1)
@@ -134,7 +200,7 @@ export function opsValue(g: GameState, b: BizState, id: string, w: Worth = bizWo
     const yearly = p.track === 'cost' ? (now.cost - then.cost) * w.cogs : p.track === 'yield' ? (then.capacity - now.capacity) * w.contrib * bound : (then.demand - now.demand) * w.contrib
     sum += Math.pow(DISCOUNT, years - 1 + t) * yearly
   }
-  const value = opsOdds(g, b, p.rung) * sum - price
+  const value = opsOdds(g, b, p.rung, p.track, a) * sum - price
   return Number.isFinite(value) ? value : -price
 }
 
@@ -184,7 +250,7 @@ export function teamBlock(g: GameState, b: BizState, kind: 'hire' | 'release'): 
  * for every second one), and `value` that gain less a year's pay. Pure: the extra scientist lives on a
  * throwaway copy of the company, and nothing here draws g.rng.
  */
-export function teamValue(g: GameState, b: BizState, w: Worth = bizWorth(g, b)): { gain: number; pay: number; value: number } {
+export function teamValue(g: GameState, b: BizState, w: Worth = bizWorth(g, b), a?: Asset | null): { gain: number; pay: number; value: number } {
   const pay = teamPay(b)
   if (!teamCap(b)) return { gain: 0, pay, value: -pay }
   const d = draftLab(b)
@@ -193,9 +259,11 @@ export function teamValue(g: GameState, b: BizState, w: Worth = bizWorth(g, b)):
   saveLab(more, d)
   const room = Math.max(0, b.cash - rdReserve(b))
   const ideas = productIdeas(g, b, 4)
+  // Both companies are the same one with and without the scientist: the same asset (its owner and its know-how) reads for both.
+  const asset = a === undefined ? labAsset(g, b) : a
   const best = (x: BizState): { ordinary: number; ops: number } => ({
     ordinary: bestRdIdea(g, x, ideas, room, w)?.value ?? 0,
-    ops: opsOffers(g, x).reduce((top, p) => Math.max(top, opsValue(g, x, p.id, w)), 0),
+    ops: opsOffers(g, x).reduce((top, p) => Math.max(top, opsValue(g, x, p.id, w, asset)), 0),
   })
   const now = best(b)
   const next = best(more)
