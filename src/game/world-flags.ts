@@ -168,6 +168,10 @@ export const WHOLE_FLAGS_SITES: Readonly<Record<string, number>> = {
   // The save diet's focus walk (A.K9) reads every flag but the economy's own for the countries a life is tied to.
   'src/game/economy/focus.ts':              1,
   'src/game/history/market-events.ts':      1,
+  // A failed year close puts back the flags the year events step wrote. Those are not a fixed set of keys (the event memory and
+  // history, the text memory and its family record, the milestones told), so the copy and the restore take the object whole:
+  // the type of the copy, its key, the clone, the restore into g.flags and the read of the copy (quiet fix 2).
+  'src/game/hubs/year-close.ts':            5,
   'src/game/life.ts':                       2,
   'src/game/nation/state.ts':               1,
   'src/game/save-schema.ts':                4,
