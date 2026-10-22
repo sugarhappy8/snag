@@ -1,5 +1,6 @@
 // Actions and menus for national strategy: market studies and country programs.
 // (Company research and patents moved to the Inventor's Workshop: src/game/workshop/.)
+import { firmCash } from '../cash'
 import { formatMoney, log, notice } from '../core'
 import type { Asset, GameState, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
@@ -11,9 +12,9 @@ import { industryNoun, money, pct } from './util'
 
 export function strategyCost(b: BizState): number { return Math.round(Math.max(5_000, (b.last?.revenue ?? 100_000) * .025)) }
 export function studyCost(b: BizState): number { return Math.round(Math.max(2_000, (b.last?.revenue ?? 100_000) * .003)) }
-function pay(b: BizState, cost: number): boolean {
+function pay(g: GameState, a: Asset, b: BizState, cost: number): boolean {
   if (!Number.isFinite(cost) || cost < 0 || b.cash < cost) return false
-  b.cash -= cost
+  firmCash(g, b, -cost, 'marketing', a.id)
   b.yearCosts += cost
   return true
 }
@@ -22,7 +23,7 @@ export function studyMarket(g: GameState, assetId: string, country: string): boo
   const a = findBusiness(g, assetId)
   if (!a || manageBlock(g, a) || !COUNTRIES.some(c => c.id === country)) return false
   const b = bizOf(g, a), x = expansionOf(b)
-  if (x.studies.some(s => s.country === country && s.year === g.year) || !pay(b, studyCost(b))) return false
+  if (x.studies.some(s => s.country === country && s.year === g.year) || !pay(g, a, b, studyCost(b))) return false
   x.studies = [...x.studies.filter(s => s.country !== country), { country, year: g.year }]
   saveExpansion(b, x)
   const n = nationalMarket(g, b.industry, country)
@@ -36,7 +37,7 @@ export function adoptStrategy(g: GameState, assetId: string, country: string, id
   if (!a || !s || manageBlock(g, a)) return false
   const b = bizOf(g, a), x = expansionOf(b)
   const active = x.strategies.filter(p => p.country === country && p.expires > g.year)
-  if (!b.outlets.some(o => o.countryId === country) || active.length >= 3 || active.some(p => p.id === id) || !pay(b, strategyCost(b))) return false
+  if (!b.outlets.some(o => o.countryId === country) || active.length >= 3 || active.some(p => p.id === id) || !pay(g, a, b, strategyCost(b))) return false
   x.strategies = [...x.strategies.filter(p => p.expires > g.year), { id, country, started: g.year, expires: g.year + s.term }]
   saveExpansion(b, x)
   log(g, `I started ${s.label.toLowerCase()} in ${getCountry(country).name} for ${a.name}.`)

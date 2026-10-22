@@ -15,6 +15,7 @@
 //  - vote(g, a, b, proposal) puts a proposal to it ({ kind: 'merge', merit, gain, ... });
 //    passOdds() is the exact chance it passes (for hints), needsVote()/boardAllows() gate actions;
 //  - setMandate(g, a, b, mandate, limits?) applies a mandate the group has decided.
+import { firmCash } from '../cash'
 import { addStat, count, formatMoney, log, notice, remember, scriptChoice } from '../core'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
@@ -163,7 +164,7 @@ function payYear(g: GameState, a: Asset, b: BizState, st: BoardState, s: Stateme
   const room = Math.max(0, payCap(b, st) - m.salary)
   const bonus = Math.round(Math.min(room, Math.max(0, s.net) * 0.02 * clampN(0.5 + score, 0.25, 1.5), Math.max(0, b.cash - reserveDollars(b, st) * 0.5)))
   if (bonus >= 500) {
-    b.cash -= bonus
+    firmCash(g, b, -bonus, 'payroll', a.id)
     b.yearCosts += bonus
     m.bonus = bonus
     log(g, `${managerName(m)} earned a ${money(bonus)} bonus at ${a.name}.`, 'neutral')
@@ -341,18 +342,18 @@ function rogueYear(g: GameState, a: Asset, b: BizState, st: BoardState): void {
   if (st.scheme) {
     const kind = st.scheme.kind
     const take = schemeCost(b, kind, m.salary)
-    b.cash -= take
+    firmCash(g, b, -take, 'crime.take', a.id)
     b.yearCosts += take
     st.scheme.taken += take
     if (!chance(g, watch) && g.year - st.scheme.since < 3) return
     const taken = st.scheme.taken
     const back = Math.round(taken * 0.3)
-    b.cash += back
+    firmCash(g, b, back, 'legal', a.id)
     b.yearIncome += back
     let fine = 0
     if (kind === 'books' && taken > 0) {
       fine = Math.round(taken * 0.5)
-      b.cash -= fine
+      firmCash(g, b, -fine, { reason: 'fine', country: b.countryId }, a.id)
       b.yearCosts += fine
       b.brand = clampN(b.brand - 8, 0, 100)
     }

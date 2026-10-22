@@ -39,10 +39,10 @@ export function applySec(st: SectorState, sec?: SecFx): SectorState {
  * One outcome on the company: cash through the two booking forms, brand, quality and morale added and
  * clamped, the pay level, and the moves fxValue prices (demand, capacity and unit cost). Returns the record.
  */
-export function applySectorFx(_g: GameState, b: BizState, st: SectorState, fx: BizFx, sec?: SecFx): SectorState {
+export function applySectorFx(g: GameState, b: BizState, st: SectorState, fx: BizFx, sec?: SecFx): SectorState {
   const cash = fx.cash ?? 0
-  if (cash > 0) bookIncome(b, cash)
-  else if (cash < 0) bookCost(b, -cash)
+  if (cash > 0) bookIncome(g, b, cash)
+  else if (cash < 0) bookCost(g, b, -cash)
   if (fx.brand) b.brand = clampN(b.brand + fx.brand, 0, 100)
   if (fx.quality) b.quality = clampN(b.quality + fx.quality, 0, 100)
   if (fx.morale) b.morale = clampN(b.morale + fx.morale, 0, 100)

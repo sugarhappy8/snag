@@ -1,4 +1,5 @@
 // Real head-office jobs: one seat per role, one job per relative, cash-backed pay and learning.
+import { firmCash, personCash } from '../cash'
 import { log, notice } from '../core'
 import { personCountry } from '../events/wealth-core'
 import { isEstranged } from '../events/will-core'
@@ -38,11 +39,11 @@ function availablePayroll(grp: Group): number {
   return grp.members.reduce((s, x) => s + Math.max(0, Math.floor(x.b.cash - earmarkedCash(x.a))), 0)
 }
 /** Debit real company cash. Rounding cannot pay a relative more than the group actually spent. */
-function payrollCharge(grp: Group, due: number): number {
+function payrollCharge(g: GameState, grp: Group, due: number): number {
   let left = Math.max(0, Math.round(due)), paid = 0
   for (const x of [...grp.members].sort((a, b) => b.b.cash - a.b.cash)) {
     const take = Math.min(left, Math.max(0, Math.floor(x.b.cash - earmarkedCash(x.a))))
-    x.b.cash -= take; x.b.yearCosts += take
+    firmCash(g, x.b, -take, 'payroll', x.a.id); x.b.yearCosts += take
     if (!x.b.public) x.b.valuation = Math.max(0, x.b.valuation - take)
     left -= take; paid += take
     if (left <= 0) break
@@ -57,7 +58,7 @@ export function appointGroupRelative(g: GameState, id: string, personId: string,
   if (groupNeedsVote(g, grp, proposal) && !groupVote(g, grp, proposal).passed) { saveGroup(g, grp); return false }
   if (old?.role === 'ceo' && grp.core.manager?.personId === p.id) { grp.core.ceo = 'owner'; grp.core.manager = null }
   if (role === 'ceo') {
-    if (grp.core.manager) paySeverance(g, grp.members[0].b.countryId, grp.core.manager, payrollCharge(grp, ceoSeverance(grp.core.manager, g.year)))
+    if (grp.core.manager) paySeverance(g, grp.members[0].b.countryId, grp.core.manager, payrollCharge(g, grp, ceoSeverance(grp.core.manager, g.year)))
     clearGroupCeoJob(g, grp.core.manager)
     const m = managerCandidate(g, groupBiz(g, grp), skill)
     grp.core.ceo = 'manager'; grp.core.manager = { ...m, firstName: p.firstName, lastName: p.lastName, gender: p.gender, personId: p.id, salary: pay }
@@ -79,7 +80,7 @@ export function removeGroupRelative(g: GameState, id: string, personId: string):
   if (job.role === 'ceo' && grp.core.manager?.personId === p.id) {
     const severance = ceoSeverance(grp.core.manager, g.year)
     if (availablePayroll(grp) < severance) return false
-    paySeverance(g, grp.members[0].b.countryId, grp.core.manager, payrollCharge(grp, severance))
+    paySeverance(g, grp.members[0].b.countryId, grp.core.manager, payrollCharge(g, grp, severance))
     grp.core.ceo = 'owner'; grp.core.manager = null
   }
   clearGroupJob(p)
@@ -110,8 +111,8 @@ export function prepareGroupFamily(g: GameState, grp: Group): string[] {
     if (job.role === 'ceo' && grp.core.manager) {
       grp.core.manager.skill = Math.round(job.skill); job.pay = grp.core.manager.salary
     } else {
-      const paid = payrollCharge(grp, job.pay)
-      p.money += Math.max(0, paid - incomeTax(personCountry(g, p), paid))
+      const paid = payrollCharge(g, grp, job.pay)
+      personCash(g, p, Math.max(0, paid - incomeTax(personCountry(g, p), paid)), 'payroll')
       job.paidYear = g.year; job.unpaid = paid < job.pay ? job.unpaid + 1 : 0
       grp.core.familyPay = (grp.core.familyPay ?? 0) + paid
       lines.push(`${p.firstName}, ${GROUP_ROLES[job.role].label}: skill ${Math.round(job.skill)}, paid ${money(paid)}${paid < job.pay ? ` of ${money(job.pay)} owed` : ''}.`)
@@ -125,7 +126,7 @@ export function prepareGroupFamily(g: GameState, grp: Group): string[] {
 export function payFamilyGroupCeo(g: GameState, grp: Group, paid: number): void {
   const p = g.people.find(p => p.alive && p.id === grp.core.manager?.personId), job = p && readGroupJob(p)
   if (!p || !job || job.groupId !== grp.core.id || job.role !== 'ceo' || job.paidYear >= g.year) return
-  p.money += Math.max(0, paid - incomeTax(personCountry(g, p), paid))
+  personCash(g, p, Math.max(0, paid - incomeTax(personCountry(g, p), paid)), 'payroll')
   job.paidYear = g.year; writeGroupJob(p, job)
 }
 export function cleanGroupJobs(g: GameState): void {

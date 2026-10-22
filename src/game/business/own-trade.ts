@@ -165,7 +165,7 @@ export function buyOwnShares(g: GameState, a: Asset, b: BizState, dollars: numbe
   }
   if (!useYearAction(g, equityYearKey(a.id), 1)) return false
   if (!isTicker(b.ticker)) b.ticker = tickerOf(g, a, b)
-  addMoney(g, -dollars)
+  addMoney(g, -dollars, 'trade.buy')
   b.invested += dollars
   // The shares bought are ordinary ones (share-classes.ts): the founders' class stays what it was.
   clampFounders(b)

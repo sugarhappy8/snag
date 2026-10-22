@@ -1,3 +1,4 @@
+import { firmCash } from '../cash'
 import { log, notice } from '../core'
 import { randFloat } from '../rng'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -43,7 +44,7 @@ export function startStudioEngine(g: GameState, assetId: string, tierId: EngineT
     started: g.year, released: 0, spent: tier.setup, terms: 'private', licenses: [], licenseSeq: 0,
     lastYear: 0, lastRevenue: 0, earned: 0, soldFor: 0,
   })
-  b.cash -= tier.setup
+  firmCash(g, b, -tier.setup, 'capex', a.id)
   b.yearCosts += tier.setup
   a.details.studio = toJson(st)
   refreshValue(a, b)
@@ -127,7 +128,7 @@ export function sellStudioEngine(g: GameState, assetId: string, engineId: string
   x.terms = 'private'
   x.licenses = []
   x.lastRevenue = 0
-  b.cash += price
+  firmCash(g, b, price, 'royalty', a.id)
   b.yearIncome += price
   a.details.studio = toJson(st)
   refreshValue(a, b)

@@ -44,6 +44,7 @@ import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
 import { legacyInventionCapital, legacyInventionStock } from '../workshop/legacy-capital'
 import { bankAdvanceOf } from './bank-state'
 import { allocatedCorporateTax } from './tax'
+import { landCash } from './settle'
 import { bookSupply, saveSupply, supplyConditions, supplyInventoryValue, supplyProfile, type SupplyBook, type SupplyConditions } from './supply'
 import { applyEconomicRivals } from './economic-actors'
 import { applyNpcRivals } from './npc-rivals'
@@ -828,14 +829,14 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
 /**
  * Simulate the fiscal year `year` for one business: sales, costs, taxes, cash. Mutates the
  * business (cash, inventory, employees, last statement) but not its quality/brand/morale (see
- * evolve()). `ownerDraw` is the salary the owner wants this year (0 when not CEO).
+ * evolve()). The cash lands through the books (settle.ts) when the company is in the world; a copy, which a forecast runs, only changes its cash. `ownerDraw` is the salary the owner wants this year (0 when not CEO).
  */
 export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw: number, fixedNoise?: number, bookedHomeSales: number | Record<string, number> = 0): YearResult {
   if (isFinanceFirm(b)) return simulateFinanceYear(g, b, year, ownerDraw, bookedHomeSales)
   const noise = fixedNoise ?? clampN(1 + bell(g, -80, 80) / 1000, 0.9, 1.1)
   const plan = planFor(g, b, year, { noise })
   const k = bookYear(g, b, year, plan, b.production, ownerDraw, yearFixed(g, b), undefined, bookedHomeSales)
-  b.cash = k.cash
+  landCash(g, b, k.cash)
   b.inventory = k.inventoryEnd
   b.employees = k.employees
   b.last = k.stmt
@@ -1014,7 +1015,7 @@ export function recordYear(b: BizState, stmt: Statement, opts: { draws?: number;
     outlets: totalOutlets(b),
   }
   if (!opts.lean) {
-    rec.cash = bookDollars(b.cash)
+    rec.cash = bookDollars(b.cash) // ledger-ok: the closing cash on a history row, not a purse
     rec.debt = bookDollars(b.debt)
     setBookLines(rec, stmt)
     rec.draws = bookDollars(opts.draws ?? 0)

@@ -1,4 +1,5 @@
 // Portfolio-wide delegation. Transfers conserve cash; costs are paid, never minted.
+import { firmCash, firmPurse, moveCash } from '../cash'
 import { notice } from '../core'
 import type { GameState, MenuGroup } from '../types'
 import { needsVote, ownerControls, vote } from './board'
@@ -23,8 +24,8 @@ import { clampN, money, pct } from './util'
 export function managementEffectiveness(g: GameState, grp: Group): number {
   return clampN(captureOfSkill(grp.core.manager?.skill ?? 0) + familyRoleEdge(g, grp.core.id, 'finance') + familyRoleEdge(g, grp.core.id, 'strategy'), 0, 1)
 }
-function transfer(from: GroupMember, to: GroupMember, amount: number): void {
-  from.b.cash -= amount; to.b.cash += amount
+function transfer(g: GameState, from: GroupMember, to: GroupMember, amount: number): void {
+  moveCash(g, firmPurse(from.b, from.a.id), firmPurse(to.b, to.a.id), amount, 'inject')
   if (!from.b.public) from.b.valuation = Math.max(0, from.b.valuation - amount)
   if (!to.b.public) to.b.valuation += amount
 }
@@ -40,7 +41,7 @@ function fund(g: GameState, grp: Group, to: GroupMember, needed: number): number
   for (const from of grp.members.filter(x => x !== to).sort((a, b) => movableCash(g, b) - movableCash(g, a))) {
     const take = Math.min(left, movableCash(g, from))
     if (take <= 0) continue
-    transfer(from, to, take); left -= take; moved += take
+    transfer(g, from, to, take); left -= take; moved += take
     if (!left) break
   }
   return moved
@@ -117,7 +118,7 @@ export function manageDivisionCeos(g: GameState, grp: Group): string[] {
         // A targeted search guarantees at least one qualified applicant, priced at that skill.
         const candidates = shortlist(g, b, kind).filter(m => (target ? financeLeadershipSkill(b, m) : m.skill) >= leader.skill)
         if (!candidates.length) candidates.push(managerCandidate(g, b, leader.skill))
-        b.cash -= fee; b.yearCosts += fee
+        firmCash(g, b, -fee, 'inputs', x.a.id); b.yearCosts += fee
         if (!b.public) b.valuation = Math.max(0, b.valuation - fee)
         const worth = target ? null : bizWorth(g, b), gain = target ? 0 : optimizerGain(g, b)
         const score = (m: NonNullable<typeof current>) => target ? financeCandidateScore(b, m, mandate!, norm) : ceoValue(worth!, m, gain)

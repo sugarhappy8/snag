@@ -209,7 +209,7 @@ describe('deep tech review: side revenue and windfalls', () => {
     const windfall = 40_000_000
     const mine = (g: GameState) => businessAssets(g).find((x) => x.id === a.id)!
     const lb = bizOf(lucky, mine(lucky))
-    earnTech(lb, techOf(lb), windfall)
+    earnTech(lucky, lb, techOf(lb), windfall)
     for (const g of [plain, lucky]) {
       ageUp(g)
       drain(g, YEAR_PREFS)
@@ -464,7 +464,7 @@ describe('deep tech review: saves from before the review', () => {
     delete tech.oneOff
     delete tech.oneOffs
     const b = bizOf(g, a)
-    earnTech(b, techOf(b), 1_000)
+    earnTech(g, b, techOf(b), 1_000)
     for (let y = 0; y < 2; y++) {
       ageUp(g)
       drain(g, YEAR_PREFS)

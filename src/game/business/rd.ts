@@ -7,6 +7,7 @@
 // a few projects at once without strain (one more slot per doubling of the company's sites);
 // beyond that every project stretches it. Projects move a year closer at every year-end
 // (economy.evolve → advanceRd) and then launch as a product line or flop.
+import { firmCash } from '../cash'
 import { formatMoney, log, notice } from '../core'
 import { hasTalent } from '../talents'
 import { chance, rand, uid } from '../rng'
@@ -346,7 +347,7 @@ export function startRd(g: GameState, a: Asset, b: BizState, idea: string, budge
     return null
   }
   const q = rdQuote(g, b, idea, n)
-  b.cash -= n
+  firmCash(g, b, -n, 'rnd', a.id)
   b.yearCosts += n
   const p: RdProject = {
     id: uid(g, 'rd'),

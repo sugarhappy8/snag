@@ -6,6 +6,7 @@
 // same year always give the same answer, so the planner's what-ifs stay deterministic.
 // The second half is the project itself: its price, years and odds (pure quotes), starting it, the
 // launch roll at year-end (the only place that draws on the RNG) and the news that follows.
+import { firmCash } from '../cash'
 import { formatMoney, log, notice } from '../core'
 import { carriedMarketNews, pushMarketNews } from '../history/market-events'
 import { chance, rand, uid } from '../rng'
@@ -414,7 +415,7 @@ export function startHeavy(g: GameState, a: Asset, b: BizState, name: string): R
   }
   const years = heavyYears(b)
   const odds = heavyOdds(g, b)
-  b.cash -= cost
+  firmCash(g, b, -cost, 'rnd', a.id)
   b.yearCosts += cost
   const p: RdProject = {
     id: uid(g, 'rd'),

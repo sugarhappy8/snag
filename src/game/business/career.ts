@@ -1,4 +1,5 @@
 // Who runs the company: the owner as CEO (a special-category Job) or a hired general manager.
+import { firmCash, personCash } from '../cash'
 import { count, endJob, log, notice } from '../core'
 import { marketOf } from '../data/markets'
 import { incomeTax } from '../finance'
@@ -11,6 +12,7 @@ import { bestPlan, LASTING_YEARS, localEcon, maxProduction, niceAmount, planFor,
 import { isDeepTech } from './deeptech-state'
 import { ensureFinanceCandidate, financeShortlistSpecialty, financeTarget, specializeFinanceCandidate } from './finance-leadership'
 import { afterSuccession, successorManager } from './nepo-succession'
+import { firmOf } from './settle'
 import { CEO_STYLES, ceoJob, OWNER_JOB, readBiz, totalOutlets, type BizState, type CeoStyle, type Manager } from './state'
 import { clampN, round2 } from './util'
 import { returnFormerExecutiveShares } from './executive-shares'
@@ -135,7 +137,8 @@ export function ceoSeverance(m: Manager, year: number): number {
  */
 export function paySeverance(g: GameState, countryId: string, outgoing: Pick<Manager, 'personId'> | null | undefined, severance: number): void {
   const p = outgoing?.personId && severance > 0 ? g.people.find((x) => x.id === outgoing.personId && x.alive) : undefined
-  if (p) p.money = Math.round(p.money + Math.max(0, severance - incomeTax(countryId, severance)))
+  // The company's payment went to the employers' pool (handOver); what reaches the relative is that, less the income tax.
+  if (p) personCash(g, p, Math.round(p.money + Math.max(0, severance - incomeTax(countryId, severance))) - p.money, 'severance')
 }
 
 /**
@@ -210,7 +213,7 @@ export function handOver(g: GameState, a: Asset, b: BizState, next: Manager, opt
   const outgoing = b.ceo === 'manager' && b.manager ? { ...b.manager } : null
   const severance = outgoing && !opts.forCause ? ceoSeverance(outgoing, g.year) : 0
   if (severance > 0) {
-    b.cash -= severance
+    firmCash(g, b, -severance, 'severance', a.id)
     b.yearCosts += severance
     paySeverance(g, b.countryId, outgoing, severance)
   }
@@ -235,7 +238,7 @@ export function ownerTakesOver(g: GameState, b: BizState): Handover {
   const outgoing = b.ceo === 'manager' && b.manager ? { ...b.manager } : null
   const severance = outgoing ? ceoSeverance(outgoing, g.year) : 0
   if (severance > 0) {
-    b.cash -= severance
+    firmCash(g, b, -severance, 'severance', firmOf(g, b))
     b.yearCosts += severance
     paySeverance(g, b.countryId, outgoing, severance)
   }

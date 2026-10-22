@@ -2,6 +2,7 @@
 // them go, make one CEO, name a successor. Every action here costs something real: pay comes out of
 // company cash every year (nepo-year.ts), an executive job or above-market pay goes to the board as
 // possible self-dealing, the staff notice who is promoted past merit, and the press has a word for it.
+import { firmCash, personCash } from '../cash'
 import { addRelationship, addStat, count, formatMoney, log, notice, remember } from '../core'
 import { addEntitlement, entitlement } from '../events/wealth-core'
 import { incomeTax } from '../finance'
@@ -427,10 +428,10 @@ export function fire(g: GameState, a: Asset, b: BizState, p: Person): HireResult
   const stillThere = readJob(p)
   if (stillThere) endJob(g, a, b, p, 'fired')
   if (!ceo && sev > 0) {
-    b.cash -= sev
+    firmCash(g, b, -sev, 'severance', a.id)
     b.yearCosts += sev
-    // The relative is a real person: the severance is theirs, taxed like their pay.
-    p.money = Math.round(p.money + Math.max(0, sev - incomeTax(b.countryId, sev)))
+    // The relative is a real person: the severance is theirs, taxed like their pay. The firm's payment went to the employers' pool; the person takes it from there.
+    personCash(g, p, Math.round(p.money + Math.max(0, sev - incomeTax(b.countryId, sev))) - p.money, 'severance')
   }
   b.morale = clampN(b.morale - 3, 0, 100)
   const fam = familyOf(b)
@@ -458,9 +459,10 @@ export function fire(g: GameState, a: Asset, b: BizState, p: Person): HireResult
   let extra = ''
   if (chance(g, laborProtection(b.countryId) * 0.2 + (entitled ? 0.1 : 0.02))) {
     const cost = Math.round(job.pay * (0.5 + rand(g)))
-    b.cash -= cost
+    firmCash(g, b, -cost, 'legal', a.id)
     b.yearCosts += cost
-    p.money = Math.round(p.money + cost)
+    // The settlement goes through the legal pool, so the person's own rounding stays as it was (a move would carry the firm's float into it).
+    personCash(g, p, Math.round(p.money + cost) - p.money, 'legal')
     extra = ` ${he} sued for wrongful dismissal and the company settled for ${formatMoney(cost)}.`
   }
   notePerson(p, `Fired from ${a.name} (age ${p.age}).`)
