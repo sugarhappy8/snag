@@ -68,6 +68,7 @@ When a domain needs another domain, it imports that domain's `contract.ts`, or d
 | Port | Defined in | Bound by |
 |---|---|---|
 | `business.revalueCompany` | `business/contract.ts` | `business/economy.ts` |
+| `business.discloseResearch` | `business/contract.ts` | `business/tech-waves.ts` |
 | `computer.gameMakingMenu` | `computer/contract.ts` | `special/gamedev-make.ts` |
 | `activities.relocate` | `activities/contract.ts` | `activities/immigration-move.ts` |
 | `workplace.ordinaryJobs` | `workplace/contract.ts` | `careers.ts` |

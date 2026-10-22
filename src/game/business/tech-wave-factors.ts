@@ -44,8 +44,9 @@ const TRAIL_SCAN = 12
 /** A stored fork tag: '' or `~` and a short salt (what `outcomeTag` returns). */
 const TAG_RE = /^(~[a-z0-9]{1,16})?$/
 
-export type WaveSource = 'heavy' | 'deeptech' | 'workshop' | 'rival' | 'race'
-const SOURCES: readonly string[] = ['heavy', 'deeptech', 'workshop', 'rival', 'race']
+/** What wrote a wave. `effort` is research disclosed through `announceResearch` (the port `business.discloseResearch`): it follows the rules of the others, and its delivery moves on the seeded path like a workshop wave. */
+export type WaveSource = 'heavy' | 'deeptech' | 'workshop' | 'rival' | 'race' | 'effort'
+const SOURCES: readonly string[] = ['heavy', 'deeptech', 'workshop', 'rival', 'race', 'effort']
 
 export interface TechWave {
   /** `${source}:${kind}:${year}:${hashOf(origin).toString(36)}`, stable and unique. */

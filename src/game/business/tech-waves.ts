@@ -26,7 +26,9 @@ import { outcomeTag } from '../timeMachine'
 import type { GameState, Json } from '../types'
 import { marketKey, marketStateOf } from './competition-core'
 import { familyId } from './competition-roster'
+import { discloseResearch, type ResearchDisclosure } from './contract'
 import { isDeepTech } from './deeptech-state'
+import { kindOfField } from './frontier-waves'
 import { heavyLevel, readHeavy } from './heavy-rd'
 import { hashOf } from './product-market'
 import { businessAssets, isQuoted, readBiz, type BizState } from './state'
@@ -44,6 +46,8 @@ export type { TechBase, TechWave, WaveLevel, WaveSource } from './tech-wave-fact
 
 /** At most this many waves from the player's side (anything but a rival) are announced in a year. */
 const MAX_PER_YEAR = 2
+/** The smallest research disclosure that makes a wave (R3-F3): under it the research still counts for the frontier (R3-F4) but writes no wave. */
+export const EFFORT_WAVE_MIN = 0.2
 
 export interface WaveInput {
   kind: WaveKind
@@ -116,8 +120,8 @@ export function entrantsDue(g: Pick<GameState, 'flags'>, trade: string, market: 
  * Announce a wave. Idempotent: the id comes from the source, kind, year and a hash of the stable
  * origin string, so a second call for the same milestone returns the stored wave and writes nothing
  * (a news id is no guard: the news list keeps only 20). Refuses (null) an unknown kind, a 65th wave,
- * a third non-rival wave in one year, and a heavy, workshop or race wave of a kind a history row
- * already covers that year. Hype starts at 0.3 + 0.7 size, delivery at 0. Draws nothing.
+ * a third non-rival wave in one year, and a heavy, workshop, race or effort wave of a kind a history
+ * row already covers that year. Hype starts at 0.3 + 0.7 size, delivery at 0. Draws nothing.
  */
 export function announceWave(g: GameState, a: WaveInput): TechWave | null {
   if (!isWaveKind(a.kind)) return null
@@ -146,7 +150,7 @@ export function announceWave(g: GameState, a: WaveInput): TechWave | null {
   if (!first) return null
   writeWaves(g, [...list, first])
   const stored = readTechWaves(g).find((x) => x.id === w.id) ?? null
-  if (stored) announceWaveNews(g, stored)
+  if (stored) announceWaveNews(g, stored, a.by)
   // A wave the player's own company wrote may be an insider case (a repeat returned above and never reaches here).
   if (stored && a.by) waveInsiderCases(g, stored, a.by)
   return stored
@@ -154,14 +158,15 @@ export function announceWave(g: GameState, a: WaveInput): TechWave | null {
 
 /**
  * The news of a NEW wave (D12). Heavy, workshop and race waves post nothing: the launch notice and the
- * "You Beat History!" popup already announced them. A deep-tech or rival wave posts one market news item
- * (text only, id `wave-${id}`) when it touches a trade the player runs or came from the player's lab; a
- * deep-tech one also queues one notice, guarded as `announceLaunch` is. No shakeout notice in this release.
+ * "You Beat History!" popup already announced them. A deep-tech, effort or rival wave posts one market news item
+ * (text only, id `wave-${id}`) when it touches a trade the player runs or came from the player's own company
+ * (a deep-tech wave's lab, an effort wave's `by`); a deep-tech wave, and an effort wave of the player's own company,
+ * also queue one notice, guarded as `announceLaunch` is. No shakeout notice in this release.
  */
-function announceWaveNews(g: GameState, w: TechWave): void {
-  if (w.source !== 'deeptech' && w.source !== 'rival') return
+function announceWaveNews(g: GameState, w: TechWave, by?: string): void {
+  if (w.source !== 'deeptech' && w.source !== 'rival' && w.source !== 'effort') return
   const mine = businessAssets(g)
-  const lab = w.source === 'deeptech' && w.origin ? originHead(w.origin) : null
+  const lab = w.source === 'deeptech' && w.origin ? originHead(w.origin) : w.source === 'effort' && typeof by === 'string' ? by : null
   const own = lab !== null && mine.some((a) => a.id === lab)
   if (!own && !mine.some((a) => roleOf(w.kind, readBiz(g, a).industry) !== null)) return
   const def = WAVE_KINDS[w.kind]
@@ -169,9 +174,26 @@ function announceWaveNews(g: GameState, w: TechWave): void {
   const title = `${w.name} Wave`
   const text = w.source === 'deeptech'
     ? `Your lab landed ${lowerLead(w.name)}. Investors expect a lot. Delivery decides the rest.`
-    : `A rival landed ${def.landed}. Investors are watching. Delivery decides the rest.`
+    : w.source === 'effort'
+      ? `Your research landed ${lowerLead(w.name)}. Investors expect a lot. Delivery decides the rest.`
+      : `A rival landed ${def.landed}. Investors are watching. Delivery decides the rest.`
   const fresh = pushMarketNews(g, { id, year: w.year, industry: def.core[0], market: w.market, emoji: def.emoji, title, text })
-  if (w.source === 'deeptech' && fresh && g.character.alive && !g.queue.some((m) => m.id === id)) g.queue.push({ kind: 'notice', id, title, text, emoji: def.emoji, tone: 'good' })
+  if ((w.source === 'deeptech' || (w.source === 'effort' && own)) && fresh && g.character.alive && !g.queue.some((m) => m.id === id)) g.queue.push({ kind: 'notice', id, title, text, emoji: def.emoji, tone: 'good' })
+}
+
+/**
+ * Disclose research as a wave (R3-F3, spec 5.9): the port `business.discloseResearch` calls this. The field picks the kind
+ * (`kindOfField`: the 12 future-facing kinds, `ai.<capability>` is `ai`); a field with no kind, a size under `EFFORT_WAVE_MIN`, a
+ * missing origin or a damaged disclosure is null with no write and no throw. Otherwise it is `announceWave` with source `effort`, so
+ * every wave rule holds unchanged: one wave per origin (a repeat is the stored wave), at most two non-rival waves a year, 64 stored,
+ * and refused where a history row of the kind is live. Draws nothing.
+ */
+export function announceResearch(g: GameState, d: ResearchDisclosure): TechWave | null {
+  if (!d || typeof d !== 'object') return null
+  const kind = kindOfField(d.field)
+  if (!kind || typeof d.size !== 'number' || !(d.size >= EFFORT_WAVE_MIN)) return null
+  if (typeof d.origin !== 'string' || !d.origin.trim()) return null
+  return announceWave(g, { kind, source: 'effort', origin: d.origin, name: d.name, size: d.size, market: d.market ?? 'world', home: d.home, by: d.by })
 }
 
 /** The life-log line for a fast follower founded to chase a wave of this kind (the name is the new company's). Pure. */
@@ -460,3 +482,6 @@ export function waveScrutiny(g: Pick<GameState, 'flags'>, trade: string): number
   for (const w of readTechWaves(g)) if ((WAVE_KINDS[w.kind].core as readonly string[]).includes(trade)) s *= 1 + 0.5 * w.size * w.delivery
   return Number.isFinite(s) ? clampN(s, 1, 2) : 1
 }
+
+// The port the research domains call (R3-F3). Bound when this module loads, which `aging` does through the yearly hooks.
+discloseResearch.use((g, d) => announceResearch(g, d))

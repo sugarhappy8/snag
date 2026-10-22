@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest'
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const DOC = join(ROOT, 'docs', 'KERNEL.md')
 const KERNEL_DIR = join(ROOT, 'src', 'game', 'kernel')
-const PORTS = ['activities.relocate', 'business.revalueCompany', 'computer.gameMakingMenu', 'workplace.ordinaryJobs']
+const PORTS = ['activities.relocate', 'business.discloseResearch', 'business.revalueCompany', 'computer.gameMakingMenu', 'workplace.ordinaryJobs']
 
 const byCode = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 const json = (...path: string[]): unknown => JSON.parse(readFileSync(join(ROOT, ...path), 'utf8'))
