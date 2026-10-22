@@ -302,7 +302,7 @@ describe('the world reaches an heir by clone (RF3)', () => {
     return makeTestGame(1, { age: 70, gender: 'female', firstName: 'Ruth', lastName: 'Stone', money: 500_000 })
   }
 
-  it('carries g.world to the heir as an equal copy that shares nothing with the parent', () => {
+  it('carries g.world to the heir as a copy that shares nothing with the parent, and indexes the heir\'s people on top', () => {
     const g = oldPlayer()
     const kid = createPerson(g, { relation: 'child', age: 30, lastName: 'Stone' })
     g.world = { v: 1, y: 2026, probe: { v: 1, rows: [1, 2] } }
@@ -310,20 +310,29 @@ describe('the world reaches an heir by clone (RF3)', () => {
     const before = JSON.stringify(g.world)
     const n = continueAsChild(g, kid.id)
     expect(n).not.toBe(g)
-    expect(n.world).toEqual(g.world)
+    // R2-L15: the hand-over syncs the world's indexes (the heir's people were rebuilt), so the heir's world is the carried one
+    // plus those four shards. Everything that was in g.world comes along unchanged.
+    const carried: Record<string, unknown> = { ...n.world }
+    for (const index of ['people', 'firms', 'homes', 'holdings']) delete carried[index]
+    expect(carried).toEqual(g.world)
+    expect(n.world?.y).toBe(n.year)
     expect(n.world).not.toBe(g.world)
     expect(n.world?.probe).not.toBe(g.world.probe)
     ;(n.world?.probe as ProbeShard).rows.push(9)
     expect(JSON.stringify(g.world)).toBe(before)
   })
 
-  it('leaves an absent world absent: an old save has none and the heir reads it as empty', () => {
+  it('leaves an absent world absent in the parent: an old save has none and reads as empty; the heir gets the index of its people', () => {
     const g = oldPlayer()
     const kid = createPerson(g, { relation: 'child', age: 30, lastName: 'Stone' })
     killCharacter(g, 'Old Age')
     const n = continueAsChild(g, kid.id)
-    expect('world' in n).toBe(false)
-    expect(readWorld(n)).toEqual({ v: 1 })
+    // The parent's state is never written: it still has no world. R2-L15: the heir's hand-over is a writer (it syncs the indexes),
+    // so the heir has a world of its own, stamped with the year it was synced, holding the indexes and the books and no other shard.
+    expect('world' in g).toBe(false)
+    expect(readWorld(g)).toEqual({ v: 1 })
+    expect(n.world?.y).toBe(n.year)
+    expect(Object.keys(n.world ?? {}).filter((k) => !['v', 'y', 'people', 'firms', 'homes', 'holdings', 'ledger'].includes(k))).toEqual([])
   })
 })
 

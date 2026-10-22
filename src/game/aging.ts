@@ -41,6 +41,7 @@ import { refreshRoyalCareers } from './npc-lives'
 import { yearlyShops } from './shops'
 import { yearlySpecial } from './special'
 import type { GameState } from './types'
+import { yearlyWorld } from './world/yearly'
 
 /** Ordered yearly hooks. Each one must be a no-op when it doesn't apply. */
 export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
@@ -88,6 +89,8 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   // The money team bills and trades last, so its cash is what is left after rent, tax and upkeep.
   ['advisors', yearlyAdvisors],
   ['milestones', yearlyMilestones],
+  // The world indexes what the year closed on, last: nothing after it books money or changes a record (world/yearly.ts).
+  ['world', yearlyWorld],
 ]
 
 export function canAgeUp(g: GameState): boolean {

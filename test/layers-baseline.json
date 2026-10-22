@@ -27,7 +27,10 @@
     "src/game/nation/state.ts -> src/game/nation/data.ts",
     "src/game/nation/state.ts -> src/game/special/common.ts",
     "src/game/nation/trade-policy.ts -> src/game/business/market-trade.ts",
-    "src/game/nation/trade-policy.ts -> src/game/nation/data.ts"
+    "src/game/nation/trade-policy.ts -> src/game/nation/data.ts",
+    "src/game/world/firms.ts -> src/game/business/util.ts",
+    "src/game/world/holdings.ts -> src/game/business/family-share-state.ts",
+    "src/game/world/holdings.ts -> src/game/business/util.ts"
   ],
   "cycleDirEdges": [],
   "domains": {
@@ -417,6 +420,9 @@
     ],
     "src/game/workshop/yearly.ts": [
       "SCENES"
+    ],
+    "src/game/world/lod.ts": [
+      "DEFS"
     ]
   }
 }

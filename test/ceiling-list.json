@@ -12,5 +12,6 @@
   { "id": "mint-caps", "file": "src/game/kernel/reasons.ts", "token": "MINTS", "cap": "every mint has a yearly cap: lending 2.5e9, printing 0, immigrants 5e8, revaluation 1e12 (R2-L2)" },
   { "id": "burn-caps", "file": "src/game/kernel/reasons.ts", "token": "BURNS", "cap": "every burn has a yearly cap of 1e12: emigration, inflation, writeoff (R2-L2)" },
   { "id": "ledger-caps", "file": "src/game/kernel/ledger.ts", "token": "LEDGER_CAPS", "cap": "500 accounts, 480 flow rows, 1e15 per booking, 9e15 per balance (R2-L2)" },
-  { "id": "pool-spreads", "file": "src/game/kernel/spreads.ts", "token": "SPREADS", "cap": "no pool round trip is free: a buy then a sale to the same pool loses the spread twice (R2-L2)" }
+  { "id": "pool-spreads", "file": "src/game/kernel/spreads.ts", "token": "SPREADS", "cap": "no pool round trip is free: a buy then a sale to the same pool loses the spread twice (R2-L2)" },
+  { "id": "lod-caps", "file": "src/game/world/caps.ts", "token": "LOD_CAPS", "cap": "400 people (80 intimate), 60 firms (20 full), 150 homes, 600 job slots: no list of named entities grows past these (R2-L16)" }
 ]
