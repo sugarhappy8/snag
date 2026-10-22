@@ -2,7 +2,8 @@
 
 Since R3 (v5.1.0) a year ends with one card instead of a pile of popups. This page is the vocabulary, the rules, the numbers and the
 recipes. The code is `src/game/hubs/year-plan.ts` (the planner), `hubs/year-book.ts` (what the close remembers), `hubs/year-close.ts`
-(the close), `src/game/text/pace.ts` (the family rule) and, for the screen, `src/ui/components/yearCardModel.ts` and `logModel.ts`.
+(the close), `hubs/year-outcomes.ts` (the calm outcomes of an answered choice), `src/game/text/pace.ts` (the family rule) and, for the
+screen, `src/ui/components/yearCardModel.ts` and `logModel.ts`.
 Plain hyphens only: `test/quiet-integration.test.ts` fails on an em-dash or an en-dash here, and on an export this page does not name.
 
 ## The fields
@@ -31,7 +32,8 @@ and an old save has none of them.
 A notice carries its own `w`, else its title's row in `NOTICE_WEIGHTS` (`src/game/notice-weights.ts`, `noticeWeightOf` reads it, about 150
 titles), else 1 when it has the R1 `weight: 'minor'`, else 2. `noticeWeight` in the planner is that rule, and one more: a notice that
 `neverRoute` blocks (bad tone, a health or legal word, a large figure) is never under 2. What hurts or costs a lot is never trivia.
-`noticeWeightFor` is the R1 reader and is unchanged. The table is a leaf: a title is added in one line, with a test row.
+`noticeWeightFor` is the R1 reader and is unchanged. The table is a leaf: a title is added in one line, with a test row. The same weights
+decide the popup that tells the outcome of a choice the player answered (see Calm outcomes of an answer).
 
 ## The budget
 
@@ -56,6 +58,32 @@ throws. A step that fails puts the game back as it came in (the queue with the y
 and flags the year events step touched), and the report (`CloseReport`) says `closed: false`, so the store plays the year the old way and
 the task picks the events it would have picked.
 
+## Calm outcomes of an answer
+
+The close quiets what a year queues by itself. The popup that tells how a choice the player answered turned out came after it, so the player
+saw about twice the popups the budget counts. The owner's rule is that weight 0 to 1 goes log-only; it holds for that reply too.
+`chooseOption` in `src/ui/store.ts` takes `markAnswer` before the handler of the answer runs and `settleAnswer` after it
+(`src/game/hubs/year-outcomes.ts`), while the flag `yearCard` and Quiet Mode are both on (`quietYears`, the gate `ageUpAction` reads as well).
+
+- An outcome is **calm** (`calmOutcome`) when the weight the close reads for it is 0 or 1 (`noticeWeight`: its own `w`, else its title's row in
+  `NOTICE_WEIGHTS`, else 1 for `weight: 'minor'`, else 2), it is not bad in tone, it has no support line, and the money it is about (its
+  amount, else the largest figure of its text) is under `LARGE_FIGURE` (10,000). `noticeWeight` already lifts a notice the never-route
+  policy blocks to 2, so a bad, health, legal or large-money outcome is never calm.
+- A calm outcome is no popup. It becomes one line of the life log, `title: text` in at most 90 characters, with its tone, its weight and its
+  amount and no source (the player's own answer has none, so the close never touches it). The line has the id `out-<generation>-<year>-<notice id>`:
+  the answer makes no id and draws no number. The answer writes no line when it already wrote one of its own (`res()` in
+  `events/helpers.ts` writes a first-person line with the popup, and that line is the record; each line the answer wrote covers one calm
+  outcome, the first ones) or when the same sentence was told within
+  `TOLD_YEARS` (the ring of `text/told.ts`, which keeps the log from saying a thing twice; a line the answer does write is noted in it).
+- An answer that leads on to another decision (a choice, an input, a minigame, a task: the second step of an event, a crisis, a death)
+  keeps every notice it queued, because they are the context of what comes next. A character who died in the answer keeps theirs too. Of an
+  answer with a calm outcome and a bad one, the calm one goes and the bad one pops up.
+- It is the store flow only. Headless `ageUp` and `runScript` never call it, so a test that reads `g.queue` sees what it always saw; with the
+  flag or Quiet Mode off the outcome is a popup, as before. A notice that was already waiting in the queue is not touched, and an outcome
+  with the minor weight goes to the log and no longer to the inbox. Only a choice is settled: an input or a minigame still shows its outcome.
+- `test/play-kit.ts` plays it under `close: true` (`PlayedYear.logged` counts the outcomes that went to the log, and `outcomes: 'popup'` plays
+  the flow before the rule, for a measurement). `test/year-outcomes-store.test.ts` is the rule in the real store.
+
 ## The card
 
 `YearCard` (`src/game/types.ts`) is at most 8 lines, every string at most 90 characters: the headline, up to 3 stories, a money line
@@ -75,8 +103,8 @@ reads the one the book kept. The Life log folds a busy year the same way: `viewY
 
 `yearCard` in `src/game/flags.ts` (`FLAG_DEFS`) ships in 5.1.0 and is on by default since the release commit flipped it with the version
 (`?flags=-yearCard` turns it off for one visit).
-With it off, `ageUpAction` plays the year as it always did (`test/quiet-integration.test.ts` plays 12 years both ways). With it on and
-Quiet Mode on, the year closes. Settings, under Quiet Mode, says so in one sentence while the flag is on.
+With it off, `ageUpAction` plays the year as it always did (`test/quiet-integration.test.ts` plays 12 years both ways) and an answered choice
+shows its outcome as a popup. With it on and Quiet Mode on, the year closes and a calm outcome goes to the log. Settings, under Quiet Mode, says so in one sentence while the flag is on.
 
 ## Pace: families
 
@@ -127,24 +155,35 @@ equals the books, and nothing folded without a record. It also states the roadma
   digest). The outcome of a choice the player answered is a reply, not an arrival, and the card is the popup the roadmap adds. The other
   readings (every popup the player sees, as the audit counted, and what `ageUp` queued before the close) are measured and printed.
   The reading is consistent with the budget (3 unrequested choices and 3 notices is the $50M max of 6), and it is **not** what the player
-  sees. On the audit's reading, every popup of the store flow with the outcomes of answered choices in, the roadmap is **not met**, and
-  `test/quiet-acceptance.test.ts` only guards that it does not get worse. The numbers (p90 / max, tycoon mean) from the lives of that file:
+  sees. On the audit's reading, every popup of the store flow with the outcomes of answered choices that still pop up in, the roadmap is
+  **still not met**, even with the calm outcomes in the log (Calm outcomes of an answer), and `test/quiet-acceptance.test.ts` only guards that
+  it does not get worse. The numbers (p90 / max, tycoon mean) from the lives of that file, every row measured on the same tree:
 
   | reading | ordinary | $50M | tycoon |
   |---|---|---|---|
   | the roadmap | 3 / 5 | 4 / 6 | mean 4 plus the card |
-  | arrives (asserted, L1) | 2 / 5 | 3 / 4 | mean 3.1 |
-  | seen, answered outcomes in (guarded) | 4 / 10 | 6 / 10 | mean 6.1 |
-  | seen, the close off (the old flow) | 4 / 9 | 7 / 10 | mean 5.9 |
-  | seen, `YEAR_LIMITS.choices` 2 (measured once, not kept) | 4 / 8 | 5 / 6 | mean 4.4 |
-  | seen, `YEAR_LIMITS.choices` 1 (measured once, not kept) | 3 / 7 | 3 / 5 | mean 2.4 |
+  | arrives (asserted, L1) | 2 / 5 | 3 / 4 | mean 2.9 |
+  | seen, calm outcomes of answered choices in the log (the store now, guarded) | 4 / 10 | 6 / 10 | mean 5.4 |
+  | seen, every outcome a popup (the store before the rule) | 4 / 10 | 6 / 10 | mean 5.8 |
+  | seen, the close off (the old flow) | 4 / 9 | 7 / 10 | mean 5.3 |
+  | seen, `YEAR_LIMITS.choices` 2, with the rule (measured once, not kept) | 4 / 8 | 5 / 6 | mean 4.3 |
+  | seen, `YEAR_LIMITS.choices` 1, with the rule (measured once, not kept) | 3 / 7 | 3 / 5 | mean 2.4 |
+
+  The rule logged 81 outcomes in the six ordinary lives (353 years), 58 in the four $50M lives (226) and 34 in the three tycoons (102). It
+  moved the tycoon's mean from 5.8 to 5.4 and the means of the other two (2.1 to 1.8, 3.3 to 3.0), and it left the p90 and the max of every class
+  where they were, so the guard stays a guard: it does not meet the roadmap, and `SEEN_GUARD` in the test is today's numbers with the room for a
+  draw (the tycoon's bound went from 7 to 6). What still pops up after an answer is mostly not calm by the table: of the 255 popups the six
+  ordinary lives still show after an answer, 139 are a notice whose title has no row in `NOTICE_WEIGHTS` (read as 2), 98 are bad, health, legal or
+  large-money ones (never calm), 5 have a row at 2 and 13 are another choice; the $50M and tycoon lives are alike (123 of 311 and 94 of 258 have no
+  row; the rest are blocked, a follow-up choice or an input).
 
   What is left is the owner's call, and none of it is a small change: either sign L1 and change the roadmap line to arrivals, or move the
-  popups the player sees. The choices that move them are the budget (2 does not reach the ordinary p90 and a rich p90 of 4; 1 reaches
-  everything but the ordinary max, which is the arrests, funerals and other chains of several decisions), more scripts in
-  `DEFERRABLE_SCRIPTS` (the family and health choices that are still true a year later), and folding the outcome of an answered choice
-  into the log when it is calm. A budget or a deferral also moves what a rich life is asked for, so the goldens and the money of a rich
-  life move with it.
+  popups the player sees. The choices that move them are the budget (2 reaches none of the ordinary p90, the $50M p90 and the tycoon mean;
+  1 reaches everything but the ordinary max, 7 against 5, which is the arrests, funerals and other chains of several decisions), more scripts in
+  `DEFERRABLE_SCRIPTS` (the family and health choices that are still true a year later), and rows in `NOTICE_WEIGHTS` for the titles of outcomes
+  that are calm and not listed (the rule above sends them to the log with no other change; each row is a decision that a title is trivia or
+  routine, and it changes the weight that notice and its log line carry). A budget or a deferral also moves what a rich life is asked for, so
+  the goldens and the money of a rich life move with it.
 - **A tycoon's visible log** is at most 8 lines a year.
 - **Repetition is about lines of the life log**, on the 13-life probe of `test/text-probe.ts`, with a line compared as
   `test/text-metrics.ts` compares it (lower case, every run of digits one `#`): repeated lines at most 5% (8% for a rich life), no line
@@ -190,6 +229,7 @@ mechanisms that do, and the order to reach for them.
 | `YEAR_LIMITS`, `GROUP_OF_SOURCE`, `groupOf`, `noticeWeight`, `Story`, `YearMoney`, `moneyFacts`, `moneyLine`, `planNotices`, `buildCard` | `src/game/hubs/year-plan.ts` |
 | `YearBook`, `PendingAsk`, `readYearBook`, `writeYearBook`, `readPending`, `writePending` | `src/game/hubs/year-book.ts` |
 | `DEFERRABLE_SCRIPTS`, `CloseReport`, `closeYear` | `src/game/hubs/year-close.ts` |
+| `AnswerMark`, `markAnswer`, `calmOutcome`, `settleAnswer` | `src/game/hubs/year-outcomes.ts` |
 | the `yearCard` flag, in `FLAG_DEFS` | `src/game/flags.ts` |
 | `PACE`, `PaceEngine`, `paceKey`, `notePopup`, `popupSeen`, `paceWeight`, `askGapOk` | `src/game/text/pace.ts` |
 | `TOLD_YEARS`, `toldLately`, `noteTold` | `src/game/text/told.ts` |

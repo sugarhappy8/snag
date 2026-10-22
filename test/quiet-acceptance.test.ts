@@ -14,7 +14,9 @@
 //
 // R3-Q13 turns the numbers of the roadmap on, now that the pace and variant lanes are merged (part 3 below): popups a year counted as they
 // arrive (ordinary p90 3 and max 5, $50M p90 4 and max 6, tycoon mean 4 plus the companies card; lead decision L1, the other readings are
-// printed and not asserted), a tycoon's visible log at most 8 lines, and the repetition targets of the 13-life probe (part 4, decision L2:
+// printed and not asserted; the reading of every popup the player sees is guarded: since the outcomes fix a calm outcome of an answered
+// choice goes to the log and is no popup, and the numbers after it are in docs/QUIET.md), a tycoon's visible log at most 8 lines, and the
+// repetition targets of the 13-life probe (part 4, decision L2:
 // they measure the lines of the life log: repeated lines 5%, or 8% for a rich life, no line more than 3 times in a life, none told twice within
 // 10 years, a state line once in 5 years; the scenes of the popups follow family pacing instead). A threshold is written as the roadmap writes
 // it and is never loosened to fit a number: a miss is fixed at its source, in the text it comes from.
@@ -321,6 +323,31 @@ describe('close kit: the harness', () => {
     expect(JSON.parse(JSON.stringify(y.closed))).toEqual(y.closed)
   })
 
+  it('close: true settles the outcome of an answered choice as the store does: a calm one goes to the log, and `outcomes: popup` plays the flow before that rule', () => {
+    const rich = findSeed((s) => createNewLife({ seed: s, year: 1990 }).character.alive, { from: 701, tries: 20, label: 'quiet acceptance: a rich life to settle' })
+    const play = (outcomes?: 'log' | 'popup') => playLife({ seed: rich, birthYear: 1990, untilAge: 40, rich: true, close: true, ...(outcomes ? { outcomes } : {}) })
+    const log = play()
+    const popup = play('popup')
+    const asked = (years: readonly PlayedYear[]): number => years.reduce((n, y) => n + y.popups.filter((p) => !p.passive).length, 0)
+    const logged = log.years.reduce((n, y) => n + (y.logged ?? 0), 0)
+    // The default is the store: the calm outcomes of this life went to the log, and the old flow has none of that.
+    expect(logged, 'calm outcomes in the log').toBeGreaterThan(0)
+    expect(popup.years.every((y) => y.logged === 0)).toBe(true)
+    // Nothing else moves: the same life is asked the same things, and what the log flow did not show is exactly what it logged.
+    expect(asked(log.years) + logged).toBe(asked(popup.years))
+    expect(popupsPerYear(log.years.filter((y) => y.closed), { asked: false })).toEqual(popupsPerYear(popup.years.filter((y) => y.closed), { asked: false }))
+    // A calm outcome is a line of the log: a line of weight 0 or 1 with no source, which the old flow does not have.
+    const lines = (g: GameState): LogEntry[] => g.log.flatMap((l) => l.entries).filter((e) => e.id.startsWith('out-'))
+    expect(lines(log.g).length).toBeGreaterThan(0)
+    expect(lines(log.g).every((e) => e.w !== undefined && e.w <= 1 && e.s === undefined && e.tone !== 'bad')).toBe(true)
+    expect(lines(popup.g)).toEqual([])
+  })
+
+  it('without close the harness never moves an outcome: no year has a count of them', () => {
+    const { years } = playLife({ seed: SEED, birthYear: 1990, untilAge: 12 })
+    expect(years.every((y) => y.logged === undefined)).toBe(true)
+  })
+
   it('a rich life gives the close something to fold, and the report and the record agree in every year', () => {
     const rich = findSeed((s) => createNewLife({ seed: s, year: 1990 }).character.alive, { from: 701, tries: 20, label: 'quiet acceptance: a rich life to fold' })
     const { years } = playLife({ seed: rich, birthYear: 1990, untilAge: 40, rich: true, close: true })
@@ -474,8 +501,9 @@ describe('the hard caps on real lives, played the way the store plays them', () 
  * Mode, the digest), which is what the year close budgets: 3 unrequested choices and 3 notices a year (YEAR_LIMITS). The outcome of a
  * choice the player answered is a reply to them, not an arrival, and the year card is the one popup the roadmap adds to the tycoon's four,
  * so neither is in the count. The other reading, which counts every popup the player sees as the audit did ("two popups per event"), is
- * measured and printed below, and the roadmap is NOT met on it: it is only guarded against growth (SEEN_GUARD), and docs/QUIET.md says what
- * is open. L1 is the lead's call, not the owner's. Every closed year of a life is counted, from age 1.
+ * measured and printed below, and the roadmap is NOT met on it even after a calm outcome of an answered choice went to the log (the outcomes
+ * fix): it is only guarded against growth (SEEN_GUARD), and docs/QUIET.md says what is open. L1 is the lead's call, not the owner's. Every
+ * closed year of a life is counted, from age 1.
  */
 const ROADMAP = { ordinary: { p90: 3, max: 5 }, rich: { p90: 4, max: 6 }, founder: { mean: 4, companiesCard: 0.9 }, visibleLog: 8 } as const
 
@@ -512,14 +540,15 @@ describe('the popups a year of the roadmap, counted as they arrive (decision L1)
 })
 
 describe('the popups a year, the other readings, measured and printed (decision L1)', () => {
-  it('prints what the audit counted (every popup the player sees, the outcomes of their own answers included) and what ageUp queued before the close', () => {
+  it('prints what the audit counted (every popup the player sees, the outcomes of their own answers that still pop up included) and what ageUp queued before the close', () => {
     const rows = (['ordinary', 'rich', 'founder'] as const).map((cls) => {
       const lives = livesOf(cls)
       const years = closedYears(lives)
       const seen = spread(popupsPerYear(years, { cards: false }))
       const queued = spread(years.map((y) => y.closed!.before.filter((m) => m.kind !== 'aiTask').length))
+      const logged = years.reduce((n, y) => n + (y.logged ?? 0), 0)
       expect(years.length, `${cls}: closed years`).toBeGreaterThan(0)
-      return `  ${cls.padEnd(8)} arrive ${show(arriving(lives))}; seen with outcomes ${show(seen)}; queued before the close ${show(queued)}`
+      return `  ${cls.padEnd(8)} arrive ${show(arriving(lives))}; seen ${show(seen)} (${logged} calm outcomes went to the log); queued before the close ${show(queued)}`
     })
     console.log(['quiet acceptance, popups a year on the three readings (asserted: the first):', ...rows].join('\n'))
   }, TIMEOUT)
@@ -527,14 +556,18 @@ describe('the popups a year, the other readings, measured and printed (decision 
 
 /**
  * What the player SEES, counted as the audit counted ("two popups per event"): every popup after the store flow, the outcome of a choice they
- * answered included, the card left out. This is NOT the roadmap's reading (decision L1 counts arrivals, above) and the roadmap's numbers are not
- * met on it: the year close budgets 3 unrequested choices and 3 notices, and each choice answered costs a second popup, so the design itself
- * allows 9 where the $50M target says 6. L1 was the lead's call and the owner has not signed it (whole-diff review, 2026-10-23). The numbers
- * today, from these lives, are in docs/QUIET.md with the options measured (choices 2 and 1, folding the outcomes of answered choices); until
- * the owner picks one the case below only keeps the player's year from getting noisier. The bounds are today's numbers with room for a draw
- * to move a life (p90 one step, max two, the tycoon's mean half a popup): a guard against growth, never the roadmap, and never to be read as met.
+ * answered included when it still pops up, the card left out. This is NOT the roadmap's reading (decision L1 counts arrivals, above) and the
+ * roadmap's numbers are not met on it: the year close budgets 3 unrequested choices and 3 notices, and each choice answered costs a second
+ * popup, so the design itself allows 9 where the $50M target says 6. The owner's rule that weight 0 to 1 goes log-only now holds for the reply
+ * to an answer as well (a calm outcome goes to the life log: src/game/hubs/year-outcomes.ts, ui/store.ts chooseOption), and it took the tycoon's
+ * mean from 5.8 to 5.4 and left the ordinary and $50M p90 and max where they were (4 and 10, 6 and 10), because most of what still pops up is an
+ * outcome whose title has no row in NOTICE_WEIGHTS (read as 2) or a bad, health, legal or large-money one. L1 was the lead's call and the owner
+ * has not signed it (whole-diff review, 2026-10-23). The numbers today, from these lives, are in docs/QUIET.md with the options measured
+ * (choices 2 and 1); until the owner picks one the case below only keeps the player's year from getting noisier. The bounds are today's numbers
+ * with room for a draw to move a life (p90 one step, max two, the tycoon's mean half a popup): a guard against growth, never the roadmap, and
+ * never to be read as met. Another case below holds the rule itself: the calm outcomes of these lives did go to the log.
  */
-const SEEN_GUARD = { ordinary: { p90: 5, max: 12 }, rich: { p90: 7, max: 12 }, founder: { mean: 7 } } as const
+const SEEN_GUARD = { ordinary: { p90: 5, max: 12 }, rich: { p90: 7, max: 12 }, founder: { mean: 6 } } as const
 
 describe('the popups a year the player sees, the audit reading: guarded, not the roadmap (decision L1, owner sign-off pending)', () => {
   it('no class is noisier than today: ordinary and $50M p90 and max, the tycoon mean, every popup of the store flow counted', () => {
@@ -552,6 +585,19 @@ describe('the popups a year the player sees, the audit reading: guarded, not the
       ],
       `popups the player sees a year: ordinary ${show(ord)}; rich ${show(rich)}; tycoon ${show(founder)}`,
     ).toEqual([])
+  })
+
+  it('the rule is on in these lives: calm outcomes of answered choices went to the log in every class, and every one is a line of weight 0 or 1', () => {
+    for (const cls of ['ordinary', 'rich', 'founder'] as const) {
+      const lives = livesOf(cls)
+      const logged = closedYears(lives).reduce((n, y) => n + (y.logged ?? 0), 0)
+      expect(logged, `${cls}: calm outcomes in the log`).toBeGreaterThan(0)
+      const lines = lives.flatMap((l) => l.g.log.flatMap((y) => y.entries)).filter((e) => e.id.startsWith('out-'))
+      expect(lines.length, `${cls}: lines of calm outcomes`).toBeGreaterThan(0)
+      // A line is written only when the answer wrote none and the sentence is new, so there are at most as many lines as popups that went.
+      expect(lines.length, `${cls}: lines of calm outcomes`).toBeLessThanOrEqual(logged)
+      expect(lines.every((e) => e.w !== undefined && e.w <= 1 && e.tone !== 'bad' && e.s === undefined), `${cls}: weight, tone and source of those lines`).toBe(true)
+    }
   })
 
   it('the answers are most of the gap: a choice answered costs one more popup, so the player sees more than arrives in every class', () => {
