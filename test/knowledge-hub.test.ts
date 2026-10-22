@@ -403,9 +403,12 @@ describe('the module', () => {
     expect(nodes.some((n) => n.id === 'intel.briefing')).toBe(true)
   })
 
-  it('MODULES lists it first, the ids ascend and are unique', () => {
+  it('MODULES lists it ahead of the menus, the ids ascend and are unique', () => {
     const ids = MODULES.map((m) => m.id)
-    expect(ids[0]).toBe('knowledge.core')
+    // R3: effort.you (R3-E6) sorts before knowledge.core, so the module heads the list only after it; the menus come after both
+    const firstMenu = ids.findIndex((id) => id.startsWith('menus.'))
+    expect(ids.indexOf('knowledge.core')).toBeGreaterThanOrEqual(0)
+    expect(ids.indexOf('knowledge.core')).toBeLessThan(firstMenu)
     for (let i = 1; i < ids.length; i++) expect(ids[i - 1]! < ids[i]!, `${ids[i - 1]} before ${ids[i]}`).toBe(true)
     expect(new Set(ids).size).toBe(ids.length)
     const g: MenuGroup = intelBriefingMenu
