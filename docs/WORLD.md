@@ -108,10 +108,17 @@ duplicate row and drop a bad one before the check could see it. It checks:
 
 ## The yearly step
 
-`yearlyWorld(g)` is the one yearly hook of the world. In R2 it is last in `YEARLY_HOOKS` (`src/game/aging.ts`), after every module
-that books money or changes a record, so it reads the year's closing state; the ledger itself needs no hook, because it rolls
+`yearlyWorld(g)` is the one yearly hook of the world. In R2 it is last in `YEARLY_HOOKS` (`src/game/aging.ts`), after every yearly
+module that books money or changes a record, so it reads the year's closing state; the ledger itself needs no hook, because it rolls
 lazily on the first booking of a new year. When the registry of `src/game/modules/` takes over the yearly order, the world step stays
 in the phase after every module that books money.
+
+It is the last yearly hook, not the last thing that happens in a year. `ageUp` ends by queueing the year's events (flavor lines and a
+random event), which `offline.ts` resolves on the spot, and then the player acts for the rest of the year. The shards are stamped
+before that, so they are the frame the year closed on and not a live view of `g`: a world step of a later release (W1 to W6) that reads
+them reads the opening frame of the next year's work. The library's year events add, remove and move none of the people, firms, homes
+and holdings the shards list (`test/world-acceptance.test.ts` runs three lives and checks a fresh sync writes nothing after each year's
+events); what the player buys, hires or founds shows in the shards at the next step.
 
 - It is idempotent by the stamp `world.y`: a second call in the same year does nothing.
 - It repairs a world that came in hostile (below), then calls `syncWorld(g)` (people, firms, homes, then holdings, each written only

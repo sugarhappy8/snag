@@ -16,7 +16,8 @@ import { bindMoneyContext } from '../src/game/core'
 import { killCharacter } from '../src/game/death'
 import { acctBalance, checkLedger, normalizeLedger, peekLedger, playerAcct } from '../src/game/kernel/ledger'
 import { BURNS, MINTS, REASONS } from '../src/game/kernel/reasons'
-import { continueAsChild } from '../src/game/life'
+import { continueAsChild, createNewLife } from '../src/game/life'
+import { resolveTask } from '../src/game/offline'
 import { createPerson } from '../src/game/people'
 import { isLoadableGame, migrateSave } from '../src/game/save-schema'
 import { loadSnapshot, memorySnapshotBackend, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
@@ -25,6 +26,7 @@ import { WORLD_NODE_CAP } from '../src/game/world/caps'
 import { worldProblems } from '../src/game/world/invariants'
 import '../src/game/world/shards'
 import { readWorld, shardNames } from '../src/game/world/state'
+import { syncWorld } from '../src/game/world/sync'
 import { LEDGER_SEEDS, runLedgerLife } from './ledger-probe'
 import { playLife } from './play-kit'
 import { probeLife } from './probe-life'
@@ -288,6 +290,65 @@ function strictLives(raw: string = STRICT): number[] {
   if (!m || i >= n) return []
   return LEDGER_SEEDS.slice(Math.floor((i * LEDGER_SEEDS.length) / n), Math.floor(((i + 1) * LEDGER_SEEDS.length) / n))
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// The year events and the index (found by the whole-diff review)
+// ---------------------------------------------------------------------------------------------------------------------------
+// The world step runs last of the yearly modules, and then aging.ts queues the year's events, which offline.ts resolves on the spot:
+// flavor lines and the year's random event. The index is stamped before them. W1 to W6 read that index as the year's closing frame, so
+// the events must not add, remove or move a person, a firm, a home or a holding; this is the test that says so. (What the player does
+// for the rest of the year does change records, and the index waits for next year's step by design: docs/WORLD.md, "The yearly step".)
+
+const INDEXED = ['people', 'firms', 'homes', 'holdings'] as const
+
+/** Which shards a fresh sync of this state would write differently from what the state holds. */
+function laggingShards(g: GameState): string[] {
+  const fresh = structuredClone(g)
+  ;(fresh.world as { y?: number }).y = 0
+  syncWorld(fresh)
+  const held = readWorld(g) as unknown as Record<string, unknown>
+  const synced = readWorld(fresh) as unknown as Record<string, unknown>
+  return INDEXED.filter((name) => JSON.stringify(held[name]) !== JSON.stringify(synced[name]))
+}
+
+describe('the year events leave the index as the year closed it', () => {
+  it('a fresh sync after each year\'s events writes nothing, over three lives of forty years', () => {
+    let resolved = 0
+    for (const seed of [LEDGER_SEEDS[2]!, LEDGER_SEEDS[17]!, LEDGER_SEEDS[33]!]) {
+      const g = createNewLife({ seed, year: 1985 })
+      for (let y = 0; y < 40 && g.character.alive; y++) {
+        g.queue = []
+        g.character.stats.health = 100
+        g.character.conditions = []
+        ageUp(g)
+        if (!g.character.alive) break
+        expect(laggingShards(g), `seed ${seed}, age ${g.character.age}, before the events`).toEqual([])
+        while (g.queue.length > 0 && g.queue[0]!.kind === 'aiTask') {
+          const head = g.queue.shift()
+          if (head?.kind !== 'aiTask') break
+          resolveTask(g, head.task)
+          resolved++
+        }
+        expect(laggingShards(g), `seed ${seed}, age ${g.character.age}, after the events`).toEqual([])
+      }
+    }
+    // The events really ran: one task a year, for every year played (a life may end before forty).
+    expect(resolved).toBeGreaterThan(50)
+  })
+
+  it('has teeth: a house bought after the step, or a friend made, is a lag', () => {
+    const g = createNewLife({ seed: LEDGER_SEEDS[2]!, year: 1985 })
+    g.queue = []
+    g.character.age = 30
+    ageUp(g)
+    g.queue = []
+    expect(laggingShards(g)).toEqual([])
+    g.assets.push({ id: 'zz-house', kind: 'house', name: 'A house', emoji: 'x', purchasePrice: 90_000, value: 90_000, condition: 80, purchasedAge: 30, upkeep: 0, details: {} })
+    expect(laggingShards(g)).toContain('homes')
+    createPerson(g, { relation: 'friend', age: 30, relationship: 90, money: 100 })
+    expect(laggingShards(g)).toContain('people')
+  })
+})
 
 describe('the strict run chooses its lives', () => {
   it('plays all forty for 1, a contiguous share for i/n, and nothing for anything else', () => {

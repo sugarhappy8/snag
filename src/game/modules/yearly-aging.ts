@@ -108,7 +108,7 @@ const IN_RUN_ORDER: readonly ModuleDef[] = [
   hook('advisors', 'advisors', 10, yearlyAdvisors),
   // close
   hook('milestones', 'close', 10, yearlyMilestones),
-  // settle. The world indexes what the year closed on, last: nothing after it books money or changes a record (world/yearly.ts).
+  // settle. The world indexes what the year closed on, last of the yearly modules: only the year's events and the player's own actions come after it (world/yearly.ts).
   hook('world', 'settle', 10, yearlyWorld),
 ]
 

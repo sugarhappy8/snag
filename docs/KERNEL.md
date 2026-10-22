@@ -26,7 +26,7 @@ The aging seam is `ageUp`: the clock and the economy step run first, then one en
 | `assets` | immigration 10, assets 20, crime 30, underworld 40 |
 | `advisors` | advisors 10 |
 | `close` | milestones 10 |
-| `settle` | W7: world 10 (the world indexes and the invariant check; it runs after every module that books money) |
+| `settle` | W7: world 10 (the world indexes and the invariant check; it runs after every module that books money, and before the year events and the player) |
 | `news` | the news detectors (empty) |
 
 Two notes. Today the careers run before the firms, and parity forbids moving them, so a careers module that needs this year's company books reads last year's rows. Moving them is a later release with a deliberate re-record (section 6).
