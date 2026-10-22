@@ -58,7 +58,7 @@ const SHELL_FILES: ReadonlySet<string> = new Set(['src/App.tsx', 'src/main.tsx',
 /** Directories of src/game (every file below them, however deep) by layer. */
 const KERNEL_DIRS: ReadonlySet<string> = new Set(['kernel'])
 const ASSEMBLY_DIRS: ReadonlySet<string> = new Set(['modules', 'hubs'])
-const WORLD_DIRS: ReadonlySet<string> = new Set(['economy', 'world'])
+const WORLD_DIRS: ReadonlySet<string> = new Set(['economy', 'world', 'effort'])
 const DATA_DIRS: ReadonlySet<string> = new Set(['data', 'history', 'text'])
 
 const GAME = 'src/game/'
@@ -72,7 +72,7 @@ const GAME = 'src/game/'
  *   L4 assembly  src/game/modules/**, src/game/hubs/**, and the root files aging, menus, life, save, save-schema, save-backends,
  *                save-quarantine, save-hydrate, save-store, snapshot-codec, offline, birth-background, life-series, inbox,
  *                notice-policy
- *   L2 world     src/game/economy/**, src/game/world/**, src/game/nation/state.ts, effects.ts and trade-policy.ts
+ *   L2 world     src/game/economy/**, src/game/world/**, src/game/effort/**, src/game/nation/state.ts, effects.ts and trade-policy.ts
  *   L1 data      src/game/data/**, src/game/world.ts, src/game/history/**, src/game/text/**
  *   L3 domains   everything else under src/game
  * Anything under src outside src/game that no row names is the shell (L5). A path outside src throws.
