@@ -74,7 +74,10 @@ interface Life {
   stops: GameState[]
 }
 
-/** The first founder alive at the end of a `years`-year life with `businesses` companies; the stops are kept for ages 61 to 70. */
+/**
+ * The first founder alive at the end of a `years`-year life with `businesses` companies and alive after one more year, the one the taps of
+ * (c) play on from it (a founder who dies of old age in that year has no menu left to tap); the stops are kept for ages 61 to 70.
+ */
 function life(businesses: number, label: string, years = YEARS): Life {
   let found: Life | undefined
   findSeed(
@@ -92,6 +95,9 @@ function life(businesses: number, label: string, years = YEARS): Life {
       }
       const g = probeLife(opts)
       if (!g.character.alive) return false
+      const next = structuredClone(g)
+      playYear(next)
+      if (!next.character.alive) return false
       found = { g, stops }
       return true
     },
