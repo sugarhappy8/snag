@@ -32,6 +32,7 @@ import { readHomes } from '../src/game/world/homes'
 import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod'
 import { readPeople } from '../src/game/world/people'
 import '../src/game/world/shards'
+import { EFFORT_ROWS } from './effort-ceilings'
 import { makeTestGame } from './helpers'
 import { flowTotal } from './ledger-kit'
 
@@ -482,5 +483,5 @@ const WORLD_ROWS: readonly CeilingProbe[] = [
   },
 ]
 
-/** Every row: the R0 and R1 growth terms, then the world rows. */
-export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS]
+/** Every row: the R0 and R1 growth terms, then the world rows, then the effort rows (R3-E9, test/effort-ceilings.ts). */
+export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS]

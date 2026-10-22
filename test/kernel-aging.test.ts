@@ -65,7 +65,10 @@ describe('the aging hooks are modules in the pinned phases', () => {
 
   it('the ids are the names, and the registry runs them in the table order', () => {
     const ran = yearlyEntries('aging').map((e) => e.id)
-    expect(ran.slice(0, TABLE.length)).toEqual(TABLE.map(([name]) => `yearly.${name}`))
+    // R3: a module of a later track sits among the hooks under its own id (effort.you, R3-E6, runs right after the household at
+    // order 35); the 36 hooks of R2 keep their order and their ids.
+    expect(ran.filter((id) => id.startsWith('yearly.'))).toEqual(TABLE.map(([name]) => `yearly.${name}`))
+    expect(ran[ran.indexOf('yearly.household') + 1]).toBe('effort.you')
   })
 
   it('every phase of the table is a phase of the aging seam, and the orders are multiples of ten so a track can insert between two', () => {

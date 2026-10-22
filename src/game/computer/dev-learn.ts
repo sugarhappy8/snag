@@ -6,6 +6,7 @@ import { personCash } from '../cash'
 import { ownsComputer } from './access'
 import { addHidden, addRelationship, addStat, count, formatMoney, log, notice, pronouns, remember, spend, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
+import { FOCUS_FULL_TEXT, spendFocus } from '../effort/focus'
 import { eraLines } from '../events/era'
 import { createPerson } from '../people'
 import { liftSkill } from '../mastery'
@@ -179,17 +180,24 @@ const NIGHT_QUIT_LINES = [
   'You fell asleep at the back of the room three weeks running. The instructor stopped waking you.',
 ]
 
+/** The tutorials row's subtitle: the count against the usual three, and what the extras are worth once past them. */
+function tutorialCount(used: number): string {
+  return used <= 3 ? `Free · ${used}/3 this year` : `Free · ${used} this year (extras count half)`
+}
+
 function studyTutorial(g: GameState, langId: string): void {
   const lang = getLanguage(langId)
   if (!lang) return
   const reason = firstReason(computerBlock(g), langReason(g, lang))
   if (reason) return notice(g, 'Coding', reason, { emoji: '\u{1F4BB}' })
   const era = tutorialEra(g)
-  if (!useYearAction(g, 'computer.dev.tutorial', 3)) {
-    return notice(g, era.label, "You've already studied three times this year on your own. Your brain needs time to compile.", { emoji: lang.emoji })
+  // A week of the year's focus pool (effort/focus.ts): the fourth tutorial of a year is worth half, and the 25th week is refused.
+  const use = spendFocus(g, 'computer.dev.tutorial', 3)
+  if (!use.ok) {
+    return notice(g, era.label, FOCUS_FULL_TEXT, { emoji: lang.emoji })
   }
   const before = codingSkill(g)
-  const gains = practice(g, 4, lang.id)
+  const gains = practice(g, 4 * use.mult, lang.id)
   useComputer(g, 1)
   if (chance(g, 0.3)) addStat(g, 'smarts', 1)
   addStat(g, 'happiness', randInt(g, -1, 2))
@@ -414,7 +422,7 @@ export const learnMenu: MenuGroup = {
         id: 'computer.dev.learn.tutorials',
         label: tutorialEra(g).label,
         emoji: online(g) ? '\u{1F4FA}' : '\u{1F4D6}',
-        subtitle: (gg) => `Free · ${yearActionsUsed(gg, 'computer.dev.tutorial')}/3 this year`,
+        subtitle: (gg) => tutorialCount(yearActionsUsed(gg, 'computer.dev.tutorial')),
         disabledReason: computerBlock,
         header: (gg) => tutorialEra(gg).header,
         children: () => (langs.length ? langs.map((l) => langAction(l, 'computer.dev.tut', studyTutorial)) : [noLanguagesInfo(g)]),
