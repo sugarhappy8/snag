@@ -9,9 +9,11 @@
 //
 //   flags.worldEconomy  the world economy, replaced whole once a year (economy/model.ts storeEconomy): chunk `world`, with a shape table
 //   log                 completed life-log years in decade chunks `log.<n>`; the current year stays in the core
-//   world               the A.K2 world root (absent until Ledger-world lands): each own key is a `world.<name>` replace
-//                       sub-slice, except world.ledger, which every booking edits in place and so stays in the core. Every
-//                       sub-slice takes the root's `pack: 'shapes'`
+//   world               the A.K2 world root (world/state.ts): each own key is a `world.<name>` replace sub-slice, except
+//                       world.ledger, which every booking edits in place and so stays in the core. Every sub-slice takes the
+//                       root's `pack: 'shapes'`. A shard that changes more than once a year does not belong in the `world`
+//                       chunk (its id would change with it and the whole chunk would be written again): declare it a core row
+//                       like the ledger. test/save-budget.test.ts measures the bytes a tap writes and is the detector
 //
 // `pack: 'shapes'` (kernel/shapes.ts, R2-S11) writes a value with its repeated object shapes in a table, so a country, a sector
 // row, a history point or a rival stores its values only. The codec writes the packed form only when a shape repeats, and reads
@@ -21,7 +23,12 @@
 // countries a reader can name, 16 years of history; economy/slice.ts). A later release that changes a slice's shape bumps its
 // version and adds a `migrate`; a record's `sv` map (save-codec.ts) tells which version each slice was written at.
 import './economy/slice'
+import { normalizeLedger } from './kernel/ledger'
 import { defineSlice } from './kernel/slices'
+// The world's registration hub, for its effect: normalizeWorld keeps a shard only when it is registered, so a process that reads a
+// save without loading the game's modules (a script, a test, the boot before aging.ts) has to have registered them all first.
+import './world/shards'
+import { normalizeWorld } from './world/state'
 
 /**
  * Top-level GameState keys that are plain values, not slices: they travel in the core head as they are. A key that is neither
@@ -33,9 +40,22 @@ function isPlain(raw: unknown): raw is Record<string, unknown> {
   return typeof raw === 'object' && raw !== null && !Array.isArray(raw)
 }
 
-/** A plain object stays as it is; anything else reads as absent. */
-function plainOrAbsent(raw: unknown): unknown {
-  return isPlain(raw) ? raw : undefined
+const hasOwn = (o: object, key: string): boolean => Object.prototype.hasOwnProperty.call(o, key)
+
+/**
+ * The world root through its own reader (world/state.ts normalizeWorld: only the registered shards, each through its own reader,
+ * within the world's node cap), with its keys where the saved root had them. normalizeWorld builds a new object with the shards in
+ * name order; the head of a save keeps the key order of the state (the codec's contract: a reload gives the very JSON that was
+ * encoded), so the keys go back to the order of the root that was read.
+ */
+function worldInOrder(raw: unknown): unknown {
+  // Anything but an object reads as absent, as it did before the world had a reader; an object is made a valid world.
+  if (!isPlain(raw)) return undefined
+  const read = normalizeWorld(raw) as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(raw)) if (hasOwn(read, key)) out[key] = read[key]
+  for (const key of Object.keys(read)) if (!hasOwn(out, key)) out[key] = read[key]
+  return out
 }
 
 /** The core's own slices keep what they hold: isLoadableGame (save-schema.ts) validates them. */
@@ -80,7 +100,7 @@ defineSlice({
   version: 1,
   chunk: 'world',
   caps: { nodes: 60_000, chars: 700_000 },
-  normalize: (raw) => plainOrAbsent(raw),
+  normalize: (raw) => worldInOrder(raw),
   write: 'replace',
   shape: 'subkeys',
   pack: 'shapes',
@@ -93,7 +113,7 @@ defineSlice({
   version: 1,
   chunk: 'core',
   caps: { nodes: 12_000, chars: 150_000 },
-  normalize: (raw) => plainOrAbsent(raw),
+  normalize: (raw) => (isPlain(raw) ? normalizeLedger(raw) : undefined),
   write: 'inplace',
 })
 

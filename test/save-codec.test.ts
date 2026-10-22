@@ -15,6 +15,7 @@ import { gunzipSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ageUp } from '../src/game/aging'
 import { economyState } from '../src/game/economy/model'
+import { normalizeLedger } from '../src/game/kernel/ledger'
 import { unpackShapes } from '../src/game/kernel/shapes'
 import { LOG_GROUP_YEARS, LOG_TAIL, defineSlice, listSlices } from '../src/game/kernel/slices'
 import {
@@ -37,6 +38,7 @@ import {
 } from '../src/game/save-codec'
 import { isLoadableGame, migrateSave, SAVE_SCHEMA } from '../src/game/save-schema'
 import type { GameState, LogYear } from '../src/game/types'
+import { registerShard } from '../src/game/world/state'
 import { makeTestGame } from './helpers'
 import { probeLife } from './probe-life'
 
@@ -56,6 +58,14 @@ const MANY = ['ea', 'eb', 'ec', 'ed', 'ee', 'ef', 'eg'] as const
 for (const kind of MANY) defineSlice({ key: `world.${kind}`, version: 1, chunk: 'entities', entities: { kind, shards: 16 }, caps, normalize: keep, write: 'replace' })
 // An in-place entity record: no identity cache, but the same shards.
 defineSlice({ key: 'world.entlive', version: 1, chunk: 'entities', entities: { kind: 'entlive', shards: 2 }, caps, normalize: keep })
+
+// R2-S12: the table's `world` and `world.ledger` rows read what a chunk gives them through the world's own readers (normalizeWorld,
+// normalizeLedger), which keep a shard only when the world registered it and a root only when it says `v: 1`. So the synthetic worlds
+// below are valid ones: the shard names are registered here (each reads as itself), the root carries `v: 1`, and the ledger is a real
+// (empty) shard of the books with a booking count, which the reader leaves as it is.
+for (const name of ['testrec', 'testhot', 'testent', 'entlive', 'other', ...MANY]) registerShard(name, { normalize: keep })
+/** A valid ledger shard with `k` bookings, as a new object every time (a test may edit it in place). */
+const ledgerOf = (k: number): Rec => ({ ...normalizeLedger(undefined), k }) as unknown as Rec
 
 type Rec = Record<string, unknown>
 const rec = (g: GameState): Rec => g as unknown as Rec
@@ -80,7 +90,8 @@ function busy(opts: { hot?: boolean; ageTo?: number } = {}): GameState {
   g.log = Array.from({ length: (opts.ageTo ?? 25) + 1 }, (_, age) => year(age))
   g.character.age = opts.ageTo ?? 25
   rec(g).world = {
-    ledger: { total: 5, rows: [1, 2] },
+    v: 1,
+    ledger: ledgerOf(5),
     testrec: { rows: [{ a: 1 }, { a: 2 }] },
     ...(opts.hot ? { testhot: { n: 1 } } : {}),
   }
@@ -126,9 +137,9 @@ describe('the head', () => {
     expect(flags.after).toBe('x')
     // The world container stays in the core: the replace shard is a placeholder, the ledger is inline.
     const world = head.world as Rec
-    expect(Object.keys(world)).toEqual(['ledger', 'testrec'])
+    expect(Object.keys(world)).toEqual(['v', 'ledger', 'testrec'])
     expect(world.testrec).toBe('~world.testrec')
-    expect(world.ledger).toEqual({ total: 5, rows: [1, 2] })
+    expect(world.ledger).toEqual(ledgerOf(5))
   })
 
   it('is exactly this text for a tiny hand-made game (the layout cannot drift unseen)', () => {
@@ -590,13 +601,13 @@ describe('what the encoder leaves alone', () => {
   it('keeps the ledger shard inline in the world object of the head: an in-place edit changes the head and no chunk id', () => {
     const g = busy()
     const first = encodeSave(g)
-    expect((JSON.parse(first.head) as { world: Rec }).world.ledger).toEqual({ total: 5, rows: [1, 2] })
+    expect((JSON.parse(first.head) as { world: Rec }).world.ledger).toEqual(ledgerOf(5))
     // Every booking edits the ledger in place (R2-L2): the head text changes, the chunks are not touched.
-    ;((worldOf(g).ledger as Rec).rows as number[]).push(3)
-    ;(worldOf(g).ledger as Rec).total = 6
+    ;((worldOf(g).ledger as Rec).r as string[]).push('token')
+    ;(worldOf(g).ledger as Rec).k = 6
     const second = encodeSave(g)
     expect(second.head).not.toBe(first.head)
-    expect((JSON.parse(second.head) as { world: Rec }).world.ledger).toEqual({ total: 6, rows: [1, 2, 3] })
+    expect((JSON.parse(second.head) as { world: Rec }).world.ledger).toEqual({ ...ledgerOf(6), r: ['token'] })
     expect(second.manifest).toEqual(first.manifest)
     expect(second.stats.stringified).toBe(0)
     expect(Object.isFrozen(worldOf(g).ledger)).toBe(false)
@@ -605,7 +616,7 @@ describe('what the encoder leaves alone', () => {
     ;(worldOf(next) as Rec).testrec = { rows: [{ a: 9 }] }
     const third = encodeSave(next)
     expect(idOf(third, 'world')).not.toBe(idOf(second, 'world'))
-    expect((JSON.parse(third.head) as { world: Rec }).world.ledger).toEqual({ total: 6, rows: [1, 2, 3] })
+    expect((JSON.parse(third.head) as { world: Rec }).world.ledger).toEqual({ ...ledgerOf(6), r: ['token'] })
   })
 
   it('leaves a value that is not a plain object or array in the head, so a placeholder can never collide with a real value', () => {
@@ -777,10 +788,10 @@ describe('assembleSave: reload gives identical JSON', () => {
 
   it('an entity record that rides whole in the world chunk (unsorted, or past MAX_CHUNKS), and an in-place entity record', () => {
     const g = base()
-    rec(g).world = { testent: { b: { v: 1 }, a: { v: 2 } }, entlive: entities(8) }
+    rec(g).world = { v: 1, testent: { b: { v: 1 }, a: { v: 2 } }, entlive: entities(8) }
     same(g)
     const many = base()
-    const world: Rec = {}
+    const world: Rec = { v: 1 }
     for (const kind of MANY) world[kind] = entities(400, kind.charCodeAt(1))
     rec(many).world = world
     many.log = Array.from({ length: 40 }, (_, age) => year(age))
@@ -788,12 +799,17 @@ describe('assembleSave: reload gives identical JSON', () => {
     expect(r.lost).toEqual([])
   })
 
-  it('a world with keys named like the prototype, which stay inline and set nothing on any prototype', () => {
+  it('a world with keys named like the prototype: the world reader keeps no shard it did not register, and nothing reaches any prototype', () => {
+    // R2-S12: before the table's `world` row read through normalizeWorld these keys stayed inline; the world's reader keeps only
+    // the registered shards, so they are dropped (and the reload is the state without them). The root is a valid world: v is 1.
     const g = base()
-    rec(g).world = JSON.parse('{"__proto__":{"polluted":true},"constructor":{"x":1},"testrec":{"a":1}}') as Rec
-    const r = same(g)
+    rec(g).world = JSON.parse('{"v":1,"__proto__":{"polluted":true},"constructor":{"x":1},"testrec":{"a":1}}') as Rec
+    const r = reload(split(g))
+    expect(r.lost).toEqual([])
     expect(({} as Rec).polluted).toBeUndefined()
-    expect(Object.getPrototypeOf(rec(r.game as never).world)).toBe(Object.prototype)
+    const world = rec(r.game as never).world as Rec
+    expect(Object.getPrototypeOf(world)).toBe(Object.prototype)
+    expect(JSON.stringify(world)).toBe('{"v":1,"testrec":{"a":1}}')
   })
 
   it('gives the same record when it is assembled twice, and leaves the head and the texts it was given as they were', () => {
@@ -1235,7 +1251,8 @@ describe('assembleSave: hostile and missing chunks', () => {
     delete manifestOf(p).world
     const r = reload(p)
     expect(r.lost.length).toBeLessThanOrEqual(128)
-    expect(Object.keys(r.game.world as Rec).length).toBe(0)
+    // Every placeholder was swept; what is left is the empty world the world's reader makes of a container with no shard (R2-S12).
+    expect(r.game.world).toEqual({ v: 1 })
   })
 
   it('reads a slice version map once, cleaned: whole numbers from 1 to 1000, nothing else', () => {

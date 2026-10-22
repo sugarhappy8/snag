@@ -12,12 +12,14 @@ import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { initialCountry, type EconomyPoint } from '../src/game/economy/model'
+import { normalizeLedger } from '../src/game/kernel/ledger'
 import { DEFAULT_SHAPE_LIMITS, packShapes, unpackShapes, type ShapeLimits } from '../src/game/kernel/shapes'
 import { defineSlice, sliceOf } from '../src/game/kernel/slices'
 import { assembleSave, encodeSave, inlineSave, resetCodecCachesForTests, textSum, type Assembled } from '../src/game/save-codec'
 import { migrateSave } from '../src/game/save-schema'
 import type { GameState } from '../src/game/types'
 import { COUNTRIES } from '../src/game/world'
+import { registerShard } from '../src/game/world/state'
 
 type Rec = Record<string, unknown>
 
@@ -479,6 +481,9 @@ const keep = (raw: unknown): unknown => raw
 const caps = { nodes: 1_000_000, chars: 4_000_000 }
 defineSlice({ key: 'flags.testPacked', version: 1, chunk: 'world', caps, normalize: keep, write: 'replace', pack: 'shapes' })
 defineSlice({ key: 'flags.testLive', version: 1, chunk: 'world', caps, normalize: keep, write: 'inplace', pack: 'shapes' })
+// R2-S12: the table's `world` row reads a chunk through the world's own reader, which keeps a shard only when it is registered and a
+// root only when it says `v: 1`. The made-up shards of the cases below are registered here, and their worlds are valid ones.
+for (const name of ['thing', 'bad', 'ok']) registerShard(name, { normalize: keep })
 
 describe('the codec packs a slice declared pack: shapes', () => {
   it('declares it for the world economy and for every world shard, and for nothing in the core', () => {
@@ -526,7 +531,7 @@ describe('the codec packs a slice declared pack: shapes', () => {
   it('packs a world shard (a derived row) and reads it back', () => {
     const g = heavy()
     const shard = { facts: Array.from({ length: 12 }, (_, i) => ({ id: `f${i}`, kind: 'sale', year: 2030, amount: i * 100, who: `p${i}` })) }
-    ;(g as unknown as Rec).world = { ledger: { total: 1 }, thing: shard }
+    ;(g as unknown as Rec).world = { v: 1, ledger: normalizeLedger(undefined), thing: shard }
     const e = encodeSave(g)
     const body = JSON.parse(e.chunks.get(e.manifest.world!.id)!) as { world: Rec }
     expect(Object.keys(body.world.thing as Rec)).toEqual(['$s', '$v'])
@@ -615,7 +620,7 @@ describe('the codec packs a slice declared pack: shapes', () => {
     const p = split(g)
     const good = text(g.flags.worldEconomy)
     forgeWorld(p, `{"flags.worldEconomy":${good},"world":{"bad":{"$s":[],"$v":1,"x":1},"ok":{"n":1}}}`)
-    ;(p.head as Rec).world = { bad: '~world.bad', ok: '~world.ok' }
+    ;(p.head as Rec).world = { v: 1, bad: '~world.bad', ok: '~world.ok' }
     const r = ready(assembleSave(p.head, p.texts))
     // "bad" is a plain object with an own $s: it must be a whole envelope, so it is refused; the rest is placed.
     expect(lostOf(r)).toEqual(['world:hostile'])

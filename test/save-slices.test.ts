@@ -23,6 +23,7 @@ import {
   sliceOf,
   type SliceDef,
 } from '../src/game/kernel/slices'
+import { normalizeLedger } from '../src/game/kernel/ledger'
 import { CORE_SCALARS, ensureSliceTable } from '../src/game/save-slices'
 import type { GameState } from '../src/game/types'
 import { classifyFlag } from '../src/game/world-flags'
@@ -144,15 +145,37 @@ describe('the slice table', () => {
     for (const s of scalars) expect(sliceOf(s), s).toBeUndefined()
   })
 
+  it('reads the world and its ledger through their own readers (R2-S12), idempotently, with the keys where the saved root had them', () => {
+    const world = sliceOf('world')!.normalize
+    // A root that is not a world reads as the empty one; a world keeps its registered shards and drops the rest, in the order it came.
+    expect(world({ a: 1, b: [2] })).toEqual({ v: 1 })
+    const ledger = normalizeLedger(undefined)
+    const saved = { v: 1, y: 2030, ledger, mystery: { x: 1 } }
+    const read = world(saved) as Record<string, unknown>
+    expect(Object.keys(read)).toEqual(['v', 'y', 'ledger'])
+    expect(read.ledger).toBe(ledger)
+    expect(world(read)).toEqual(read)
+    // The shards are in the order of the root that was read, not the order of the registry (alphabetical).
+    const unsorted = world({ v: 1, ledger, people: { v: 1, rows: [], over: 0 }, firms: { v: 1, rows: [], over: 0 } }) as Record<string, unknown>
+    expect(Object.keys(unsorted)).toEqual(['v', 'ledger', 'people', 'firms'])
+    // The ledger row heals a book that does not balance and leaves a valid one as the same object.
+    const books = sliceOf('world.ledger')!.normalize
+    expect(books(ledger)).toBe(ledger)
+    expect(books({ a: 1, b: [2] })).toEqual(ledger)
+    expect(books(books({ v: 1, a: { x: 5 } }))).toEqual(books({ v: 1, a: { x: 5 } }))
+  })
+
   it('keeps a chunked-out flag a world flag, so an heir keeps it', () => {
     expect(classifyFlag('worldEconomy')).toBe('world')
   })
 
   it('has a normalize for each chunked slice that keeps a plain object and drops anything else', () => {
     const plain = { a: 1, b: [2] }
+    // The economy keeps any plain object (economy/slice.ts validates it when it is read). `world` and `world.ledger` read it through
+    // the world's own readers from R2-S12: the next case holds that rule. Here all three agree on what is not an object.
+    expect(sliceOf('flags.worldEconomy')!.normalize(plain)).toBe(plain)
     for (const key of ['flags.worldEconomy', 'world', 'world.ledger']) {
       const n = sliceOf(key)!.normalize
-      expect(n(plain), key).toBe(plain)
       for (const bad of [null, 0, 'x', true, [1], undefined]) expect(n(bad), `${key} ${JSON.stringify(bad)}`).toBeUndefined()
     }
     const log = sliceOf('log')!.normalize

@@ -288,7 +288,15 @@ describe('a snapshot is the codec head plus shared chunks', () => {
     const b = backendOf('memory')
     const g = newLife(e)
     for (let i = 0; i < 3; i++) oneYear(e, g)
-    ;(g as unknown as Rec).world = { ledger: { total: 5, rows: [1, 2] }, facts: { rows: [{ a: 1 }, { a: 2 }], note: 'x' }, firms: { f1: { name: 'Acme' } } }
+    // R2-S12: the life's own world (the yearly world step indexes it, a booking opens the ledger) and two facts, in place of a hand-made
+    // container: the table's `world` row reads a restore through normalizeWorld, which would not keep a shard of made-up content.
+    const { addMoney } = await import('../src/game/core')
+    const { recordFact } = await import('../src/game/world/facts')
+    addMoney(g, 10, 'gift')
+    expect(recordFact(g, { k: 'sale.big', y: g.year, c: 'us', v: 5 })).toBe(true)
+    expect(recordFact(g, { k: 'sale.big', y: g.year, c: 'fr', v: 9 })).toBe(true)
+    const shards = (g as unknown as { world: Rec }).world
+    expect(Object.keys(shards)).toEqual(expect.arrayContaining(['ledger', 'facts']))
     e.save.setSnapshotBackend(b)
     e.save.startTimeline(g.lifeId, null)
     const want = JSON.stringify(g)
@@ -297,9 +305,11 @@ describe('a snapshot is the codec head plus shared chunks', () => {
     const head = await headOf(e, b, g.lifeId, stop)
     // The ledger stays in the head, the other shards are placeholders.
     const world = head.world as Rec
-    expect(world.ledger).toEqual({ total: 5, rows: [1, 2] })
+    expect(world.ledger).toEqual(shards.ledger)
     expect(world.facts).toBe('~world.facts')
-    expect(world.firms).toBe('~world.firms')
+    for (const [name, shard] of Object.entries(shards)) {
+      if (name !== 'ledger' && typeof shard === 'object' && shard !== null) expect(world[name], name).toBe(`~world.${name}`)
+    }
     const snap = await e.save.loadSnapshot(g.lifeId, g.character.age)
     expect(JSON.stringify(snap)).toBe(want)
     expect((snap as unknown as Rec).world).toEqual((g as unknown as Rec).world)
