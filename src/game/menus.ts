@@ -1,34 +1,27 @@
 // Top-level menus for the bottom bar. Each feature module exports its own MenuGroup;
-// this file only arranges them.
-import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, nightlifeMenu, surrenderLifeAction, vacationMenu } from './activities'
+// this file only arranges them. The rows of Assets, Shopping and Activities are registered with the kernel, in slots
+// (modules/menus-core.ts), and collected here: a new feature adds a row with one registry entry and edits no list in this file.
+import { mindBodyMenu, surrenderLifeAction } from './activities'
 import { isVisaLock, visaLockSubtitle, visaLockView } from './activities/immigration-lock'
-import { moneyTeamMenu } from './advisors/menu'
 import { ASSET_KIND_VIEWS, ASSET_NODE_HOOKS, assetsMenu as baseAssetsMenu, shoppingMenu as baseShoppingMenu } from './assets'
-import { businessAssetSubtitle, businessAssetView, businessesMenu } from './business'
+import { businessAssetSubtitle, businessAssetView } from './business'
 import { occupationMenu } from './careers'
-import { developmentMenu, developmentNodes } from './development'
+import { developmentNodes } from './development'
 import { actorLikenessNodes } from './special/actor-legacy'
 import { musicMasterNodes } from './special/music-rights'
-import { computerMenu } from './computer'
 import { ventureAssetSubtitle, ventureAssetView } from './computer/dev'
 import { inPrison, queueAi, yearActionsUsed } from './core'
-import { investmentAssetSubtitle, investmentAssetView, investmentsMenu } from './investments'
+import { investmentAssetSubtitle, investmentAssetView } from './investments'
+import { collectMenu, registerModule } from './kernel/registry'
 import { CUSTOM_ACTION_KEY, MAX_CUSTOM_ACTIONS_PER_YEAR } from './offline'
-import { crimeMenu } from './crime'
-import { inventionNodes, inventionSubtitle, workshopMenu } from './workshop/menu'
-import { corruptionMenu } from './special/corruption'
-import { casinoMenu, lotteryMenu } from './gambling'
+import { inventionNodes, inventionSubtitle } from './workshop/menu'
 import { doctorMenu } from './health'
-import { thisYearMenu } from './history/digest-menu'
-import { bankingMenu, economyMenu } from './economy/menu'
-import { lifePrioritiesMenu } from './household'
-import { royalMenu } from './royalty'
-import { adoptionMenu, loveMenu, petsMenu } from './love'
 import { prisonMenu } from './prison'
-import { everydayStoreMenus, luxuryLifestyleMenu, membershipAssetSubtitle, membershipAssetView, membershipsMenu, ticketsMenu } from './shops'
+import { membershipAssetSubtitle, membershipAssetView } from './shops'
 import { luxuryAssetNodes } from './shops/luxury-brands-assets'
 import { familyAccessNode } from './shops/luxury-family'
-import { fameMenu, socialMediaMenu } from './special'
+// Registers the modules (the rows of the slots below among them); menus is the entry that guarantees they are loaded before a menu is built.
+import './modules'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from './types'
 
 export { occupationMenu }
@@ -53,28 +46,15 @@ function insertBefore(nodes: MenuNode[], beforeId: string, extra: MenuNode[]): M
 export const assetsMenu: MenuGroup = {
   ...baseAssetsMenu,
   children: (g) => {
-    const base = insertBefore(baseAssetsMenu.children(g), 'housingHeading', [
-      { type: 'heading', id: 'moneyHeading', label: 'Business & Investments' },
-      businessesMenu,
-      investmentsMenu,
-      moneyTeamMenu,
-      bankingMenu,
-      developmentMenu,
-    ])
-    return [...base, ...everydayStoreMenus, membershipsMenu, ticketsMenu, luxuryLifestyleMenu]
+    const base = insertBefore(baseAssetsMenu.children(g), 'housingHeading', collectMenu('assets.money', g))
+    return [...base, ...collectMenu('assets.tail', g)]
   },
 }
 
 /** Activities › Shopping: every store, the big purchases and lifestyle spending. */
 export const shoppingMenu: MenuGroup = {
   ...baseShoppingMenu,
-  children: (g) => [
-    ...insertBefore(baseShoppingMenu.children(g), 'shopBig', everydayStoreMenus),
-    { type: 'heading', id: 'shopLifestyle', label: 'Lifestyle' },
-    membershipsMenu,
-    ticketsMenu,
-    luxuryLifestyleMenu,
-  ],
+  children: (g) => [...insertBefore(baseShoppingMenu.children(g), 'shopBig', collectMenu('shopping.stores', g)), ...collectMenu('shopping.lifestyle', g)],
 }
 
 /**
@@ -116,33 +96,12 @@ export const activitiesMenu: MenuGroup = {
     if (inPrison(g)) {
       return [doAnythingAction, ...prisonMenu.children(g), mindBodyMenu, doctorMenu, surrenderLifeAction]
     }
-    const all: MenuNode[] = [
-      adoptionMenu,
-      casinoMenu,
-      computerMenu,
-      crimeMenu,
-      corruptionMenu,
-      doctorMenu,
-      emigrateMenu,
-      fameMenu,
-      licensesMenu,
-      lotteryMenu,
-      loveMenu,
-      mindBodyMenu,
-      moviesMenu,
-      nightlifeMenu,
-      petsMenu,
-      workshopMenu,
-      shoppingMenu,
-      socialMediaMenu,
-      thisYearMenu,
-      economyMenu,
-      royalMenu,
-      lifePrioritiesMenu,
-      vacationMenu,
-      ...miscActivities,
-    ]
+    const all = collectMenu('activities.items', g)
     // Like the real game, Surrender sits on its own at the very bottom of the list.
     return [doAnythingAction, ...sortByLabel(all), surrenderLifeAction]
   },
 }
+
+// Activities > Shopping is this file's own export, so its row is registered here and the other 22 rows of the slot are in modules/menus-core.ts.
+// The slot lists it where the old array did, after the workshop and before social media. The arrow reads it when the menu is built.
+registerModule({ id: 'menus.shopping', layer: 4, menus: [{ path: 'activities.items', order: 170, build: () => [shoppingMenu] }] })

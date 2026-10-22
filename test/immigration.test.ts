@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-vi.mock('../src/game/crime', () => ({ arrestPlayer: vi.fn() }))
+// menus.ts registers the yearly hooks through src/game/modules (R2-K11), and the crime hook is read from this mock when that file loads
+vi.mock('../src/game/crime', () => ({ arrestPlayer: vi.fn(), yearlyCrime: vi.fn() }))
 import { emigrateMenu } from '../src/game/activities/emigrate'
 import { applyRoute, requestExitPermit, resolvePending, sneakIn } from '../src/game/activities/immigration-apply'
 import { earlyExitShare, visaLockView, withdrawEarly } from '../src/game/activities/immigration-lock'
