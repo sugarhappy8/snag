@@ -57,6 +57,7 @@ import { classicIdeas } from '../src/game/business/products'
 import { advanceRd, launchP, rdCost, rdQuote, startRd } from '../src/game/business/rd'
 import { bizOf, type BizState, type KeyStaff, type RdProject } from '../src/game/business/state'
 import type { Industry } from '../src/game/data/markets'
+import { ambitionOf } from '../src/game/effort/persona'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 import { readMarketNews } from '../src/game/history/market-events'
 import { fnv1a } from '../src/game/text/hash'
@@ -201,10 +202,17 @@ export function gridHash(system: SystemId, inputs: readonly Input[] = gridInputs
   return fnv1a(inputs.map(idOf).join('\n')).toString(16).padStart(8, '0')
 }
 
-/** The default actor: willpower and discipline 55, so ambition is 50 (the middle) once the engine derives it from them. */
+/**
+ * The default actor: willpower and discipline 55, so ambition is 50 (the middle) once the engine derives it from them. A life with an
+ * ambitious talent (the test kits give every grown-up the Business one) is 4 above that, which would put its odds a fraction of a
+ * point off the recorded ones, so the talents' share comes off willpower: the actor is on 50 exactly, whoever it is. For a life with
+ * no such talent this is willpower and discipline 55, nothing else.
+ */
 export function neutralAmbition(g: GameState): void {
   g.character.hidden.willpower = 55
   g.character.hidden.discipline = 55
+  const extra = ambitionOf(g) - 50
+  if (extra !== 0) g.character.hidden.willpower = Math.min(100, Math.max(0, 55 - extra / 0.5))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

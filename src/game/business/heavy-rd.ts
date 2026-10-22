@@ -8,6 +8,11 @@
 // launch roll at year-end (the only place that draws on the RNG) and the news that follows.
 import { firmCash } from '../cash'
 import { formatMoney, log, notice } from '../core'
+import { quote } from '../effort/engine'
+import { revealPolicyOf } from '../effort/hooks'
+import { causeOf } from '../effort/step'
+import type { EffortInput, Outcome, Quote, Reason, StepResult, Task } from '../effort/types'
+import { causeLine, oddsLine, payoffLine } from '../effort/why'
 import { carriedMarketNews, pushMarketNews } from '../history/market-events'
 import { chance, rand, uid } from '../rng'
 import type { Asset, GameState, Json } from '../types'
@@ -19,12 +24,14 @@ import { bizWorth, marketCtxFor } from './economy'
 import { eraFits } from './era'
 import { isFinanceFirm } from './finance-firm-state'
 import { breakthroughByName, breakthroughsFor, type Breakthrough } from './heavy-data'
+import { HEAVY_NOMINAL_COST, HEAVY_QUALITY_K, HEAVY_QUALITY_PLUS, heavyField, heavyTaskOf, heavyTerms } from './heavy-effort'
 import { industryDef } from './industries'
 import { shieldsOf } from './lab-state'
 import type { DemandLevel } from './product-data'
 import { fieldFor, fieldOf, hashOf, mix, productPull } from './product-market'
 import { classicIdeas } from './products'
-import { baseYears, DISCOUNT, HORIZON, launchP, projectQuality, pullValue, rdCost, rdOf, rdProjects, rdQuality, rdReserve, retiredReason, roundBudget } from './rd'
+import { baseYears, DISCOUNT, HORIZON, launchP, projectQuality, pullValue, rdCost, rdOf, rdProjects, rdQuality, rdReserve, researchState, retiredReason, roundBudget } from './rd'
+import { bookResearch, frontierFieldOf, researchInputs, type BookCtx } from './research-effort'
 import { findBusiness, MAX_STORED_PROJECTS, readBiz, retiredOf, type BizState, type Product, type RdProject } from './state'
 import { heavyStartsWave, heavyWaveFor } from './tech-wave-data'
 import { announceWave } from './tech-waves'
@@ -285,19 +292,12 @@ export function heavyPulse(records: readonly HeavyRecord[], year: number): numbe
 // ---------------------------------------------------------------------------
 // The project: price, years, odds
 
-/** A breakthrough costs this many times the first classic idea's development cost, fixed (no slider)... */
+/**
+ * A breakthrough costs this many times the first classic idea's development cost, fixed (no slider)... Its years (three times a
+ * normal project, 4 to 6), its odds (55% of a normal launch's, 8% to 60%) and its quality (14 points above a lavishly funded line, at
+ * most 97) are the Effort engine's calibration of one task with a budget of one (heavy-effort.ts)...
+ */
 export const HEAVY_COST_X = 8
-/** ...takes this many times a normal project, but never under 4 or over 6 years... */
-const HEAVY_YEARS_X = 3
-const HEAVY_MIN_YEARS = 4
-const HEAVY_MAX_YEARS = 6
-/** ...works at this share of a normal launch's chance, between these two bounds... */
-const HEAVY_ODDS_X = 0.55
-const HEAVY_ODDS_MIN = 0.08
-const HEAVY_ODDS_MAX = 0.6
-/** ...aims this many points above a lavishly funded ordinary line (at most 97)... */
-const HEAVY_QUALITY_PLUS = 14
-const HEAVY_QUALITY_MAX = 97
 /** ...and a company waits this many calendar years after one launches or flops before starting the next. */
 export const HEAVY_COOLDOWN = 5
 
@@ -320,19 +320,76 @@ export function heavyCost(g: GameState, b: Pick<BizState, 'industry' | 'countryI
   return first === undefined ? null : roundBudget(HEAVY_COST_X * rdCost(b, first))
 }
 
-/** Booked years a breakthrough takes in this trade: three times a normal project, from 4 to 6. */
-export function heavyYears(b: { industry: string }): number {
-  return Math.round(clampN(Math.ceil(baseYears(b.industry) * HEAVY_YEARS_X - 1e-9), HEAVY_MIN_YEARS, HEAVY_MAX_YEARS))
+/**
+ * `quote` reads the game only for the player's own record (`who: 'you'`), and a read at the default actor has none to read, so the
+ * years of a trade need no game: this stands in for it where there is none.
+ */
+const NO_GAME = null as unknown as GameState
+
+/** The asset a company's state belongs to (the stored one; a normalized copy for display has none), or null: an NPC company. */
+function assetOf(g: GameState, b: BizState): Asset | null {
+  return g.assets.find((x) => (x.details as unknown) === b) ?? null
 }
 
-/** The chance a breakthrough works when it is done: 55% of a normal launch's chance, between 8% and 60%. */
-export function heavyOdds(g: GameState, b: BizState): number {
-  return clampN(HEAVY_ODDS_X * launchP(g, b), HEAVY_ODDS_MIN, HEAVY_ODDS_MAX)
+/**
+ * The Task and the input of one breakthrough for this company, ready for `quote`: a budget of one (the price is fixed), the crew,
+ * the company's know-how in this breakthrough's field (a failed try banks it), the trade's public research and rival pressure, and
+ * the quality the company's own terms aim at. `a` is the company's asset when the caller has it (a menu reads a copy of the state
+ * and says which asset it is); without it the stored asset is looked up, and none means an NPC company: steady, nothing banked.
+ * `terms` adds the lines that say what the base is made of (skill, team). Pure.
+ */
+function heavySetup(g: GameState, b: BizState, name: string | undefined, a: Asset | null | undefined, terms: boolean): { task: Task; input: EffortInput } {
+  const s = researchState(g, b)
+  const field = heavyField(name)
+  const task = heavyTaskOf({ field, cost: heavyCost(g, b) ?? HEAVY_NOMINAL_COST, baseYears: baseYears(b.industry), launch: launchP(g, b) })
+  const input = researchInputs(g, s, a === undefined ? assetOf(g, b) : a, field, 1, 0, frontierFieldOf(b.industry))
+  input.quality0 = rdQuality(g, b, HEAVY_QUALITY_K) + HEAVY_QUALITY_PLUS
+  if (terms) input.baseTerms = [...(input.baseTerms ?? []), ...heavyTerms(s)]
+  return { task, input }
+}
+
+/** The Task a breakthrough is for the engine (cost the fixed price, odds and years calibrated to this company). Pure. */
+export function heavyTask(g: GameState, b: BizState, name?: string, a?: Asset | null): Task {
+  return heavySetup(g, b, name, a, false).task
+}
+
+/**
+ * What a breakthrough comes to for this company: the odds it works, the years, the quality it aims at, the price (`spend`) and the
+ * labelled reasons. `name` is the breakthrough (a failed try of it banked know-how under its own field); without one the trade-wide
+ * field is read. Pure: it draws nothing and writes nothing.
+ */
+export function heavyQuote(g: GameState, b: BizState, name?: string, a?: Asset | null): Quote {
+  const { task, input } = heavySetup(g, b, name, a, true)
+  return quote(g, task, input)
+}
+
+/** The labelled lines of a breakthrough's odds ("skill +3, team +6, know-how +8"), in odds points. Pure. */
+export function heavyWhy(g: GameState, b: BizState, name?: string, a?: Asset | null): readonly Reason[] {
+  return heavyQuote(g, b, name, a).reasons
+}
+
+/** The odds line a player reads ("Odds 46%: skill +3, team +6"): what the reveal policy lets them see. Pure. */
+export function heavyWhyLine(g: GameState, b: BizState, name?: string, a?: Asset | null): string {
+  return oddsLine(heavyQuote(g, b, name, a), revealPolicyOf(g))
+}
+
+/** Booked years a breakthrough takes in this trade at the default actor: three times a normal project, from 4 to 6. */
+export function heavyYears(b: { industry: string }): number {
+  // The odds the task is built with (`launch`) and its price play no part in the years; a placeholder stands in for both.
+  const task = heavyTaskOf({ field: heavyField(undefined), cost: HEAVY_NOMINAL_COST, baseYears: baseYears(b.industry), launch: 0.5 })
+  return quote(NO_GAME, task, { k: 1 }).years
+}
+
+/** The chance a breakthrough works when it is done: 55% of a normal launch's chance, between 8% and 60% (and what know-how adds). */
+export function heavyOdds(g: GameState, b: BizState, name?: string, a?: Asset | null): number {
+  const { task, input } = heavySetup(g, b, name, a, false)
+  return quote(g, task, input).p
 }
 
 /** The quality a breakthrough is expected to reach if it works (before the launch's luck). */
-export function heavyQuality(g: GameState, b: BizState): number {
-  return Math.min(HEAVY_QUALITY_MAX, rdQuality(g, b, 2.5) + HEAVY_QUALITY_PLUS)
+export function heavyQuality(g: GameState, b: BizState, name?: string, a?: Asset | null): number {
+  const { task, input } = heavySetup(g, b, name, a, false)
+  return quote(g, task, input).quality ?? 0
 }
 
 /**
@@ -413,8 +470,11 @@ export function startHeavy(g: GameState, a: Asset, b: BizState, name: string): R
     notice(g, 'R&D', why ?? 'Nothing is ready on the drawing board to base a cost on.', { emoji: '\u{1F9EA}' })
     return null
   }
-  const years = heavyYears(b)
-  const odds = heavyOdds(g, b)
+  // One quote of the engine for the whole start: the years, the odds and the quality of this company's try, at the price it just paid.
+  const setup = heavySetup(g, b, name, a, false)
+  const q = quote(g, setup.task, setup.input)
+  const years = q.years
+  const odds = q.p
   firmCash(g, b, -cost, 'rnd', a.id)
   b.yearCosts += cost
   const p: RdProject = {
@@ -425,7 +485,7 @@ export function startHeavy(g: GameState, a: Asset, b: BizState, name: string): R
     progress: 0,
     odds: round3(odds),
     boost: 0,
-    quality: heavyQuality(g, b),
+    quality: q.quality ?? 0,
     family: name,
     kind: 'breakthrough',
     heavy: true,
@@ -454,9 +514,11 @@ export function heavyGain(g: GameState, b: BizState, name: string, ctx?: MarketC
   if (cost === null) return 0
   const c = ctx ?? marketCtxFor(g, b, g.year)
   const w = bizWorth(g, b)
-  const years = heavyYears(b)
+  const { task, input } = heavySetup(g, b, name, undefined, false)
+  const q = quote(g, task, input)
+  const years = q.years
   const from = g.year + years
-  const quality = Math.round(Math.min(99, heavyQuality(g, b) + HEAVY_HIT_P * HEAVY_HIT_QUALITY))
+  const quality = Math.round(Math.min(99, (q.quality ?? 0) + HEAVY_HIT_P * HEAVY_HIT_QUALITY))
   const records: HeavyRecord[] = [...fieldFor(c).heavy.filter((r) => r.family !== name), { family: name, year: from, years, quality, cost, by: '' }]
   const line: Product = { name, launched: from, boost: 0, quality, family: name, kind: 'breakthrough' }
   let sales = 0
@@ -467,7 +529,7 @@ export function heavyGain(g: GameState, b: BizState, name: string, ctx?: MarketC
     const withIt = productPull(b.industry, [...b.products.filter((p) => p.name !== name), line], year, field).total
     sales += pullValue(c, b, w, base, withIt) * Math.pow(DISCOUNT, years - 1 + t)
   }
-  const gain = (heavyOdds(g, b) * sales) / 5
+  const gain = (q.p * sales) / 5
   return Number.isFinite(gain) ? Math.max(0, gain) : 0
 }
 
@@ -493,24 +555,55 @@ function announceLaunch(g: GameState, a: Asset, b: BizState, rec: HeavyRecord, m
 }
 
 /**
+ * Books a finished breakthrough through the engine (`step`, by way of the research seam): a failure banks know-how in the company's
+ * own map under this breakthrough's field, so the next try of it is likelier (at most 15 points in all); a win banks none, and for
+ * the player's own run lifts their ambition a little. Only a company with an asset learns: an NPC company (`a` is null) books
+ * nothing and moves no state, so the NPC economy and the golden digests keep today's bytes. Draws nothing and moves no money; the
+ * caller made the roll (`u`, against `odds`) and says how it came out.
+ *
+ * Returns the words a failure adds to the results line: the cause, read from the quote's own reasons, and what the failure taught.
+ * Empty for a win, for an NPC company and for a year already booked (a project whose `fx` was last stepped this year).
+ */
+function settleHeavy(g: GameState, a: Asset | null, b: BizState, p: RdProject, year: number, roll: { won: boolean; hit: boolean; odds: number; u: number }, quality?: number): string {
+  if (a === null) return ''
+  const { task, input } = heavySetup(g, b, p.name, a, false)
+  const margin = (roll.odds - roll.u) * 100
+  const outcome: Outcome = roll.won
+    ? { kind: roll.hit ? 'hit' : 'works', margin, cause: null, done: 1 }
+    : { kind: 'fail', margin, cause: causeOf(quote(g, task, input).reasons), done: 1 }
+  const ctx: BookCtx = { year, k: 1 }
+  if (p.fx !== undefined) ctx.fx = p.fx
+  if (quality !== undefined) ctx.quality = quality
+  const result: StepResult | null = bookResearch(g, a, task, outcome, ctx)
+  if (roll.won || result === null || result.replay || outcome.cause === null) return ''
+  return ` ${causeLine(outcome.cause, '')} ${payoffLine(task, outcome, result)}`
+}
+
+/**
  * A breakthrough project finished its years: it works or it flops. The roll is the only place Heavy R&D
  * draws on the game RNG, in this order and nothing else: the odds, then (if it works) whether it is a smash
  * hit, then the quality spread. A launch puts the line on sale as a kind of its own, writes the record the
  * market reads (demand, rivals, the lift for the whole trade) and makes the news; a flop loses the money,
- * six brand points and nothing more (nobody reports a private failure). Either way the five-year wait starts.
+ * six brand points and nothing more (nobody reports a private failure), but it teaches: the company banks
+ * know-how in this breakthrough (settleHeavy). Either way the five-year wait starts.
  * Returns the line for the R&D Results notice.
  */
 export function advanceHeavy(g: GameState, a: Asset | null, b: BizState, p: RdProject, year: number): { won: boolean; line: string } {
   const name = a?.name ?? 'The company'
   const spent = typeof p.cost === 'number' && Number.isFinite(p.cost) ? p.cost : p.budget
   b.heavyLast = year
-  if (!chance(g, clampN(p.odds, 0.02, 0.98))) {
+  // The roll is the game's own `chance`, with its draw kept to hand to the engine as the margin: `rand(g) < odds`, one draw.
+  const odds = clampN(p.odds, 0.02, 0.98)
+  const u = rand(g)
+  if (!(u < odds)) {
     b.brand = clampN(b.brand + HEAVY_FLOP_BRAND, 0, 100)
     log(g, `${name}'s ${p.name} flopped.`, 'bad')
-    return { won: false, line: `\u{1F4A5} ${p.name} flopped in testing (${money(spent)} of R&D).` }
+    const learned = settleHeavy(g, a, b, p, year, { won: false, hit: false, odds, u })
+    return { won: false, line: `\u{1F4A5} ${p.name} flopped in testing (${money(spent)} of R&D).${learned}` }
   }
   const hit = chance(g, HEAVY_HIT_P)
   const quality = Math.round(clampN(projectQuality(p) + (rand(g) * 2 - 1) * HEAVY_SPREAD + (hit ? HEAVY_HIT_QUALITY : 0), 5, 99))
+  settleHeavy(g, a, b, p, year, { won: true, hit, odds, u }, quality)
   // A line of the same name may have come with a rival bought meanwhile: the better one stays.
   const line: Product = { name: p.name, launched: year + 1, boost: 0, quality, family: p.name, kind: 'breakthrough' }
   const same = b.products.findIndex((x) => x.name === p.name)
