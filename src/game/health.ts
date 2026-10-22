@@ -28,6 +28,8 @@ import { killCharacter } from './death'
 import { hasTalent } from './talents'
 import { chance, pick, randFloat, randInt, uid, weightedPick } from './rng'
 import { pickLine, pickSite } from './text/pick'
+import { CHILD_UNCURED_LINES } from './text/pools'
+import { fillSlots } from './text/state'
 import { defineScript } from './scripts'
 import { getCountry, NAME_POOLS } from './world'
 import type { ChoiceOption, Condition, ConditionKind, GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person } from './types'
@@ -1071,7 +1073,7 @@ function babyCare(g: GameState): void {
       )
     } else {
       if (def.deadly) cond.severity = Math.max(1, cond.severity - randInt(g, 5, 12))
-      log(g, `My ${who} took me to the doctor for ${label}, but the treatment didn't work.`, 'bad')
+      log(g, fillSlots(pickLine(g, CHILD_UNCURED_LINES), { who, label }), 'bad')
       if (!wasKnown && c.age >= 4) notice(g, 'Diagnosis', `Your ${who} took you to the doctor, who diagnosed you with ${label}. The treatment didn't work this time.`, { emoji: '\u{1FA7A}', tone: 'bad' })
     }
   }

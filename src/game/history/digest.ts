@@ -1,7 +1,7 @@
 // The year digest: what everyday life looked and cost like this year, so a 1962 life feels like
-// 1962 and a 2008 one like 2008. Each year the log gets one line ("📅 1985: cassette tapes, arcade
-// quarters and a first computer in the den. A movie ticket costs $3.55, a loaf of bread $0.50..."),
-// and the "This Year" menu shows the full card (culture, prices, technology).
+// 1962 and a 2008 one like 2008. Each year the log gets one line ("📅 1985: Live Aid on TV. Back to
+// the Future makes the DeLorean a star. ..."), the culture line alone and at most 110 characters
+// (docs/VOICE.md). The "This Year" menu shows the full card: culture, prices and technology.
 //
 // Data lives in three files (one owner each; see the era builders):
 //   history/digest-prices.ts  PRICE_ITEMS: typical everyday prices as nominal US dollars in
@@ -92,12 +92,10 @@ export function pricesLine(year: number, count = 3): string {
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}.` : `${parts[0]}.`
 }
 
-/** The log line for a year ('' when the data has nothing for it). */
+/** The log line for a year: the emoji, the year and the culture line, no prices ('' when no culture line is written). */
 export function digestLine(year: number): string {
   const culture = cultureOf(year)
-  const prices = pricesLine(year)
-  if (!culture && !prices) return ''
-  return `\u{1F4C5} ${year}: ${culture}${culture && prices ? ' ' : ''}${prices}`.trim()
+  return culture ? `\u{1F4C5} ${year}: ${culture}` : ''
 }
 
 /** Yearly hook (after 'history'): one digest line a year, for real history only. */

@@ -185,7 +185,8 @@ export function logNews(g: GameState): void {
   if (!line) return
   const entries = currentLogYear(g).entries
   if (entries.some((e) => isNewsLine(e.text))) return
-  entries.push({ id: `news-${g.generation}-${g.year}`, text: line, tone: 'neutral' })
+  // Source `history` and weight 0: the news is the year's background. yearlyMilestones reads w 0 as "nothing happened to me yet".
+  entries.push({ id: `news-${g.generation}-${g.year}`, text: line, tone: 'neutral', s: 'history', w: 0 })
 }
 
 /** Yearly hook (aging.ts, first): world news in the log, era life events (drafts, rationing...). */

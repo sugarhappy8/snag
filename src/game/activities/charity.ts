@@ -4,6 +4,8 @@
 import { addHidden, addStat, count, log, netWorth, remember, spend } from '../core'
 import { chance, pick, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
+import { DONATED_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, gate, money, result, stablePick, usesLeft } from './common'
 import { common } from '../events/era'
@@ -78,7 +80,7 @@ function donate(g: GameState, ch: Charity, input: string | undefined): void {
   addStat(g, 'happiness', happy)
 
   if (amount < 10) {
-    log(g, `I donated ${money(amount)} to ${ch.name}.`, 'neutral')
+    log(g, fillSlots(pickLine(g, DONATED_LINES), { money: money(amount), charity: ch.name }), 'neutral')
     result(g, 'Donation', pickSite(g, [
       `You donated ${money(amount)} to ${ch.name}. The volunteer squinted at it, then thanked you very politely.`,
       `You dropped ${money(amount)} into the ${ch.name} jar. Every little bit helps. This was a very little bit.`,
@@ -101,7 +103,7 @@ function donate(g: GameState, ch: Charity, input: string | undefined): void {
     addHidden(g, 'fame', Math.min(10, Math.round(Math.log10(amount / 100_000) * 3)))
     remember(g, `Donated ${money(amount)} to ${ch.name}.`)
   }
-  log(g, `I donated ${money(amount)} to ${ch.name}.`, 'good')
+  log(g, fillSlots(pickLine(g, DONATED_LINES), { money: money(amount), charity: ch.name }), 'good')
   let text = `You donated ${money(amount)} to ${ch.name} to support ${ch.cause}. ${pick(g, ch.thanks)}`
   if (amount >= 10_000_000) {
     text += `\n\nThey're naming a building after you: the ${c.lastName} Center. The ribbon-cutting made ${common(g, 'tv') ? 'the evening news' : 'the front page'}.`

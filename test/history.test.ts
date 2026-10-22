@@ -128,6 +128,16 @@ describe('world headlines', () => {
     expect(newsLine(1991, 'ng')).not.toMatch(/Web/)
   })
 
+  it('does not mistake the Deutsche Mark for a direct message', () => {
+    // An outcome popup prints its cost in the player's money: 138 DM in Germany before the euro (events/sos.ts, 'Evacuated').
+    expect(eraSafe('You evacuated in time and stayed somewhere safe until the flood passed. It cost you 138 DM.', 'de', 1991)).toBe(true)
+    expect(eraSafe('It cost you 1,380 DM.', 'de', 1991)).toBe(true)
+    // The messaging meaning is still caught where there were no smartphones.
+    expect(eraSafe('Teams slid into your DMs.', 'de', 1991)).toBe(false)
+    expect(eraSafe('You got 5 DMs overnight.', 'de', 1991)).toBe(false)
+    expect(eraSafe('Send me a DM.', 'de', 1991)).toBe(false)
+  })
+
   it('writes a procedural future that never repeats within a cycle', () => {
     const seen = new Set<string>()
     for (let y = PRESENT_YEAR + 1; y <= PRESENT_YEAR + FUTURE_POOL_SIZE; y++) {

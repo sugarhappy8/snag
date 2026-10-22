@@ -148,3 +148,4 @@ One line each. A track that adds a file here adds its line; `test/kernel-accepta
 - `src/game/kernel/spreads.ts` - the bid-ask spreads of the pools: `ask` and `bid`, so no pool trades at the mid price both ways.
 - `src/game/kernel/streams.ts` - named streams, `stream` and `outcomeStream`: the only source of luck a world module may use.
 - `src/game/kernel/tally.ts` - a company's cash by reason: the small tally the exact cash walk is built from, bounded and whole dollars.
+- `docs/QUIET.md` - how a year closes in the store (R3): the fields `s`, `a` and `w`, the weights, the budget, the year card, the `yearCard` flag and the pace families. Its code is in `src/game/hubs` and `src/game/text/pace.ts`, not in the kernel.

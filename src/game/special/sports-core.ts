@@ -12,7 +12,8 @@ import { addCvEntry } from '../cv'
 import { localeOf } from '../data/locales'
 import { chance, pick, rand, randInt, uid } from '../rng'
 import { pickLine } from '../text/pick'
-import { stateLine } from '../text/state'
+import { ENDORSE_RENEWED_LINES } from '../text/pools'
+import { fillSlots, stateLine } from '../text/state'
 import { logStateLine } from '../text/state-log'
 import { defineScript } from '../scripts'
 import type { Condition, CvEntry, GameState, Gender, Job, Json, MenuGroup, MenuNode } from '../types'
@@ -599,7 +600,7 @@ export function yearlySponsors(g: GameState, sport: string | null, appeal: numbe
   for (const d of ended) {
     if (sport && c.hidden.fame >= 15 && p.sponsors.length < maxDeals(c.hidden.fame) && chance(g, 0.5)) {
       p.sponsors.push({ ...d, yearsLeft: randInt(g, 1, 3), yearly: Math.min(dealCeiling(g, dealBrand(d.brand, d.product)), tidy(d.yearly * (0.6 + (c.hidden.fame / 100) * 0.6) * (0.85 + rand(g) * 0.3))) })
-      log(g, `${d.brand} renewed my endorsement deal.`, 'good')
+      log(g, fillSlots(pickLine(g, ENDORSE_RENEWED_LINES), { brand: d.brand }), 'good')
     } else log(g, `My endorsement deal with ${d.brand} ended.`)
   }
   // What the deals paid, said through its row (text/state-table.ts): in the first year, when the sum moves up a step, or after 5

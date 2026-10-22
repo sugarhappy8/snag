@@ -1,0 +1,702 @@
+{
+  "v": 1,
+  "lives": 30,
+  "seeds": [
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209,
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218,
+    219,
+    220,
+    301,
+    302,
+    303,
+    304,
+    305,
+    306,
+    307,
+    308,
+    309,
+    310
+  ],
+  "untilAge": 85,
+  "total": 1379,
+  "top": [
+    "adult.powerOutage",
+    "friend.newFriend",
+    "adult.foundWallet",
+    "adult.lostCash",
+    "adult.witnessCrime",
+    "adult.aliens",
+    "adult.godQuestion",
+    "adult.emailScam",
+    "adult.fluSeason",
+    "adult.badMeal",
+    "adult.homeless",
+    "adult.lostDog",
+    "adult.strangerInsult",
+    "adult.charity",
+    "adult.phoneScam",
+    "adult.scratchTicket",
+    "family.parentHealth",
+    "family.siblingWedding",
+    "adult.reunion",
+    "adult.streetPerformer",
+    "adult.timeshare",
+    "adult.strandedDriver",
+    "family.borrowMoney",
+    "adult.fraudAlert",
+    "adult.juryDuty",
+    "teen.viralVideo",
+    "elder.earlyBird",
+    "elder.healthScare",
+    "elder.oldFlame",
+    "sos.car",
+    "baby.vaccination",
+    "friend.advice",
+    "friend.late",
+    "sos.disaster",
+    "toddler.bigFlex",
+    "elder.memoir",
+    "elder.pickleball",
+    "era.1900.marketDay",
+    "era.1900.pictureHall",
+    "sos.fire",
+    "sos.tree",
+    "teen.wrongText",
+    "adult.midlife",
+    "baby.cheekSqueezer",
+    "elder.hearing",
+    "era.2000s.allNighter",
+    "kid.siblingSpat",
+    "kid.strayAnimal",
+    "school.classClown",
+    "adult.gameShow",
+    "adult.inheritance",
+    "elder.bingo",
+    "family.siblingJealous",
+    "friend.flatTire",
+    "friend.moving",
+    "kid.grossDinner",
+    "kid.roadTrip",
+    "kid.snowDay",
+    "school.sneeze",
+    "sos.cpr"
+  ],
+  "rows": [
+    {
+      "id": "adult.powerOutage",
+      "count": 41,
+      "lives": 22
+    },
+    {
+      "id": "friend.newFriend",
+      "count": 40,
+      "lives": 20
+    },
+    {
+      "id": "adult.foundWallet",
+      "count": 39,
+      "lives": 21
+    },
+    {
+      "id": "adult.lostCash",
+      "count": 36,
+      "lives": 22
+    },
+    {
+      "id": "adult.witnessCrime",
+      "count": 36,
+      "lives": 24
+    },
+    {
+      "id": "adult.aliens",
+      "count": 35,
+      "lives": 25
+    },
+    {
+      "id": "adult.godQuestion",
+      "count": 32,
+      "lives": 20
+    },
+    {
+      "id": "adult.emailScam",
+      "count": 29,
+      "lives": 23
+    },
+    {
+      "id": "adult.fluSeason",
+      "count": 29,
+      "lives": 23
+    },
+    {
+      "id": "adult.badMeal",
+      "count": 28,
+      "lives": 16
+    },
+    {
+      "id": "adult.homeless",
+      "count": 28,
+      "lives": 20
+    },
+    {
+      "id": "adult.lostDog",
+      "count": 28,
+      "lives": 18
+    },
+    {
+      "id": "adult.strangerInsult",
+      "count": 28,
+      "lives": 16
+    },
+    {
+      "id": "adult.charity",
+      "count": 27,
+      "lives": 17
+    },
+    {
+      "id": "adult.phoneScam",
+      "count": 22,
+      "lives": 14
+    },
+    {
+      "id": "adult.scratchTicket",
+      "count": 22,
+      "lives": 15
+    },
+    {
+      "id": "family.parentHealth",
+      "count": 22,
+      "lives": 16
+    },
+    {
+      "id": "family.siblingWedding",
+      "count": 21,
+      "lives": 15
+    },
+    {
+      "id": "adult.reunion",
+      "count": 20,
+      "lives": 16
+    },
+    {
+      "id": "adult.streetPerformer",
+      "count": 20,
+      "lives": 17
+    },
+    {
+      "id": "adult.timeshare",
+      "count": 20,
+      "lives": 14
+    },
+    {
+      "id": "adult.strandedDriver",
+      "count": 18,
+      "lives": 13
+    },
+    {
+      "id": "family.borrowMoney",
+      "count": 18,
+      "lives": 11
+    },
+    {
+      "id": "adult.fraudAlert",
+      "count": 17,
+      "lives": 10
+    },
+    {
+      "id": "adult.juryDuty",
+      "count": 13,
+      "lives": 10
+    },
+    {
+      "id": "teen.viralVideo",
+      "count": 13,
+      "lives": 11
+    },
+    {
+      "id": "elder.earlyBird",
+      "count": 10,
+      "lives": 9
+    },
+    {
+      "id": "elder.healthScare",
+      "count": 10,
+      "lives": 7
+    },
+    {
+      "id": "elder.oldFlame",
+      "count": 10,
+      "lives": 10
+    },
+    {
+      "id": "sos.car",
+      "count": 10,
+      "lives": 9
+    },
+    {
+      "id": "baby.vaccination",
+      "count": 9,
+      "lives": 9
+    },
+    {
+      "id": "friend.advice",
+      "count": 9,
+      "lives": 8
+    },
+    {
+      "id": "friend.late",
+      "count": 9,
+      "lives": 8
+    },
+    {
+      "id": "sos.disaster",
+      "count": 9,
+      "lives": 9
+    },
+    {
+      "id": "toddler.bigFlex",
+      "count": 9,
+      "lives": 9
+    },
+    {
+      "id": "elder.memoir",
+      "count": 8,
+      "lives": 8
+    },
+    {
+      "id": "elder.pickleball",
+      "count": 8,
+      "lives": 7
+    },
+    {
+      "id": "era.1900.marketDay",
+      "count": 8,
+      "lives": 4
+    },
+    {
+      "id": "era.1900.pictureHall",
+      "count": 8,
+      "lives": 2
+    },
+    {
+      "id": "sos.fire",
+      "count": 8,
+      "lives": 8
+    },
+    {
+      "id": "sos.tree",
+      "count": 8,
+      "lives": 8
+    },
+    {
+      "id": "teen.wrongText",
+      "count": 8,
+      "lives": 7
+    },
+    {
+      "id": "adult.midlife",
+      "count": 7,
+      "lives": 7
+    },
+    {
+      "id": "baby.cheekSqueezer",
+      "count": 7,
+      "lives": 7
+    },
+    {
+      "id": "elder.hearing",
+      "count": 7,
+      "lives": 7
+    },
+    {
+      "id": "era.2000s.allNighter",
+      "count": 7,
+      "lives": 4
+    },
+    {
+      "id": "kid.siblingSpat",
+      "count": 7,
+      "lives": 6
+    },
+    {
+      "id": "kid.strayAnimal",
+      "count": 7,
+      "lives": 7
+    },
+    {
+      "id": "school.classClown",
+      "count": 7,
+      "lives": 7
+    },
+    {
+      "id": "adult.gameShow",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "adult.inheritance",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "elder.bingo",
+      "count": 6,
+      "lives": 5
+    },
+    {
+      "id": "family.siblingJealous",
+      "count": 6,
+      "lives": 4
+    },
+    {
+      "id": "friend.flatTire",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "friend.moving",
+      "count": 6,
+      "lives": 5
+    },
+    {
+      "id": "kid.grossDinner",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "kid.roadTrip",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "kid.snowDay",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "school.sneeze",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "sos.cpr",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "sos.mugging",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "toddler.favoriteActivity",
+      "count": 6,
+      "lives": 6
+    },
+    {
+      "id": "baby.sweetDreams",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "era.1946.sundayRoast",
+      "count": 5,
+      "lives": 4
+    },
+    {
+      "id": "era.1990s.phoneKiosk",
+      "count": 5,
+      "lives": 4
+    },
+    {
+      "id": "kid.coverMe",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "kid.lemonade",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "kid.newWord",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "kid.sweetTooth",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "school.bully",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "teen.graffiti",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "teen.houseParty",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "toddler.napTime",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "toddler.toyGrab",
+      "count": 5,
+      "lives": 5
+    },
+    {
+      "id": "adult.doorToDoor",
+      "count": 4,
+      "lives": 3
+    },
+    {
+      "id": "adult.mlm",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "adult.wedding",
+      "count": 4,
+      "lives": 3
+    },
+    {
+      "id": "baby.mashedFood",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "baby.mouthNoises",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "era.1900.bicycle",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "era.1946.festivalYear",
+      "count": 4,
+      "lives": 2
+    },
+    {
+      "id": "era.1946.shoppingCenter",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "era.1980s.videoStore",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "era.1990s.sharedTv",
+      "count": 4,
+      "lives": 3
+    },
+    {
+      "id": "era.2010s.oldPost",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "era.2010s.phoneFree",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "friend.distillery",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "friend.haircut",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "friend.insuranceFraud",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "kid.chores",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "kid.integrity",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "kid.mailbox",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "school.chatty",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "school.homework",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "school.instruments",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "school.play",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "school.troublemaker",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "sos.dog",
+      "count": 4,
+      "lives": 3
+    },
+    {
+      "id": "sos.snake",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "teen.peerPressure",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "toddler.dentalCare",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "toddler.playground",
+      "count": 4,
+      "lives": 4
+    },
+    {
+      "id": "adult.neighborBbq",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "elder.fall",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "elder.friendFuneral",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "elder.salesman",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "elder.techSupport",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "era.1900.firstWireless",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "era.1946.newRoad",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "era.1946.scooter",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "era.1980s.aerobics",
+      "count": 3,
+      "lives": 2
+    },
+    {
+      "id": "era.1990s.dialUp",
+      "count": 3,
+      "lives": 2
+    },
+    {
+      "id": "era.1990s.lanParty",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "era.1990s.powerCut",
+      "count": 3,
+      "lives": 2
+    },
+    {
+      "id": "era.1990s.videoHall",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "era.2000s.ringtone",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "era.2010s.ghosted",
+      "count": 3,
+      "lives": 2
+    },
+    {
+      "id": "era.2010s.streamingBinge",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "era.2020s.pandemicBirthday",
+      "count": 3,
+      "lives": 3
+    },
+    {
+      "id": "friend.alibi",
+      "count": 3,
+      "lives": 3
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import { EVENT_LIBRARY, eventEligible, getEventDef } from '../src/game/events'
 import { EVENT_SCRIPT, type EventDef } from '../src/game/events/helpers'
 import { anachronismsIn } from '../src/game/events/era'
 import { ERA_PACKS } from '../src/game/events/era-life'
+import { unvaried } from '../src/game/events/variants'
 import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState } from '../src/game/types'
@@ -57,7 +58,8 @@ function span(ev: EventDef): [number, number] {
 
 describe('late era popups', () => {
   it('are registered in the event library', () => {
-    for (const ev of EVENTS) expect(getEventDef(ev.id), ev.id).toBe(ev)
+    // An event with scene variants is registered as a wrapper around the pack's own def (events/variants.ts): same def underneath.
+    for (const ev of EVENTS) expect(unvaried(getEventDef(ev.id)!), ev.id).toBe(ev)
     expect(EVENT_LIBRARY.filter((e) => e.id.startsWith('era.')).length).toBeGreaterThanOrEqual(EVENTS.length)
   })
 

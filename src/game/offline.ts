@@ -7,7 +7,7 @@
 // The modal kind keeps its historical name ('aiTask') so saves with a task still queued load
 // and resolve. Engine code queues tasks with core.queueAi.
 import { applyScreening, fallbackInterviewQuestion, presentInterview } from './careers'
-import { notice, useYearAction } from './core'
+import { notice, useYearAction, withQueueSource } from './core'
 import { offlineScreen } from './cv'
 import { fallbackChoiceOutcome, fallbackCustomAction, fallbackObituary, queueFallbackYearEvents } from './events'
 import { pickLine } from './text/pick'
@@ -32,7 +32,8 @@ const TOO_TIRED = [
 export function applyFallback(g: GameState, task: AiTask): void {
   switch (task.type) {
     case 'yearEvents':
-      if (g.character.alive) queueFallbackYearEvents(g)
+      // The flavor lines and the year's event choice are the year's own, not the player's: they carry the source `events` (R3, E.D1).
+      if (g.character.alive) withQueueSource(g, 'events', () => queueFallbackYearEvents(g))
       return
     case 'resolveChoice':
       if (g.character.alive) fallbackChoiceOutcome(g, task.event, task.choiceId)

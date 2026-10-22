@@ -1,6 +1,6 @@
 // Shared helpers every game module uses: stats, money, log, modals, people lookups.
 import { bookPlayer, roomFor, tokenSeen, type Why } from './kernel/ledger'
-import { noticeWeightFor } from './notice-weights'
+import { noticeWeightFor, noticeWeightOf } from './notice-weights'
 import { chance, uid } from './rng'
 import type {
   AiTask,
@@ -13,6 +13,8 @@ import type {
   InputModal,
   Json,
   LifeStage,
+  LogEntry,
+  LogWeight,
   MinigameKind,
   Person,
   RelationKind,
@@ -482,15 +484,105 @@ export function currentLogYear(g: GameState) {
   return year
 }
 
+// ---------------------------------------------------------------------------
+// Where a line or popup came from (R3, E.D1)
+//
+// A yearly hook runs under its name (aging.ts), and every log line, notice and choice it makes is stamped with it as `s`. The
+// store's year close (E.D2) reads `s` to group, fold and count what a year did. A line or popup made outside a hook (the player's own
+// action) has no `s`, and a key that is not set is not written, so those are saved exactly as before.
+
+/** A source name: lower case first letter, then letters, digits and dots; 1 to LOG_SOURCE_MAX characters. */
+const LOG_SOURCE = /^[a-z][a-zA-Z0-9.]*$/
+export const LOG_SOURCE_MAX = 24
+/** The largest money figure a line may carry (`a`), so a damaged save cannot put a huge number on a card. */
+export const LOG_AMOUNT_MAX = 1e15
+
+export function validLogSource(s: unknown): s is string {
+  return typeof s === 'string' && s.length >= 1 && s.length <= LOG_SOURCE_MAX && LOG_SOURCE.test(s)
+}
+
+/** A saved `a`: a whole, finite number with |a| at most 1e15. */
+export function validLogAmount(a: unknown): a is number {
+  return typeof a === 'number' && Number.isInteger(a) && Math.abs(a) <= LOG_AMOUNT_MAX
+}
+
+/** A saved `w`: 0, 1, 2 or 3. */
+export function validLogWeight(w: unknown): w is LogWeight {
+  return w === 0 || w === 1 || w === 2 || w === 3
+}
+
+/** The amount to write for `a`: rounded to a whole number, or undefined when it is not a finite number within the bound. */
+function logAmount(a: unknown): number | undefined {
+  if (typeof a !== 'number' || !Number.isFinite(a)) return undefined
+  const whole = Math.round(a) + 0 // + 0 turns -0 into 0
+  return validLogAmount(whole) ? whole : undefined
+}
+
+/** The source name of a yearly entry: its id without the `yearly.` the hooks of yearly-aging.ts carry. A module's own id stays whole. */
+export function sourceOf(entryId: string): string {
+  return entryId.startsWith('yearly.') ? entryId.slice('yearly.'.length) : entryId
+}
+
+let logSource: string | undefined
+
+/** The source lines and popups made right now are stamped with, or undefined outside a hook. */
+export function currentLogSource(): string | undefined {
+  return logSource
+}
+
+/**
+ * Run `fn` with `name` as the log source: the log lines, notices and choices it makes carry it as `s`. It restores the source it
+ * found when `fn` returns or throws, and it nests. A name that is not a valid source (see validLogSource) means no source for the
+ * length of `fn`, never a bad one. Synchronous, like withCtx in events/helpers.ts.
+ */
+export function withLogSource<T>(name: string, fn: () => T): T {
+  const before = logSource
+  logSource = validLogSource(name) ? name : undefined
+  try {
+    return fn()
+  } finally {
+    logSource = before
+  }
+}
+
+/**
+ * withLogSource for a yearly entry, plus one more thing: a few old hooks put their popup straight on g.queue and skip notice()
+ * (the dividend, hedge fund and market-event notices). Such a notice or choice that `fn` added and that has no source yet gets
+ * `name` too, so every popup a hook makes carries its source.
+ */
+export function withQueueSource<T>(g: GameState, name: string, fn: () => T): T {
+  const before = new Set<unknown>(g.queue)
+  const out = withLogSource(name, fn)
+  if (validLogSource(name)) {
+    for (const m of g.queue) if (!before.has(m) && (m.kind === 'notice' || m.kind === 'choice') && m.s === undefined) m.s = name
+  }
+  return out
+}
+
+/** What a caller may say about a log line beyond its text. */
+export interface LogOptions {
+  /** The money it is about, in dollars; rounded to a whole number, dropped when not finite or over 1e15. */
+  a?: number
+  /** How much it matters to the year, 0 to 3; anything else is dropped. */
+  w?: LogWeight
+}
+
 /**
  * Add a first-person line to this year's life log, e.g. "I adopted a dog named Max."
  * `id` is for a line whose count depends on text (the flavor lines, R2-B2): it takes a text-side id (text/draw.ts textLineId), so
  * how many such lines print never moves g.nextId, which every later id and every hashed pick that reads an id depends on.
+ * Inside a yearly hook the line is stamped with the hook's name (`s`). `opts` adds the amount and the weight (R3, E.D1); a key that
+ * is not set is not written.
  */
-export function log(g: GameState, text: string, tone: Tone = 'neutral', id?: string): void {
+export function log(g: GameState, text: string, tone: Tone = 'neutral', id?: string, opts?: LogOptions): void {
   const t = text.trim()
   if (!t) return
-  currentLogYear(g).entries.push({ id: id ?? uid(g, 'l'), text: t, tone })
+  const entry: LogEntry = { id: id ?? uid(g, 'l'), text: t, tone }
+  if (logSource !== undefined) entry.s = logSource
+  const a = logAmount(opts?.a)
+  if (a !== undefined) entry.a = a
+  if (validLogWeight(opts?.w)) entry.w = opts.w
+  currentLogYear(g).entries.push(entry)
 }
 
 /** Remember a notable event (the profile's Memories list; kept short). */
@@ -544,6 +636,10 @@ export interface NoticeOptions {
   weight?: 'minor'
   /** Where an inbox row leads (NoticeModal.link). */
   link?: string
+  /** The money it is about (NoticeModal.a): rounded to a whole number, dropped when not finite or over 1e15. */
+  a?: number
+  /** How much it matters to the year (NoticeModal.w). Wins over the weight table for the title. */
+  w?: LogWeight
 }
 
 /** Show a popup with an OK button. */
@@ -551,6 +647,9 @@ export function notice(g: GameState, title: string, text: string, opts: NoticeOp
   // The support flag, weight and link are written only when set, so every other notice is saved exactly as before.
   // A title in the routine-news table (notice-weights.ts) is minor without every call site opting in.
   const weight = opts.weight ?? noticeWeightFor(title)
+  // The source, amount and year weight (R3, E.D1) are written only when set, too. A title in NOTICE_WEIGHTS carries its weight unless the caller names one.
+  const a = logAmount(opts.a)
+  const w = validLogWeight(opts.w) ? opts.w : noticeWeightOf(title)
   g.queue.push({
     kind: 'notice',
     id: uid(g, 'm'),
@@ -561,6 +660,9 @@ export function notice(g: GameState, title: string, text: string, opts: NoticeOp
     ...(opts.support ? { support: true } : {}),
     ...(weight === 'minor' ? { weight: 'minor' as const } : {}),
     ...(opts.link ? { link: opts.link } : {}),
+    ...(logSource !== undefined ? { s: logSource } : {}),
+    ...(a !== undefined ? { a } : {}),
+    ...(w !== undefined ? { w } : {}),
   })
 }
 
@@ -584,6 +686,7 @@ export function scriptChoice(
     emoji: opts.emoji,
     data: opts.data,
     personId: opts.personId,
+    ...(logSource !== undefined ? { s: logSource } : {}),
   })
 }
 

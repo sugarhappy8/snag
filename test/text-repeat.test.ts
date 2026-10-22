@@ -75,9 +75,10 @@ describe('13-life text probe', () => {
       () => {
         const { trace, alive } = playedOf(i)
         const last = trace.years[trace.years.length - 1]
-        // The life stops at the target age, or sooner because the character died.
+        // The life stops at the target age, or sooner because the character died. The loop plays a year while age < target, so a
+        // character who dies in the very year they turn the target age has it as the last row, dead (R3-Q9: seed 106 now does).
         if (alive) expect(last.age).toBeGreaterThanOrEqual(PROBE_UNTIL_AGE)
-        else expect(last.age).toBeLessThan(PROBE_UNTIL_AGE)
+        else expect(last.age).toBeLessThanOrEqual(PROBE_UNTIL_AGE)
         const m = textMetrics(trace)
         for (const [path, v] of numbers(m)) {
           if (path === 'metrics.popupFamilies.minGapYears' && v === null) continue
@@ -207,7 +208,7 @@ const FAMILIES: readonly Family[] = [
     // The 13 probe lives after wave 0 never play a pro season, so this row is green before the change (R1 measured 20); the
     // site is converted all the same and played directly below.
     name: 'pro season',
-    re: /^(i played my #\w* pro season with the |that was my #\w* pro season, this one with the |my #\w* year as a pro was with the |my #\w* pro season is in the books, with the )/,
+    re: /^(i played my (#\w*|[a-z]+) pro season with the |that was my (#\w*|[a-z]+) pro season, this one with the |my (#\w*|[a-z]+) year as a pro was with the |my (#\w*|[a-z]+) pro season is in the books, with the |i got through my (#\w*|[a-z]+) year as a pro with the |the .+ had me for my (#\w*|[a-z]+) pro season\. |i spent my (#\w*|[a-z]+) pro season in the .+ colors\. |i closed out my (#\w*|[a-z]+) season as a pro with the )/,
     maxExtra: 3,
     pools: [PRO_SEASON_LINES],
     was: 'I played my 3rd pro season with the Seoul Falcons. I hit .310 with 22 home runs.',
@@ -239,7 +240,7 @@ const FAMILIES: readonly Family[] = [
   },
   {
     name: 'promotion',
-    re: /^[^:]+: (earned a promotion and higher pay|moved up at work and got a raise|was promoted and paid more|got a step up at work and better pay|landed a better role and a raise)$/,
+    re: /^[^:]+: (earned a promotion and higher pay|moved up at work and got a raise|was promoted and paid more|got a step up at work and better pay|landed a better role and a raise|was given more to do and more to take home|won a bigger job at the same company|got the title they had been chasing|was moved up and paid for it|stepped into a better position at work|earned the raise that came with a new title|was picked for a senior role)$/,
     maxExtra: 4,
     pools: [PROMO_LINES],
     frame: (line) => `Leah: ${line}`,
@@ -450,7 +451,9 @@ describe('R2-P10 sites, played directly', () => {
     for (let i = 1; i < frames.length; i++) expect(frames[i], `seasons ${i} and ${i + 1} used one frame: ${said[i]}`).not.toBe(frames[i - 1])
     for (const t of said) {
       expect(t, t).toContain('Arizona Rattlers')
-      expect(t, t).toMatch(/\d(st|nd|rd|th)\b/)
+      // The season is a word up to the twentieth (R3-Q13: two seasons of one career are never the same line); this career plays 9.
+      expect(t, t).toMatch(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\b/)
+      expect(t, t).not.toMatch(/\d(st|nd|rd|th)\b/)
       expect(t, t).toMatch(/ERA\./)
       expect(t, t).not.toMatch(/[{}]/)
     }

@@ -1,7 +1,7 @@
 // The shape of a saved game: its schema version, the chain that brings an older save up to date
 // (migrateSave) and the structural checks that keep a damaged one out of the game. No storage
 // here, so the main save and the Time Machine's snapshots can both load through it.
-import { GAME_VERSION, SAVE_SCHEMA } from './core'
+import { GAME_VERSION, SAVE_SCHEMA, validLogAmount, validLogSource, validLogWeight } from './core'
 import { INBOX_LINK_MAX } from './inbox'
 import { cleanVersions, migrateSlices } from './kernel/slices'
 import './save-slices'
@@ -98,12 +98,19 @@ export function migrateLegacyAi(g: GameState): GameState {
     // The notice weight and link (Quiet Mode, R1-T5) are optional: only 'minor' and a short string are meaningful.
     if ('weight' in modal && modal.weight !== 'minor') delete modal.weight
     if ('link' in modal && (typeof modal.link !== 'string' || modal.link.length > INBOX_LINK_MAX)) delete modal.link
+    repairSourceFields(modal)
+    // A year card (R3, E.D2) is a plain object; the UI cleans every field of it. Anything else is not a card.
+    if ('digest' in modal && !isRecord(modal.digest)) delete modal.digest
   }
   if (Array.isArray(g.log)) {
     for (const year of g.log as unknown[]) {
       const entries = year && typeof year === 'object' ? (year as { entries?: unknown }).entries : undefined
       if (!Array.isArray(entries)) continue
-      for (const e of entries) if (e && typeof e === 'object' && (e as { tone?: unknown }).tone === 'ai') (e as { tone: string }).tone = 'neutral'
+      for (const e of entries) {
+        if (!e || typeof e !== 'object') continue
+        if ((e as { tone?: unknown }).tone === 'ai') (e as { tone: string }).tone = 'neutral'
+        repairSourceFields(e as Record<string, unknown>)
+      }
     }
   }
   if (g.flags && typeof g.flags === 'object') {
@@ -112,6 +119,17 @@ export function migrateLegacyAi(g: GameState): GameState {
   }
   // The same pass is the one in-place clean-up every load goes through (the main save and the Time Machine).
   return repairCrimeRecords(g)
+}
+
+/**
+ * The source, amount and weight of a log line or popup (R3, E.D1) are optional. A value that is not what the game writes is dropped,
+ * so a damaged one never reaches the year close: `s` a name of 1 to 24 characters, `a` a whole number within 1e15, `w` 0 to 3.
+ * In place, idempotent; a field that is absent or good is left exactly as it is.
+ */
+function repairSourceFields(item: Record<string, unknown>): void {
+  if ('s' in item && !validLogSource(item.s)) delete item.s
+  if ('a' in item && !validLogAmount(item.a)) delete item.a
+  if ('w' in item && !validLogWeight(item.w)) delete item.w
 }
 
 /**

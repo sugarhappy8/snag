@@ -26,6 +26,7 @@ const ERA_AWARE_CALLERS: Record<string, string> = {
   'src/game/events/era.ts ok': 'eraPick: eraLines() already dropped the lines that do not fit and stripped the tags',
   'src/game/events/era.ts plain.length ? plain : lines': 'eraPick fallback: the untagged lines, or every line with the tag stripped on the way out',
   'src/game/events/helpers.ts from': 'v: the list was cut with eraOk and the result goes through eraStrip',
+  'src/game/events/variants.ts [s.text, ...found]': 'withVariants: the pool is the original text and the scenes sceneCandidates kept, each gate checked with eraOk and its tag stripped with eraStrip',
 }
 
 /** Where the scan looks for pools: the kit itself (src/game/text/) is the picker, not a user of it. */

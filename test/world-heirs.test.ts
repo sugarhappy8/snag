@@ -24,8 +24,9 @@ import { deepFreeze, invariantFailures } from './fuzz-kit'
 import { makeTestGame } from './helpers'
 import { kid, world } from './nepo-kit'
 import { probeLife } from './probe-life'
+import { findSeed } from './seed-kit'
 
-/** The probe life of the heir test: [seed, birth year]. A tuple, not a pinned seed. */
+/** The probe life of the heir test: [the seed the search starts from, birth year]. A tuple, not a pinned seed: the life is the first seed from it whose founder is still alive after 40 years. */
 const LIFE = [7, 1950] as const
 
 function asset(id: string, kind: Asset['kind'], value: number, details: Record<string, Json> = {}): Asset {
@@ -44,7 +45,18 @@ describe('an heir after a 40-year life with three companies', () => {
   let heirId: string
 
   beforeAll(() => {
-    const g = probeLife({ seed: LIFE[0], birthYear: LIFE[1], businesses: 3, years: 40, keepAlive: true })
+    // keepAlive holds the health up, not the age: a founder can still die of old age at 66, and a change that moves one draw moves
+    // who does (R3-Q9 moved seed 7). The test is about the heir, so it takes the first life of the search that gets to 40 years.
+    let alive: GameState | undefined
+    findSeed(
+      (seed) => {
+        const x = probeLife({ seed, birthYear: LIFE[1], businesses: 3, years: 40, keepAlive: true })
+        if (x.character.alive) alive = x
+        return x.character.alive
+      },
+      { from: LIFE[0], tries: 30, label: 'a founder of three companies who is alive after 40 years (the heir test)' },
+    )
+    const g = alive!
     expect(g.character.alive).toBe(true)
     expect(g.assets.filter((a) => a.kind === 'business').length).toBeGreaterThanOrEqual(1)
     // Most of a probe life's money still moves through code that is not booked yet (R2-L6 to R2-L12): book a few flows by reason,

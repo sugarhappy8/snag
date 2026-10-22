@@ -1,6 +1,8 @@
 // The notice digest (R1-T4, G.11 step 1): which part of the modal queue shares one card. Pure: no React, no store,
-// and nothing here writes the queue. A leaf module (type imports only), so it can never join an import cycle.
+// and nothing here writes the queue. A leaf module (type imports and the yearCardModel leaf), so it can never join an
+// import cycle.
 import type { ModalItem, NoticeModal, Tone } from '../../game/types'
+import { cardOfModal, hasDigest } from './yearCardModel'
 
 /** The fewest notices that make a digest. One notice keeps today's card. */
 export const DIGEST_MIN = 2
@@ -16,10 +18,11 @@ const TONE_EMOJI: Partial<Record<Tone, string>> = {
 
 /**
  * A notice that may share a card: kind 'notice' without `support` (the self-harm help line always gets its own
- * card). A plain boolean on purpose: a type predicate would narrow a support notice to a non-notice.
+ * card) and without a `digest` (the year card, R3-Q6, is the last popup of its year and always stands alone). A plain
+ * boolean on purpose: a type predicate would narrow a support notice to a non-notice.
  */
 export function mergeable(m: ModalItem): boolean {
-  return m.kind === 'notice' && !m.support
+  return m.kind === 'notice' && !m.support && !hasDigest(m)
 }
 
 /**
@@ -88,12 +91,21 @@ export function digestRows(items: readonly NoticeModal[]): DigestRow[] {
   })
 }
 
-export type HeadPlan = { kind: 'digest'; items: NoticeModal[] } | { kind: 'single'; modal: ModalItem } | { kind: 'none' }
+export type HeadPlan =
+  | { kind: 'digest'; items: NoticeModal[] }
+  | { kind: 'yearCard'; modal: NoticeModal }
+  | { kind: 'single'; modal: ModalItem }
+  | { kind: 'none' }
 
-/** What ModalHost draws for this queue: a digest, the head modal as today, or nothing (empty queue or an 'aiTask' head). */
+/**
+ * What ModalHost draws for this queue: the year card when the head carries a card that can be read (whatever the
+ * digest setting says: the card is its own popup), a digest, the head modal as today, or nothing (empty queue or an
+ * 'aiTask' head). A card that can't be read is a plain notice, whose text is the headline.
+ */
 export function planHead(queue: readonly ModalItem[], digestOn: boolean): HeadPlan {
   const head = queue[0]
   if (!head || head.kind === 'aiTask') return { kind: 'none' }
+  if (head.kind === 'notice' && cardOfModal(head) !== null) return { kind: 'yearCard', modal: head }
   const items = headNoticeRun(queue, digestOn)
   if (items.length > 0) return { kind: 'digest', items }
   return { kind: 'single', modal: head }

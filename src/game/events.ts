@@ -17,6 +17,7 @@ import { resolveCustomAction } from './events/custom'
 import { ELDER_EVENTS } from './events/elder'
 import { ERA_LIFE_EVENTS } from './events/era-life'
 import { FAMILY_EVENTS } from './events/family'
+import { eventFamily } from './events/families'
 import { addFlavorLines } from './events/flavor'
 import { FRIEND_EVENTS } from './events/friends'
 import { EVENT_SCRIPT, present, withCtx, type Ctx, type EvData, type EventDef } from './events/helpers'
@@ -26,15 +27,17 @@ import { PRISON_EVENTS } from './events/prison'
 import { SCHOOL_EVENTS } from './events/school'
 import { SOS_EVENTS } from './events/sos'
 import { TEEN_EVENTS } from './events/teen'
+import { withVariants } from './events/variants'
 import { WORK_EVENTS } from './events/work'
 import { chance, randInt } from './rng'
 import { defineScript } from './scripts'
+import { notePopup, paceKey, paceWeight } from './text/pace'
 import type { ChoiceModal, GameState, Json, ModalItem, Person } from './types'
 
 export type { EventDef } from './events/helpers'
 
-/** Every offline random event, in one list. */
-export const EVENT_LIBRARY: EventDef[] = [
+/** Every offline random event, in one list. The 60 that fire most also open with extra scenes (events/variants.ts). */
+export const EVENT_LIBRARY: EventDef[] = withVariants([
   ...BABY_EVENTS,
   ...KID_EVENTS,
   ...SCHOOL_EVENTS,
@@ -48,7 +51,7 @@ export const EVENT_LIBRARY: EventDef[] = [
   ...PRISON_EVENTS,
   // What an ordinary year felt like in each era (events/era-life.ts).
   ...ERA_LIFE_EVENTS,
-]
+])
 
 const EVENTS_BY_ID: Record<string, EventDef> = {}
 for (const ev of EVENT_LIBRARY) if (!EVENTS_BY_ID[ev.id]) EVENTS_BY_ID[ev.id] = ev
@@ -59,7 +62,8 @@ export function getEventDef(id: string): EventDef | undefined {
 
 /** g.flags key: { [eventId]: age when it last fired }. */
 export const EVENT_HISTORY_FLAG = 'offlineEventHistory'
-const DEFAULT_COOLDOWN = 10
+// 11, not 10 (R3-Q13): the same event is never back within 10 years, so its outcome line is not told twice in that time.
+const DEFAULT_COOLDOWN = 11
 const DEFAULT_WEIGHT = 10
 
 /**
@@ -92,6 +96,25 @@ const PERSON_COOLDOWN = 5
 /** The kind an event belongs to (its own id when it has no group). */
 export function eventKind(id: string): string {
   return KIND_OF[id] ?? id
+}
+
+/**
+ * The pace family of an event (R3-Q8, text/pace.ts): its kind, or the theme family of events/families.ts, or undefined when it is in
+ * neither (it has only its own cooldown). A kind keeps its hard KIND_COOLDOWN; the family adds the lighter 5-year weight on top.
+ */
+export function eventPaceFamily(id: string): string | undefined {
+  return KIND_OF[id] ?? eventFamily(id)
+}
+
+/** id to the memory key of its pace family (or undefined), built when first asked: the weights of a pick ask for it hundreds of times. */
+const PACE_KEYS = new Map<string, string | undefined>()
+
+function paceKeyOf(id: string): string | undefined {
+  if (PACE_KEYS.has(id)) return PACE_KEYS.get(id)
+  const family = eventPaceFamily(id)
+  const key = family === undefined ? undefined : paceKey('ev', family)
+  PACE_KEYS.set(id, key)
+  return key
 }
 
 /**
@@ -233,7 +256,13 @@ function safe<T>(fn: () => T, fallback: T): T {
 
 function weightOf(g: GameState, ev: EventDef): number {
   const w = typeof ev.weight === 'function' ? safe(() => (ev.weight as (g: GameState) => number)(g), 0) : (ev.weight ?? DEFAULT_WEIGHT)
-  return Number.isFinite(w) && w > 0 ? w : 0
+  // The pace rule (R3-Q8): a family that popped up within 5 years weighs a quarter as much. Pure: it reads the text memory, draws nothing.
+  return Number.isFinite(w) && w > 0 ? paceWeight(g, paceKeyOf(ev.id), w) : 0
+}
+
+/** What a pick weighs this event right now: its own weight, times the pace rule when its family popped up lately (0 when it cannot be picked). */
+export function eventWeight(g: GameState, ev: EventDef): number {
+  return weightOf(g, ev)
 }
 
 /** Can this event fire right now (age, prison, cooldown, once, condition)? */
@@ -299,6 +328,8 @@ export function queueRandomEvent(g: GameState): string | null {
       continue
     }
     present(g, ev, setup)
+    const familyKey = paceKeyOf(ev.id)
+    if (familyKey !== undefined) notePopup(g, familyKey)
     history(g)[ev.id] = g.character.age
     rememberEvent(g, {
       title: setup.title ?? ev.title,

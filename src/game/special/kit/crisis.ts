@@ -10,9 +10,11 @@ import { chance, weightedPick } from '../../rng'
 import { defineScript } from '../../scripts'
 import type { TalentId } from '../../talents'
 import { talentHint } from '../../talents'
+import { notePopup, paceWeight } from '../../text/pace'
 import { outcomeTag } from '../../timeMachine'
 import type { ChoiceOption, GameState, Json } from '../../types'
 import { addFame, stableChoice, withHint } from '../common'
+import { kitPaceKey } from './families'
 import { noteRival, familySeed } from './rivals'
 import { rec, type CareerBase, type CareerStore } from './state'
 import { careerCtx, careerSay, choiceRoom, claimChoice, careerAudit, offerChoice, type CareerCtx } from './year'
@@ -200,19 +202,26 @@ export function defineCrises<S extends CareerBase>(o: {
 
   const eligibleAt = (g: GameState, s: S, year: number): CrisisDef<S, any>[] => defs.filter((def) => def.weight(g, s) > 0 && (s.cool[coolKey(def.id)] ?? -1) < year)
 
+  /**
+   * What the offer weighs a crisis: its own weight, times the pace rule (R3-Q10, text/pace.ts, kit/families.ts) when its family came to
+   * the player within 5 years, through any career. The offer and the odds below read this one function, so the hint cannot disagree
+   * with the roll. Pure: the memory is read, nothing is drawn or written.
+   */
+  const weightOf = (g: GameState, s: S, def: CrisisDef<S, any>): number => paceWeight(g, kitPaceKey(career, def.id), Math.max(0, def.weight(g, s)))
+
   return {
     odds(g, s, id, year = g.year + 1) {
       const eligible = eligibleAt(g, s, year)
       const mine = eligible.find((def) => def.id === id)
-      const total = eligible.reduce((n, def) => n + Math.max(0, def.weight(g, s)), 0)
-      return mine && total > 0 ? CRISIS_ODDS * (Math.max(0, mine.weight(g, s)) / total) : 0
+      const total = eligible.reduce((n, def) => n + weightOf(g, s, def), 0)
+      return mine && total > 0 ? CRISIS_ODDS * (weightOf(g, s, mine) / total) : 0
     },
     offer(c) {
       const g = c.g
       if (!choiceRoom(c)) return false
       const eligible = eligibleAt(g, c.s, c.year)
       if (eligible.length === 0 || !chance(g, CRISIS_ODDS)) return false
-      const def = weightedPick(g, eligible, (x) => x.weight(g, c.s))
+      const def = weightedPick(g, eligible, (x) => weightOf(g, c.s, x))
       const d = def.make(g, c.s, seeded(`${familySeed(g)}|crisis|${career}.${def.id}|${c.year}${outcomeTag(g, c.year)}`))
       const best = bestStance(g, c.s, d, def)
       const choices: ChoiceOption[] = []
@@ -229,6 +238,8 @@ export function defineCrises<S extends CareerBase>(o: {
       }
       if (!offerChoice(c, scriptOf(def.id), def.title, def.scene(g, c.s, d), choices, { id: def.id, d }, def.emoji)) return false
       c.s.cool[coolKey(def.id)] = Math.min(9999, c.year + Math.max(1, def.cool ?? 4) - 1)
+      const family = kitPaceKey(career, def.id)
+      if (family !== undefined) notePopup(g, family)
       careerAudit({ t: 'crisis', career, id: def.id, stances: choices.map((x) => x.id) })
       return true
     },
