@@ -9,6 +9,7 @@
 // effects here are small; valuations were not, so value effects carry the boom or the bust.
 
 import type { GameState, Json } from '../types'
+import { techAdoption, type TechId } from './timeline'
 
 /** The markets an event can hit hardest. An industry belongs to at most one. */
 export type Exposure = 'oil' | 'fuel' | 'clean' | 'property' | 'banking' | 'investing' | 'internet' | 'chips' | 'ai' | 'travel' | 'outings' | 'retail'
@@ -51,6 +52,12 @@ export interface MarketEvent {
   /** Countries where it hits at full strength; elsewhere at `abroad`. Omitted: everywhere. */
   home?: readonly string[]
   abroad?: number
+  /**
+   * The technology the story is about. Where it hasn't arrived yet (under 2% adoption, the same bar as
+   * hasTech) the event doesn't reach the country at all, so no announcement, market line or valuation
+   * move talks about the internet in a country that has none.
+   */
+  needs?: TechId
   /** What every company feels. */
   everyone: Effect
   /** The last year `everyone` applies (the AI boom's broad lift is history, not the present). */
@@ -104,7 +111,7 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
   },
   {
     id: 'dotcomBoom', name: 'The dot-com boom', emoji: '\u{1F680}',
-    years: { 1995: 0.3, 1996: 0.45, 1997: 0.6, 1998: 0.75, 1999: 1 }, home: ['us'], abroad: 0.7,
+    years: { 1995: 0.3, 1996: 0.45, 1997: 0.6, 1998: 0.75, 1999: 1 }, home: ['us'], abroad: 0.7, needs: 'internet',
     everyone: { demand: 0.01, value: 0.12 },
     markets: { internet: { demand: 0.15, value: 1.1 }, chips: { demand: 0.12, value: 0.8 }, ai: { value: 0.3 }, investing: { demand: 0.1, value: 0.2 } },
     text: 'Investors pour money into anything with ".com" in its name: internet and chip companies trade at sky-high valuations.',
@@ -118,7 +125,7 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
   },
   {
     id: 'dotcomCrash', name: 'The dot-com crash', emoji: '\u{1F4A5}',
-    years: { 2000: 0.55, 2001: 1, 2002: 0.85, 2003: 0.2 }, home: ['us'], abroad: 0.7,
+    years: { 2000: 0.55, 2001: 1, 2002: 0.85, 2003: 0.2 }, home: ['us'], abroad: 0.7, needs: 'internet',
     everyone: { demand: -0.02, value: -0.12 },
     markets: { internet: { demand: -0.2, value: -0.55 }, chips: { demand: -0.2, value: -0.5 }, ai: { value: -0.3 }, investing: { demand: -0.15, value: -0.3 } },
     text: 'The dot-com bubble bursts: internet start-ups run out of cash, tech shares lose most of their value and advertising budgets are slashed.',
@@ -280,6 +287,7 @@ export function carriedMarketNews(g: Pick<GameState, 'flags'>): Json[] | null {
 export function eventStrength(e: MarketEvent, country: string, year: number): number {
   const i = e.years[Math.round(year)] ?? 0
   if (!i) return 0
+  if (e.needs && techAdoption(country, e.needs, year) < 0.02) return 0
   return e.home ? i * (e.home.includes(country) ? 1 : (e.abroad ?? 0)) : i
 }
 
