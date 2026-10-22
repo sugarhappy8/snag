@@ -12,8 +12,10 @@
 //   world               the A.K2 world root (absent until Ledger-world lands): each own key is a `world.<name>` replace
 //                       sub-slice, except world.ledger, which every booking edits in place and so stays in the core
 //
-// Versions are all 1 here, the shape v4.1.1 wrote. A later release that changes a slice's shape bumps its version and adds a
-// `migrate`; a record's `sv` map (save-codec.ts) tells which version each slice was written at.
+// Versions are 1 here, the shape v4.1.1 wrote, except `flags.worldEconomy`, which is 2 (the save diet: `previous` kept for the
+// countries a reader can name, 16 years of history; economy/slice.ts). A later release that changes a slice's shape bumps its
+// version and adds a `migrate`; a record's `sv` map (save-codec.ts) tells which version each slice was written at.
+import './economy/slice'
 import { defineSlice } from './kernel/slices'
 
 /**
@@ -52,15 +54,8 @@ for (const [key, nodes, chars] of CORE_ROWS) {
   defineSlice({ key, version: 1, chunk: 'core', caps: { nodes, chars }, normalize: keep, write: 'inplace' })
 }
 
-// The world economy is a flag, so it carves itself out of `flags`. Its writer builds a new root every year.
-defineSlice({
-  key: 'flags.worldEconomy',
-  version: 1,
-  chunk: 'world',
-  caps: { nodes: 150_000, chars: 2_000_000 },
-  normalize: (raw) => plainOrAbsent(raw),
-  write: 'replace',
-})
+// `flags.worldEconomy` (chunk `world`, write 'replace') is declared in economy/slice.ts, which the first import above runs. It is the
+// one slice past version 1 (A.K9, the save diet), so its row lives beside its migrate; its writer builds a new root every year.
 
 // Completed years never change (core.ts currentLogYear edits only the last one), so they are written once, by decade.
 defineSlice({

@@ -218,10 +218,11 @@ describe('snapshots', () => {
     // Nothing is left behind for pruned years.
     const records = [...storage.data.keys()].filter((k) => k.startsWith(`${TM_PREFIX}s|`))
     expect(records).toHaveLength(tm.TIME_MACHINE_STOPS)
-    // Each closing world becomes the next opening world without normalization
-    // changing valid historical values and forcing another full frame into storage.
+    // v4.1.1: each closing world became the next opening world (`previous`), so one frame served two snapshots and there were
+    // TIME_MACHINE_STOPS + 1. R2-S10 (the save diet) keeps `previous` for the countries a reader can name only, which is no longer
+    // last year's closing world: each snapshot stores its own `countries` frame and its own, small, `previous` frame.
     const worldFrames = [...storage.data.keys()].filter(k => k.startsWith(TM_PREFIX) && k.includes('world.'))
-    expect(worldFrames).toHaveLength(tm.TIME_MACHINE_STOPS + 1)
+    expect(worldFrames).toHaveLength(tm.TIME_MACHINE_STOPS * 2)
     if (typeof CompressionStream !== 'undefined') expect(records.every(key => storage.data.get(key)?.startsWith('gz2:'))).toBe(true)
     // The index lists the summary the sheet shows.
     expect(store.getApp().timeStops.at(-1)).toMatchObject({ age: game().character.age, year: game().year })

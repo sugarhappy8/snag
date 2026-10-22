@@ -104,14 +104,18 @@ describe('the fixtures load and run five years', () => {
   })
 
   // One `it`: the heavy fixture takes a few seconds to play five years.
-  it('the heavy v4.1.1 save migrates, still carries the economy diet candidates, and plays', () => {
+  it('the heavy v4.1.1 save migrates, its economy goes on the diet, and plays', () => {
     const raw = load('save-v4.1.1-heavy.json.gz')
     expect(raw.schemaVersion).toBe(OLDER_BUILD_SCHEMA)
+    // The raw v4.1.1 record carries last year's frame of all 102 countries. R2-S10 (the save diet) keeps it for the countries a
+    // reader can name: the economy slice's migrate cuts it on this load (in place, so count first), and the 20-year life lives in
+    // one place.
+    expect(Object.keys((raw.flags as { worldEconomy: { previous: Record<string, unknown> } }).worldEconomy.previous).length).toBeGreaterThan(100)
     const { game, from } = ready(raw)
     expect(from).toBe(2)
-    // R2-S10 prunes `previous` to the countries a reader can name and changes this assertion, on purpose.
     const world = game.flags.worldEconomy as { previous: Record<string, unknown> }
-    expect(Object.keys(world.previous).length).toBeGreaterThan(100)
+    expect(Object.keys(world.previous)).toContain(game.character.countryId)
+    expect(Object.keys(world.previous).length).toBeLessThan(40)
     expectPlayable(game, game.year)
   })
 

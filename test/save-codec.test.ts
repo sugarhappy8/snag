@@ -175,8 +175,9 @@ describe('the head', () => {
     const sv = head[HEAD_VERSIONS_KEY] as Record<string, number>
     expect(sv).toEqual(Object.fromEntries(listSlices().map((s) => [s.key, s.version])))
     expect(Object.keys(sv)).toEqual(listSlices().map((s) => s.key))
-    // The real rows are in it, and each is at version 1 (the shape v4.1.1 wrote).
-    for (const key of ['character', 'flags', 'flags.worldEconomy', 'log', 'world', 'world.ledger']) expect(sv[key], key).toBe(1)
+    // The real rows are in it, each at version 1 (the shape v4.1.1 wrote) except the economy: R2-S10 (the save diet) made it 2.
+    for (const key of ['character', 'flags', 'log', 'world', 'world.ledger']) expect(sv[key], key).toBe(1)
+    expect(sv['flags.worldEconomy']).toBe(2)
   })
 
   it('is a head with an empty manifest when nothing is big enough to move', () => {

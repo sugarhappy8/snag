@@ -165,6 +165,8 @@ export const WHOLE_FLAGS_SITES: Readonly<Record<string, number>> = {
   'src/game/business/supply-resilience.ts': 2,
   'src/game/business/tech-wave-factors.ts': 3,
   'src/game/business/util.ts':              1,
+  // The save diet's focus walk (A.K9) reads every flag but the economy's own for the countries a life is tied to.
+  'src/game/economy/focus.ts':              1,
   'src/game/history/market-events.ts':      1,
   'src/game/life.ts':                       2,
   'src/game/nation/state.ts':               1,

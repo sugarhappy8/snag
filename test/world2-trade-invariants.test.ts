@@ -4,6 +4,7 @@ import { economyOf, economyState, ensureEconomy, yearlyEconomy } from '../src/ga
 import { normalizeCountry, storeEconomy, type CountryEconomy } from '../src/game/economy/model'
 import { countryTrade, normalizeTrade, sectorTrade, TRADE_INPUTS } from '../src/game/economy/trade'
 import { economyMenu } from '../src/game/economy/menu'
+import { HISTORY_YEARS } from '../src/game/economy/focus'
 import { createPerson } from '../src/game/people'
 import { LOCAL_SNAPSHOT_BUDGET, loadSnapshot, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot, timeStops, type SnapshotBackend } from '../src/game/save'
 import { TIME_MACHINE_STOPS } from '../src/game/timeMachine'
@@ -150,7 +151,8 @@ describe('World Simulation 2.0: trade persistence and invariants', () => {
       }
     }
     expect(economyState(replay)).toEqual(economyState(g))
-    expect(economyState(g)!.history.us).toHaveLength(32)
+    // A.K9: 16 years of history per country (it was 32); the 240 years of this life fill every row.
+    expect(economyState(g)!.history.us).toHaveLength(HISTORY_YEARS)
     expect(Object.keys(economyState(g)!.countries)).toHaveLength(COUNTRIES.length)
     expect(JSON.stringify(g).length).toBeLessThan(3_000_000)
     console.info(`World2 trade benchmark: 240 annual world transitions ${transitionMs.toFixed(0)} ms (${(transitionMs / 240).toFixed(1)} ms each), two generational JSON reloads ${reloadMs.toFixed(0)} ms; save ${JSON.stringify(g).length} characters. Timing excludes assertions.`)
