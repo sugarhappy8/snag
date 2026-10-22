@@ -227,7 +227,10 @@ describe('the pool', () => {
 describe('the four sites', () => {
   // These digests were taken on the code before the pool existed (v5.0.0 plus the engine seed, E1 to E5), under Node 22.23.3.
   const STUDY = 'd48f8ac9990a516a'
-  const PRACTICE = 'e269a12abd4a5afd'
+  // PRACTICE moved with the merge of the quiet track (moved-tests.md): the queue of the club kid's school years holds three Report Card
+  // notices, which now say "Your third-year report card" (R3-Q13, the repetition fix at the source) and carry a weight w of 1 (R3-Q2). The rng, character,
+  // counters, yearActions, flags and log digests of the state are the ones of the release before the merge (checked part by part).
+  const PRACTICE = '84226745e49da7c2' // was 'e269a12abd4a5afd'
   const LESSON = '77f9c90a534a91d5'
   const TUTORIAL = '535109dcee2611c9'
 
