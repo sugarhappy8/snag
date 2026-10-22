@@ -14,6 +14,21 @@ import { PRO_SEASON_LINES } from '../src/game/special/athlete'
 import { isMemKey } from '../src/game/text/memory'
 import { defineLines, registeredLines } from '../src/game/text/registry'
 import { STATE_TABLE, type StateSpec } from '../src/game/text/state-table'
+import {
+  AIR_RAID_LINES,
+  AVOIDING_LINES,
+  CHILD_UNCURED_LINES,
+  DONATED_LINES,
+  ENDORSE_RENEWED_LINES,
+  GAVE_LINES,
+  HOME_BOUGHT_LINES,
+  HOMELESS_LINES,
+  LENT_LINES,
+  NOTEBOOK_FULL_LINES,
+  REFUSED_LINES,
+  RESIGN_LINES,
+  VENTURE_LOST_LINES,
+} from '../src/game/text/pools'
 
 const EM_DASH = String.fromCharCode(0x2014)
 const EN_DASH = String.fromCharCode(0x2013)
@@ -242,6 +257,20 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'wealth.boundary', lines: BOUNDARY_LINES, role: 'log', slots: ['who'] },
   // The log puts the person's name and a colon before this one: judged with that frame on.
   { id: 'npc.promotion', lines: PROMO_LINES, role: 'log', slots: [], frame: (line) => `{name}: ${line}` },
+  // R3-Q13: the lines that used to be one sentence every time (the same line never twice within 10 years).
+  { id: 'npc.homeBought', lines: HOME_BOUGHT_LINES, role: 'log', slots: [], frame: (line) => `{name}: ${line}` },
+  { id: 'career.resign', lines: RESIGN_LINES, role: 'log', slots: ['who'] },
+  { id: 'sports.endorseRenewed', lines: ENDORSE_RENEWED_LINES, role: 'log', slots: ['brand'] },
+  { id: 'workshop.notebookFull', lines: NOTEBOOK_FULL_LINES, role: 'log', slots: [] },
+  { id: 'wealth.avoiding', lines: AVOIDING_LINES, role: 'log', slots: ['who'] },
+  { id: 'wealth.refused', lines: REFUSED_LINES, role: 'log', slots: ['what', 'who'] },
+  { id: 'wealth.gave', lines: GAVE_LINES, role: 'log', slots: ['money', 'what', 'who'] },
+  { id: 'wealth.lent', lines: LENT_LINES, role: 'log', slots: ['money', 'what', 'who'] },
+  { id: 'wealth.ventureLost', lines: VENTURE_LOST_LINES, role: 'log', slots: ['money', 'what'] },
+  { id: 'charity.donated', lines: DONATED_LINES, role: 'log', slots: ['charity', 'money'] },
+  { id: 'history.airRaid', lines: AIR_RAID_LINES, role: 'log', slots: [] },
+  { id: 'health.childUncured', lines: CHILD_UNCURED_LINES, role: 'log', slots: ['label', 'who'] },
+  { id: 'finance.homeless', lines: HOMELESS_LINES, role: 'log', slots: [] },
 ]
 
 describe('the pools of R2-P10', () => {

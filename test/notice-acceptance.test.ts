@@ -824,7 +824,9 @@ describe('(f) a seeded 25-year life through ageUp', () => {
     const paced = Object.keys(mem.f).filter((k) => k.startsWith('pop.'))
     expect(paced.length).toBeGreaterThan(0)
     for (const k of paced) expect(k, k).toMatch(/^pop\.ev\.[a-z][a-zA-Z0-9.]*$/)
-    expect(Object.keys(mem.r)).toEqual(['flavor'])
+    // R3-Q13 adds two rings of text: the words of the flavor lines ('flavorText', so one sentence in two era packs is not told twice) and the
+    // sentences event outcomes wrote lately ('told', text/told.ts).
+    expect(Object.keys(mem.r).sort()).toEqual(['flavor', 'flavorText', 'told'])
     expect(mem.r.flavor.length).toBeGreaterThan(0)
     expect(JSON.stringify(g.flags)).not.toContain('flavorRecent')
   })

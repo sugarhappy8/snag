@@ -7,7 +7,8 @@ import { arrestPlayer } from '../crime'
 import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
-import { PRO_SEASON_LINES } from '../text/pools'
+import { PRO_SEASON_LINES, RESIGN_LINES } from '../text/pools'
+import { ordinalWord } from '../text/ordinal'
 import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -934,7 +935,7 @@ const contractRenewScript = defineScript('special.athlete.renew', (g, choice, da
   if (choice === 'resign') {
     ad(job).contractYears = o.years
     job.salary = o.salary
-    log(g, `I re-signed with the ${job.company}.`, 'good')
+    log(g, fillSlots(pickLine(g, RESIGN_LINES), { who: `the ${job.company}` }), 'good')
     return say(g, 'Re-signed', `You re-signed with the ${job.company} for ${o.years} year${o.years === 1 ? '' : 's'} at ${money(o.salary)} per year.`, '\u{270D}\u{FE0F}', 'good')
   }
   if (choice === 'free' && o.freeAgent) {
@@ -1025,7 +1026,7 @@ export function yearlyAthlete(g: GameState): void {
   if (knocks[sport.id]) addHeadTrauma(g, knocks[sport.id] * (0.6 + rand(g) * 0.8))
 
   const statLine = seasonStats(g, sport, greatness, d.position)
-  log(g, fillSlots(pickLine(g, PRO_SEASON_LINES), { nth: ordinal(p.seasons), team: d.team, stats: statLine }), greatness >= 60 ? 'good' : 'neutral')
+  log(g, fillSlots(pickLine(g, PRO_SEASON_LINES), { nth: ordinalWord(p.seasons), team: d.team, stats: statLine }), greatness >= 60 ? 'good' : 'neutral')
   fameToward(g, greatness * 0.85 + p.championships * 2, 4)
 
   if (rank === 1) {

@@ -24,8 +24,9 @@ import { applyEffects } from '../effects'
 import { notePerson } from '../people'
 import { fillLocal, locale, localTerm, type LocaleProfile } from '../data/locales'
 import { noticeWeightOf } from '../notice-weights'
-import { pick, randInt, rand } from '../rng'
+import { pick, randInt, rand, uid } from '../rng'
 import { pickLine } from '../text/pick'
+import { noteTold, toldLately } from '../text/told'
 import type { Reason } from '../kernel/reasons'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import type { ChoiceOption, GameEffects, GameState, Gender, Job, Json, Person, Tone } from '../types'
@@ -284,7 +285,15 @@ export function res(g: GameState, ctx: Ctx | null, r: Res): void {
   const a = outcomeAmount(g, r.fx)
   const w = noticeWeightOf(title)
   notice(g, title, body, { emoji: r.e ?? x?.ev.emoji, tone, support: r.support, a })
-  if (r.l) log(g, v(g, r.l), tone, undefined, a === undefined && w === undefined ? undefined : { a, w })
+  if (r.l) {
+    // The sentence is drawn either way (one text draw); a sentence told within 10 years is not written again, and takes the log id it would have taken.
+    const line = v(g, r.l)
+    if (toldLately(g, line)) uid(g, 'l')
+    else {
+      noteTold(g, line)
+      log(g, line, tone, undefined, a === undefined && w === undefined ? undefined : { a, w })
+    }
+  }
   if (r.fx) applyFx(g, x, r.fx)
 }
 

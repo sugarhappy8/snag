@@ -17,7 +17,9 @@ import { addMoney, addRelationship, log, notice, scriptChoice } from '../core'
 import { notePerson } from '../people'
 import { chance, rand, randFloat, randInt, weightedPick } from '../rng'
 import { askGapOk, notePopup } from '../text/pace'
-import { stateLine } from '../text/state'
+import { pickLine } from '../text/pick'
+import { AVOIDING_LINES, VENTURE_LOST_LINES } from '../text/pools'
+import { fillSlots, stateLine } from '../text/state'
 import { logStateLine } from '../text/state-log'
 import { askIsStoryline, askPaceKey } from './ask-families'
 import { askDefs } from './wealth-catalog'
@@ -178,7 +180,7 @@ function collectLoans(g: GameState): void {
       updateTies(g, p, (x) => {
         x.marks.avoid = g.year
       })
-      if (said === undefined || g.year - said >= 5) log(g, `${cap(myOf(p))} has been avoiding me ever since I lent ${p.gender === 'male' ? 'him' : 'her'} money.`)
+      if (said === undefined || g.year - said >= 5) log(g, fillSlots(pickLine(g, AVOIDING_LINES), { who: cap(myOf(p)) }))
     }
   }
 }
@@ -218,7 +220,7 @@ function settleVentures(g: GameState): void {
       log(g, `${cap(x.what)} fizzled. ${cap(who)} paid me back ${money(back)} of the ${money(x.amt)} I put in.`)
     } else {
       if (p && p.alive) addRelationship(p, -randInt(g, 0, 3))
-      log(g, `${cap(x.what)} went under. The ${money(x.amt)} I put in went with it.`, 'bad')
+      log(g, fillSlots(pickLine(g, VENTURE_LOST_LINES), { what: x.what, money: money(x.amt) }), 'bad')
     }
   }
   writePending(g, keep)

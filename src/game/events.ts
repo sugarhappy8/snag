@@ -62,7 +62,8 @@ export function getEventDef(id: string): EventDef | undefined {
 
 /** g.flags key: { [eventId]: age when it last fired }. */
 export const EVENT_HISTORY_FLAG = 'offlineEventHistory'
-const DEFAULT_COOLDOWN = 10
+// 11, not 10 (R3-Q13): the same event is never back within 10 years, so its outcome line is not told twice in that time.
+const DEFAULT_COOLDOWN = 11
 const DEFAULT_WEIGHT = 10
 
 /**

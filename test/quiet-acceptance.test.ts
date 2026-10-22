@@ -12,12 +12,12 @@
 //      equals the books, nothing the close dropped goes unrecorded, no kept notice is folded before its choice, no popup is lost, and the
 //      books are clean at the end.
 //
-// R3-Q13 turns the numbers of the roadmap on, now that the pace and variant lanes are merged (part 3 below): popups a year (ordinary p90 3 and
-// max 5, $50M p90 4 and max 6, tycoon mean 4 plus the companies card), a tycoon's visible log at most 8 lines, and the repetition targets of the
-// 13-life probe (repeated lines 5%, or 8% for a rich life; no line more than 3 times in a life; no popup scene twice in 10 years; part 4). A
-// threshold is written as the roadmap writes it and is never loosened to fit a number: a miss fails its own case with the measured numbers, and
-// the lead decides (decision D32). The popup numbers are asserted on both readings of "a popup" (part 3): every popup the player sees, as the
-// audit counted, and only the ones that arrive by themselves, which is what the close budgets.
+// R3-Q13 turns the numbers of the roadmap on, now that the pace and variant lanes are merged (part 3 below): popups a year counted as they
+// arrive (ordinary p90 3 and max 5, $50M p90 4 and max 6, tycoon mean 4 plus the companies card; lead decision L1, the other readings are
+// printed and not asserted), a tycoon's visible log at most 8 lines, and the repetition targets of the 13-life probe (part 4, decision L2:
+// they measure the lines of the life log: repeated lines 5%, or 8% for a rich life, no line more than 3 times in a life, none told twice within
+// 10 years, a state line once in 5 years; the scenes of the popups follow family pacing instead). A threshold is written as the roadmap writes
+// it and is never loosened to fit a number: a miss is fixed at its source, in the text it comes from.
 //
 // Every life is found, not pinned (test/seed-kit.ts), and played once per run.
 import { describe, expect, it } from 'vitest'
@@ -27,6 +27,8 @@ import { YEAR_LIMITS } from '../src/game/hubs/year-plan'
 import { createNewLife } from '../src/game/life'
 import type { ChoiceModal, GameState, LogEntry, ModalItem, NoticeModal, YearCard } from '../src/game/types'
 import { EVENT_SCRIPT } from '../src/game/events/helpers'
+import { STATE_LIMITS } from '../src/game/text/state'
+import { STATE_TABLE } from '../src/game/text/state-table'
 import { LOG_VISIBLE, viewYearLog } from '../src/ui/components/logModel'
 import { closeProblems, foldRecords, ledgerClean, lifeProblems, popupsPerYear, spread, visibleLines } from './close-kit'
 import { playLife, type ClosedYear, type PlayedYear } from './play-kit'
@@ -464,57 +466,59 @@ describe('the hard caps on real lives, played the way the store plays them', () 
  * The roadmap, as it is written: "Popups a year: ordinary lives p90 3, max 5; $50M lives p90 4, max 6; tycoon mean 4 plus one 'Your companies'
  * card; a tycoon's visible log lines from 12.5 to 8". The thresholds are the roadmap's and are never loosened to fit a number.
  *
- * What a "popup" is has two readings, and the lead decides which one the roadmap means (decision D32, R3-Q13 report), so both are asserted:
- *
- *   - AUDIT: every popup the player sees in a year, the outcome of their own answer included. This is how the audit counted its 1.8, 5.4 and 8
- *     a year ("two popups per event"), and how test/text-metrics.ts counts. Every choice then brings an outcome with it.
- *   - ARRIVE: only the popups that arrive by themselves (PlayedPopup.passive), which is what the year close can budget. The close keeps 3
- *     unrequested choices and 3 notices a year (the owner's budget, YEAR_LIMITS), so on this reading a tycoon's mean of 4 is the budget's own
- *     arithmetic; on the AUDIT reading the same budget gives 3 choices and their 3 outcomes before a single notice.
- *
- * The year card is in neither count: the audit had none, and the roadmap adds it to the tycoon's four. Every closed year of a life is counted,
- * from age 1.
+ * "Popups a year" counts what ARRIVES (lead decision L1): the modal popups that come by themselves after the store flow (closeYear, Quiet
+ * Mode, the digest), which is what the year close budgets: 3 unrequested choices and 3 notices a year (YEAR_LIMITS). The outcome of a
+ * choice the player answered is a reply to them, not an arrival, and the year card is the one popup the roadmap adds to the tycoon's four,
+ * so neither is in the count. The other reading, which counts every popup the player sees as the audit did ("two popups per event"), is
+ * measured and printed below, and not asserted. Every closed year of a life is counted, from age 1.
  */
 const ROADMAP = { ordinary: { p90: 3, max: 5 }, rich: { p90: 4, max: 6 }, founder: { mean: 4, companiesCard: 0.9 }, visibleLog: 8 } as const
 
 type Spread = ReturnType<typeof spread>
 
-const MEASURES = [
-  { id: 'audit', asked: true, what: 'every popup the player sees, the outcome of their own answers included' },
-  { id: 'arrive', asked: false, what: 'only the popups that arrive by themselves, which is what the close budgets' },
-] as const
-
 const closedYears = (lives: readonly Life[]): PlayedYear[] => lives.flatMap((l) => l.years.filter((y) => y.closed !== undefined))
-const popups = (lives: readonly Life[], asked: boolean): Spread => spread(popupsPerYear(closedYears(lives), { cards: false, asked }))
+const arriving = (lives: readonly Life[]): Spread => spread(popupsPerYear(closedYears(lives), { cards: false, asked: false }))
 const show = (s: Spread): string => `mean ${s.mean.toFixed(2)}, p90 ${s.p90}, max ${s.max}`
 
-for (const measure of MEASURES) {
-  describe(`the popups a year of the roadmap, counted as ${measure.id}: ${measure.what}`, () => {
-    it('ordinary lives: p90 at most 3 and max at most 5', () => {
-      const s = popups(livesOf('ordinary'), measure.asked)
-      const misses = [...(s.p90 > ROADMAP.ordinary.p90 ? [`p90 ${s.p90} is over ${ROADMAP.ordinary.p90}`] : []), ...(s.max > ROADMAP.ordinary.max ? [`max ${s.max} is over ${ROADMAP.ordinary.max}`] : [])]
-      expect(misses, `ordinary lives, popups a year (${measure.id}): ${show(s)}`).toEqual([])
-    })
-
-    it('$50M lives: p90 at most 4 and max at most 6', () => {
-      const s = popups(livesOf('rich'), measure.asked)
-      const misses = [...(s.p90 > ROADMAP.rich.p90 ? [`p90 ${s.p90} is over ${ROADMAP.rich.p90}`] : []), ...(s.max > ROADMAP.rich.max ? [`max ${s.max} is over ${ROADMAP.rich.max}`] : [])]
-      expect(misses, `rich lives, popups a year (${measure.id}): ${show(s)}`).toEqual([])
-    })
-
-    it('tycoons: a mean of at most 4 popups, and the year card carries the companies group', () => {
-      const lives = livesOf('founder')
-      const s = popups(lives, measure.asked)
-      const years = closedYears(lives)
-      const withCompanies = years.filter((y) => y.closed!.card?.groups.some((g) => g.k === 'companies')).length
-      const misses = [
-        ...(s.mean > ROADMAP.founder.mean ? [`mean ${s.mean.toFixed(2)} is over ${ROADMAP.founder.mean}`] : []),
-        ...(withCompanies < years.length * ROADMAP.founder.companiesCard ? [`${withCompanies} of ${years.length} cards carry a companies group, under ${ROADMAP.founder.companiesCard * 100}%`] : []),
-      ]
-      expect(misses, `tycoons, popups a year (${measure.id}): ${show(s)}; companies on ${withCompanies} of ${years.length} cards`).toEqual([])
-    })
+describe('the popups a year of the roadmap, counted as they arrive (decision L1)', () => {
+  it('ordinary lives: p90 at most 3 and max at most 5', () => {
+    const s = arriving(livesOf('ordinary'))
+    const misses = [...(s.p90 > ROADMAP.ordinary.p90 ? [`p90 ${s.p90} is over ${ROADMAP.ordinary.p90}`] : []), ...(s.max > ROADMAP.ordinary.max ? [`max ${s.max} is over ${ROADMAP.ordinary.max}`] : [])]
+    expect(misses, `ordinary lives, popups that arrive a year: ${show(s)}`).toEqual([])
   })
-}
+
+  it('$50M lives: p90 at most 4 and max at most 6', () => {
+    const s = arriving(livesOf('rich'))
+    const misses = [...(s.p90 > ROADMAP.rich.p90 ? [`p90 ${s.p90} is over ${ROADMAP.rich.p90}`] : []), ...(s.max > ROADMAP.rich.max ? [`max ${s.max} is over ${ROADMAP.rich.max}`] : [])]
+    expect(misses, `rich lives, popups that arrive a year: ${show(s)}`).toEqual([])
+  })
+
+  it('tycoons: a mean of at most 4 popups, and the year card carries the companies group', () => {
+    const lives = livesOf('founder')
+    const s = arriving(lives)
+    const years = closedYears(lives)
+    const withCompanies = years.filter((y) => y.closed!.card?.groups.some((g) => g.k === 'companies')).length
+    const misses = [
+      ...(s.mean > ROADMAP.founder.mean ? [`mean ${s.mean.toFixed(2)} is over ${ROADMAP.founder.mean}`] : []),
+      ...(withCompanies < years.length * ROADMAP.founder.companiesCard ? [`${withCompanies} of ${years.length} cards carry a companies group, under ${ROADMAP.founder.companiesCard * 100}%`] : []),
+    ]
+    expect(misses, `tycoons, popups that arrive a year: ${show(s)}; companies on ${withCompanies} of ${years.length} cards`).toEqual([])
+  })
+})
+
+describe('the popups a year, the other readings, measured and printed (decision L1)', () => {
+  it('prints what the audit counted (every popup the player sees, the outcomes of their own answers included) and what ageUp queued before the close', () => {
+    const rows = (['ordinary', 'rich', 'founder'] as const).map((cls) => {
+      const lives = livesOf(cls)
+      const years = closedYears(lives)
+      const seen = spread(popupsPerYear(years, { cards: false }))
+      const queued = spread(years.map((y) => y.closed!.before.filter((m) => m.kind !== 'aiTask').length))
+      expect(years.length, `${cls}: closed years`).toBeGreaterThan(0)
+      return `  ${cls.padEnd(8)} arrive ${show(arriving(lives))}; seen with outcomes ${show(seen)}; queued before the close ${show(queued)}`
+    })
+    console.log(['quiet acceptance, popups a year on the three readings (asserted: the first):', ...rows].join('\n'))
+  }, TIMEOUT)
+})
 
 describe('the log a tycoon sees', () => {
   it('a tycoon sees at most 8 lines of the log a year, from the 12.5 the audit found: every year, and on average', () => {
@@ -530,21 +534,20 @@ describe('the log a tycoon sees', () => {
 })
 
 // ---------------------------------------------------------------------------------------------------------------
-// 4. The repetition targets, on the 13-life probe (R3-Q13, decision D32)
+// 4. The repetition targets, on the 13-life probe (R3-Q13, decisions D32 and L2)
 
 /**
  * The 13 lives of test/text-probe.ts (seeds 101 to 113, six birth years in turn, every second life rich), played to 85 the way the store plays
- * them, and measured with textMetrics. The targets are the design's (DESIGN_THRESHOLDS): a life repeats at most 5% of its lines (8% when rich),
- * no line shows up more than 3 times in a life, and no popup scene says the same thing twice in 10 years (a scene is the text of a choice nobody
- * asked for; the same normalized text a year gap of 10 or less apart is a repeat, the rule textMetrics uses for a line). State lines that print
- * once in 5 years are the R2 state kit's (test/text-repeat.test.ts keeps them).
+ * them, and measured the way the text kit and R2's text-repeat probe measure them: the repetition targets are about the LINES of the life log
+ * (decision L2), and a line is its normalized text (test/text-metrics.ts). A life repeats at most 5% of its lines (8% when rich), no line shows
+ * up more than 3 times in a life, the same line is never told twice within 10 years, and a state line (text/state.ts) is not told twice
+ * within the 5 years its row waits. Popup scenes are not lines: they follow family pacing (a family at most 6 times a life), measured on
+ * the event library as test/pace-families.test.ts measures it. The thresholds are the design's and are never loosened to fit a number.
  */
 interface ProbePlayed {
   spec: ProbeLife
   trace: LifeTrace
   metrics: TextMetrics
-  /** The scenes that repeated within 10 years: "<years>y <title> [<script>]". */
-  scenes: string[]
 }
 
 let probe: ProbePlayed[] | undefined
@@ -552,18 +555,7 @@ function probed(): ProbePlayed[] {
   probe ??= probeLives(13).map((spec) => {
     const { years } = playLife({ seed: spec.seed, birthYear: spec.birthYear, untilAge: PROBE_UNTIL_AGE, rich: spec.rich, close: true })
     const trace: LifeTrace = { seed: spec.seed, birthYear: spec.birthYear, rich: spec.rich, years }
-    const last = new Map<string, number>()
-    const scenes: string[] = []
-    for (const y of years) {
-      for (const p of y.popups) {
-        if (p.kind !== 'choice' || !p.passive || p.card === true) continue
-        const key = normalize(p.text)
-        const before = last.get(key)
-        if (before !== undefined && y.year - before <= 10) scenes.push(`${y.year - before}y ${p.title} [${(p.item as ChoiceModal).scriptId ?? 'no script'}]`)
-        last.set(key, y.year)
-      }
-    }
-    return { spec, trace, metrics: textMetrics(trace), scenes }
+    return { spec, trace, metrics: textMetrics(trace) }
   })
   return probe
 }
@@ -571,24 +563,89 @@ function probed(): ProbePlayed[] {
 const who = (p: ProbePlayed): string => `seed ${p.spec.seed}${p.spec.rich ? ' (rich)' : ''}`
 const share = (n: number): string => `${(n * 100).toFixed(2)}%`
 
+/** Every normalized line of a life with the years it was told in, in order. */
+function tellings(trace: LifeTrace): Map<string, number[]> {
+  const out = new Map<string, number[]>()
+  for (const y of trace.years) {
+    for (const line of y.lines) {
+      const key = normalize(line.text)
+      const years = out.get(key)
+      if (years) years.push(y.year)
+      else out.set(key, [y.year])
+    }
+  }
+  return out
+}
+
+const brief = (text: string): string => (text.length > 70 ? `${text.slice(0, 67)}...` : text)
+
+/** The lines told again within `years` years of the telling before, as "<text> (told in years +0, +4)". */
+function repeatsWithin(trace: LifeTrace, years: number): string[] {
+  const out: string[] = []
+  for (const [text, told] of tellings(trace)) {
+    if (told.slice(1).some((y, i) => y - told[i]! <= years)) out.push(`${brief(text)} (${told.length}x, years +${told.map((y) => y - told[0]!).join(', +')})`)
+  }
+  return out
+}
+
+/** The lines told more than `times` times. */
+function toldMoreThan(trace: LifeTrace, times: number): string[] {
+  return [...tellings(trace)].filter(([, told]) => told.length > times).map(([text, told]) => `${brief(text)} (${told.length}x)`)
+}
+
+/** A row of the state table as a pattern over the raw line: its slots match anything. */
+function statePatterns(): { key: string; re: RegExp }[] {
+  const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return Object.entries(STATE_TABLE).flatMap(([key, spec]) =>
+    spec.variants.map((v) => ({ key, re: new RegExp(`^${v.split(/\{\w+\}/).map(escape).join('.*')}$`, 'su') })),
+  )
+}
+
+/** State lines told twice within STATE_LIMITS.every years: the same normalized text of one row. */
+function stateRepeats(trace: LifeTrace): string[] {
+  const patterns = statePatterns()
+  const seen = new Map<string, number>()
+  const out: string[] = []
+  for (const y of trace.years) {
+    for (const line of y.lines) {
+      const row = patterns.find((p) => p.re.test(line.text))
+      if (!row) continue
+      const key = `${row.key}|${normalize(line.text)}`
+      const before = seen.get(key)
+      if (before !== undefined && y.year - before < STATE_LIMITS.every) out.push(`${row.key}: ${brief(line.text)} (${y.year - before} years apart)`)
+      seen.set(key, y.year)
+    }
+  }
+  return out
+}
+
+/** The event library's popups that arrived by themselves, as test/pace-families.test.ts takes them: a passive choice of the random-event script. */
+function eventScenes(trace: LifeTrace): PlayedYear[] {
+  return trace.years.map((y) => ({ ...y, popups: y.popups.filter((p) => p.passive && p.item.kind === 'choice' && p.item.scriptId === EVENT_SCRIPT) }))
+}
+
 describe('repetition on the 13-life probe', () => {
-  it('prints the numbers: the pooled share, the popup families, and the scenes that repeated', () => {
+  it('prints the numbers: the pooled share, the lines told again, the state lines and the popup families', () => {
     const lives = probed()
     const merge = (rich: boolean): TextMetrics => mergeMetrics(lives.filter((p) => p.spec.rich === rich).map((p) => p.metrics))
     const o = merge(false)
     const r = merge(true)
+    const scenes = lives.map((p) => textMetrics({ ...p.trace, years: eventScenes(p.trace) }))
     console.log(
       [
         `quiet acceptance, repetition: 13 lives to ${PROBE_UNTIL_AGE}, ${lives.reduce((n, p) => n + p.metrics.lines, 0)} log lines`,
         `  repeated share   ordinary ${share(o.repeatedShare)} (target ${share(DESIGN_THRESHOLDS.repeatedShare)}), rich ${share(r.repeatedShare)} (target ${share(DESIGN_THRESHOLDS.repeatedShareRich)})`,
-        `  a line shown most in a life   ordinary ${o.over3.max}, rich ${r.over3.max} (target ${DESIGN_THRESHOLDS.over3Max})`,
-        `  popup families (by title)   most in a life ${Math.max(o.popupFamilies.maxPerLife, r.popupFamilies.maxPerLife)}, titles over 6 ${o.popupFamilies.over6 + r.popupFamilies.over6}`,
-        ...lives.map((p) => `  ${who(p).padEnd(16)} share ${share(p.metrics.repeatedShare)}, most ${p.metrics.over3.max}x, scenes twice in 10 years ${p.scenes.length}${p.scenes.length ? ` (${p.scenes.slice(0, 4).join('; ')})` : ''}`),
+        `  a line told most in a life   ordinary ${o.over3.max}, rich ${r.over3.max} (target ${DESIGN_THRESHOLDS.over3Max})`,
+        `  lines told twice within 10 years   ${lives.reduce((n, p) => n + p.metrics.sameWithin10, 0)} (target ${DESIGN_THRESHOLDS.sameWithin10})`,
+        `  state lines told twice within ${STATE_LIMITS.every} years   ${lives.reduce((n, p) => n + stateRepeats(p.trace).length, 0)} (target 0)`,
+        `  event popups by title   most in a life ${Math.max(...scenes.map((m) => m.popupFamilies.maxPerLife))}, titles over ${DESIGN_THRESHOLDS.popupFamilyMax} ${scenes.reduce((n, m) => n + m.popupFamilies.over6, 0)}`,
+        `  all popups by title (the cards, notices and asks too)   most in a life ${Math.max(o.popupFamilies.maxPerLife, r.popupFamilies.maxPerLife)}, titles over ${DESIGN_THRESHOLDS.popupFamilyMax} ${o.popupFamilies.over6 + r.popupFamilies.over6}`,
+        ...lives.map((p) => `  ${who(p).padEnd(16)} share ${share(p.metrics.repeatedShare)}, most ${p.metrics.over3.max}x, within 10 years ${p.metrics.sameWithin10}`),
       ].join('\n'),
     )
     expect(lives).toHaveLength(13)
     expect(lives.filter((p) => p.spec.rich)).toHaveLength(6)
-  })
+  }, TIMEOUT)
 
   it('a life repeats at most 5% of its lines, and a rich life at most 8%', () => {
     const misses = probed().flatMap((p) => {
@@ -596,15 +653,31 @@ describe('repetition on the 13-life probe', () => {
       return p.metrics.repeatedShare > limit ? [`${who(p)}: ${share(p.metrics.repeatedShare)} is over ${share(limit)}`] : []
     })
     expect(misses).toEqual([])
-  })
+  }, TIMEOUT)
 
-  it('no line shows up more than 3 times in a life', () => {
-    const misses = probed().flatMap((p) => (p.metrics.over3.max > DESIGN_THRESHOLDS.over3Max ? [`${who(p)}: a line ${p.metrics.over3.max} times, over ${DESIGN_THRESHOLDS.over3Max}`] : []))
+  it('no line is told more than 3 times in a life', () => {
+    const misses = probed().flatMap((p) => (p.metrics.over3.max > DESIGN_THRESHOLDS.over3Max ? [`${who(p)}: ${toldMoreThan(p.trace, DESIGN_THRESHOLDS.over3Max).join('; ')}`] : []))
     expect(misses).toEqual([])
-  })
+  }, TIMEOUT)
 
-  it('no popup scene says the same thing twice in 10 years', () => {
-    const misses = probed().flatMap((p) => (p.scenes.length > 0 ? [`${who(p)}: ${p.scenes.length} repeats: ${p.scenes.slice(0, 6).join('; ')}`] : []))
+  it('no line is told twice within 10 years', () => {
+    const misses = probed().flatMap((p) => (p.metrics.sameWithin10 > DESIGN_THRESHOLDS.sameWithin10 ? [`${who(p)}: ${p.metrics.sameWithin10}: ${repeatsWithin(p.trace, 10).slice(0, 5).join('; ')}`] : []))
     expect(misses).toEqual([])
-  })
+  }, TIMEOUT)
+
+  it('a state line is told once in 5 years', () => {
+    const misses = probed().flatMap((p) => {
+      const again = stateRepeats(p.trace)
+      return again.length > 0 ? [`${who(p)}: ${again.slice(0, 5).join('; ')}`] : []
+    })
+    expect(misses).toEqual([])
+  }, TIMEOUT)
+
+  it('no event popup title is shown more than 6 times in a life: the family pacing of the scenes', () => {
+    const misses = probed().flatMap((p) => {
+      const m = textMetrics({ ...p.trace, years: eventScenes(p.trace) })
+      return m.popupFamilies.maxPerLife > DESIGN_THRESHOLDS.popupFamilyMax || m.popupFamilies.over6 > 0 ? [`${who(p)}: a title ${m.popupFamilies.maxPerLife} times, ${m.popupFamilies.over6} titles over ${DESIGN_THRESHOLDS.popupFamilyMax}`] : []
+    })
+    expect(misses).toEqual([])
+  }, TIMEOUT)
 })

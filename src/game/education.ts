@@ -72,6 +72,7 @@ import {
 } from './data/locales'
 import { createPerson, notePerson } from './people'
 import { bell, chance, pick, randInt, shuffle, uid } from './rng'
+import { ordinalWord } from './text/ordinal'
 import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { masterFirstTime } from './mastery'
@@ -1737,7 +1738,7 @@ function yearlySchoolEvents(g: GameState, cur: Enrollment): void {
     notice(
       g,
       'Report Card',
-      `Your report card from ${cur.school} came in. Overall grade: ${gradeLetter(cur.grades)}.\n\n${signer} wrote: "${pickFresh(g, 'edu.reportComments', REPORT_COMMENTS[band], 3)}"`,
+      `Your ${ordinalWord(cur.year)}-year report card from ${cur.school} came in. Overall grade: ${gradeLetter(cur.grades)}.\n\n${signer} wrote: "${pickFresh(g, 'edu.reportComments', REPORT_COMMENTS[band], 3)}"`,
       { emoji: band === 'bad' ? '\u{1F4C9}' : '\u{1F4DD}', tone: band === 'bad' ? 'bad' : band === 'great' ? 'good' : 'neutral' },
     )
     const ps = parents(g)

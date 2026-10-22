@@ -111,10 +111,40 @@ family (`paceKey`: `pop.<engine>.<family>`, the engines are `ev`, `ask`, `biz` a
 
 `test/quiet-acceptance.test.ts` plays 6 ordinary lives, 4 rich ones and 3 founders of six companies the way the store does, and
 asserts the hard caps of the close on every year: at most 3 unrequested choices, at most 5 kept notices, one card, a money line that
-equals the books, and nothing folded without a record. It also states the roadmap's own numbers: ordinary lives p90 3 and max 5 popups a
-year, $50M lives p90 4 and max 6, a tycoon's mean 4 plus the companies card, a tycoon's visible log at most 8 lines, and, on the
-13-life probe, repeated lines at most 5% (8% rich), no line more than 3 times in a life and no popup scene twice in 10 years. A miss
-fails its own case with the measured numbers. The threshold is never loosened to fit: the lead decides.
+equals the books, and nothing folded without a record. It also states the roadmap's own numbers.
+
+- **Popups a year count what arrives.** Ordinary lives p90 3 and max 5, $50M lives p90 4 and max 6, a tycoon's mean 4 plus the companies
+  card: the modal popups that come by themselves after the store flow (the close, Quiet Mode, the digest). The outcome of a choice the
+  player answered is a reply, not an arrival, and the card is the popup the roadmap adds. The other readings (every popup the player sees,
+  as the audit counted, and what `ageUp` queued before the close) are measured and printed, not asserted.
+- **A tycoon's visible log** is at most 8 lines a year.
+- **Repetition is about lines of the life log**, on the 13-life probe of `test/text-probe.ts`, with a line compared as
+  `test/text-metrics.ts` compares it (lower case, every run of digits one `#`): repeated lines at most 5% (8% for a rich life), no line
+  more than 3 times in a life, no line twice within 10 years, a state line once in 5 years. Popup scenes are not lines: they follow family
+  pacing, and the case holds the event library's popup titles to 6 a life, as `test/pace-families.test.ts` does. How far a family may
+  repeat across every engine (the ask families of a rich life, the gaps the weights allow) is printed.
+
+A threshold is never loosened to fit a number: a miss is fixed in the text it comes from.
+
+## Repetition: how a line is kept from saying the same thing twice
+
+A bag or a window of lines keeps a pool from repeating at once, but nothing in a pool knows what the log said 8 years ago. These are the
+mechanisms that do, and the order to reach for them.
+
+1. **Put the difference in the line.** The probes fold every run of digits into `#`, so "my 4th pro season" and "my 9th pro season" are
+   one line. `ordinalWord` in `src/game/text/ordinal.ts` writes the season, the school year and the like as a word up to the twentieth,
+   so two of them are never the same line.
+2. **Give a repeating line as many wordings as a life needs.** A pool in `src/game/text/pools.ts` (`defineLines`, `pickLine`, a
+   row in `test/text-lines.test.ts`, at most 60 static characters a line, every line naming every slot). A pool of 12 lines or fewer
+   is a bag: it deals every line before it starts again, but it can repeat a line at the seam of two cycles, so a line that comes round
+   every 3 years wants more than 12 (a window: it never repeats one of its last 6 to 8 picks).
+3. **An event outcome is not told twice in 10 years.** `res()` in `src/game/events/helpers.ts` writes the outcome sentence once;
+   `text/told.ts` keeps a ring of the sentences with the year (`toldLately`, `noteTold`), and a sentence told within `TOLD_YEARS` is not
+   written again (the popup still shows, the log id is still taken). The default event cooldown is 11 years for the same reason.
+4. **One sentence in two pools is one sentence.** The flavor lines remember their words as well as their pool and index
+   (`flavorText` ring in `events/flavor.ts`), because the era packs began as copies of each other.
+5. **A state line speaks no faster than its row says.** `index.crash` and `index.boom` wait 6 years between lines, so four index days
+   never fit in a decade.
 
 ## Where things are
 
@@ -128,6 +158,8 @@ fails its own case with the measured numbers. The threshold is never loosened to
 | `DEFERRABLE_SCRIPTS`, `CloseReport`, `closeYear` | `src/game/hubs/year-close.ts` |
 | the `yearCard` flag, in `FLAG_DEFS` | `src/game/flags.ts` |
 | `PACE`, `PaceEngine`, `paceKey`, `notePopup`, `popupSeen`, `paceWeight`, `askGapOk` | `src/game/text/pace.ts` |
+| `TOLD_YEARS`, `toldLately`, `noteTold` | `src/game/text/told.ts` |
+| `ordinalWord` | `src/game/text/ordinal.ts` |
 | `EVENT_FAMILIES`, `eventFamily` | `src/game/events/families.ts` |
 | `ASK_FAMILIES` | `src/game/events/ask-families.ts` |
 | `withVariants` (the 60 most frequent events open with extra scenes) | `src/game/events/variants.ts` |

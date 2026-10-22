@@ -67,9 +67,178 @@ export const PRO_SEASON_LINES = defineLines('athlete.proSeason', [
   'That was my {nth} pro season, this one with the {team}. {stats}',
   'My {nth} year as a pro was with the {team}. {stats}',
   'My {nth} pro season is in the books, with the {team}. {stats}',
+  'I got through my {nth} year as a pro with the {team}. {stats}',
+  'The {team} had me for my {nth} pro season. {stats}',
+  'I spent my {nth} pro season in the {team} colors. {stats}',
+  'I closed out my {nth} season as a pro with the {team}. {stats}',
 ])
 
 /** The milestone text of a promotion: what the saved history keeps, and the first of the log's words for it. */
 export const PROMOTED = 'earned a promotion and higher pay'
+/** The milestone text of a home bought on a mortgage: what the saved history keeps, and the first of the log's words for it. */
+export const HOME_BOUGHT = 'bought a home with savings and a mortgage; repayments now compete with other spending'
+/** The log's words for it (R3-Q13): a person can buy a second home within a few years, and the log said it the same way; the history keeps HOME_BOUGHT. */
+export const HOME_BOUGHT_LINES = defineLines('npc.homeBought', [
+  'bought a home and took on a mortgage',
+  'moved into a home of their own, with a mortgage to carry',
+  'bought a place and took on the payments',
+  'got a mortgage and a front door of their own',
+  'put savings and a loan into a home',
+])
+
 /** The log's words for a promotion (R2-P10, E.T3 d): a person is promoted several times in a life and the log said it the same way each time. The saved history keeps PROMOTED whatever the log says. */
-export const PROMO_LINES = defineLines('npc.promotion', [PROMOTED, 'moved up at work and got a raise', 'was promoted and paid more', 'got a step up at work and better pay', 'landed a better role and a raise'])
+export const PROMO_LINES = defineLines('npc.promotion', [
+  PROMOTED,
+  'moved up at work and got a raise',
+  'was promoted and paid more',
+  'got a step up at work and better pay',
+  'landed a better role and a raise',
+  'was given more to do and more to take home',
+  'won a bigger job at the same company',
+  'got the title they had been chasing',
+  'was moved up and paid for it',
+  'stepped into a better position at work',
+  'earned the raise that came with a new title',
+  'was picked for a senior role',
+])
+
+/**
+ * Lines that used to be one sentence every time the thing happened (R3-Q13: the same line never twice within 10 years). A pool has as
+ * many wordings as a life is likely to need, and every wording is true whoever it is about, so the bag deals them all before it starts
+ * again. The slots are what the call site fills; the lint in test/text-lines.test.ts holds each pool to them.
+ */
+
+/** A contract renewed, for an athlete, an esports pro or a musician: {who} is "the Lions" or a label. */
+export const RESIGN_LINES = defineLines('career.resign', [
+  'I re-signed with {who}.',
+  'I put my name on a new contract with {who}.',
+  '{who} kept me on and I signed again.',
+  'I signed another deal with {who}.',
+  'I stayed with {who} on a fresh contract.',
+  'The contract with {who} was renewed, and I signed it.',
+])
+
+/** A sponsor that kept an endorsement going: {brand}. */
+export const ENDORSE_RENEWED_LINES = defineLines('sports.endorseRenewed', [
+  '{brand} renewed my endorsement deal.',
+  '{brand} kept me on as their face for another stretch.',
+  'I signed on with {brand} for another round of endorsements.',
+  '{brand} liked the numbers and extended my deal.',
+  'My endorsement deal with {brand} was extended.',
+  '{brand} wasn\'t ready to let me go and renewed the deal.',
+])
+
+/** An idea the notebook had no room for (a genius child with a full notebook). */
+export const NOTEBOOK_FULL_LINES = defineLines('workshop.notebookFull', [
+  'A brilliant idea struck, but my notebook was full.',
+  'I had a great idea and nowhere to write it down.',
+  'An idea came to me and slipped off before I found a page.',
+  'My notebook had no room, so a good idea went unwritten.',
+  'I thought of something clever, but the notebook was full.',
+  'A fine idea turned up and found no page to land on.',
+])
+
+/** A friend or relative who lent money got cold: {who} is "my brother Juan". */
+export const AVOIDING_LINES = defineLines('wealth.avoiding', [
+  '{who} has been avoiding me ever since I lent the money.',
+  '{who} stopped picking up the phone once the loan was made.',
+  'Ever since the loan, {who} has found reasons not to see me.',
+  '{who} crosses the street now that I lent the money.',
+  'The money I lent has put a chill between {who} and me.',
+  '{who} has kept away since the loan.',
+])
+
+/** A request turned down: {who} is "my sister Malak", {what} is what was asked for. */
+export const REFUSED_LINES = defineLines('wealth.refused', [
+  'I said no when {who} asked me for {what}.',
+  'I turned {who} down when they asked for {what}.',
+  '{who} asked me for {what}, and I said no.',
+  'I told {who} no about {what}.',
+  'I wouldn\'t give {who} {what}, and I said so.',
+  'When {who} asked for {what}, I declined.',
+  'I held my wallet shut when {who} asked me for {what}.',
+  'I wasn\'t willing to pay for {what}, and I told {who}.',
+])
+
+/** Money handed over: {who} is "my friend Rolando", {money}, {what} is the reason ("dinner"). */
+export const GAVE_LINES = defineLines('wealth.gave', [
+  'I gave {who} {money} for {what}.',
+  'I handed {who} {money} for {what}.',
+  'I sent {who} {money} for {what}.',
+  'I came through for {who} with {money} for {what}.',
+  'I gave {who} {money} to help with {what}.',
+  'I wrote {who} a check for {money} for {what}.',
+  'I covered {what} for {who} with {money}.',
+  'I paid {who} {money} toward {what}.',
+  '{who} got {money} from me for {what}.',
+  'I helped {who} out with {money} for {what}.',
+])
+
+/** A venture or tip that lost it all: {what} is "a chain of drive-in theaters", {money}. */
+export const VENTURE_LOST_LINES = defineLines('wealth.ventureLost', [
+  '{what} went under. The {money} I put in went with it.',
+  '{what} folded, and the {money} I put in was gone.',
+  'I lost the {money} I put into {what}.',
+  '{what} failed, and I never saw the {money} again.',
+  'The {money} I put into {what} went down with it.',
+])
+
+/** A night of bombs the player came through. */
+export const AIR_RAID_LINES = defineLines('history.airRaid', [
+  'I survived an air raid.',
+  'The sirens went off and I came through the raid.',
+  'I sat out an air raid and walked away from it.',
+  'Bombs fell near us, and I made it through the night.',
+  'I got through another raid with my life.',
+])
+
+/** A child the doctor could not cure this year: {who} is "mother", {label} the condition. */
+export const CHILD_UNCURED_LINES = defineLines('health.childUncured', [
+  'My {who} took me in for {label}, but the treatment failed.',
+  'My {who} took me to the doctor for {label} again, in vain.',
+  'My {who} kept taking me to the doctor for {label}.',
+  'The treatment for {label} did nothing, and my {who} worried.',
+  'My {who} tried a new doctor for {label}, to no avail.',
+  'The medicine for {label} failed, and my {who} sat up with me.',
+])
+
+/** A year on the street. More than 12 lines on purpose: a bigger pool is not a bag but a window, and never repeats one of its last 6 lines, which at one line every 3 years is 18 years. */
+export const HOMELESS_LINES = defineLines('finance.homeless', [
+  'I spent another year sleeping on park benches.',
+  'I lived on the streets this year.',
+  'I couch-surfed all year and slept in a friend\'s car.',
+  'I was homeless all year.',
+  'I knew every shelter in town by name.',
+  'I spent the year carrying everything I owned in two bags.',
+  'I learned which doorways stayed dry when it rained.',
+  'I counted the nights until a bed turned up, and lost count.',
+  'I washed up in public restrooms and kept moving.',
+  'I got by on soup lines and the kindness of a few strangers.',
+  'I slept in the cold with my coat for a blanket.',
+  'I stayed one step ahead of the next move-along order.',
+  'I found a bench the police ignored and called it home.',
+  'I kept my few things in a locker and my head down.',
+  'I asked strangers for the time just to hear a voice.',
+])
+
+/** Money lent: {who} is "my sister Fatima", {money}, {what} is the reason ("help with rent"). */
+export const LENT_LINES = defineLines('wealth.lent', [
+  'I lent {who} {money} for {what}.',
+  'I loaned {who} {money} for {what}.',
+  'I let {who} borrow {money} for {what}.',
+  'I fronted {who} {money} for {what}.',
+  '{who} borrowed {money} from me for {what}.',
+  'I put {money} in {who}\'s hands as a loan for {what}.',
+])
+
+/** A gift to a cause: {money}, {charity} is its name. */
+export const DONATED_LINES = defineLines('charity.donated', [
+  'I donated {money} to {charity}.',
+  'I gave {money} to {charity}.',
+  'I sent {money} to {charity}.',
+  '{charity} got {money} from me.',
+  'I put {money} into the work of {charity}.',
+  'I backed {charity} with {money}.',
+  'I wrote {charity} a check for {money}.',
+  'I pledged {money} to {charity} and paid it.',
+])
