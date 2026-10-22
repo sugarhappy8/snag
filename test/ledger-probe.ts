@@ -61,13 +61,14 @@ export async function runLedgerLife(seed: number, over: Partial<FuzzOptions> = {
 }
 
 /**
- * What a merged set of 40 lives must show, so that the probe is known to have exercised the books. The plan's targets are 40,000
- * bookings and 20 different reasons, which the migrated engine reaches. Until the migration batches (R2-L6 to R2-L12) land, most
- * money calls still book as `unreasoned` and many writes book nothing, so the 40 lives of R2-L5 measured 13,885 bookings and 6
- * reasons (inflation, unreasoned, loan.principal, prize, career.income, career.cost). The floors sit under that, and R2-L12 raises
- * `bookings` to 40,000 and `reasons` to 20.
+ * What a merged set of 40 lives must show, so that the probe is known to have exercised the books: the plan's targets, 40,000
+ * bookings and 20 different reasons. The migrated engine (R2 head, the four sliced runs of the fix pass) measured 53,456 bookings
+ * (474 to 2,835 a life), 54 reasons (20 to 44 a life), 39 of 40 lives of 90 years or more, no drift and no heal, so the floors
+ * sit at three quarters of the bookings and under half of the reasons: a probe whose migrated sites stopped booking falls under
+ * them. (Before the migration batches the 40 lives measured 13,885 bookings and 6 reasons, and the floors were 6,000 and 4.) The
+ * lives are seeded, so the totals move only when the engine does; if a change moves them for a reason, re-measure and say why here.
  */
-export const FLOORS = { lives: LEDGER_SEEDS.length, whole: 34, wholeYears: 90, bookings: 6_000, reasons: 4 } as const
+export const FLOORS = { lives: LEDGER_SEEDS.length, whole: 34, wholeYears: 90, bookings: 40_000, reasons: 20 } as const
 const LENDING_SHARE = 4
 
 /** The problems of a set of rows, or none. Pure. `merged` adds the checks that need the whole set of 40. */

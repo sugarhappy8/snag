@@ -161,11 +161,21 @@ describe('judge on synthetic rows', () => {
   })
 
   it('keeps the floors no higher than the plan asked for', () => {
-    // 40,000 bookings and 20 reasons are the targets of the migrated engine (see FLOORS); R2-L12 raises the floors to them.
+    // 40,000 bookings and 20 reasons are the plan's targets, and the floors (see FLOORS): the migrated engine measured 53,456 and 54.
     expect(FLOORS.bookings).toBeLessThanOrEqual(40_000)
     expect(FLOORS.reasons).toBeLessThanOrEqual(20)
     expect(FLOORS.bookings).toBeGreaterThan(0)
     expect(FLOORS.reasons).toBeGreaterThan(0)
+  })
+
+  it('holds the floors at the plan\'s targets, not under them: a probe whose migrated sites stopped booking must fail', () => {
+    expect(FLOORS.bookings).toBeGreaterThanOrEqual(40_000)
+    expect(FLOORS.reasons).toBeGreaterThanOrEqual(20)
+    // A set at the 6,000 bookings and 4 reasons the probe was first written with is not enough any more.
+    const thin = goodSet().map((r) => row(r.seed, {}, { bookings: 150, reasons: REASONS_24.slice(0, 4) }))
+    const out = judge(thin, { merged: true }).join('\n')
+    expect(out).toMatch(/bookings in all/)
+    expect(out).toMatch(/different reasons/)
   })
 
   it('does not hold a part of the set to the totals', () => {

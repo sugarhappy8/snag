@@ -200,9 +200,9 @@ the tests, and the lead decides when that is worth it.
 - `test/ledger-conservation-fast.test.ts`: three of the lives, a hundred years each, one action a year, in the fast tier.
 - `test/ledger-probe.ts` holds the judge: no failure, at most 3,000 bookings a year (a cost proxy for the year step), no mint over
   its cap and `lending` at most a quarter of it, no `heal`. Over the forty: at least 34 lives of 90 years or more, the floors of
-  `FLOORS` for bookings and reasons, and some life that minted `lending` and burned `inflation`. The plan's targets are 40,000
-  bookings and 20 reasons; the floors are still the ones set when the probe was written (6,000 and 4). If a shard passes its 12
-  minute wall, lower `PROBE_ACTIONS` first.
+  `FLOORS` for bookings and reasons, and some life that minted `lending` and burned `inflation`. The floors are the plan's
+  targets, 40,000 bookings and 20 reasons; the forty lives measured 53,456 bookings and 54 reasons, 39 of them lived 90 years or
+  more, and none drifted or healed. If a shard passes its 12 minute wall, lower `PROBE_ACTIONS` first.
 - `test/world-acceptance.test.ts` adds the fixture, hostile-load, replay, reload, fork, heir and doc checks, and the strict run below.
 
 ## The strict drift run
