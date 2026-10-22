@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { economyOf } from '../src/game/economy'
 import { earnIncome } from '../src/game/core'
 import { incomeTax, settleIncomeTax, taxAdditionalIncome } from '../src/game/finance'
@@ -19,6 +19,7 @@ import { techOf } from '../src/game/business/deeptech-core'
 import { buySecurity, investmentListing, liquidatePortfolio, sellHolding } from '../src/game/investments'
 import { addMarketShock, indexShockFactor, shockFactor } from '../src/game/invest/shocks'
 import type { GameState, MenuNode } from '../src/game/types'
+import { withAging } from './kernel-kit'
 
 function company() {
   const g = makeTestGame(45, { age: 35, money: 1e9, countryId: 'us' })
@@ -46,8 +47,7 @@ describe('v1.8.2 financial regressions', () => {
     const alreadyPaid = g.flags.taxesPaid as number
     const before = g.character.money
     // Isolate the year boundary from random events and the next year's new earnings.
-    const hooks = YEARLY_HOOKS.splice(0)
-    try { ageUp(g) } finally { YEARLY_HOOKS.push(...hooks) }
+    withAging(() => [], () => ageUp(g))
     expect(g.character.money).toBe((before - (incomeTax('us', 1_120_000) - alreadyPaid)) / (1 + economyOf(g).inflation))
     expect(g.counters.taxesPaid).toBe(incomeTax('us', 1_120_000))
     expect(g.flags.taxableIncome).toBe(0)

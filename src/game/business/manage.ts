@@ -8,6 +8,7 @@ import { sectorMenu } from './sector-menu'
 import { familyOf } from './sector-state'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { flagOn } from '../flags'
+import { collectMenu, registerModules, type MenuEntry } from '../kernel/registry'
 import { companyScreen } from '../hubs/company'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
@@ -2227,55 +2228,76 @@ function detailsMenu(a: Asset): MenuGroup {
   }
 }
 
-export function businessView(g: GameState, a: Asset): MenuNode[] {
+/**
+ * What the sections of one company view share, worked out once per view. The registry hands it to every builder as `ctx`
+ * (business.view.* sections, R2-K12), so a builder does not read the company again to learn what kind it is.
+ */
+interface ViewCtx {
+  health: BizState
+  finance: boolean
+  studio: boolean
+  strategy: MenuNode[]
+}
+
+function viewCtx(g: GameState, a: Asset): ViewCtx {
   const health = readBiz(g, a)
   const finance = isFinanceFirm(health)
-  // The dashboard card (business/dashboard.ts), governance, milestones and the full fact sheet.
-  const nodes: MenuNode[] = [...dashboardRows(g, a), ...governanceRows(g, a), milestonesMenu(a), detailsMenu(a)]
   // National strategy programs are for product companies; financial firms run their own operations.
   const strategy = finance ? [] : [tidyNationalStrategy(nationalStrategyMenu(a), a)]
-  if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
-  if (familyOf(health.industry)) nodes.push(sectorMenu(a))
-  if (finance) {
-    nodes.push({ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a))
-  } else if (isStudio(readBiz(g, a))) {
-    nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
-    // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
-    nodes.push(...studioNodes(g, a))
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), ...strategy, insuranceAction(a), cookBooksAction(a))
-  } else {
-    nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
-    nodes.push(
-      act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
-        hint: (gg) => {
-          const cur = live(gg, a)
-          if (!hinting(gg, cur)) return null
-          const b = readBiz(gg, cur)
-          if (!priceAndOutput(b)) return null
-          const p = cachedHint(gg, cur, `plan.${priceCapOf(gg, cur.id) ?? ''}`, () => bestPlan(gg, b, { quick: true, ownerDraw: runsIt(gg, cur) ? b.ownerSalary : 0, maxPrice: priceCapOf(gg, cur.id) ?? undefined }))
-          const close = Math.abs(p.price - b.price) <= Math.max(0.02, b.price * 0.03) && Math.abs(p.production - b.production) <= Math.max(1, p.production * 0.05)
-          return talentHint(gg, 'Business', close ? 'Your plan is already close to the sweet spot' : `The report has a better plan for you: about ${money(Math.abs(p.profit))} ${p.profit >= 0 ? 'profit' : 'loss'} next year`)
-        },
-        subtitle: 'Open the planning report',
-        run: (gg, cur, bb) => queueReport(gg, cur, bb),
-      }),
-    )
-    // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
-    if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
-    const franchise = franchiseMenu(a, health)
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...(health.industry === 'devices' ? [devicesMenu(a, buildFabAction(a))] : []), ...labMenus(a, health), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
-  }
-  nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
-  nodes.push(economicReportMenu(a))
-  if (flagOn('chartKit')) nodes.push(booksMenu(a))
-  nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g), dividendMenu(a))
-  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', subtitle: 'Put in more money, buy out investors, buy back shares', children: gg => { const aa = findBusiness(gg, a.id); return aa ? [...rescueNodes(gg, aa), ...(groupIdOf(readBiz(gg, aa)) ? [] : [classesNode(aa)])] : [] } })
-  nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
-  nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a))
-  nodes.push(equityMenu(a.id))
-  nodes.push({ type: 'heading', id: `biz.exitH.${a.id}`, label: 'Exit' })
-  nodes.push(...exitNodes(a, g))
+  return { health, finance, studio: !finance && isStudio(health), strategy }
+}
+
+/**
+ * The company screen: the nodes of the five sections business.view.top, .run, .money, .lead and .exit, in that order, each the
+ * registered entries of the slot sorted by their order. The built-in entries are registered at the bottom of this file; a track
+ * adds a row to a section with one module on the slot (kernel/registry.ts).
+ */
+export function businessView(g: GameState, a: Asset): MenuNode[] {
+  const ctx = viewCtx(g, a)
+  return (['top', 'run', 'money', 'lead', 'exit'] as const).flatMap((s) => collectMenu(`business.view.${s}`, g, a, ctx))
+}
+
+/** Finance firms run financial operations instead of the usual company menus. */
+function financeRunNodes(g: GameState, a: Asset): MenuNode[] {
+  return [{ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a)]
+}
+
+/** Game studios make games: a pipeline, a back catalog and a team instead of price and production. */
+function studioRunNodes(g: GameState, a: Asset, strategy: MenuNode[]): MenuNode[] {
+  const nodes: MenuNode[] = [{ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' }]
+  nodes.push(...studioNodes(g, a))
+  nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), ...strategy, insuranceAction(a), cookBooksAction(a))
   return nodes
+}
+
+/** Every other company: price and production, the market, the people and the rest of the run menus. */
+function productRunNodes(g: GameState, a: Asset, health: BizState, strategy: MenuNode[]): MenuNode[] {
+  const nodes: MenuNode[] = [{ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' }]
+  nodes.push(
+    act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
+      hint: (gg) => {
+        const cur = live(gg, a)
+        if (!hinting(gg, cur)) return null
+        const b = readBiz(gg, cur)
+        if (!priceAndOutput(b)) return null
+        const p = cachedHint(gg, cur, `plan.${priceCapOf(gg, cur.id) ?? ''}`, () => bestPlan(gg, b, { quick: true, ownerDraw: runsIt(gg, cur) ? b.ownerSalary : 0, maxPrice: priceCapOf(gg, cur.id) ?? undefined }))
+        const close = Math.abs(p.price - b.price) <= Math.max(0.02, b.price * 0.03) && Math.abs(p.production - b.production) <= Math.max(1, p.production * 0.05)
+        return talentHint(gg, 'Business', close ? 'Your plan is already close to the sweet spot' : `The report has a better plan for you: about ${money(Math.abs(p.profit))} ${p.profit >= 0 ? 'profit' : 'loss'} next year`)
+      },
+      subtitle: 'Open the planning report',
+      run: (gg, cur, bb) => queueReport(gg, cur, bb),
+    }),
+  )
+  // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
+  if (isDeepTech(health)) nodes.push(...deepTechNodes(g, a))
+  const franchise = franchiseMenu(a, health)
+  nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...(health.industry === 'devices' ? [devicesMenu(a, buildFabAction(a))] : []), ...labMenus(a, health), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
+  return nodes
+}
+
+/** Put in more money, buy out investors, buy back shares. */
+function rescueMenu(a: Asset, health: BizState): MenuNode {
+  return { type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', subtitle: 'Put in more money, buy out investors, buy back shares', children: gg => { const aa = findBusiness(gg, a.id); return aa ? [...rescueNodes(gg, aa), ...(groupIdOf(readBiz(gg, aa)) ? [] : [classesNode(aa)])] : [] } }
 }
 
 /**
@@ -2289,3 +2311,41 @@ export function businessScreen(g: GameState, a: Asset): MenuNode[] {
     return cur ? businessView(gg, cur) : null
   })
 }
+
+/** One section entry of the company view; `build` gets the view's ctx already typed (the registry passes it as `unknown`). */
+function viewEntry(section: 'top' | 'run' | 'money' | 'lead' | 'exit', order: number, build: (g: GameState, a: Asset, ctx: ViewCtx) => MenuNode[]): MenuEntry {
+  return { path: `business.view.${section}`, order, build: (g, a, ctx) => build(g, a as Asset, ctx as ViewCtx) }
+}
+
+// The built-in sections of the company screen (R2-K12, K.3 h), registered here so every test that opens a company screen finds
+// them. Each order follows the place the old businessView pushed that row, in steps of 10; the three run blocks exclude one another.
+// Every builder is an arrow, so no import is read while this file loads (manage.ts sits in a 4-module cycle). The plural
+// registerModules( is deliberate: test/world-streams.test.ts guards the singular token, and this file rolls dice for the player.
+registerModules([
+  {
+    id: 'business.manage',
+    layer: 3,
+    menus: [
+      // The dashboard card (business/dashboard.ts), governance, milestones and the full fact sheet.
+      viewEntry('top', 10, (g, a) => dashboardRows(g, a)),
+      viewEntry('top', 20, (g, a) => governanceRows(g, a)),
+      viewEntry('top', 30, (_g, a) => [milestonesMenu(a)]),
+      viewEntry('top', 40, (_g, a) => [detailsMenu(a)]),
+      viewEntry('top', 50, (_g, a, ctx) => (isVenue(ctx.health.industry) ? [venueOwnerMenu(a)] : [])),
+      viewEntry('top', 60, (_g, a, ctx) => (familyOf(ctx.health.industry) ? [sectorMenu(a)] : [])),
+      viewEntry('run', 10, (g, a, ctx) => (ctx.finance ? financeRunNodes(g, a) : [])),
+      viewEntry('run', 20, (g, a, ctx) => (ctx.studio ? studioRunNodes(g, a, ctx.strategy) : [])),
+      viewEntry('run', 30, (g, a, ctx) => (ctx.finance || ctx.studio ? [] : productRunNodes(g, a, ctx.health, ctx.strategy))),
+      viewEntry('money', 10, (_g, a) => [{ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' }]),
+      viewEntry('money', 20, (_g, a) => [economicReportMenu(a)]),
+      viewEntry('money', 30, (_g, a) => (flagOn('chartKit') ? [booksMenu(a)] : [])),
+      viewEntry('money', 40, (g, a) => [...ceoNodes(a, g), ...moneyNodes(a, g), dividendMenu(a)]),
+      viewEntry('money', 50, (_g, a, ctx) => [rescueMenu(a, ctx.health)]),
+      viewEntry('lead', 10, (_g, a) => [{ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' }]),
+      viewEntry('lead', 20, (g, a) => [...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a)]),
+      viewEntry('lead', 30, (_g, a) => [equityMenu(a.id)]),
+      viewEntry('exit', 10, (_g, a) => [{ type: 'heading', id: `biz.exitH.${a.id}`, label: 'Exit' }]),
+      viewEntry('exit', 20, (g, a) => exitNodes(a, g)),
+    ],
+  },
+])

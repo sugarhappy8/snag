@@ -18,7 +18,9 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import '../src/game/aging'
 import { INDUSTRY_IDS } from '../src/game/data/markets'
+import { yearlyEntries } from '../src/game/kernel/registry'
 import {
   KERNEL_LIFE_IDS,
   MENU_STATES,
@@ -195,6 +197,14 @@ describe('kernel parity: the yearly lists', () => {
 
   it('the special hooks are the recorded ones, in the recorded order', () => {
     expect(yearly.names('special')).toEqual(loadFixture().special)
+  })
+
+  it('once aging is loaded, the registry holds every recorded aging hook, each as a module named yearly.<name> (R2-K9: none dropped)', () => {
+    const f = loadFixture()
+    const entries = yearlyEntries('aging')
+    expect(entries).toHaveLength(f.aging.length)
+    expect(entries.every((e) => e.id.startsWith('yearly.'))).toBe(true)
+    expect(entries.map((e) => e.id)).toEqual(f.aging.map((n) => `yearly.${n}`))
   })
 
   it('the fixture lists at least the 35 aging hooks of v4.1.1 and the 13 special ones', () => {

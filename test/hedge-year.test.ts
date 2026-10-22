@@ -4,7 +4,7 @@
 // pays the relatives first. Nothing here reads or advances g.rng, and every test that moves money checks that
 // none was made or lost on the way.
 import { describe, expect, it } from 'vitest'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { becomeCeo } from '../src/game/business/career'
 import { marketMove, quantBlock } from '../src/game/business/fund-model'
 import { signedPlain } from '../src/game/business/fund-text'
@@ -27,6 +27,7 @@ import { COUNTRIES } from '../src/game/world'
 import { company, kin, rich } from './hedge-kit'
 import { makeTestGame } from './helpers'
 import { newLeader } from './politics-kit'
+import { agingNames, withAging } from './kernel-kit'
 
 function open(g: GameState, owner: 'person' | 'family', seed = 1_000_000): FundRow {
   expect(startFund(g, owner, seed)).toBe(true)
@@ -499,19 +500,13 @@ describe('the yearly step', () => {
 
 describe('the hook', () => {
   it('sits right after investments and is a no-op for a game with no fund', () => {
-    const names = YEARLY_HOOKS.map(([k]) => k)
+    const names = agingNames()
     expect(names.indexOf('hedge')).toBe(names.indexOf('investments') + 1)
     const g = makeTestGame(7, { age: 40, money: 300_000 })
     g.log = [{ age: 40, year: 2026, entries: [] }]
     const twin = structuredClone(g)
     ageUp(g)
-    const i = YEARLY_HOOKS.findIndex(([k]) => k === 'hedge')
-    const [hook] = YEARLY_HOOKS.splice(i, 1)
-    try {
-      ageUp(twin)
-    } finally {
-      YEARLY_HOOKS.splice(i, 0, hook)
-    }
+    withAging((es) => es.filter((e) => e.id !== 'yearly.hedge'), () => ageUp(twin))
     expect(JSON.stringify(g)).toBe(JSON.stringify(twin))
   })
 
@@ -821,13 +816,7 @@ describe('old saves', () => {
     g.assets.push(asset)
     const twin = structuredClone(g)
     ageUp(g)
-    const i = YEARLY_HOOKS.findIndex(([k]) => k === 'hedge')
-    const [hook] = YEARLY_HOOKS.splice(i, 1)
-    try {
-      ageUp(twin)
-    } finally {
-      YEARLY_HOOKS.splice(i, 0, hook)
-    }
+    withAging((es) => es.filter((e) => e.id !== 'yearly.hedge'), () => ageUp(twin))
     expect(JSON.stringify(g)).toBe(JSON.stringify(twin))
     expect(g.assets.every((a) => a.details.hf === undefined)).toBe(true)
   })

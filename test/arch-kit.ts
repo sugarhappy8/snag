@@ -20,7 +20,7 @@ export interface Violation {
   hint: string
 }
 
-const SEAMS = 'make the import type-only, move the shared value into a leaf module, or register through a seam (see YEARLY_HOOKS and registerFamily)'
+const SEAMS = 'make the import type-only, move the shared value into a leaf module, or register through a seam (see registerModule in kernel/registry.ts, the old YEARLY_HOOKS, and registerFamily)'
 const UPDATE_COMMAND = 'UPDATE_ARCH_BASELINE=1 npx vitest run --maxWorkers=1 test/architecture.test.ts'
 
 /** The stdin entry only exists to pull every module into one bundle. esbuild keys it by this name, relative to wherever it runs. */

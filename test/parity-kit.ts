@@ -29,15 +29,15 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { becomeCeo } from '../src/game/business/career'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { businessView } from '../src/game/business/manage'
 import { bizOf } from '../src/game/business/state'
 import { INDUSTRY_IDS } from '../src/game/data/markets'
 import { resetFlags } from '../src/game/flags'
+import { withYearly, yearlyEntries, type YearlyEntry } from '../src/game/kernel/registry'
 import { migrateSave } from '../src/game/save-schema'
-import { SPECIAL_YEARLY } from '../src/game/special'
 import { fnv1a } from '../src/game/text/hash'
 import type { Asset, GameState } from '../src/game/types'
 import { getCountry } from '../src/game/world'
@@ -76,37 +76,41 @@ export interface YearlyAccess {
   reordered<T>(reorder: (names: string[]) => string[], fn: () => T): T
 }
 
-type Hook = (g: GameState) => void
-type Hooks = [string, Hook][]
+/** A hook's name: its module id without the seam's prefix (`yearly.` for aging, `special.` for special). */
+const AGING_PREFIX = 'yearly.'
+const SPECIAL_PREFIX = 'special.'
+const nameOf = (prefix: string, e: { id: string }): string => (e.id.startsWith(prefix) ? e.id.slice(prefix.length) : e.id)
 
-/** Runs `fn` with the contents of `list` replaced by `next`, and puts them back in a finally (the arrays are mutable on purpose). */
-function withList<T>(list: Hooks, next: Hooks, fn: () => T): T {
-  const saved = list.slice()
-  list.splice(0, list.length, ...next)
-  try {
-    return fn()
-  } finally {
-    list.splice(0, list.length, ...saved)
-  }
-}
+type Entry = YearlyEntry & { id: string }
+const agingEntries = (): readonly Entry[] => yearlyEntries('aging')
+const specialEntries = (): readonly Entry[] => yearlyEntries('special')
+const agingName = (e: { id: string }): string => nameOf(AGING_PREFIX, e)
 
-const tracing = (out: string[], prefix: string, list: Hooks): Hooks => list.map(([name, hook]) => [name, (g: GameState) => {
-  out.push(prefix + name)
-  hook(g)
-}])
+/** The entries with each run wrapped to push `label(entry)` first; the ids and the order are kept. */
+const tracing = (out: string[], entries: readonly Entry[], label: (e: Entry) => string): Entry[] =>
+  entries.map((e) => ({
+    ...e,
+    run: (g: GameState) => {
+      out.push(label(e))
+      e.run(g)
+    },
+  }))
 
-// K8: over YEARLY_HOOKS and SPECIAL_YEARLY. K9 and K10 swap these bodies to the registry.
+// K9 and K10: both seams are read from the registry (yearlyEntries, withYearly); nothing here reads a mutable list any more.
 export const yearly: YearlyAccess = {
-  names: (seam) => (seam === 'aging' ? YEARLY_HOOKS : SPECIAL_YEARLY).map(([name]) => name),
-  traced: (out, fn) => withList(YEARLY_HOOKS, tracing(out, '', YEARLY_HOOKS), () => withList(SPECIAL_YEARLY, tracing(out, 'special.', SPECIAL_YEARLY), fn)),
+  names: (seam) => (seam === 'aging' ? agingEntries().map(agingName) : specialEntries().map((e) => nameOf(SPECIAL_PREFIX, e))),
+  // an aging hook is pushed as its name, a special hook as its id (`special.<name>`)
+  traced: (out, fn) =>
+    withYearly('aging', tracing(out, agingEntries(), agingName), () => withYearly('special', tracing(out, specialEntries(), (e) => e.id), fn)),
   reordered: (reorder, fn) => {
-    const names = YEARLY_HOOKS.map(([name]) => name)
+    const entries = agingEntries()
+    const names = entries.map(agingName)
     const order = reorder(names.slice())
-    const byName = new Map(YEARLY_HOOKS)
+    const byName = new Map(entries.map((e) => [agingName(e), e]))
     if (order.length !== names.length || new Set(order).size !== names.length || order.some((n) => !byName.has(n))) {
       throw new Error(`yearly.reordered: the new order is not a permutation of ${names.join(', ')}`)
     }
-    return withList(YEARLY_HOOKS, order.map((name) => [name, byName.get(name)!]), fn)
+    return withYearly('aging', order.map((name) => byName.get(name)!), fn)
   },
 }
 
@@ -248,7 +252,7 @@ function firstCity(countryId: string): string {
 }
 
 /** A founder (hedge-kit's `rich`) who owns and runs one company of this industry. */
-function industryCompany(industry: string): { g: GameState; a: Asset } {
+export function industryCompany(industry: string): { g: GameState; a: Asset } {
   const g = rich()
   const b0 = newBiz(g, industry as Parameters<typeof newBiz>[1], 'us', firstCity('us'), { cash: 5_000_000 })
   const a = createBusinessAsset(g, `Parity ${industry}`, b0, 1e6)

@@ -1,8 +1,14 @@
-// R2-K2 (K.3 b): the kernel test kit. Three helpers for a test of a module that registers with the kernel.
+// R2-K2 (K.3 b): the kernel test kit. Helpers for a test of a module that registers with the kernel.
 //
 //   loadModules()     imports src/game/modules, which registers MODULES into the registry of the current module epoch.
 //   ownSliceGuard()   a bus guard that proves a handler writes only the slice it declares.
 //   withGuard(fn)     runs fn with that guard set on the bus, and puts the bus back to no guard afterwards.
+//   agingNames()      the ids of the aging seam of ageUp, `yearly.` taken off, in run order (R2-K9; the old YEARLY_HOOKS names).
+//   withAging(edit,fn) runs fn with the aging list edited: edit gets the entries in run order and returns the list to run (R2-K9;
+//                     what a splice of YEARLY_HOOKS did). The list is not sorted again, so an entry goes where the edit puts it.
+//   isSelfRegistered(id) true for the id of a built-in that registers itself when its own file loads (special.ts R2-K10, manage.ts R2-K12), so it is
+//                     in the registry beside MODULES once anything has loaded that file; a test of "the registry holds MODULES"
+//                     leaves those ids out.
 //
 // The slice rule (design 14.4): a handler declares the one slice it writes (`world.facts`, `flags.textMem`), and the guard holds
 // it to that. Before a handler runs it clones the state, takes the slice out of the clone and writes down what is left, key by
@@ -18,6 +24,7 @@
 // A test that resets modules (vi.resetModules) and imports its own copy of the bus passes that copy to withGuard, because this
 // file's own import of the bus belongs to the epoch it was first loaded in.
 import { setBusGuard, type BusGuard } from '../src/game/kernel/bus'
+import { withYearly, yearlyEntries, type Ordered, type YearlyEntry } from '../src/game/kernel/registry'
 import type { GameState } from '../src/game/types'
 
 /** Imports src/game/modules (registering MODULES). One module per registry epoch: a second call in the same epoch returns the same module. */
@@ -91,4 +98,32 @@ export function withGuard<T>(fn: () => T, bus: { setBusGuard(guard: BusGuard | n
   } finally {
     bus.setBusGuard(null)
   }
+}
+
+/** The names of the aging entries in run order: each module id with the `yearly.` prefix removed (the names YEARLY_HOOKS used to hold). */
+export function agingNames(): string[] {
+  return yearlyEntries('aging').map((e) => (e.id.startsWith('yearly.') ? e.id.slice('yearly.'.length) : e.id))
+}
+
+/**
+ * Runs `fn` with the aging list that `edit` makes of the real one (the entries keep their ids and their order, and the result is not
+ * sorted again), and puts the real list back in a finally. `() => []` runs ageUp with no hooks at all.
+ */
+export function withAging<T>(edit: (entries: readonly Ordered<YearlyEntry>[]) => readonly YearlyEntry[], fn: () => T): T {
+  return withYearly('aging', edit(yearlyEntries('aging')), fn)
+}
+
+/**
+ * The module id prefixes of the built-ins that register themselves when their own file loads (the lead's decision 12: a built-in
+ * registers itself, a track's extension adds one line to modules/index.ts). Loading src/game/modules loads those files, so the registry
+ * holds their modules beside MODULES. One prefix per line, sorted, each with the file and the task that added it.
+ */
+export const SELF_REGISTERED: readonly string[] = [
+  'special.', // src/game/special.ts (R2-K10): special.military, special.actor, ...
+  'business.manage', // src/game/business/manage.ts (R2-K12): the five sections of businessView, one module
+]
+
+/** True for a module id that a built-in file registered by itself, which `modules/index.ts` does not list. */
+export function isSelfRegistered(id: string): boolean {
+  return SELF_REGISTERED.some((prefix) => id.startsWith(prefix))
 }

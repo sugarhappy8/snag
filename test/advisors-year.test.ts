@@ -2,7 +2,7 @@
 // the crook's padding and the catch, and the one statement. It is the only part of the feature that draws from
 // g.rng, and only after a manager has been paid.
 import { afterEach, describe, expect, it } from 'vitest'
-import { YEARLY_HOOKS, ageUp } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { poolOf, slipRate, type Mandate } from '../src/game/advisors/mandate'
 import { shownFindings } from '../src/game/advisors/review'
 import { advisorFee, managerFee, managerRate, readTeam, type Hire, type ManagerHire, type Statement, type Team } from '../src/game/advisors/team'
@@ -13,6 +13,7 @@ import { buySecurity, investmentHoldings, investmentListing, managedBook, yearly
 import { nextRandom } from '../src/game/rng'
 import type { Asset, GameState, Json, NoticeModal } from '../src/game/types'
 import { client, coinHolding, madeUpStock, own, warp, withTeam } from './advisors-kit'
+import { agingNames, withAging } from './kernel-kit'
 
 afterEach(() => bindMoneyContext(null))
 
@@ -126,7 +127,7 @@ const MONEY_TYPES = ['bond', 'index', 'savings']
 
 describe('the hook', () => {
   it('sits after the underworld and before the milestones, so it runs after rent, tax and upkeep', () => {
-    const names = YEARLY_HOOKS.map(([name]) => name)
+    const names = agingNames()
     const i = names.indexOf('advisors')
     expect(i).toBeGreaterThan(-1)
     expect(names[i - 1]).toBe('underworld')
@@ -158,13 +159,7 @@ describe('the hook', () => {
     const withHook = make()
     const without = make()
     ageUp(withHook)
-    const hooks = YEARLY_HOOKS.splice(0, YEARLY_HOOKS.length)
-    try {
-      YEARLY_HOOKS.push(...hooks.filter(([name]) => name !== 'advisors'))
-      ageUp(without)
-    } finally {
-      YEARLY_HOOKS.splice(0, YEARLY_HOOKS.length, ...hooks)
-    }
+    withAging((es) => es.filter((e) => e.id !== 'yearly.advisors'), () => ageUp(without))
     expect(JSON.stringify(withHook)).toBe(JSON.stringify(without))
   })
 

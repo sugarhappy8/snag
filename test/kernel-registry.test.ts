@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Asset, GameState, MenuNode } from '../src/game/types'
 import type { HandlerEntry, MenuEntry, ModuleDef, YearlyEntry } from '../src/game/kernel/registry'
 import { FACT_LIMITS, normalizeFact } from '../src/game/kernel/fact'
+import { isSelfRegistered } from './kernel-kit'
 
 type Reg = typeof import('../src/game/kernel/registry')
 
@@ -542,7 +543,9 @@ describe('modules/index.ts', () => {
     const ids = index.MODULES.map((m) => m.id)
     for (let i = 1; i < ids.length; i++) expect(ids[i - 1]! < ids[i]!, `${ids[i - 1]} before ${ids[i]}`).toBe(true)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(reg.moduleIds()).toEqual([...ids].sort())
+    // R2-K10: a built-in registers itself when its file loads, so the registry also holds those modules; the rest is exactly MODULES
+    expect(reg.moduleIds().filter((id) => !isSelfRegistered(id))).toEqual([...ids].sort())
+    expect(reg.moduleIds().some(isSelfRegistered)).toBe(true)
   })
 })
 

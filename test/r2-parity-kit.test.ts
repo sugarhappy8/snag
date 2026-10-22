@@ -10,6 +10,7 @@ import type { ChoiceModal, GameState, Person } from '../src/game/types'
 import { classifyFlag } from '../src/game/world-flags'
 import { makeTestGame } from './helpers'
 import {
+  PARITY_DIGITS,
   PARITY_LIVES,
   PARITY_SLICES,
   compareTraces,
@@ -167,6 +168,52 @@ describe('parityDigests: what moves which slice', () => {
   })
 })
 
+/** The next float away from zero (`up`) or toward it, for a finite float: one ulp of what another CPU or another V8 does to a result. */
+function nudge(x: number, up: boolean): number {
+  const buf = new Float64Array([x])
+  const bits = new BigInt64Array(buf.buffer)
+  bits[0] += up ? 1n : -1n // sign and magnitude: one more in the bits is one ulp more magnitude, whatever the sign
+  return buf[0]
+}
+
+describe('parityDigests: an environment that rounds the last bit differently', () => {
+  // Measured, not assumed: Node 22.23.3 on Linux x64 and on macOS arm64 differ in the last bit of Math.log on about 1 call in 130,
+  // and Node 24 differs from Node 22 in the last bit of Math.pow. The engine keeps a few of those floats unrounded in its state.
+  const LEAVES = { housingReturn: 0.053282687765047576, share: 0.00006621885472989687, money: 9115.301262679768, big: 123456789.123456789 }
+
+  it('8: a float one ulp or a few ulps away digests the same in the economy, assets, people and character slices', () => {
+    const at = (f: (x: number) => number): ParityDigests => {
+      const g = base()
+      g.flags.worldEconomy = { v: 2, previous: { pe: { housingReturn: f(LEAVES.housingReturn), year: 2030 } } }
+      g.assets[0].value = f(LEAVES.big)
+      ;(g.assets[0] as unknown as { details: unknown }).details = { market: { share: f(LEAVES.share), base: f(LEAVES.share) } }
+      g.people[0].money = f(LEAVES.money)
+      g.character.money = f(LEAVES.money)
+      return parityDigests(g)
+    }
+    const exact = at((x) => x)
+    expect(at((x) => nudge(x, true))).toEqual(exact)
+    expect(at((x) => nudge(x, false))).toEqual(exact)
+    expect(at((x) => nudge(nudge(nudge(x, true), true), true))).toEqual(exact)
+    expect(at((x) => -x)).not.toEqual(exact)
+  })
+
+  it('8: a float that really moved still moves its slice, and so do an integer by one and a float by a millionth of itself', () => {
+    expect(PARITY_DIGITS).toBeLessThanOrEqual(12)
+    const withMoney = (m: number): ParityDigests => {
+      const g = base()
+      g.people[0].money = m
+      return parityDigests(g)
+    }
+    const exact = withMoney(LEAVES.money).people
+    expect(withMoney(LEAVES.money * (1 + 1e-6)).people).not.toBe(exact)
+    expect(withMoney(LEAVES.money + 0.01).people).not.toBe(exact)
+    expect(withMoney(9115).people).not.toBe(withMoney(9116).people)
+    // An integer is never rounded: a count moving by one is a move however large it is.
+    expect(withMoney(12345678901).people).not.toBe(withMoney(12345678902).people)
+  })
+})
+
 const ROW_LENGTH = PARITY_SLICES.length + 1
 const row = (c: string): string[] => Array.from({ length: ROW_LENGTH }, () => c.repeat(8))
 const trace = (id: string, years: number): ParityTrace => ({ id, years: Array.from({ length: years }, (_, i) => row(String(i % 10))) })
@@ -244,6 +291,51 @@ describe('traceLife', () => {
     const last = t.years[t.years.length - 1]
     expect(last.slice(0, PARITY_SLICES.length)).not.toEqual(first.slice(0, PARITY_SLICES.length))
   }, 60_000)
+})
+
+/** Run `fn` with Math.log, exp, pow, log10 and log2 each returning a result one ulp off: what a CPU or V8 with a different last bit does. */
+function withUlpNoise<T>(up: boolean, fn: () => T): T {
+  const names = ['log', 'exp', 'pow', 'log10', 'log2'] as const
+  const math = Math as unknown as Record<string, (...a: number[]) => number>
+  const saved = names.map((n) => math[n])
+  names.forEach((n, i) => {
+    math[n] = (...a: number[]): number => {
+      const r = saved[i].apply(Math, a)
+      return Number.isFinite(r) && r !== 0 ? nudge(r, up) : r
+    }
+  })
+  try {
+    return fn()
+  } finally {
+    names.forEach((n, i) => {
+      math[n] = saved[i]
+    })
+  }
+}
+
+describe('traceLife: the last bit of Math.log, Math.exp and Math.pow', () => {
+  // The first year of a life stores unrounded economy floats (previous.<country>.housingReturn), a company's market share is a
+  // float too, and all of them come through those three functions. The trace must not notice a different last bit, or the
+  // fixture recorded on one machine fails on the next (CI on Linux x64 failed 11 of 12 lives, in year 1, on the economy slice).
+  const birth = PARITY_LIVES.find((l) => l.kind === 'birth')!
+  const founder = PARITY_LIVES.find((l) => l.kind === 'founder')!
+  const lives: ParityLife[] = [{ ...birth, untilAge: 3 }, { ...founder, years: 3 }]
+
+  it('9: a life traced with those functions one ulp up, or one ulp down, has the trace of the plain run', () => {
+    const plain = lives.map((l) => traceLife(l))
+    for (const up of [true, false]) {
+      const noisy = lives.map((l) => withUlpNoise(up, () => traceLife(l)))
+      expect(compareTraces(plain, noisy)).toEqual([])
+    }
+  }, 120_000)
+
+  it('9: withUlpNoise moves each of those functions by exactly one ulp and puts them back', () => {
+    const calls = (): number[] => [Math.log(7.5), Math.exp(1.5), Math.pow(1.7, 0.35), Math.log10(11.5), Math.log2(5.25)]
+    const plain = calls()
+    expect(withUlpNoise(true, calls)).toEqual(plain.map((x) => nudge(x, true)))
+    expect(withUlpNoise(false, calls)).toEqual(plain.map((x) => nudge(x, false)))
+    expect(calls()).toEqual(plain)
+  })
 })
 
 describe('the 12 lives and the fixture', () => {

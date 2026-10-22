@@ -20,7 +20,7 @@ import type { HandlerEntry, ModuleDef } from '../src/game/kernel/registry'
 import type { GameState } from '../src/game/types'
 import { makeTestGame } from './helpers'
 import { deepFreeze } from './fuzz-kit'
-import { loadModules, ownSliceGuard, withGuard } from './kernel-kit'
+import { isSelfRegistered, loadModules, ownSliceGuard, withGuard } from './kernel-kit'
 import { isId, loadSources } from './scan-kit'
 
 type Reg = typeof import('../src/game/kernel/registry')
@@ -610,13 +610,13 @@ describe('kernel kit: loadModules', () => {
     const first = await loadModules()
     const second = await loadModules()
     expect(second).toBe(first)
-    expect(reg.moduleIds()).toEqual(first.MODULES.map((m) => m.id).sort())
+    expect(reg.moduleIds().filter((id) => !isSelfRegistered(id))).toEqual(first.MODULES.map((m) => m.id).sort())
     // A new registry epoch gets a new import (and so its own registrations).
     vi.resetModules()
     const reg2 = await import('../src/game/kernel/registry')
     const third = await loadModules()
     expect(third).not.toBe(first)
-    expect(reg2.moduleIds()).toEqual(third.MODULES.map((m) => m.id).sort())
+    expect(reg2.moduleIds().filter((id) => !isSelfRegistered(id))).toEqual(third.MODULES.map((m) => m.id).sort())
   })
 })
 
