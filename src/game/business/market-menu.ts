@@ -9,13 +9,12 @@ import type { ChartSpec } from '../charts/spec'
 import { eraOf } from '../history/timeline'
 import { talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
-import { marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING } from './competition-core'
+import { marketStateOf, PRICE_POWER, SCALE_SAVING } from './competition-core'
 import { mergerLimit, TIERS, type Regime } from './competition-data'
 import { marketOwner, marketViewOf, shareText, type MarketView, type RivalView } from './competition'
 import { acquireRival, acquisitionGains, acquisitionQuote, offensiveValue, OFFENSIVE_EDGE, raidValue } from './competition-moves'
-import { rivalLines } from './product-market'
 import { industryDef } from './industries'
-import { shieldsOf } from './lab-state'
+import { fogOn, rivalLine, rivalLinesOf, rivalStars, weakest, type Conf, type Fogged } from './market-fog'
 import { cached, hinting, live, mAct } from './market-menu-kit'
 import { continentOf } from './market-regional'
 import { demandWeights, hasSupplyChain, MODE_LABEL, MODE_TERM } from './market-reach'
@@ -33,7 +32,7 @@ import { bizWorth } from './economy'
 import { readBiz, type BizState } from './state'
 import { waveLines } from './tech-waves'
 import { isDeepTech } from './deeptech-state'
-import { money, pct, plural, stars } from './util'
+import { money, pct, plural } from './util'
 
 const MAX_ROWS = 12
 
@@ -50,8 +49,9 @@ function slice(w: number): string {
   return pct(w, w < 0.01 ? 1 : 0)
 }
 
-function info(id: string, text: string, emoji: string): MenuInfo {
-  return { type: 'info', id, text, emoji }
+/** An info row. A row built from an estimate carries its confidence (and the year of an old reading) for the chip. */
+function info(id: string, text: string, emoji: string, conf?: Conf, asOf?: number): MenuInfo {
+  return { type: 'info', id, text, emoji, ...(conf !== undefined ? { conf } : {}), ...(asOf !== undefined ? { asOf } : {}) }
 }
 
 /**
@@ -384,13 +384,16 @@ export function rivalsMenu(a: Asset): MenuGroup {
   }
 }
 
-/** What a rival sells, best-selling kinds first, with its quality in each: 'Sells: Street Lighting (64) · Hydro Dam (58)'. */
-function productsLine(g: GameState, b: BizState, r: RivalView): string {
-  // A kind one of the company's patents holds isn't sold by anyone yet (lab-state.ts shieldsOf).
-  const lines = rivalLines(r, b.industry, marketKey(b), g.year, shieldsOf(b))
-  if (!lines.length) return 'Sells: its basic range (no product lines of note yet)'
-  const shown = lines.slice(0, 4).map((l) => `${l.family} (${l.quality})`)
-  return `Sells: ${shown.join(' \u{00B7} ')}${lines.length > 4 ? ` \u{00B7} +${lines.length - 4} more` : ''}`
+/**
+ * What a rival sells, best-selling kinds first, with its quality in each: 'Sells: Street Lighting (64) · Hydro Dam (58)'. In
+ * Realistic mode the quality is an estimate ('Street Lighting (45 to 85)') and the row carries the weakest confidence shown.
+ */
+function productsLine(g: GameState, b: BizState, r: RivalView): Fogged {
+  const lines = rivalLinesOf(g, b, r)
+  if (!lines.length) return { text: 'Sells: its basic range (no product lines of note yet)' }
+  const shown = lines.slice(0, 4).map((l) => ({ family: l.family, read: rivalLine(g, b, r.id, l.family, l.quality) }))
+  const text = `Sells: ${shown.map((x) => `${x.family} (${x.read.text})`).join(' \u{00B7} ')}${lines.length > 4 ? ` \u{00B7} +${lines.length - 4} more` : ''}`
+  return { text, ...weakest(shown.map((x) => x.read)) }
 }
 
 function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
@@ -401,14 +404,19 @@ function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
   if (!p) return [info(`biz.mkt.rp.gone.${a.id}.${rivalId}`, 'This company has left the market.', '\u{1F44B}')]
   const r = p.rival
   const k = (s: string) => `biz.mkt.rp.${a.id}.${rivalId}.${s}`
+  // What the player cannot see of a rival is read through the estimate core (market-fog.ts); Exact mode keeps today's text.
+  const fq = rivalStars(g, b, r, 'quality')
+  const ft = rivalStars(g, b, r, 'tech')
+  const sold = productsLine(g, b, r)
+  const strong = weakest([fq, ft])
   const nodes: MenuNode[] = [
     info(k('who'), `${r.real ? 'A real company' : r.extra === 'spinoff' ? 'Your old spin-off' : r.extra === 'entrant' ? 'A newcomer drawn by your profits' : 'A fictional local challenger'} · founded ${r.founded} (${p.age} years) · based in ${placeName(r.hq)}`, placeFlag(r.hq)),
     info(k('size'), `Size: ${r.legacy ? 'state-backed' : r.tier} · ${shareText(r.share)} of the market ${trendArrow(r.trend)} · segment ${p.segment}${r.seg ? '' : ''}`, '\u{1F4CF}'),
-    info(k('str'), `Strengths${r.real ? ' (modeled)' : ''}: quality ${stars(r.real ? Math.max(3, r.quality / 20) : r.quality / 20)} · technology ${stars(r.real ? Math.max(3, r.tech / 20) : r.tech / 20)} · prices ${p.strengths.priceEdge === 'cheaper' ? 'below yours' : p.strengths.priceEdge === 'pricier' ? 'above yours' : 'like yours'}`, '\u{1F4AA}'),
+    info(k('str'), `Strengths${fogOn() ? ' (estimated)' : r.real ? ' (modeled)' : ''}: quality ${fq.text} · technology ${ft.text} · prices ${p.strengths.priceEdge === 'cheaper' ? 'below yours' : p.strengths.priceEdge === 'pricier' ? 'above yours' : 'like yours'}`, '\u{1F4AA}', strong.conf, strong.asOf),
     info(k('where'), `Plays in: ${p.places.join(', ')}`, '\u{1F5FA}\u{FE0F}'),
-    info(k('lines'), productsLine(g, b, r), '\u{1F4E6}'),
+    info(k('lines'), sold.text, '\u{1F4E6}', sold.conf, sold.asOf),
     ...p.recent.slice(0, 4).map((t, i) => info(k(`rec${i}`), t, '\u{1F4F0}')),
-    info(k('next'), `Likely next: ${p.next}`, '\u{1F52E}'),
+    info(k('next'), `Likely next${fogOn() ? ' (our guess)' : ''}: ${p.next}`, '\u{1F52E}'),
   ]
   if (!r.legacy) {
     nodes.push(
