@@ -71,6 +71,48 @@ describe('the registry after loading src/game/modules', () => {
   }, 120_000)
 })
 
+/** What a registry list of slice keys holds that the save does not know: a key with no slice in the table, and a `world.<name>` with no registered shard. */
+function slicesTheSaveLacks(registered: readonly string[], save: { hasSlice(key: string): boolean; shards: ReadonlySet<string> }): string[] {
+  const problems: string[] = []
+  for (const key of registered) {
+    if (!save.hasSlice(key)) problems.push(`${key}: no slice of that key in the save table (save-slices.ts)`)
+    else if (key.startsWith('world.') && !save.shards.has(key.slice('world.'.length))) problems.push(`${key}: not a registered world shard`)
+  }
+  return problems
+}
+
+describe('the slices the modules declare are slices the save knows (R2-K13 leftover)', () => {
+  it('every key registeredSlices() holds is in the table save-slices.ts fills, and a world.<name> is a registered shard', async () => {
+    vi.resetModules()
+    const { registeredSlices } = await import('../src/game/kernel/registry')
+    await import('../src/game/modules')
+    const { ensureSliceTable } = await import('../src/game/save-slices')
+    const { hasSlice } = await import('../src/game/kernel/slices')
+    const { shardNames } = await import('../src/game/world/state')
+    ensureSliceTable()
+    const registered = registeredSlices()
+    expect(registered.length, 'the module list owns at least the fact store').toBeGreaterThan(0)
+    expect(slicesTheSaveLacks(registered, { hasSlice, shards: new Set(shardNames()) })).toEqual([])
+  }, 120_000)
+
+  it('names a slice the save does not know, and a world shard nobody registered', async () => {
+    vi.resetModules()
+    const { ensureSliceTable } = await import('../src/game/save-slices')
+    const { hasSlice } = await import('../src/game/kernel/slices')
+    const { shardNames } = await import('../src/game/world/state')
+    ensureSliceTable()
+    const save = { hasSlice, shards: new Set(shardNames()) }
+    expect(slicesTheSaveLacks(['world.facts', 'flags.worldEconomy', 'character'], save)).toEqual([])
+    expect(slicesTheSaveLacks(['nope'], save)).toEqual(['nope: no slice of that key in the save table (save-slices.ts)'])
+    expect(slicesTheSaveLacks(['character.deep'], save)).toHaveLength(1)
+    expect(slicesTheSaveLacks(['world.nosuchshard'], save)).toEqual(['world.nosuchshard: not a registered world shard'])
+    // End to end: a module that declares a slice the save has no row for shows up in the registry's list, and the check names it.
+    const { registerModule, registeredSlices } = await import('../src/game/kernel/registry')
+    registerModule({ id: 'test.bogus', layer: 3, slices: ['bogus.slice'] })
+    expect(slicesTheSaveLacks(registeredSlices(), save)).toEqual(['bogus.slice: no slice of that key in the save table (save-slices.ts)'])
+  }, 120_000)
+})
+
 describe('the two ratchets stand where the track left them', () => {
   it('holds at most 90 modules in at most 8 import cycles', () => {
     const { components } = json('test', 'architecture-baseline.json') as { components: string[][] }
