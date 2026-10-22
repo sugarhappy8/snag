@@ -1633,7 +1633,7 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
   const fondness = p.relationship
   const prenup = p.data.prenup === true
   const lines: string[] = []
-  lines.push(by === 'player' ? `You divorced ${p.firstName}.` : `${p.firstName} filed for divorce. "${pickLine(g, BREAKUP_THEM)}"`)
+  lines.push(by === 'player' ? `You divorced ${p.firstName}.` : `${p.firstName} filed for divorce. ${fillPronouns(eraPick(g, BREAKUP_THEM), p.gender)}`)
 
   // Settlement
   let owed = 0
