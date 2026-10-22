@@ -174,7 +174,7 @@ export interface RdResult {
   approved: Drug[]
 }
 
-function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): number {
+export function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): number {
   const skill = techSkill(g, a, b, t)
   let o = p.odds * (0.75 + skill / 200)
   if (t.pace === 'blitz') o *= 0.96
