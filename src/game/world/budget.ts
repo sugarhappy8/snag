@@ -11,7 +11,7 @@
 // function of the game; this file only measures it. No luck is drawn here either.
 import { LEDGER_CAPS } from '../kernel/ledger'
 import type { GameState } from '../types'
-import { HOLDING_ROWS_CAP, LOD_CAPS } from './caps'
+import { FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS } from './caps'
 import { readWorld } from './state'
 
 /** What the world may cost: nodes and bytes of g.world after a long life, and the milliseconds one world step is meant to take. */
@@ -74,6 +74,15 @@ function capsOf(name: string, shard: unknown): [string, number, number][] {
       return [['rows', sizeOf(shard.rows), LOD_CAPS.homes]]
     case 'holdings':
       return [['rows', sizeOf(shard.rows), HOLDING_ROWS_CAP]]
+    case 'frontier': {
+      const recs = isPlain(shard.f) ? Object.values(shard.f) : []
+      let rows = 0
+      for (const rec of recs) if (isPlain(rec)) rows += sizeOf(rec.rows)
+      return [
+        ['fields', recs.length, FRONTIER_CAPS.fields],
+        ['rows', rows, FRONTIER_CAPS.rowsPerMarket * FRONTIER_CAPS.marketsPerField * FRONTIER_CAPS.fields],
+      ]
+    }
     default:
       return []
   }
