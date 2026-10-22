@@ -305,12 +305,24 @@ describe('a chunk that is missing or hostile', () => {
       kept: true,
     },
     {
+      // The room of the world chunk is the caps of its slices, and a packed slice has twice its nodes (R2-S11: the shape table's
+      // wrappers), 420,000 in all. This text has 500,001 nodes: over it, so it is a size loss and not worth keeping.
       label: 'a node bomb',
+      make: async (saved) => {
+        const held = `{"flags.worldEconomy":[${'0,'.repeat(500_000)}0]}`
+        return { id: await forge(saved, 'world', held), held }
+      },
+      kept: false,
+    },
+    {
+      // The bomb of R2-S7 had 250,001 nodes, which is over the economy's own cap (150,000) but inside the packed room. It passes
+      // the size check, and the economy's normalize refuses an array, so the chunk is hostile and its text is kept like any other.
+      label: 'an array where the economy should be, inside the packed room',
       make: async (saved) => {
         const held = `{"flags.worldEconomy":[${'0,'.repeat(250_000)}0]}`
         return { id: await forge(saved, 'world', held), held }
       },
-      kept: false,
+      kept: true,
     },
   ]
   it.each(hostile)('a hostile world chunk, $label: it plays, nothing crashes, one partial notice', async ({ make, kept }) => {
