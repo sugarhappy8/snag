@@ -68,6 +68,7 @@ import { treasurySpare } from './group-treasury'
 import { manageBlock, tooBusy } from './gate'
 import { bizOf, businessAssets, findBusiness, readBiz, stakeValue } from './state'
 import { clampN, money, pct, plural } from './util'
+import { valueChip, valueText, valuesLook } from './valuation-fog'
 
 const PICK = 'biz.groupPick'
 
@@ -82,6 +83,8 @@ function hinting(g: GameState): boolean {
 /** A group action that re-reads the live group before running. */
 function gAct(groupId: string, key: string, label: string, emoji: string, opts: {
   subtitle?: string | ((g: GameState) => string)
+  /** The confidence of an estimate the subtitle prints (R3, valuation-fog.ts); `{}` or left out for an exact subtitle. */
+  chip?: Pick<MenuAction, 'conf' | 'asOf'>
   hint?: (g: GameState, grp: Group) => string | null
   disabled?: (g: GameState, grp: Group) => string | null
   confirm?: (g: GameState, grp: Group) => string | null
@@ -95,6 +98,7 @@ function gAct(groupId: string, key: string, label: string, emoji: string, opts: 
     label,
     emoji,
     subtitle: opts.subtitle,
+    ...(opts.chip ?? {}),
     ...(opts.hint
       ? {
           hint: (g: GameState) => {
@@ -169,7 +173,7 @@ function setPicked(g: GameState, ids: string[]): void {
 
 function companyLine(g: GameState, a: Asset): string {
   const b = readBiz(g, a)
-  return `${industryDef(b.industry).label} \u{00B7} ${b.city} \u{00B7} worth ${money(b.valuation)}${b.share < 0.999 ? ` \u{00B7} you own ${pct(b.share)}` : ''}${b.public ? ` \u{00B7} listed on the ${b.exchange}` : ''}`
+  return `${industryDef(b.industry).label} \u{00B7} ${b.city} \u{00B7} ${valueText(g, a, b, 'worth')}${b.share < 0.999 ? ` \u{00B7} you own ${pct(b.share)}` : ''}${b.public ? ` \u{00B7} listed on the ${b.exchange}` : ''}`
 }
 
 /** The Business talent's best fit among `options` for a set of picks (value over DEAL_YEARS). */
@@ -199,6 +203,7 @@ function toggleRow(g: GameState, a: Asset, on: boolean, fitId: string | null, fi
     label: a.name,
     emoji: on ? '\u{2705}' : '\u{2B1C}',
     subtitle: companyLine(g, a),
+    ...valueChip(g, a, readBiz(g, a)),
     ...(fitId === a.id && fit ? { hint: (gg: GameState) => (hinting(gg) ? fitText(gg, fit, 'Best fit with your picks') : null) } : {}),
     disabledReason: (gg) => groupBlock(gg) ?? (on ? null : joinBlock(gg, a)),
     stayOpen: true,
@@ -230,6 +235,7 @@ export const formGroupMenu: MenuGroup = {
     const fit = hasTalent(g, 'Business') && picks.length >= 1 && free.length ? bestFit(g, null, picks, free) : null
     const nodes: MenuNode[] = [{ type: 'heading', id: 'biz.group.form.pickH', label: 'Pick the Companies' }]
     for (const a of list) nodes.push(toggleRow(g, a, ids.includes(a.id), fit?.id ?? null, fit))
+    nodes.push(...valuesLook(g, 'form', list.map((a) => ({ a, b: readBiz(g, a) }))))
     nodes.push({ type: 'heading', id: 'biz.group.form.dealH', label: 'The Deal' })
     if (picks.length < 2) {
       nodes.push(info('biz.group.form.need', 'Pick at least two companies.', '\u{261D}\u{FE0F}'))
@@ -630,8 +636,9 @@ function addMenu(groupId: string): MenuGroup {
       if (!list.length) return [info(`biz.group.addNone.${groupId}`, 'None of your other companies stands alone. Start or buy one first.', '\u{1F937}')]
       const options = list.filter((a) => !joinBlock(g, a))
       const fit = hasTalent(g, 'Business') && options.length ? bestFit(g, grp, [], options) : null
-      return list.map((a) =>
+      const rows = list.map((a) =>
         gAct(groupId, `add.${a.id}`, a.name, a.emoji, {
+          chip: valueChip(g, a, readBiz(g, a)),
           subtitle: (gg) => {
             const cur = groupById(gg, groupId)
             if (!cur) return ''
@@ -649,6 +656,7 @@ function addMenu(groupId: string): MenuGroup {
           },
         }),
       )
+      return [...rows, ...valuesLook(g, `add.${groupId}`, list.map((a) => ({ a, b: readBiz(g, a) })))]
     },
   }
 }
@@ -665,13 +673,14 @@ function spinMenu(groupId: string): MenuGroup {
     children: (g) => {
       const grp = groupById(g, groupId)
       if (!grp) return []
-      return grp.members.map((x) =>
+      const rows = grp.members.map((x) =>
         gAct(groupId, `spin.${x.a.id}`, `Spin Off ${x.a.name}`, x.a.emoji, {
+          chip: valueChip(g, x.a, x.b),
           subtitle: (gg) => {
             const cur = groupById(gg, groupId)
             if (!cur) return ''
             const p = spinPlan(gg, cur, x.a.id)
-            return `${industryDef(x.b.industry).label} \u{00B7} worth ${money(x.b.valuation)} \u{00B7} fees ${money(p.fee)}${boardOdds(gg, cur, { kind: 'merge', by: 'owner', merit: 0, label: '' })}`
+            return `${industryDef(x.b.industry).label} \u{00B7} ${valueText(gg, x.a, x.b, 'worth')} \u{00B7} fees ${money(p.fee)}${boardOdds(gg, cur, { kind: 'merge', by: 'owner', merit: 0, label: '' })}`
           },
           hint: (gg, cur) => spinHint(gg, cur, x.a.id),
           disabled: (gg, cur) => spinPlan(gg, cur, x.a.id).block,
@@ -681,6 +690,7 @@ function spinMenu(groupId: string): MenuGroup {
           },
         }),
       )
+      return [...rows, ...valuesLook(g, `spin.${groupId}`, grp.members)]
     },
   }
 }
@@ -697,9 +707,10 @@ function sellMenu(groupId: string): MenuGroup {
     children: (g) => {
       const grp = groupById(g, groupId)
       if (!grp) return []
-      return grp.members.map((x) =>
+      const rows = grp.members.map((x) =>
         gAct(groupId, `sell.${x.a.id}`, `Sell ${x.a.name}`, x.a.emoji, {
-          subtitle: `Valued at about ${money(x.b.valuation)} \u{00B7} your share ${pct(x.b.share, 1)}`,
+          chip: valueChip(g, x.a, x.b),
+          subtitle: `${valueText(g, x.a, x.b, 'Valued at', { about: true })} \u{00B7} your share ${pct(x.b.share, 1)}`,
           disabled: (gg) => {
             const cur = findBusiness(gg, x.a.id)
             return cur ? manageBlock(gg, cur) : 'You no longer own this business.'
@@ -710,6 +721,7 @@ function sellMenu(groupId: string): MenuGroup {
           },
         }),
       )
+      return [...rows, ...valuesLook(g, `sell.${groupId}`, grp.members)]
     },
   }
 }

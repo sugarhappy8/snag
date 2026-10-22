@@ -15,7 +15,7 @@ import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { TechId } from '../history/timeline'
-import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
 import { askingSalary, baseManagerValue, becomeCeo, ceoPayNorm, ceoSeverance, ceoValue, handOver, headhunterFee, managerName, maxOwnerSalary, optimizerGain, ownerTakesOver, shortlist, SMART_SKILL, STYLE_INFO, styleOf, type SearchKind } from './career'
 import {
@@ -94,6 +94,7 @@ import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
 import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 import { climateLine, dashboardRows } from './dashboard'
+import { stakeText, valueChip, valueText } from './valuation-fog'
 import { franchiseMenu } from './franchise'
 import { labMenus } from './lab-menu'
 import { milestonesMenu } from './milestones'
@@ -106,6 +107,8 @@ type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 /** A management action that re-reads the live business before running. */
 function act(a: Asset, key: string, label: string, emoji: string, opts: {
   subtitle?: string | ((g: GameState) => string)
+  /** The confidence of an estimate the subtitle prints (R3, valuation-fog.ts); `{}` or left out for an exact subtitle. */
+  chip?: Pick<MenuAction, 'conf' | 'asOf'>
   hint?: (g: GameState) => string | null
   disabled?: (g: GameState, b: BizState) => string | null
   confirm?: (g: GameState) => string | null
@@ -118,6 +121,7 @@ function act(a: Asset, key: string, label: string, emoji: string, opts: {
     label,
     emoji,
     subtitle: opts.subtitle,
+    ...(opts.chip ?? {}),
     ...(opts.hint ? { hint: opts.hint } : {}),
     disabledReason: (g) => {
       const block = manageBlock(g, a)
@@ -2067,7 +2071,7 @@ export function shopCompany(g: GameState, a: Asset, b: BizState): void {
     g,
     SELL,
     `Sell ${a.name}`,
-    `Your broker collected offers for the whole company (valued at about ${money(b.valuation)}).${b.share < 1 ? ` You own ${pct(b.share)}, so that's your cut, after the investors' preference.` : ''}${hasBoard(g, b) ? ' The board votes on whichever offer you pick.' : ''}`,
+    `Your broker collected offers for the whole company (${valueText(g, a, b, 'valued at', { about: true })}).${b.share < 1 ? ` You own ${pct(b.share)}, so that's your cut, after the investors' preference.` : ''}${hasBoard(g, b) ? ' The board votes on whichever offer you pick.' : ''}`,
     choices,
     { emoji: '\u{1F91D}', data: { assetId: a.id, offers: toJson(offers) } },
   )
@@ -2085,7 +2089,8 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
   if (!b.public) {
     nodes.push(
       act(a, 'sell', group ? 'Sell This Division' : 'Sell the Company', '\u{1F3F7}\u{FE0F}', {
-        subtitle: `Valued at about ${money(b.valuation)}${b.share < 1 ? ` (your ${pct(b.share)}: ${money(b.valuation * b.share)}) \u{00B7} the board must agree` : ''}${group ? ` \u{00B7} it leaves ${group.core.name}` : ''}`,
+        subtitle: `${valueText(g, a, b, 'Valued at', { about: true })}${b.share < 1 ? ` (your ${pct(b.share)}: ${stakeText(g, a, b, b.valuation * b.share)}) \u{00B7} the board must agree` : ''}${group ? ` \u{00B7} it leaves ${group.core.name}` : ''}`,
+        chip: valueChip(g, a, b),
         run: (gg, cur, bb) => shopCompany(gg, cur, bb),
       }),
     )
@@ -2168,7 +2173,7 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   const def = industryDef(b.industry)
   const m = marketOf(b.countryId)
   const e = localEcon(b.industry, b.countryId, b.city)
-  const rows: [string, string][] = []
+  const rows: [string, string, Pick<MenuInfo, 'conf' | 'asOf'>?][] = []
   rows.push([def.emoji, `${def.label} \u{00B7} ${b.city}, ${getCountry(b.countryId).name} \u{00B7} ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`])
   if (runsIt(g, a)) rows.push(['\u{1F454}', `Run by you, the CEO \u{00B7} salary ${money(b.ownerSalary)}/yr`])
   else rows.push(['\u{1F454}', b.manager ? `CEO ${managerName(b.manager)} \u{00B7} skill ${b.manager.skill}/100 \u{00B7} ${financeTarget(b) ? `${financeProfileShort(b.manager)} \u{00B7} finance skill ${Math.round(financeLeadershipSkill(b, b.manager))}/100` : STYLE_INFO[styleOf(b.manager)].label.toLowerCase()} \u{00B7} ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''}${!financeTarget(b) && b.manager.skill > SMART_SKILL ? ' \u{00B7} plans with the numbers' : ''}` : 'No one is running it day to day.'])
@@ -2189,11 +2194,11 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   }
   const s = b.last
   if (s) rows.push(['\u{1F4CA}', `${s.year}: sales ${money(s.revenue)} \u{00B7} ${s.net >= 0 ? 'profit' : 'loss'} ${money(Math.abs(s.net))} \u{00B7} corporate tax ${money(s.corpTax)}${s.salesTax > 0 ? ` \u{00B7} ${m.salesTaxName} ${money(s.salesTax)}` : ''}`])
-  rows.push(['\u{1F4B0}', `${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${money(stakeValue(b))}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} \u{00B7} cash ${money(b.cash)}${b.debt > 0 ? ` \u{00B7} debt ${money(b.debt)}` : ''}`])
+  rows.push(['\u{1F4B0}', `${valueText(g, a, b, b.public ? 'Market cap' : 'Valuation')}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${stakeText(g, a, b)}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} \u{00B7} cash ${money(b.cash)}${b.debt > 0 ? ` \u{00B7} debt ${money(b.debt)}` : ''}`, valueChip(g, a, b)])
   rows.push(['\u{1F30D}', climateLine(b, e.wage)])
   const note = eraNote(g, b.countryId, m.businessNote).trim()
   if (note) rows.push(['\u{1F4DD}', note])
-  return rows.filter(([, text]) => !!text).map(([emoji, text], i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji }))
+  return rows.filter(([, text]) => !!text).map(([emoji, text, chip], i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji, ...(chip ?? {}) }))
 }
 
 /** Who the CEO answers to, and the hired CEO's last letter (short; the Board menu has the rest). */

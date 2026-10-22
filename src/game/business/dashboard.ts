@@ -5,7 +5,7 @@
 // only; their own section (finance-firm.ts financeNodes) owns the rest.
 import { moneyWith } from '../core'
 import { marketOf } from '../data/markets'
-import type { Asset, GameState, MenuNode } from '../types'
+import type { Asset, GameState, MenuInfo, MenuNode } from '../types'
 import { getCountry } from '../world'
 import { managerName } from './career'
 import { marketViewOf, marketOwner, shareText } from './competition'
@@ -19,8 +19,9 @@ import { franchiseBlock, franchiseUnits, isFranchiseIndustry, maxSellable } from
 import { isStudio } from './gamestudio'
 import { industryDef } from './industries'
 import { milestoneLabel, nextMilestones } from './milestones'
-import { readBiz, runsIt, stakeValue, totalOutlets, type BizState } from './state'
+import { readBiz, runsIt, totalOutlets, type BizState } from './state'
 import { money, pct, plural } from './util'
+import { stakeText, valueChip, valueLook, valueText } from './valuation-fog'
 
 export type HealthId = 'new' | 'thriving' | 'steady' | 'struggling' | 'danger'
 
@@ -142,17 +143,17 @@ function identity(g: GameState, a: Asset, b: BizState): string {
   return `${def.label} · ${b.city}, ${getCountry(b.countryId).name} · since ${b.founded} · ${sites} · ${who}`
 }
 
-/** Cash, value and the owner's part of it. */
-function moneyLine(g: GameState, b: BizState): string {
+/** Cash, value and the owner's part of it. A private company's value and the stake in it are an appraisal range in Realistic mode (valuation-fog.ts). */
+function moneyLine(g: GameState, a: Asset, b: BizState): string {
   const parts = [`Cash ${money(b.cash)}`]
   // Deep tech: investors' money sits in the R&D account, not in cash (deeptech-state.ts).
   if (isDeepTech(b)) parts.push(`R&D account ${money(techView(b).venture)}`)
   if (b.debt > 0) parts.push(`debt ${money(b.debt)}`)
-  parts.push(`${b.public ? 'market cap' : 'value'} ${money(b.valuation)}`)
+  parts.push(valueText(g, a, b, b.public ? 'market cap' : 'value'))
   const group = inGroup(g, b)
   if (b.public) parts.push(`${moneyWith(b.sharePrice, (x) => x.toFixed(2))}/share on the ${b.exchange}`)
-  if (group) parts.push(`your look-through ${pct(b.share, 1)}: ${money(stakeValue(b))}`)
-  else if (b.share < 0.999) parts.push(`your ${pct(b.share, b.share < 0.1 ? 1 : 0)}: ${money(stakeValue(b))}`)
+  if (group) parts.push(`your look-through ${pct(b.share, 1)}: ${stakeText(g, a, b)}`)
+  else if (b.share < 0.999) parts.push(`your ${pct(b.share, b.share < 0.1 ? 1 : 0)}: ${stakeText(g, a, b)}`)
   else parts.push('all yours')
   return parts.join(' · ')
 }
@@ -178,23 +179,26 @@ function marketLine(g: GameState, b: BizState): string {
 }
 
 /**
- * The dashboard rows (info nodes) for any company: identity, money, results, market and health.
- * Finance firms get identity, money and profit only.
+ * The dashboard rows (info nodes) for any company: identity, money, results, market and health, then in Realistic mode the Look closer
+ * group for a private company's valuation. Finance firms get identity, money and profit only.
  */
 export function dashboardRows(g: GameState, a: Asset): MenuNode[] {
   const b = readBiz(g, a)
   const def = industryDef(b.industry)
   const finance = isFinanceFirm(b)
-  const row = (key: string, emoji: string, text: string): MenuNode => ({ type: 'info', id: `biz.dash.${key}.${a.id}`, emoji, text })
+  const row = (key: string, emoji: string, text: string, chip: Pick<MenuInfo, 'conf' | 'asOf'> = {}): MenuNode => ({ type: 'info', id: `biz.dash.${key}.${a.id}`, emoji, text, ...chip })
   const rows: MenuNode[] = [
     row('who', def.emoji, identity(g, a, b)),
-    row('money', '\u{1F4B0}', moneyLine(g, b)),
+    row('money', '\u{1F4B0}', moneyLine(g, a, b), valueChip(g, a, b)),
     row('results', '\u{1F4CA}', resultsLine(b, finance)),
   ]
-  if (finance) return rows
+  // Look closer at a private company's valuation, straight under the card that prints it (R3-G10; nothing in Exact mode or for a listed company).
+  const look = valueLook(g, a, b)
+  if (finance) return look ? [...rows, look] : rows
   rows.push(row('market', '\u{1F3C6}', marketLine(g, b)))
   const h = companyHealth(g, a, b)
   rows.push(row('health', h.emoji, `${h.label}: ${h.advice}`))
+  if (look) rows.push(look)
   return rows
 }
 
