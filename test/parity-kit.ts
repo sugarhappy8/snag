@@ -38,7 +38,6 @@ import { INDUSTRY_IDS } from '../src/game/data/markets'
 import { resetFlags } from '../src/game/flags'
 import { withYearly, yearlyEntries, type YearlyEntry } from '../src/game/kernel/registry'
 import { migrateSave } from '../src/game/save-schema'
-import { SPECIAL_YEARLY } from '../src/game/special'
 import { fnv1a } from '../src/game/text/hash'
 import type { Asset, GameState } from '../src/game/types'
 import { getCountry } from '../src/game/world'
@@ -77,47 +76,32 @@ export interface YearlyAccess {
   reordered<T>(reorder: (names: string[]) => string[], fn: () => T): T
 }
 
-type Hook = (g: GameState) => void
-type Hooks = [string, Hook][]
-
-/** Runs `fn` with the contents of `list` replaced by `next`, and puts them back in a finally (the arrays are mutable on purpose). */
-function withList<T>(list: Hooks, next: Hooks, fn: () => T): T {
-  const saved = list.slice()
-  list.splice(0, list.length, ...next)
-  try {
-    return fn()
-  } finally {
-    list.splice(0, list.length, ...saved)
-  }
-}
-
-const tracing = (out: string[], prefix: string, list: Hooks): Hooks => list.map(([name, hook]) => [name, (g: GameState) => {
-  out.push(prefix + name)
-  hook(g)
-}])
-
-/** The aging seam of the registry: the entries in run order, and the name of one (its module id without the `yearly.` prefix). */
+/** A hook's name: its module id without the seam's prefix (`yearly.` for aging, `special.` for special). */
 const AGING_PREFIX = 'yearly.'
-const agingEntries = (): readonly (YearlyEntry & { id: string })[] => yearlyEntries('aging')
-const agingName = (e: { id: string }): string => (e.id.startsWith(AGING_PREFIX) ? e.id.slice(AGING_PREFIX.length) : e.id)
+const SPECIAL_PREFIX = 'special.'
+const nameOf = (prefix: string, e: { id: string }): string => (e.id.startsWith(prefix) ? e.id.slice(prefix.length) : e.id)
 
-/** Runs `fn` with the aging entries replaced by `next` (in the order given), through the registry's own test seam. */
-const withAgingEntries = <T>(next: readonly (YearlyEntry & { id: string })[], fn: () => T): T => withYearly('aging', next, fn)
+type Entry = YearlyEntry & { id: string }
+const agingEntries = (): readonly Entry[] => yearlyEntries('aging')
+const specialEntries = (): readonly Entry[] => yearlyEntries('special')
+const agingName = (e: { id: string }): string => nameOf(AGING_PREFIX, e)
 
-// K9: the aging accessors read the registry (yearlyEntries, withYearly). The special accessors still read SPECIAL_YEARLY until K10.
+/** The entries with each run wrapped to push `label(entry)` first; the ids and the order are kept. */
+const tracing = (out: string[], entries: readonly Entry[], label: (e: Entry) => string): Entry[] =>
+  entries.map((e) => ({
+    ...e,
+    run: (g: GameState) => {
+      out.push(label(e))
+      e.run(g)
+    },
+  }))
+
+// K9 and K10: both seams are read from the registry (yearlyEntries, withYearly); nothing here reads a mutable list any more.
 export const yearly: YearlyAccess = {
-  names: (seam) => (seam === 'aging' ? agingEntries().map(agingName) : SPECIAL_YEARLY.map(([name]) => name)),
+  names: (seam) => (seam === 'aging' ? agingEntries().map(agingName) : specialEntries().map((e) => nameOf(SPECIAL_PREFIX, e))),
+  // an aging hook is pushed as its name, a special hook as its id (`special.<name>`)
   traced: (out, fn) =>
-    withAgingEntries(
-      agingEntries().map((e) => ({
-        ...e,
-        run: (g: GameState) => {
-          out.push(agingName(e))
-          e.run(g)
-        },
-      })),
-      () => withList(SPECIAL_YEARLY, tracing(out, 'special.', SPECIAL_YEARLY), fn),
-    ),
+    withYearly('aging', tracing(out, agingEntries(), agingName), () => withYearly('special', tracing(out, specialEntries(), (e) => e.id), fn)),
   reordered: (reorder, fn) => {
     const entries = agingEntries()
     const names = entries.map(agingName)
@@ -126,7 +110,7 @@ export const yearly: YearlyAccess = {
     if (order.length !== names.length || new Set(order).size !== names.length || order.some((n) => !byName.has(n))) {
       throw new Error(`yearly.reordered: the new order is not a permutation of ${names.join(', ')}`)
     }
-    return withAgingEntries(order.map((name) => byName.get(name)!), fn)
+    return withYearly('aging', order.map((name) => byName.get(name)!), fn)
   },
 }
 

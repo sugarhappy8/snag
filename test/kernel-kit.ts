@@ -6,6 +6,9 @@
 //   agingNames()      the ids of the aging seam of ageUp, `yearly.` taken off, in run order (R2-K9; the old YEARLY_HOOKS names).
 //   withAging(edit,fn) runs fn with the aging list edited: edit gets the entries in run order and returns the list to run (R2-K9;
 //                     what a splice of YEARLY_HOOKS did). The list is not sorted again, so an entry goes where the edit puts it.
+//   isSelfRegistered(id) true for the id of a built-in that registers itself when its own file loads (special.ts, R2-K10), so it is
+//                     in the registry beside MODULES once anything has loaded that file; a test of "the registry holds MODULES"
+//                     leaves those ids out.
 //
 // The slice rule (design 14.4): a handler declares the one slice it writes (`world.facts`, `flags.textMem`), and the guard holds
 // it to that. Before a handler runs it clones the state, takes the slice out of the clone and writes down what is left, key by
@@ -108,4 +111,18 @@ export function agingNames(): string[] {
  */
 export function withAging<T>(edit: (entries: readonly Ordered<YearlyEntry>[]) => readonly YearlyEntry[], fn: () => T): T {
   return withYearly('aging', edit(yearlyEntries('aging')), fn)
+}
+
+/**
+ * The module id prefixes of the built-ins that register themselves when their own file loads (the lead's decision 12: a built-in
+ * registers itself, a track's extension adds one line to modules/index.ts). Loading src/game/modules loads those files, so the registry
+ * holds their modules beside MODULES. One prefix per line, sorted, each with the file and the task that added it.
+ */
+export const SELF_REGISTERED: readonly string[] = [
+  'special.', // src/game/special.ts (R2-K10): special.military, special.actor, ...
+]
+
+/** True for a module id that a built-in file registered by itself, which `modules/index.ts` does not list. */
+export function isSelfRegistered(id: string): boolean {
+  return SELF_REGISTERED.some((prefix) => id.startsWith(prefix))
 }

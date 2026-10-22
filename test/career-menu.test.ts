@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { scriptChoice } from '../src/game/core'
+import { yearlyEntries } from '../src/game/kernel/registry'
 import { defineScript } from '../src/game/scripts'
 import { yearlySpecial } from '../src/game/special'
 import { hire, money } from '../src/game/special/common'
@@ -248,8 +248,11 @@ describe('registry and wiring', () => {
       ;(CAREER_SIMS as CareerSim[]).splice((CAREER_SIMS as CareerSim[]).indexOf(fake), 1)
     }
     expect(calls).toEqual(['zz'])
-    const src = readFileSync(new URL('../src/game/special.ts', import.meta.url), 'utf8')
-    expect(src).toMatch(/\['astronaut', yearlyAstronaut\],\s*\['careers2', yearlyCareerSims\],\s*\['hustler', yearlyHustler\]/)
+    // R2-K10: the order is the registry's (special.ts used to say it in a table of tuples that this test read as text)
+    const ids = yearlyEntries('special').map((e) => e.id)
+    const at = ids.indexOf('special.astronaut')
+    expect(at).toBeGreaterThanOrEqual(0)
+    expect(ids.slice(at, at + 3)).toEqual(['special.astronaut', 'special.careers2', 'special.hustler'])
   })
 })
 
