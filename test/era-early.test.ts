@@ -34,7 +34,7 @@ describe('digest data, 1900-1979 culture and all prices', () => {
       expect(CULTURE_EARLY[y], `culture ${y}`).toBeTruthy()
       expect(cultureOf(y)).toBe(CULTURE_EARLY[y])
       expect(CULTURE_EARLY[y].length).toBeGreaterThan(60)
-      expect(CULTURE_EARLY[y].length).toBeLessThan(400)
+      expect(CULTURE_EARLY[y].length).toBeLessThanOrEqual(110)
       expect(CULTURE_EARLY[y]).toMatch(/[.!?]$/)
     }
   })
