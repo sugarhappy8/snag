@@ -4,6 +4,7 @@
 // bookFranchiseYear books royalties. The statement and the corporate tax count it once, and nothing
 // else (valuation, loans, closure, sale, the cash crunch) needs to know. Nothing here reads or advances
 // g.rng: the year's noise comes from fundRng, a seeded stream.
+import { firmCash } from '../cash'
 import { log, notice } from '../core'
 import type { Asset, GameState } from '../types'
 import { boardExists, boardView } from './board-state'
@@ -185,10 +186,10 @@ export function bookHedgeYear(g: GameState, a: Asset, b: BizState, fiscal: numbe
   const y = vehicleYear(g, { countryId: b.countryId, strategy: terms.strategy, call: terms.call, lev: terms.lev, nav: q.work, skill: skillOf(leaderSkill(g, b)), year: fiscal + 1 }, fundRng(g, b, fiscal, 'hedgeco'))
   const pnl = Math.round(q.work * y.net)
   if (pnl > 0) {
-    b.cash += pnl
+    firmCash(g, b, pnl, 'invest.income', a.id)
     b.yearIncome += pnl
   } else if (pnl < 0) {
-    b.cash += pnl
+    firmCash(g, b, pnl, 'invest.income', a.id)
     b.yearCosts += -pnl
   }
   h.total = clampN(h.total + pnl, -MONEY_MAX, MONEY_MAX)

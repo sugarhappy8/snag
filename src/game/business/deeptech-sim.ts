@@ -2,6 +2,7 @@
 // R&D programs that progress and cost money; grants, R&D tax credits and side revenue; then the
 // company's cash, with the R&D account (investor money) covering any shortfall. Replaces
 // economy.simulateYear for deep-tech companies (it never runs both). Plus the yearly reports.
+import { erodeFirm, firmCash } from '../cash'
 import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
@@ -54,6 +55,7 @@ import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, 
 import { deepWaveIf } from './tech-wave-data'
 import { announceWave, waveLines } from './tech-waves'
 import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJson, units } from './util'
+import { landCash } from './settle'
 import { allocatedCorporateTax } from './tax'
 import { bookSupply, saveSupply, supplyProfile } from './supply'
 
@@ -163,12 +165,12 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const pbt = pbt0 - ownerPay
   const corpTax = allocatedCorporateTax(b.countryId, pbt, netRevenue, b.yearIncome, bookedSales, g, year, b.industry)
   const net = pbt - corpTax
-  b.cash = dollars(b.cash + delta - ownerPay - corpTax + supply.cashAdjustment)
+  landCash(g, b, dollars(b.cash + delta - ownerPay - corpTax + supply.cashAdjustment), a.id)
   // The R&D account covers what company cash can't.
   let fromVenture = 0
   if (b.cash < 0 && t.venture > 0) {
     fromVenture = Math.min(t.venture, -b.cash)
-    b.cash += fromVenture
+    firmCash(g, b, fromVenture, 'inject', a.id)
     t.venture -= fromVenture
   }
   const economy = economyOf(g, b.countryId, year)
@@ -176,7 +178,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   if (b.cash > 0) {
     const real = clampN((economy.inflation - economy.rate) * 0.35, 0, 0.4)
     cashErosion = Math.round(b.cash * real)
-    b.cash -= cashErosion
+    erodeFirm(g, b, cashErosion, a.id)
   }
 
   const leftover = Math.max(0, available - sold)
@@ -482,7 +484,7 @@ export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void
   } else t.pressure = Math.round(clampN(t.pressure - 10, 0, 100))
   // A listing converts the preferred stock: investor money becomes ordinary company cash.
   if (b.public && t.venture > 0) {
-    b.cash += t.venture
+    firmCash(g, b, t.venture, 'inject', a.id)
     t.venture = 0
     t.raised = 0
   }

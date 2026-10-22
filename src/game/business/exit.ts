@@ -1,4 +1,5 @@
 // Leaving a business: selling it, listing it on a stock exchange, selling shares, going bankrupt.
+import { firmCash } from '../cash'
 import { addMoney, addStat, count, endJob, formatMoney, log, moneyWith, notice, remember } from '../core'
 import { exchangeFor, marketOf } from '../data/markets'
 import { recordMissedPayment } from '../finance'
@@ -83,7 +84,10 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
   const tax = capitalGainsTax(g, gross, b.invested)
   const loan = settleFoundingLoan(g, b, gross - tax)
   const net = gross - tax - loan
-  addMoney(g, net)
+  // The sale, the tax on its gain and the payoff of the founding loan are three flows with three counterparties; their sum is `net`.
+  addMoney(g, gross, 'firm.sale')
+  if (tax > 0) addMoney(g, -tax, 'tax.capgains')
+  if (loan > 0) addMoney(g, -loan, 'loan.repay')
   payFamilyBusinessProceeds(g, b, price)
   removeBusiness(g, a)
   count(g, 'businessesSold')
@@ -133,7 +137,7 @@ export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: 
     return
   }
   const mine = ownerProceeds(b, proceeds)
-  addMoney(g, mine)
+  addMoney(g, mine, 'firm.sale')
   payFamilyBusinessProceeds(g, b, proceeds)
   removeBusiness(g, a)
   log(g, `I closed ${a.name} for good.`, 'neutral')
@@ -178,7 +182,7 @@ export function goPublic(g: GameState, a: Asset, b: BizState, floatPct = FLOAT_D
   const pop = clampN(1 + bell(g, -150, 300) / 1000 + 0.06 * Math.max(0, Math.min(3, plan.coverage) - 1), 0.8, 1.45)
   b.sharesOut = plan.sharesOut
   b.sharePrice = Math.round(plan.price * pop * 100) / 100
-  b.cash += plan.raise - plan.fees
+  firmCash(g, b, plan.raise - plan.fees, 'trade.sell', a.id) // one booking: the raise net of the underwriters' fees
   b.share = clampN(b.share * plan.retain, b.familyShares?.length ? 0 : .01, 1)
   diluteBusinessEquity(b, plan.retain)
   delete b.shareCount
@@ -274,7 +278,8 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   const gross = Math.round(b.sharesOut * b.sharePrice * order.proceeds)
   const basis = b.invested * f
   const tax = capitalGainsTax(g, gross, basis)
-  addMoney(g, gross - tax)
+  addMoney(g, gross, 'trade.sell')
+  if (tax > 0) addMoney(g, -tax, 'tax.capgains')
   b.invested = Math.round(b.invested * (1 - f))
   b.share = stake - sold
   clampFounders(b)

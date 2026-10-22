@@ -1,6 +1,7 @@
 // Investment firms 2.0: the owner's levers. Every action re-reads the live company, checks control
 // and era gates again, and moves money only as booked company costs (b.cash and b.yearCosts) or as
 // client money inside the client books. Nothing here creates cash.
+import { firmCash } from '../cash'
 import { notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { chance } from '../rng'
 import { defineScript } from '../scripts'
@@ -115,7 +116,7 @@ export function runCampaign(g: GameState, assetId: string): boolean {
   const x = operatedFund(g, assetId)
   if (!x || campaignBlock(g, assetId, x.b, x.f) || !useYearAction(g, `fund.campaign.${assetId}`, 1)) return false
   const cost = campaignCost(x.b, x.f)
-  x.b.cash -= cost; x.b.yearCosts += cost
+  firmCash(g, x.b, -cost, 'marketing', x.a.id); x.b.yearCosts += cost
   x.f.campaign = g.year
   x.f.boost = Math.min(.3, x.f.boost + (x.f.type === 'broker' ? .06 : .05))
   saveFund(x.b, x.f)
@@ -144,7 +145,7 @@ export function inventAlgorithm(g: GameState, assetId: string): boolean {
   const x = liveFund(g, assetId)
   if (!x || algoBlock(g, x.b, x.f)) return false
   const cost = algoCost(x.b)
-  x.b.cash -= cost; x.b.yearCosts += cost
+  firmCash(g, x.b, -cost, 'rnd', x.a.id); x.b.yearCosts += cost
   x.f.algoStart = g.year
   saveFund(x.b, x.f)
   notice(g, 'Building an Algorithm', `You locked yourself in with the quants. ${money(cost)} spent; it’s ready in two years. It might be brilliant. It might be nothing. Rivals copy edges fast.`, { emoji: '🧠' })
@@ -189,7 +190,7 @@ export function diligence(g: GameState, assetId: string, pitchId: string): boole
   if (x.f.dd.includes(pitchId)) return false
   const cost = ddCost(x.b, p.ask)
   if (x.b.cash < cost) return false
-  x.b.cash -= cost; x.b.yearCosts += cost
+  firmCash(g, x.b, -cost, 'inputs', x.a.id); x.b.yearCosts += cost
   x.f.dd.push(pitchId)
   saveFund(x.b, x.f)
   return true

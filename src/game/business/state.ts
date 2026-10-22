@@ -178,7 +178,7 @@ export function setBookLines(h: YearRecord, s: Statement): void {
  */
 export function syncBookRow(h: YearRecord, s: Statement, cashChange = 0): void {
   if (LINE_KEYS.some((k) => h[k] !== undefined)) setBookLines(h, s)
-  if (h.cash !== undefined) h.cash = bookDollars(h.cash + (Number.isFinite(cashChange) ? cashChange : 0))
+  if (h.cash !== undefined) h.cash = bookDollars(h.cash + (Number.isFinite(cashChange) ? cashChange : 0)) // ledger-ok: the closing cash on a history row, not a purse
 }
 
 /** The rows the simulation reads: the last SIM_HISTORY, however many the company keeps. */

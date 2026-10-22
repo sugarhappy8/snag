@@ -34,6 +34,7 @@ import { foundingNote } from './fund-text'
 import { investorFirm } from './flavor'
 import { foundBlock } from './gate'
 import { industryDef, isIndustry, INDUSTRIES } from './industries'
+import { landCash } from './settle'
 import { BIZ_VERSION, ceoJob, type BizState } from './state'
 import { aIndustry, aYearsOld, clampN, cleanName, industryNoun, money, num, pct, rec, runwayText, stars, str, toJson } from './util'
 
@@ -681,13 +682,14 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
   const outside = p.funding === 'loan' ? p.loan : p.funding === 'investors' ? p.investor : 0
   const capital = Math.max(cost.capital, p.capital ?? 0)
   const personal = Math.max(0, capital - outside) + fees
-  if (!spend(g, personal)) {
+  // One booking: the capital and the fees go out together. The new company's opening cash is a constructor value, so it is paid into the firms' pool.
+  if (!spend(g, personal, { reason: 'inject', with: 'pool:firms' })) {
     notice(g, "Can't Afford It", `You need ${formatMoney(personal)} of your own money to open ${p.name}, and you have ${formatMoney(c.money)}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
   let loanId = ''
   if (p.funding === 'loan' && p.loan > 0) {
-    loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7 }).id
+    loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7, to: 'pool:firms' }).id
   }
   const b = newBiz(g, p.industry, p.countryId, p.city, {
     share: p.funding === 'investors' ? Math.round((1 - p.equity) * 100) / 100 : 1,
@@ -746,12 +748,12 @@ function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
   const outside = p.funding === 'loan' ? p.loan : 0
   const capital = Math.max(cost.capital, p.capital ?? 0)
   const personal = Math.max(0, capital - outside) + fees
-  if (!spend(g, personal)) {
+  if (!spend(g, personal, { reason: 'inject', with: 'pool:firms' })) {
     notice(g, "Can't Afford It", `You need ${formatMoney(personal)} of your own money to open ${p.name}, and you have ${formatMoney(c.money)}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
   let loanId = ''
-  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7 }).id
+  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7, to: 'pool:firms' }).id
   let share = 1
   if (p.cofounder) share *= 1 - COFOUNDER_EQUITY
   if (p.seed > 0) share *= 1 - p.seedEquity
@@ -992,7 +994,7 @@ export function listingsForSale(g: GameState): ForSale[] {
     const clone = JSON.parse(JSON.stringify(b)) as BizState
     const stmt = simulateYear(g, clone, g.year - 1, 0, 1).stmt
     clone.history = [{ year: stmt.year, revenue: stmt.revenue, profit: stmt.net, tax: stmt.corpTax, units: stmt.sold, price: stmt.price, staff: stmt.employees, valuation: 0, outlets }]
-    clone.cash = Math.max(0, Math.round(stmt.revenue * 0.05))
+    landCash(g, clone, Math.max(0, Math.round(stmt.revenue * 0.05))) // the listing's own copy of a company, never part of the world: no books
     const value = Math.max(valuationOf(clone), 10_000)
     const id = `${g.year}:${i}:${industry}`
     if (bought.includes(id)) continue
@@ -1036,12 +1038,13 @@ function finalizePurchase(g: GameState, p: Plan, runIt: boolean): void {
   if (!listing) return
   const fee = Math.round(marketOf(p.countryId).startupFee * 0.5)
   const personal = listing.price - (p.funding === 'loan' ? p.loan : 0) + fee
-  if (!spend(g, personal)) {
+  // One booking: the price less the loan, and the fee. The previous owner is paid out of the firm-sale pool, with the loan the lender creates.
+  if (!spend(g, personal, 'firm.sale')) {
     notice(g, "Can't Afford It", `You need ${formatMoney(personal)} to close the deal.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
   let loanId = ''
-  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 8 }).id
+  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 8, to: 'pool:other' }).id
   const b = listing.biz
   // Cost basis: the whole price (and fee), however much of it the acquisition loan financed.
   b.invested = personal + (p.funding === 'loan' ? p.loan : 0)

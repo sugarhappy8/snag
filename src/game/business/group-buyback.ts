@@ -21,7 +21,7 @@ export function buyBackGroupShares(g: GameState, id: string, percent: number): b
   const q = groupBuybackQuote(g, grp, percent)
   if (q.block) { notice(g, 'Group Buyback Unavailable', q.block, { emoji: '🔄' }); return false }
   if (!groupAllows(g, grp, { kind: 'capex', by: 'owner', amount: q.cost, label: `Repurchase and retire ${pct(q.retired, 2)} of group shares` })) { saveGroup(g, grp); return false }
-  if (!spendGroupTreasury(g, grp, q.cost)) return false
+  if (!spendGroupTreasury(g, grp, q.cost, 'trade.buy')) return false
   const scale = 1 / (1 - q.retired)
   grp.core.share = q.share
   grp.core.executiveEquity = (grp.core.executiveEquity ?? 0) * scale

@@ -9,6 +9,7 @@
 // brand, growing too fast) gets franchisee scandals that hurt the brand.
 //
 // State: BizState.franchise (plain JSON; readFranchise normalizes anything, old saves have none).
+import { firmCash } from '../cash'
 import { formatMoney, log, notice, scriptChoice } from '../core'
 import { chance, pick } from '../rng'
 import { defineScript } from '../scripts'
@@ -281,7 +282,7 @@ export function sellFranchises(g: GameState, a: Asset, b: BizState, n: number, f
   st.lifetime += net
   ledgerOf(st, g.year).fees += net
   save(b, st)
-  b.cash += net
+  firmCash(g, b, net, 'sales', a.id)
   b.yearIncome += net
   b.valuation = valuationOf(b)
   refreshValue(a, b)
@@ -296,7 +297,7 @@ export function buyBackFranchises(g: GameState, a: Asset, b: BizState, n: number
   const cost = buyBackPrice(b) * k
   if (b.cash < cost) return 0
   // Buying outlets is capital spending (like opening them), not an expense of the year.
-  b.cash -= cost
+  firmCash(g, b, -cost, 'capex', a.id)
   // `added` stays: the franchises sold this year still count against this year's buyers (buying
   // them back must not make room to sell the same slots again).
   st.units -= k
@@ -338,7 +339,7 @@ export function bookFranchiseYear(g: GameState, a: Asset, b: BizState, fiscal: n
   const royalty = Math.max(0, Math.round(trading * unitRoyalty(b)))
   st.booked = fiscal
   if (royalty > 0) {
-    b.cash += royalty
+    firmCash(g, b, royalty, 'royalty', a.id)
     b.yearIncome += royalty
     st.lifetime += royalty
     ledgerOf(st, fiscal).royalty += royalty
@@ -407,7 +408,7 @@ function resolveScandal(g: GameState, a: Asset, b: BizState, choice: string, tel
   }
   if (choice === 'fix') {
     const cost = retrainCost(b)
-    b.cash -= cost
+    firmCash(g, b, -cost, 'inputs', a.id)
     b.yearCosts += cost
     b.brand = clampN(b.brand - 1, 0, 100)
     log(g, `${a.name} retrained its franchisees after a scandal.`, 'neutral')

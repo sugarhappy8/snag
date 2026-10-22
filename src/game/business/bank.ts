@@ -17,6 +17,7 @@ import { bankMenuNodes } from './bank-menu'
 import { shareText } from './competition'
 import { niceAmount, startupCost } from './economy'
 import { totalOutlets, type BizState, type Statement } from './state'
+import { landCash, worldCash } from './settle'
 import { allocatedCorporateTax } from './tax'
 import { clampN, money, pct } from './util'
 
@@ -37,8 +38,8 @@ function fineFor(b: BizState, rwa: number): number {
 }
 
 /**
- * The fiscal year of a bank. Deterministic per life/bank/year (seeded), never touches g, and a
- * second call for a settled year changes nothing. Customer money never reaches b.cash: only the
+ * The fiscal year of a bank. Deterministic per life/bank/year (seeded), touches g only to book the closing cash of a company that is in
+ * the world (a copy, which a forecast runs, leaves g alone), and a second call for a settled year changes nothing. Customer money never reaches b.cash: only the
  * booked statement (net) moves the shareholders' cash.
  */
 export function simulateBankYear(g: GameState, b: BizState, year: number, ownerDraw: number, bookedHomeSales: number | Record<string, number> = 0): YearResult {
@@ -107,7 +108,7 @@ export function simulateBankYear(g: GameState, b: BizState, year: number, ownerD
     book.strikes = 0; book.seize = false
   }
 
-  b.cash = Math.round(b.cash + stmt.net + booked + cashBack)
+  landCash(g, b, Math.round(b.cash + stmt.net + booked + cashBack))
   b.debt = Math.max(0, b.debt - debtRepaid)
   book.cbOwed = Math.max(0, Math.min(book.cbOwed - debtRepaid, b.debt))
   b.employees = p.staff; b.production = 0; b.inventory = 0; b.price = 0
@@ -222,13 +223,13 @@ export function bankManagerTurn(g: GameState, b: BizState): void {
       if (skill < 50 || cost * 3 > spare || cost * 2 > b.cash) break
       // A capable CEO checks the product pays for itself under this year's model (no foresight).
       if (skill >= 70 && productGain(g, b, book, id) <= cost) continue
-      b.cash -= cost; b.yearCosts += cost
+      worldCash(g, b, -cost, 'capex'); b.yearCosts += cost
       book.products[id] = g.year
       break
     }
     const capacity = depositCapacity(g, b, book, g.year), cost = campaignCost(b, book)
     if (book.campaignYear < g.year && skill >= 50 && (book.deposits < capacity * .5 || b.industry === 'onlineBank') && cost * 4 < b.cash && ratio > min + .02) {
-      b.cash -= cost; b.yearCosts += cost
+      worldCash(g, b, -cost, 'marketing'); b.yearCosts += cost
       book.campaignYear = g.year; book.campaignBoost = .2
       if (b.industry === 'onlineBank') book.reach += 1.5
     }
@@ -239,7 +240,7 @@ export function bankManagerTurn(g: GameState, b: BizState): void {
       const capital = bankCapital(b, book), room = capital - riskWeighted(book, capital) * (min + .06) - book.deposits * .05 * (min + .06)
       const n = Math.floor(clampN(Math.min(room / each, b.cash / each - 2, totalOutlets(b) * .25 + 1), 0, 50))
       if (n >= 1) {
-        b.cash -= each * n
+        worldCash(g, b, -(each * n), 'capex')
         const home = b.outlets.find(o => o.countryId === b.countryId && o.city === b.city)
         if (home) home.count += n
         else b.outlets.push({ countryId: b.countryId, city: b.city, count: n, opened: g.year })

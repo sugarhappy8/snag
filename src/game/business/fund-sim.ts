@@ -17,6 +17,7 @@ import { advanceVc, fundTvpi } from './fund-vc'
 import { industryDef } from './industries'
 import { LEADERSHIP, leadershipPower } from './leadership'
 import { totalOutlets, type BizState, type Statement } from './state'
+import { landCash } from './settle'
 import { allocatedCorporateTax } from './tax'
 import { clampN } from './util'
 
@@ -185,7 +186,7 @@ export function simulateFund(g: GameState, b: BizState, year: number, ownerDraw:
   const pbt = preSalary - ownerPay
   const tax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedHomeSales, g, year, b.industry)
   const net = Math.round(pbt - tax)
-  b.cash = Math.round(b.cash + net + booked)
+  landCash(g, b, Math.round(b.cash + net + booked))
   b.employees = staffCount; b.production = 0; b.inventory = 0
   f.boost = 0; f.bonus = 0; f.lastYear = year
   f.marks = [...f.marks, { y: year, r: f.last.ret, m: f.last.market, k: f.last.rank }].slice(-12)

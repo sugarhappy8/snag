@@ -384,7 +384,7 @@ function resilienceTurn(t: Turn): void {
   else if (move.kind === 'automation') paid = purchaseEquipmentUpgrade(t.g, t.a, t.b)
   else if (move.kind === 'contract') {
     const quote = inputContractQuote(t.g, t.b)
-    if (!quote || quote.fee > spendable(t) || !purchaseInputContract(t.b, quote)) return
+    if (!quote || quote.fee > spendable(t) || !purchaseInputContract(t.g, t.a, t.b, quote)) return
     paid = quote.fee
   } else {
     const p = readSupplyPolicy(t.b); p.target = move.target!
