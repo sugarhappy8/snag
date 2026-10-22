@@ -1,7 +1,7 @@
 // ci: fast
 // R2-P6 (K.7b f): the nightly deep tier's workflow, checked as text (the way ci-shard.test.ts checks ci.yml). The workflow cannot
 // run here, so what this file pins is everything that can be wrong without running it: the triggers (a scheduled run happens on
-// the default branch only, so a pull request that touches the workflow or its scripts runs it at smoke size), the six jobs and
+// the default branch only, so a pull request that touches the workflow or its scripts runs it at smoke size), the seven jobs and
 // their time limits, that no step runs the whole suite, that every action is one the repo already uses, and the contract between
 // the YAML and the code it calls: every $NAME a run line reads is printed by `scripts/nightly.mjs sizes` (or set in the file),
 // every file it names exists, and every shard count equals the matrix it runs in and the count in nightlySizes.
@@ -17,7 +17,7 @@ const yml = readFileSync(join(ROOT, '.github', 'workflows', 'nightly.yml'), 'utf
 const lines = yml.split('\n')
 const docs = readFileSync(join(ROOT, 'docs', 'CI.md'), 'utf8')
 
-const JOBS = ['fuzz', 'balance', 'deep', 'anachronism', 'anachronism-merge', 'metrics'] as const
+const JOBS = ['fuzz', 'balance', 'deep', 'anachronism', 'anachronism-merge', 'ledger-strict', 'metrics'] as const
 type Job = (typeof JOBS)[number]
 
 /** A job's block of text: from its `  name:` line to the next job (or the end of the file). */
@@ -106,24 +106,24 @@ describe('the nightly workflow: triggers', () => {
 })
 
 describe('the nightly workflow: jobs', () => {
-  it('has the six jobs, in order', () => {
+  it('has the seven jobs, in order', () => {
     expect(Object.keys(blocks)).toEqual([...JOBS])
   })
 
-  it('gives every job a time limit: fuzz 120, balance 45, deep 45, anachronism 60, merge 20, metrics 15', () => {
-    const limits: Record<Job, number> = { fuzz: 120, balance: 45, deep: 45, anachronism: 60, 'anachronism-merge': 20, metrics: 15 }
+  it('gives every job a time limit: fuzz 120, balance 45, deep 45, anachronism 60, merge 20, ledger-strict 20, metrics 15', () => {
+    const limits: Record<Job, number> = { fuzz: 120, balance: 45, deep: 45, anachronism: 60, 'anachronism-merge': 20, 'ledger-strict': 20, metrics: 15 }
     for (const job of JOBS) expect(Number(/^ {4}timeout-minutes: (\d+)$/m.exec(blocks[job])?.[1]), job).toBe(limits[job])
   })
 
   it('runs every job on ubuntu-latest, and the shard jobs do not stop each other', () => {
     for (const job of JOBS) expect(blocks[job], job).toMatch(/^ {4}runs-on: ubuntu-latest$/m)
-    for (const job of ['fuzz', 'balance', 'deep', 'anachronism'] as const) expect(blocks[job], job).toMatch(/^ {6}fail-fast: false$/m)
+    for (const job of ['fuzz', 'balance', 'deep', 'anachronism', 'ledger-strict'] as const) expect(blocks[job], job).toMatch(/^ {6}fail-fast: false$/m)
   })
 
   it('has a metrics job that always runs and needs every other job', () => {
     expect(blocks.metrics).toMatch(/^ {4}if: \$\{\{ always\(\) \}\}$/m)
-    expect(blocks.metrics).toMatch(/^ {4}needs: \[fuzz, balance, deep, anachronism, anachronism-merge\]$/m)
-    for (const job of ['fuzz', 'balance', 'deep', 'anachronism'] as const) expect(blocks[job], job).not.toMatch(/^ {4}needs:/m)
+    expect(blocks.metrics).toMatch(/^ {4}needs: \[fuzz, balance, deep, anachronism, anachronism-merge, ledger-strict\]$/m)
+    for (const job of ['fuzz', 'balance', 'deep', 'anachronism', 'ledger-strict'] as const) expect(blocks[job], job).not.toMatch(/^ {4}needs:/m)
     expect(blocks['anachronism-merge']).toMatch(/^ {4}needs: anachronism$/m)
   })
 
@@ -183,12 +183,12 @@ describe('the nightly workflow: shards and sizes', () => {
       expect(m, `${job}: --shard ${x[1]}`).not.toBeNull()
       if (m?.[1] !== undefined) counts.push(Number(m[1]))
     }
-    for (const x of blocks[job].matchAll(/^ {6}SLICE: \$\{\{ matrix\.slice \}\}\/(\d+)$/gm)) counts.push(Number(x[1]))
+    for (const x of blocks[job].matchAll(/^ {6}(?:SLICE|LEDGER_STRICT): \$\{\{ matrix\.slice \}\}\/(\d+)$/gm)) counts.push(Number(x[1]))
     return { key, list, counts }
   }
 
   it('has a matrix of 1 to n, and every shard count in a run line is n', () => {
-    for (const job of ['fuzz', 'balance', 'anachronism'] as const) {
+    for (const job of ['fuzz', 'balance', 'anachronism', 'ledger-strict'] as const) {
       const { key, list, counts } = shardsOf(job)
       expect(key, job).not.toBeNull()
       expect(list, job).toEqual(list.map((_, i) => i + 1))
@@ -201,6 +201,7 @@ describe('the nightly workflow: shards and sizes', () => {
     expect(shardsOf('fuzz').list.length).toBe(full.fuzz.shards)
     expect(shardsOf('balance').list.length).toBe(full.balance.shards)
     expect(shardsOf('anachronism').list.length).toBe(full.anachronism.slices)
+    expect(shardsOf('ledger-strict').list.length).toBe(full.ledgerStrict.slices)
   })
 
   it('has as many shards as nightlySizes says, at smoke size (the shape does not change)', () => {
@@ -208,6 +209,7 @@ describe('the nightly workflow: shards and sizes', () => {
     expect(smoke.fuzz.shards).toBe(full.fuzz.shards)
     expect(smoke.balance.shards).toBe(full.balance.shards)
     expect(smoke.anachronism.slices).toBe(full.anachronism.slices)
+    expect(smoke.ledgerStrict.slices).toBe(full.ledgerStrict.slices)
   })
 
   it('reads only variables that nightly.mjs sizes prints or the file sets (the runner has its own)', () => {
@@ -224,7 +226,7 @@ describe('the nightly workflow: shards and sizes', () => {
     const runner = (name: string): boolean => /^(GITHUB|RUNNER)_/.test(name) || name === 'CI'
     expect([...reads].filter((n) => !defined.has(n) && !runner(n)).sort()).toEqual([])
     // The contract is not one way: the sizes the jobs read at least include these.
-    for (const name of ['FUZZ_START', 'FUZZ_SEEDS', 'FUZZ_YEARS', 'FUZZ_BUDGET', 'BALANCE_START', 'BALANCE_COUNT', 'BALANCE_YEARS', 'CEILING_START', 'CEILING_COUNT', 'CEILING_YEARS', 'CEILING_SCALE', 'ANACHRONISM_LIVES', 'OLD_SAVES_YEARS', 'OLD_SAVES_RESEEDS']) {
+    for (const name of ['FUZZ_START', 'FUZZ_SEEDS', 'FUZZ_YEARS', 'FUZZ_BUDGET', 'BALANCE_START', 'BALANCE_COUNT', 'BALANCE_YEARS', 'CEILING_START', 'CEILING_COUNT', 'CEILING_YEARS', 'CEILING_SCALE', 'ANACHRONISM_LIVES', 'LEDGER_STRICT_LIVES', 'OLD_SAVES_YEARS', 'OLD_SAVES_RESEEDS']) {
       expect(reads.has(name), `${name} is read by a run line`).toBe(true)
       expect(printed, name).toContain(name)
     }
@@ -237,8 +239,8 @@ describe('the nightly workflow: shards and sizes', () => {
     for (const f of new Set([...matrixFiles, ...named])) expect(existsSync(join(ROOT, f)), f).toBe(true)
   })
 
-  it('mentions the switches the tests read: FUZZ_YEARS, GOLDEN_DEEP=1, CEILING_PROBE=deep, SLICE: merge, ANACHRONISM_LIVES', () => {
-    for (const text of ['FUZZ_YEARS', 'GOLDEN_DEEP=1', 'CEILING_PROBE=deep', 'SLICE: merge', 'ANACHRONISM_LIVES']) expect(yml, text).toContain(text)
+  it('mentions the switches the tests read: FUZZ_YEARS, GOLDEN_DEEP=1, CEILING_PROBE=deep, SLICE: merge, ANACHRONISM_LIVES, LEDGER_STRICT', () => {
+    for (const text of ['FUZZ_YEARS', 'GOLDEN_DEEP=1', 'CEILING_PROBE=deep', 'SLICE: merge', 'ANACHRONISM_LIVES', 'LEDGER_STRICT: ', 'LEDGER_STRICT_LIVES']) expect(yml, text).toContain(text)
   })
 
   it('hands each test file a switch it reads', () => {
@@ -250,6 +252,8 @@ describe('the nightly workflow: shards and sizes', () => {
     expect(read('test/anachronism.test.ts', 'ANACHRONISM_LIVES')).toBe(true)
     expect(read('test/anachronism.test.ts', 'anachronism.findings.sum')).toBe(true)
     expect(read('test/nightly-metrics.ts', 'NIGHTLY_METRICS_DIR')).toBe(true)
+    // The strict ledger drift run reads the slice from LEDGER_STRICT and the size from LEDGER_STRICT_LIVES, and writes the drift it found.
+    for (const name of ['LEDGER_STRICT', 'LEDGER_STRICT_LIVES', "writeMetrics('ledger-strict'", 'ledger.drift.sum']) expect(read('test/world-acceptance.test.ts', name), name).toBe(true)
     expect(yml).toMatch(/matrix\.files \}\}/)
     for (const file of ['test/ceiling-probe.test.ts', 'test/old-saves.test.ts', 'test/golden-digest.test.ts', 'test/text-repeat.test.ts', 'test/text-kit.test.ts']) expect(yml, file).toContain(file)
   })
@@ -321,6 +325,34 @@ describe('the nightly workflow: the fuzzer, the probes and the previous night', 
     expect(merge).toMatch(/node scripts\/nightly\.mjs sizes "\$NIGHTLY_SCALE" >> "\$GITHUB_ENV"/)
   })
 
+  it('runs the strict ledger drift check four ways, a slice to a job, with no merge, and hands its metrics on even when it fails', () => {
+    const job = blocks['ledger-strict']
+    // LEDGER_STRICT=i/n is the file's own switch (test/world-acceptance.test.ts); it is not the seed-slice kit, which SLICE belongs to.
+    expect(job).toMatch(/^ {4}env:\n {6}LEDGER_STRICT: \$\{\{ matrix\.slice \}\}\/4\n {6}NIGHTLY_METRICS_DIR: metrics\n {6}NIGHTLY_SHARD: \$\{\{ matrix\.slice \}\}$/m)
+    expect(job).not.toMatch(/\bSLICE\b/)
+    expect(job).not.toMatch(/^ {4}needs:/m)
+    const run = stepsOf('ledger-strict').find((step) => step.includes('vitest run'))
+    expect(run, 'the step that plays the slice').toBeDefined()
+    expect(run).toContain('npx vitest run --maxWorkers=1 test/world-acceptance.test.ts -t "strict drift"')
+    // vitest exits 0 when a name filter selects nothing, so the filter must be the title of the describe the file really has.
+    const filter = /-t "([^"]+)"/.exec(run ?? '')?.[1] ?? ''
+    const acceptance = readFileSync(join(ROOT, 'test', 'world-acceptance.test.ts'), 'utf8')
+    expect(acceptance, `a describe titled "${filter}..."`).toMatch(new RegExp(`describe\\.skipIf\\([^\\n]*\\)\\('${filter}[: ]`))
+    // The slice's rows go to the diff: the hard rule ledger.drift.sum reads the pooled sum.
+    expect(job).toContain('name: metrics-ledger-strict-${{ matrix.slice }}')
+    const upload = stepsOf('ledger-strict').find((step) => step.includes('name: metrics-ledger-strict-'))
+    expect(upload, 'the step that uploads the slice metrics').toContain('if: ${{ always() }}')
+    expect(upload).toContain('path: metrics')
+    expect(run).toContain('$LEDGER_STRICT_LIVES')
+  })
+
+  it('plays every life the ledger probe has, at full size', () => {
+    const probe = readFileSync(join(ROOT, 'test', 'ledger-probe.ts'), 'utf8')
+    const seeds = Number(/export const LEDGER_SEEDS[^=]*= Array\.from\(\{ length: (\d+) \}/.exec(probe)?.[1])
+    expect(seeds, 'the length of LEDGER_SEEDS').toBeGreaterThan(0)
+    expect(nightlySizes('full').ledgerStrict.lives).toBe(seeds)
+  })
+
   it('keeps every artifact for a stated time, and the one the next night reads for 30 days', () => {
     for (const job of JOBS) {
       for (const step of stepsOf(job)) {
@@ -375,6 +407,7 @@ describe('docs/CI.md: The nightly deep tier', () => {
     balance: `${s.balance.shards} x ${s.balance.lives} x ${s.balance.years}`,
     ceiling: `${s.ceiling.shards} x ${s.ceiling.lives} x ${s.ceiling.years} at ${s.ceiling.scale}x`,
     anachronism: `${s.anachronism.lives} in ${s.anachronism.slices}`,
+    'ledger strict': `${s.ledgerStrict.lives} in ${s.ledgerStrict.slices}`,
     'old saves': `${s.oldSaves.years}, ${s.oldSaves.reseeds}`,
   })
 
@@ -382,7 +415,7 @@ describe('docs/CI.md: The nightly deep tier', () => {
     expect(start, 'a "## The nightly deep tier" heading').toBeGreaterThan(-1)
     expect(section).toMatch(/default branch/)
     expect(section).toMatch(/smoke/)
-    for (const name of ['metrics-fuzz-', 'fuzz-', 'metrics-balance-', 'metrics-anachronism-', 'metrics-deep-', 'slices-', 'nightly-metrics']) expect(section, name).toContain(`\`${name}`)
+    for (const name of ['metrics-fuzz-', 'fuzz-', 'metrics-balance-', 'metrics-anachronism-', 'metrics-ledger-strict-', 'metrics-deep-', 'slices-', 'nightly-metrics']) expect(section, name).toContain(`\`${name}`)
     expect(section).toContain('node scripts/nightly.mjs')
     expect(section).toContain('golden.mjs check --plan deep')
   })
@@ -399,7 +432,7 @@ describe('docs/CI.md: The nightly deep tier', () => {
   })
 
   it('explains each hard rule of the diff by its metric name', () => {
-    for (const name of ['fuzz.failures.sum', 'balance.*.max', 'ceiling.life.maxNetWorth.max', 'ceiling.life.growth.max', 'balance.birth.msYear.p95', 'text.repeatedShare', 'oldsaves.failures.sum', 'anachronism.findings.sum']) {
+    for (const name of ['fuzz.failures.sum', 'balance.*.max', 'ceiling.life.maxNetWorth.max', 'ceiling.life.growth.max', 'balance.birth.msYear.p95', 'text.repeatedShare', 'oldsaves.failures.sum', 'anachronism.findings.sum', 'ledger.drift.sum']) {
       expect(section, name).toContain(`\`${name}\``)
     }
   })

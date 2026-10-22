@@ -5,7 +5,7 @@
 //
 //   node scripts/nightly.mjs sizes <full|smoke> [--shard i/n]
 //       KEY=VALUE lines for $GITHUB_ENV: FUZZ_START FUZZ_SEEDS FUZZ_YEARS FUZZ_BUDGET, BALANCE_START BALANCE_COUNT BALANCE_YEARS,
-//       CEILING_START CEILING_COUNT CEILING_YEARS CEILING_SCALE, ANACHRONISM_LIVES ANACHRONISM_SLICES,
+//       CEILING_START CEILING_COUNT CEILING_YEARS CEILING_SCALE, ANACHRONISM_LIVES ANACHRONISM_SLICES, LEDGER_STRICT_LIVES,
 //       OLD_SAVES_YEARS OLD_SAVES_RESEEDS. Shard i of n is 1 based and n is a job's shard count (fuzz 8, balance and ceiling 4,
 //       anachronism 8); each sharded job that has an i-th shard gets its *_START, the first seed of its run.
 //   node scripts/nightly.mjs fuzz-metrics --shard n --log FILE [--json FILE] --out FILE

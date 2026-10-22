@@ -221,12 +221,51 @@ jobs:
           echo "Merging the 8 slices of $ANACHRONISM_LIVES lives"
           npx vitest run --maxWorkers=1 test/anachronism.test.ts
 
+  # The strict ledger drift check (docs/LEDGER.md, "The strict drift run"): the 40 lives of the ledger probe, a hundred years each, and
+  # every change of the player's cash must have been booked. All 40 take 879 s on one worker, so four slices of 10 lives, a job each.
+  # The file's own switch LEDGER_STRICT=i/n picks the slice (it is not the seed-slice kit, so there are no slice files and no merge
+  # job: every assertion of the run is per life). The test selects itself by the title of its describe, which a test here pins.
+  # Each slice writes ledger.lives, years, bookings and drift as metrics before it checks them, so a drift reaches the diff.
+  ledger-strict:
+    name: Ledger strict drift, slice ${{ matrix.slice }} of 4
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LEDGER_STRICT: ${{ matrix.slice }}/4
+      NIGHTLY_METRICS_DIR: metrics
+      NIGHTLY_SHARD: ${{ matrix.slice }}
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sizes
+        run: node scripts/nightly.mjs sizes "$NIGHTLY_SCALE" >> "$GITHUB_ENV"
+      - name: Play this slice
+        run: |
+          echo "Slice ${{ matrix.slice }} of 4 plays its share of the first $LEDGER_STRICT_LIVES lives"
+          npx vitest run --maxWorkers=1 test/world-acceptance.test.ts -t "strict drift"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: metrics-ledger-strict-${{ matrix.slice }}
+          path: metrics
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+
   # Every job above hands over a metrics file (or fails, which is recorded too). This job pools them, reads the last good
   # scheduled night from its artifact and prints the diff, with the hard rules of scripts/nightly-lib.mjs failing the run.
   # It needs no packages: nightly.mjs is plain Node.
   metrics:
     name: Metrics and the diff against the previous night
-    needs: [fuzz, balance, deep, anachronism, anachronism-merge]
+    needs: [fuzz, balance, deep, anachronism, anachronism-merge, ledger-strict]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -270,6 +309,7 @@ jobs:
             --result deep=${{ needs.deep.result }} \
             --result anachronism=${{ needs.anachronism.result }} \
             --result anachronism-merge=${{ needs.anachronism-merge.result }} \
+            --result ledger-strict=${{ needs.ledger-strict.result }} \
             "${files[@]}"
       - name: Diff against the previous night
         shell: bash

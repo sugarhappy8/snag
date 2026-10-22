@@ -148,9 +148,10 @@ bonus, adaptation fees and royalties, the studio tail and copies) and seven from
 
 `.github/workflows/nightly.yml` (named `Nightly`) runs what is too slow or too wide for a pull request: 40 fuzzed lives of
 160 years, 200 balance lives with net-worth percentiles, the 100x ceiling probes, the anachronism lint over 400 lives,
-every old save fixture migrated and played for 20 years, the repeat probe, the deep golden plan, and a diff of tonight's
-metrics against the last good night. It starts at 03:23 UTC, by hand from the Actions tab (with the scale `full` or
-`smoke`), and on a pull request that changes `nightly.yml`, `scripts/nightly*` or `test/nightly-*`.
+the strict ledger drift check over the 40 probe lives, every old save fixture migrated and played for 20 years, the repeat
+probe, the deep golden plan, and a diff of tonight's metrics against the last good night. It starts at 03:23 UTC, by hand
+from the Actions tab (with the scale `full` or `smoke`), and on a pull request that changes `nightly.yml`, `scripts/nightly*`
+or `test/nightly-*`.
 
 A scheduled workflow, and the manual run button, exist only for a workflow that is on the default branch (`main`). A
 release branch does not get the schedule. That is why a pull request that touches the workflow or its scripts runs the same
@@ -163,6 +164,7 @@ default branch. To run the full size earlier, land that one file on `main` first
 | balance | shards x lives x years | 4 x 50 x 40 | 4 x 2 x 2 | `lifeSpecs`: odd seeds birth lives to age 80, even seeds founders; net worth at 25, 40, 60 and 80, the year step in ms |
 | ceiling | shards x lives x years | 4 x 6 x 20 at 100x | 4 x 2 x 2 at 100x | founders with a hundred times the money, 3 to 12 companies: the richest net worth and the growth over the start |
 | anachronism | lives in slices | 400 in 8 | 16 in 8 | `test/anachronism.test.ts`, one job per slice, then `anachronism-merge` checks the union |
+| ledger strict | lives in slices | 40 in 4 | 4 in 4 | `ledger-strict`: the `strict drift` describe of `test/world-acceptance.test.ts`, one job per slice, no merge (below) |
 | old saves | years, reseeds | 20, 8 | 3, 2 | `test/old-saves.test.ts`: every `save-*.json.gz` fixture migrates and runs, once per reseed; it invents no world, plays a first year with balanced books, and reads back from the save store (a chunked save v3) with the same digests |
 
 Two jobs have no size of their own. `deep` runs the table's `old saves` row and three more runs: `test/text-repeat.test.ts` and
@@ -174,6 +176,26 @@ golden digests above). `metrics` pools everything. Every size comes from
 `node scripts/nightly.mjs sizes <full|smoke> [--shard i/n]` into `$GITHUB_ENV`. To resize a night, change that one function;
 `test/nightly-workflow.test.ts` (fast tier) keeps the YAML in step with it: the shard counts, the variables the run lines
 read, and the files they name.
+
+### The strict ledger drift job
+
+`ledger-strict` runs the strict drift check of the ledger (`docs/LEDGER.md`, "The strict drift run"): the 40 lives of the ledger probe,
+a hundred years each with two heirs, and for every life the cash the player held must have changed only by what the books
+recorded. Nothing else in CI plays it (the pull request shards skip the describe, because `LEDGER_STRICT` is not set), so a raw
+writer of cash that the token scan cannot see would otherwise be found only by someone who remembered to run it.
+
+All 40 lives take 879 s on one worker (Node 22, one local run), so the job has four slices of 10 lives, one job each, with
+`LEDGER_STRICT=<slice>/4` and a limit of 20 minutes; slice 1 took 141 s locally (10 lives, drift 0). The file has its own switch and not
+the seed-slice kit above: `SLICE` belongs to the six files in the `split` list, which `ci-shard.mjs --verify` keeps, and a
+file that read it would have to be in that list. Every assertion of the run is per life, so there are no slice files and no merge
+job. The size is `LEDGER_STRICT_LIVES`, printed by `nightly.mjs sizes`: 40 at full size and 4 at smoke size (the first four lives,
+one to a slice). The job selects the test by the title of its describe (`-t "strict drift"`), and vitest passes when a name filter
+selects nothing, so `test/nightly-workflow.test.ts` pins that the file still has a describe by that title.
+
+Each slice writes `ledger-strict-<slice>.json` with `ledger.lives.sum`, `ledger.years.sum`, `ledger.bookings.sum` and
+`ledger.drift.sum` after every life and before it checks that life, so the drift of a failing slice still reaches the diff. If a
+slice passes its 20 minute limit, raise the slice count in `nightlySizes` and the matrix together (the workflow test keeps them
+equal), or lower `PROBE_ACTIONS` in `test/ledger-probe.ts` as for the sliced probe.
 
 ### The hard rules
 
@@ -190,6 +212,7 @@ holds tonight to `RULES` in `scripts/nightly-lib.mjs`. A hard rule fails the run
 | `text.repeatedShare` | 0.0415 | R2: at most half of R1's 0.0831 |
 | `oldsaves.failures.sum` | 0 | an old save that cannot run is a lost game |
 | `anachronism.findings.sum` | 0 | each `anachronism` slice writes its findings (and `anachronism.lives.sum`) before it checks them; a line that names a thing before it existed is a bug |
+| `ledger.drift.sum` | 0 | each `ledger-strict` slice writes its drift (and `ledger.lives.sum`, `ledger.years.sum`, `ledger.bookings.sum`) before it checks it; a change of the player's cash that nothing booked is a raw writer the books cannot see |
 
 Soft rules: a median (`balance.*.p50`) that moved more than a quarter, any other metric that moved more than half. A metric
 new tonight prints `new`, one that was not written prints `gone`, and a job that failed is listed first and fails the run.
@@ -213,12 +236,13 @@ looks for it, a smoke run does not (smoke numbers are not comparable), and with 
     OLD_SAVES_YEARS=20 OLD_SAVES_RESEEDS=8 npx vitest run test/old-saves.test.ts
     node scripts/golden.mjs check --plan deep
     ANACHRONISM_LIVES=400 SLICE=1/8 SLICE_DIR=/tmp/s npx vitest run test/anachronism.test.ts
+    LEDGER_STRICT=1/4 LEDGER_STRICT_LIVES=40 npx vitest run test/world-acceptance.test.ts -t "strict drift"
 
 Set `NIGHTLY_METRICS_DIR=/tmp/m` to have a test file write its metrics, and `node scripts/nightly.mjs merge --out /tmp/all.json
 /tmp/m/*.json` then `diff --prev none --cur /tmp/all.json` to see the verdict the `metrics` job would give.
 
 ### Artifacts
 
-`metrics-fuzz-<shard>`, `metrics-balance-<shard>` (the balance and the ceiling file), `metrics-anachronism-<slice>` and
-`metrics-deep-<name>` hold one job's metrics file; `fuzz-<shard>` holds the fuzzer's log and its list of findings; `slices-<i>`
-holds an anachronism slice's rows. All are kept 14 days. `nightly-metrics` is the merged `all.json`, kept 30 days (R12 wants seven nights of history).
+`metrics-fuzz-<shard>`, `metrics-balance-<shard>` (the balance and the ceiling file), `metrics-anachronism-<slice>`,
+`metrics-ledger-strict-<slice>` and `metrics-deep-<name>` hold one job's metrics file; `fuzz-<shard>` holds the fuzzer's log and
+its list of findings; `slices-<i>` holds an anachronism slice's rows. All are kept 14 days. `nightly-metrics` is the merged `all.json`, kept 30 days (R12 wants seven nights of history).
