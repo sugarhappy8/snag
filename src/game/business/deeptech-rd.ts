@@ -1,6 +1,10 @@
 // Deep-tech R&D: starting programs, yearly progress and spending, breakthroughs and setbacks,
 // clinical trials for drugs, and the Business talent's pick of the best program to fund.
-import { chance, rand } from '../rng'
+import { knowHowOf } from '../effort/knowhow'
+import { resolve } from '../effort/step'
+import type { Outcome, Quote, Reason, StepResult, Task } from '../effort/types'
+import { causeLine, payoffLine } from '../effort/why'
+import { rand } from '../rng'
 import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
 import { benchYear, capWeight, modelRating, releasedRating } from './ai-bench'
@@ -9,8 +13,10 @@ import { bestRival } from './ai-bench-market'
 import { familyId } from './competition-roster'
 import { DEEP_TECH, PROGRAMS, TRIALS, drugRegulator, maxStage, modelGens, programDef, type ProgramDef } from './deeptech-data'
 import { dtInd, paceOf, rdScale, runwayYears, syncBiotechStage, techSkill } from './deeptech-core'
+import { programField, programTask, rollQuote, strained, termsQuote, type ProgramFacts, type RollFacts } from './deeptech-effort'
 import { repayGrants } from './deeptech-funding'
 import { MAX_PARALLEL, timesDone, type Drug, type TechProgram, type TechState } from './deeptech-state'
+import { bookResearch, frontierFieldOf, frontierInputs } from './research-effort'
 import { runsIt, totalOutlets, type BizState } from './state'
 import { clampN, money } from './util'
 
@@ -54,15 +60,40 @@ export function programCost(b: BizState, t: TechState, def: ProgramDef): number 
 export const BUDGET_MIN = 0.5
 export const BUDGET_MAX = 3
 
+/** What a program is, as the engine needs it: the field its know-how lives in, its yearly price, its plan, its base odds. */
+function factsOf(b: BizState, t: TechState, def: ProgramDef): ProgramFacts {
+  return { field: programField(dtInd(b), def.track), cost: programCost(b, t, def), years: def.years, odds: def.odds(t) }
+}
+
+/** The funding of a program, with the engine's quote it came from (its labelled lines are the `why` the budget slider shows). */
+export interface ProgramQuote {
+  cost: number
+  years: number
+  odds: number
+  quote: Quote
+}
+
 /**
- * What funding a program at `k` times its plan buys: faster (but not proportionally), likelier
- * to work (diminishing), and dearer in total. Pure.
+ * What funding a program at `k` times its plan buys, with the quote behind it (effort/engine.ts): faster (but not proportionally),
+ * likelier to work (diminishing), and dearer in total. The company's know-how in the trade and, when the game is in hand (`g`), the
+ * world's public research and rival pressure in the field move the odds; at the default (none banked, nobody has pushed the field)
+ * they are the old numbers. Pure: it reads, draws nothing and writes nothing.
  */
-export function programTerms(b: BizState, t: TechState, def: ProgramDef, k = 1): { cost: number; years: number; odds: number } {
+export function programQuote(b: BizState, t: TechState, def: ProgramDef, k = 1, g?: GameState): ProgramQuote {
   const m = clampN(Number.isFinite(k) ? k : 1, BUDGET_MIN, BUDGET_MAX)
-  const years = Math.round(clampN(def.years / Math.pow(m, 0.55), 0.5, 10) * 100) / 100
-  const odds = clampN(1 - (1 - def.odds(t)) * Math.pow(m, -0.35), 0.02, 0.98)
-  return { cost: Math.round(programCost(b, t, def) * m), years, odds }
+  const f = factsOf(b, t, def)
+  const world = g !== undefined ? frontierInputs(g, frontierFieldOf(dtInd(b), def.track)) : { spill: 0, rival: 0 }
+  const q = termsQuote(g, f, m, knowHowOf(b.knowHow, f.field), world)
+  return { cost: Math.round(q.spend), years: Math.round(clampN(q.yearsExact, 0.5, 10) * 100) / 100, odds: q.p, quote: q }
+}
+
+/**
+ * What funding a program at `k` times its plan buys: faster (but not proportionally), likelier to work (diminishing), and dearer
+ * in total. Pure. `g` is the game when a caller has it (it adds the world's research to the odds, see programQuote).
+ */
+export function programTerms(b: BizState, t: TechState, def: ProgramDef, k = 1, g?: GameState): { cost: number; years: number; odds: number } {
+  const { cost, years, odds } = programQuote(b, t, def, k, g)
+  return { cost, years, odds }
 }
 
 /**
@@ -99,7 +130,7 @@ function newProgram(g: GameState, key: string, def: { id: string; name: string; 
  */
 export function startProgram(g: GameState, b: BizState, t: TechState, def: ProgramDef, budget = 1): TechProgram | null {
   if (programBlock(b, t, def)) return null
-  const terms = programTerms(b, t, def, budget)
+  const terms = programTerms(b, t, def, budget, g)
   const p = newProgram(g, `${def.id}:${timesDone(t, def.id) + 1}`, { id: def.id, name: def.label(t), emoji: def.emoji, years: terms.years, cost: terms.cost, odds: terms.odds })
   t.programs.push(p)
   return p
@@ -174,14 +205,57 @@ export interface RdResult {
   approved: Drug[]
 }
 
-export function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): number {
-  const skill = techSkill(g, a, b, t)
-  let o = p.odds * (0.75 + skill / 200)
-  if (t.pace === 'blitz') o *= 0.96
+/** What a finished program's roll depends on, read from the game (the cycle members the leaf adapter may not call). */
+function rollFacts(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): RollFacts {
   const ind = dtInd(b)
-  if (runsIt(g, a) && ((ind === 'aiLab' || ind === 'cybersecurity' || ind === 'robotics' || ind === 'drones') && hasTalent(g, 'Programming'))) o *= 1.05
-  if (runsIt(g, a) && ((ind === 'biotech' || ind === 'quantum' || ind === 'semiconductor' || ind === 'fusion' || ind === 'neurotech' || ind === 'carbonCapture') && hasTalent(g, 'Academics'))) o *= 1.05
-  return clampN(o, 0.03, 0.95)
+  const own = runsIt(g, a)
+  return {
+    odds: p.odds,
+    skill: techSkill(g, a, b, t),
+    blitz: t.pace === 'blitz',
+    programmer: own && (ind === 'aiLab' || ind === 'cybersecurity' || ind === 'robotics' || ind === 'drones') && hasTalent(g, 'Programming'),
+    academic: own && (ind === 'biotech' || ind === 'quantum' || ind === 'semiconductor' || ind === 'fusion' || ind === 'neurotech' || ind === 'carbonCapture') && hasTalent(g, 'Academics'),
+    fatigue: p.fx?.fatigue ?? 0,
+  }
+}
+
+/** The program as the roll's engine reads it: its trade or capability for the know-how field, its stored odds. */
+function rollProgram(b: BizState, p: TechProgram): ProgramFacts {
+  return { field: programField(dtInd(b), programDef(dtInd(b), p.id)?.track), cost: p.cost, years: p.years, odds: p.odds }
+}
+
+/**
+ * The roll a finished program makes at year-end, with the lines behind it: its stored odds, the lab's technical skill, a blitz and
+ * the founder's talent as named terms, and the tiredness its pace built, clamped .03 to .95. Pure.
+ */
+export function finalQuote(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): Quote {
+  return rollQuote(g, rollProgram(b, p), rollFacts(g, a, b, t, p))
+}
+
+/** The odds a finished program works with: `finalQuote(...).p`. */
+export function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): number {
+  return finalQuote(g, a, b, t, p).p
+}
+
+/** Why a running program's roll stands where it does: "lab skill +6, blitz pace -3, tired -2". Pure. */
+export function programWhy(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): readonly Reason[] {
+  return finalQuote(g, a, b, t, p).reasons
+}
+
+/**
+ * What a result left behind, to be said on the lab report's line for it (the line's own first character is the mark the report is
+ * counted by, so this is appended to it and never a line of its own): a failure says why and what it taught; a win says what the
+ * lab knows of the field when it knows something. Nothing for a result that was not booked.
+ */
+function learned(task: Task, outcome: Outcome, result: StepResult | null): string {
+  if (result === null || result.replay) return ''
+  if (outcome.kind === 'fail') return `${causeLine(outcome.cause ?? 'deadEnd', task.field)} ${payoffLine(task, outcome, result)}`
+  return result.knowledge > 0 ? payoffLine(task, outcome, result) : ''
+}
+
+/** Puts a sentence on the end of the report's latest line. */
+function say(notes: string[], text: string): void {
+  if (text !== '' && notes.length > 0) notes[notes.length - 1] = `${notes[notes.length - 1]} ${text}`
 }
 
 /**
@@ -201,18 +275,27 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
     out.spend += cost
     p.spent += cost
     p.progress = Math.round((p.progress + pace.speed) * 100) / 100
+    // A year at a pace tires the work or rests it (the posture's strain); the record is kept only while the program is tired.
+    const fx = strained(p.fx, t.pace, p.started)
+    if (fx !== undefined) p.fx = fx
+    else delete p.fx
     if (p.progress + 1e-9 >= p.years) finished.push(p)
     else keep.push(p)
   }
   t.programs = keep
   for (const p of finished) {
-    const ok = chance(g, finalOdds(g, a, b, t, p))
+    // One draw, as `chance` made it: the program works exactly when the draw is under its odds.
+    const q = finalQuote(g, a, b, t, p)
+    const outcome = resolve(q, rand(g))
+    const ok = outcome.kind === 'works'
+    const task = programTask(rollProgram(b, p), true)
     if (p.id === 'trial') {
-      resolveTrial(g, b, t, p, ok, out)
+      if (resolveTrial(g, b, t, p, ok, out)) say(out.notes, learned(task, outcome, bookResearch(g, a, task, outcome, { year, fx: p.fx })))
       continue
     }
     const def = programDef(ind, p.id)
     if (!def) continue
+    const booked = bookResearch(g, a, task, outcome, { year, fx: p.fx })
     const ctx = { t, countryId: b.countryId, year, roll: () => rand(g), company: a.name, fam, rival: (y: number) => bestRival(fam, y, t.models) }
     const modelsBefore = t.models.length
     if (ok) {
@@ -224,6 +307,7 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
       const line = def.win(ctx)
       out.wins += 1
       out.notes.push(`\u{2705} ${line}`)
+      say(out.notes, learned(task, outcome, booked))
       if (def.capex) t.plantBook += p.spent * 0.85
       else t.ipBook += Math.min(p.spent, Math.max(0, nominal)) * (def.ipShare ?? 1.2)
       if (t.models.length > modelsBefore) out.newModel = t.models[t.models.length - 1].gen
@@ -233,6 +317,7 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
       const line = def.lose ? def.lose(ctx) : `${p.name} didn't pan out. The money taught you a lot, expensively.`
       out.losses += 1
       out.notes.push(`\u{274C} ${line}`)
+      say(out.notes, learned(task, outcome, booked))
       if (def.capex) t.plantBook += p.spent * 0.3
       else t.ipBook += p.spent * 0.25
       if (p.years >= 2 || def.capex) out.headlines.push(line)
@@ -244,9 +329,10 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
   return out
 }
 
-function resolveTrial(g: GameState, b: BizState, t: TechState, p: TechProgram, ok: boolean, out: RdResult): void {
+/** Applies a finished trial's result to its drug and the lab's report; false when there was no drug left to apply it to. */
+function resolveTrial(g: GameState, b: BizState, t: TechState, p: TechProgram, ok: boolean, out: RdResult): boolean {
   const d = t.drugs.find((x) => x.id === p.target)
-  if (!d || d.failed) return
+  if (!d || d.failed) return false
   const regulator = drugRegulator(b.countryId)
   if (ok) {
     d.phase = Math.min(4, d.phase + 1)
@@ -276,6 +362,7 @@ function resolveTrial(g: GameState, b: BizState, t: TechState, p: TechProgram, o
     out.notes.push(`\u{274C} ${line}`)
     out.headlines.push(line)
   }
+  return true
 }
 
 /**
