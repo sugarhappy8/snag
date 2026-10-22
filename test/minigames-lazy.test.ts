@@ -1,8 +1,9 @@
 // ci: fast
-// INT-fog-mig: the six table and street games load on demand (src/ui/minigames/lazy.tsx). The R3 merge put the initial bundle
+// INT-fog-mig: the six table and street games, and since the v5.1.0 release commit the Nation Report, load on demand
+// (src/ui/minigames/lazy.tsx). The R3 merge put the initial bundle
 // 11,252 bytes over the budget (scripts/bundle-budget.mjs, +60,000 gzip bytes over v5.0.0), and the budget's own remedy is a lazy
-// gate. This test holds the gate: the six games are out of the static closure of src/main.tsx (the Annual Report and the Nation
-// Report stay in it), MINIGAMES maps them to lazy views, a view that has not loaded shows the busy box, and once it has loaded it
+// gate. This test holds the gate: the lazy games are out of the static closure of src/main.tsx (the Annual Report stays in
+// it), MINIGAMES maps them to lazy views, a view that has not loaded shows the busy box, and once it has loaded it
 // draws exactly what the game component draws on its own.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -14,6 +15,7 @@ import type { MinigameKind, MinigameModal } from '../src/game/types'
 import { Blackjack } from '../src/ui/minigames/Blackjack'
 import { Burglary } from '../src/ui/minigames/Burglary'
 import { HorseRace } from '../src/ui/minigames/HorseRace'
+import { NationReport } from '../src/ui/minigames/NationReport'
 import { Pickpocket } from '../src/ui/minigames/Pickpocket'
 import { PrisonEscape } from '../src/ui/minigames/PrisonEscape'
 import { Slots } from '../src/ui/minigames/Slots'
@@ -25,7 +27,7 @@ import { closure, dynamicImports, resolve, staticImports } from './lazy-kit'
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const at = (path: string): string => join(ROOT, path)
 
-/** The six games that load on demand, with the component each one is. */
+/** The games that load on demand (the six table and street games and, since the v5.1.0 release commit, the Nation Report), with the component each one is. */
 const LAZY_GAMES = [
   { kind: 'blackjack', file: 'src/ui/minigames/Blackjack.tsx', real: Blackjack },
   { kind: 'horseRace', file: 'src/ui/minigames/HorseRace.tsx', real: HorseRace },
@@ -33,6 +35,7 @@ const LAZY_GAMES = [
   { kind: 'burglary', file: 'src/ui/minigames/Burglary.tsx', real: Burglary },
   { kind: 'prisonEscape', file: 'src/ui/minigames/PrisonEscape.tsx', real: PrisonEscape },
   { kind: 'pickpocket', file: 'src/ui/minigames/Pickpocket.tsx', real: Pickpocket },
+  { kind: 'nationReport', file: 'src/ui/minigames/NationReport.tsx', real: NationReport },
 ] as const
 
 const propsFor = (game: MinigameKind): MinigameProps => ({
@@ -40,12 +43,11 @@ const propsFor = (game: MinigameKind): MinigameProps => ({
   onDone: () => undefined,
 })
 
-describe('the six table and street games load on demand', () => {
-  it('none of them is in the static closure of src/main.tsx, and the two reports are', () => {
+describe('the table and street games and the Nation Report load on demand', () => {
+  it('none of them is in the static closure of src/main.tsx, and the Annual Report is', () => {
     const reached = closure(at('src/main.tsx'))
     for (const g of LAZY_GAMES) expect(reached.has(at(g.file)), `${g.file} is reached statically`).toBe(false)
     expect(reached.has(at('src/ui/minigames/AnnualReport.tsx'))).toBe(true)
-    expect(reached.has(at('src/ui/minigames/NationReport.tsx'))).toBe(true)
     // The registry file itself is in the entry, and so is the gate.
     expect(reached.has(at('src/ui/minigames/index.ts'))).toBe(true)
     expect(reached.has(at('src/ui/minigames/lazy.tsx'))).toBe(true)
@@ -62,13 +64,13 @@ describe('the six table and street games load on demand', () => {
     for (const g of LAZY_GAMES) expect(index).not.toContain(`./${g.file.split('/').pop()?.replace('.tsx', '')}'`)
   })
 
-  it('MINIGAMES maps the six kinds to lazy views and keeps the two reports as components', () => {
+  it('MINIGAMES maps the lazy kinds to lazy views and keeps the Annual Report as a component', () => {
     for (const g of LAZY_GAMES) {
       const entry = MINIGAMES[g.kind] as unknown as LazyView<MinigameProps>
       expect(entry.displayName, g.kind).toMatch(/^Lazy\(/)
       expect(typeof entry.preload, g.kind).toBe('function')
     }
-    for (const kind of ['annualReport', 'nationReport'] as const) {
+    for (const kind of ['annualReport'] as const) {
       expect((MINIGAMES[kind] as { displayName?: string }).displayName ?? '').not.toMatch(/^Lazy\(/)
     }
   })

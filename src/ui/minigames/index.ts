@@ -2,8 +2,7 @@
 import type { ComponentType } from 'react'
 import type { MinigameKind } from '../../game/types'
 import { AnnualReport } from './AnnualReport'
-import { LazyBlackjack, LazyBurglary, LazyHorseRace, LazyPickpocket, LazyPrisonEscape, LazySlots } from './lazy'
-import { NationReport } from './NationReport'
+import { LazyBlackjack, LazyBurglary, LazyHorseRace, LazyNationReport, LazyPickpocket, LazyPrisonEscape, LazySlots } from './lazy'
 import type { MinigameProps } from './types'
 
 export const MINIGAMES: Record<MinigameKind, ComponentType<MinigameProps>> = {
@@ -14,5 +13,5 @@ export const MINIGAMES: Record<MinigameKind, ComponentType<MinigameProps>> = {
   prisonEscape: LazyPrisonEscape,
   pickpocket: LazyPickpocket,
   annualReport: AnnualReport,
-  nationReport: NationReport,
+  nationReport: LazyNationReport,
 }
