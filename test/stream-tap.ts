@@ -167,4 +167,9 @@ export const STREAM_SLICES: Readonly<Record<string, StreamRow>> = {
     why: 'R3-F1 applyDisclosure draws a disclosure\'s luck from outcomeStream(g, "frontier", year, ...); the shard feeds the Workshop race year, which drops an idea from the notebook flag and logs it, and no played life writes a disclosure yet',
     driven: true,
   },
+  'effort.risk': {
+    slices: ['assets', 'character', 'economy', 'text'],
+    why: 'R3-M7 simulateStudioEngines draws a pushing year\'s setback from outcomeStream(g, "effort.risk", year, "studio:<engine>"); it cuts the gain of an engine in development (assets), which moves the studio\'s costs and cash, so the owner\'s pay and net worth (character), the company\'s investment (economy) and the report line (text), and no played life pushes an engine yet',
+    driven: true,
+  },
 }

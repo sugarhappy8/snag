@@ -7,6 +7,10 @@ import { manageBlock } from './gate'
 import { ENGINE_TIERS, engineIpValue, engineTier, type EngineTerms, type EngineTier, type StudioEngine } from './gamestudio-engine-state'
 import { assignedDevs, readStudio, type StudioState } from './gamestudio-state'
 import { bizOf, findBusiness, readBiz } from './state'
+import { bookResearch, ownerRuns } from './research-effort'
+import {
+  SETBACK_KEEP, engineActor, engineAfterword, engineOutcome, enginePace, engineProgress, engineQuality, engineQuote, engineTask, markSetback, setbackChance, setbackLuck,
+} from './studio-effort'
 import { clampN, money, toJson } from './util'
 
 function current(g: GameState, assetId: string): Asset | undefined {
@@ -48,13 +52,20 @@ export function startStudioEngine(g: GameState, assetId: string, tierId: EngineT
   b.yearCosts += tier.setup
   a.details.studio = toJson(st)
   refreshValue(a, b)
+  const pace = enginePace(engineQuote(g, tier.id, engineActor(g, ownerRuns(g, b)), b.knowHow))
   log(g, `${a.name} began developing the ${name} game engine.`, 'good')
-  notice(g, 'Engine Development Started', `${name}: ${team} developers assigned. Tools cost ${money(tier.setup)} now; R&D costs up to ${money(tier.research)} per year, plus your existing developer payroll. About ${tier.years} year${tier.years === 1 ? '' : 's'} with ${tier.team} developers. You can use, license, or sell it when finished.`, { emoji: '⚙️', tone: 'good' })
+  notice(g, 'Engine Development Started', `${name}: ${team} developers assigned. Tools cost ${money(tier.setup)} now; R&D costs up to ${money(tier.research)} per year, plus your existing developer payroll. About ${tier.years} year${tier.years === 1 ? '' : 's'} with ${tier.team} developers.${pace !== '' ? ` ${pace}` : ''} You can use, license, or sell it when finished.`, { emoji: '⚙️', tone: 'good' })
 }
 
-/** Runs inside the studio statement: returns receipts and costs, never moves cash itself. */
+/**
+ * Runs inside the studio statement: returns receipts and costs, never moves cash itself. An engine in development builds at the pace of
+ * its quote (studio-effort.ts: the owner's ambition and posture when the player runs the studio, the studio's know-how in engines);
+ * `opts.asset` is the studio's asset, which a run for the player's own company passes so the finished engine can teach the company
+ * (its know-how map) and so the owner's pace counts. Without it the actor is the default one (steady, ambition 50, no know-how), which
+ * is the pace v5.0.0 always had.
+ */
 export function simulateStudioEngines(g: GameState, st: StudioState, year: number, opts: {
-  employees: number; wage: number; quality: number; leadership: number; brand: number; operations: number; open: number; market: number
+  employees: number; wage: number; quality: number; leadership: number; brand: number; operations: number; open: number; market: number; asset?: Asset
 }): { revenue: number; costs: number; notes: string[] } {
   let revenue = 0
   let costs = 0
@@ -62,6 +73,8 @@ export function simulateStudioEngines(g: GameState, st: StudioState, year: numbe
   const assigned = assignedDevs(st)
   const share = assigned > opts.employees && assigned > 0 ? opts.employees / assigned : 1
   const open = clampN(opts.open, 0, 1)
+  const owned = opts.asset !== undefined ? bizOf(g, opts.asset) : null
+  const actor = engineActor(g, owned !== null && ownerRuns(g, owned))
   for (const x of st.engines) {
     if (year < x.started || year <= x.lastYear || x.stage === 'sold') continue
     x.lastYear = year
@@ -70,17 +83,32 @@ export function simulateStudioEngines(g: GameState, st: StudioState, year: numbe
     if (x.stage === 'dev') {
       const team = x.team * share
       const ratio = clampN(team / tier.team, 0, 3)
-      const progress = (100 / tier.years) * Math.pow(ratio, .8) * opts.operations * open
+      const q = engineQuote(g, tier.id, actor, owned?.knowHow)
+      let progress = engineProgress(q, ratio, opts.operations, open)
+      // A push can set the build back: one draw from the risk stream per engine and year, only at the posture push of the player's own
+      // studio, and only while there is progress to lose. The year's gain is cut, never the stored progress or the team.
+      if (progress > 0 && actor.you && actor.posture === 'push' && setbackLuck(g, year, x.id) < setbackChance(q, actor)) {
+        progress *= SETBACK_KEEP
+        x.fx = markSetback(x.fx, year)
+        notes.push(`${x.name}: a crunch year set the build back.`)
+      }
       const research = Math.round(tier.research * Math.min(1.5, ratio) * open)
       costs += research
       x.spent += Math.round(team * opts.wage * open) + research
       x.progress = clampN(x.progress + progress, 0, 100)
-      if (progress > 0) x.quality = clampN(30 + opts.quality * .45 + opts.leadership * .2 + Math.min(10, ratio * 5), 20, 98)
+      if (progress > 0) x.quality = engineQuality(opts.quality, opts.leadership, ratio)
       if (x.progress >= 100) {
         x.stage = 'ready'
         x.released = year
         x.team = 0
         notes.push(`The ${x.name} game engine is ready (quality ${Math.round(x.quality)}): use it in new games, offer licenses, or sell the IP`)
+        // A finished engine teaches the company: the know-how banks in its own map and the next engine builds a little faster.
+        if (opts.asset !== undefined) {
+          const out = engineOutcome()
+          const task = engineTask(tier.id)
+          const after = engineAfterword(task, out, bookResearch(g, opts.asset, task, out, { year, ...(x.fx !== undefined ? { fx: x.fx } : {}), quality: x.quality }))
+          if (after !== '') notes.push(after)
+        }
       }
       continue
     }
@@ -163,7 +191,9 @@ function engineNode(a: Asset, x: StudioEngine): MenuGroup {
       const e = readStudio(current(g, a.id)?.details).engines.find((v) => v.id === x.id)
       if (!e) return 'This engine is no longer available.'
       const tier = engineTier(e.tier)
-      return `${tier.label} · ${money(e.spent)} invested · ${money(e.earned)} lifetime licensing receipts.\n${e.stage === 'dev' ? `About ${tier.years} years with ${tier.team} developers. R&D up to ${money(tier.research)}/yr plus payroll. Set the team to 0 to pause; build a new version to improve an older engine.` : e.stage === 'sold' ? 'The buyer owns the engine and its licensing income. Existing games retain their use rights.' : `Royalty-free for your own ${tier.maxScope === 2 ? 'indie' : 'indie, AA, and AAA'} games. New licenses: ${e.terms}. Three-year contracts retain their original terms; demand depends on quality, studio brand, engine age, and the yearly market. Support costs apply. Selling transfers all IP and contracts.`}`
+      const own = current(g, a.id)
+      const pace = e.stage === 'dev' && own ? enginePace(engineQuote(g, tier.id, engineActor(g, ownerRuns(g, readBiz(g, own))), readBiz(g, own).knowHow)) : ''
+      return `${tier.label} · ${money(e.spent)} invested · ${money(e.earned)} lifetime licensing receipts.\n${e.stage === 'dev' ? `About ${tier.years} years with ${tier.team} developers.${pace !== '' ? ` ${pace}` : ''} R&D up to ${money(tier.research)}/yr plus payroll. Set the team to 0 to pause; build a new version to improve an older engine.` : e.stage === 'sold' ? 'The buyer owns the engine and its licensing income. Existing games retain their use rights.' : `Royalty-free for your own ${tier.maxScope === 2 ? 'indie' : 'indie, AA, and AAA'} games. New licenses: ${e.terms}. Three-year contracts retain their original terms; demand depends on quality, studio brand, engine age, and the yearly market. Support costs apply. Selling transfers all IP and contracts.`}`
     },
     children: (g) => {
       const found = current(g, a.id)

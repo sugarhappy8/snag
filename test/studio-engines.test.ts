@@ -7,6 +7,7 @@ import { engineDevelopmentBlock, sellStudioEngine, simulateStudioEngines, startS
 import { assignedDevs, normalizeStudio, studioValue, type StudioState } from '../src/game/business/gamestudio-state'
 import { saveStudio, simulateStudioYear, startGreenlight, studioInternals, studioManagerTurn, studioNodes, studioOf } from '../src/game/business/gamestudio'
 import { runScript } from '../src/game/scripts'
+import { neutralAmbition } from './effort-parity-kit'
 import type { Asset, GameState, Json, MenuAction, MenuNode, ModalItem } from '../src/game/types'
 
 function studio(seed = 937, countryId = 'us') {
@@ -467,6 +468,7 @@ describe('engine licenses and studio accounts', () => {
 
   it.each(['us', 'kr', 'jp'] as const)('books engine development and licensing in %s studio accounts without personal or duplicate income', country => {
     const { g, a, b } = studio(937, country)
+    neutralAmbition(g)
     startStudioEngine(g, a.id, 'indie', 'Local Engine')
     const personal = g.character.money
     const cash = b.cash, setup = b.yearCosts
