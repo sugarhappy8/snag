@@ -9,6 +9,7 @@ import type { GameState, Json } from '../types'
 import { compactTrade, initialTrade, normalizeTrade, type CountryTrade } from './trade'
 import { normalizeRivals, type RivalActor } from './actors-state'
 import { initialBudget, normalizeBudget, type GovernmentBudget } from './government'
+import { HISTORY_YEARS } from './focus'
 
 export const ECONOMY_KEY = 'worldEconomy'
 export const ECONOMY_VERSION = 2
@@ -167,7 +168,7 @@ export function economyState(g: GameState): EconomyState | null {
   for (const [id, row] of Object.entries(record(r.countries))) if (validCountries.has(id)) out.countries[id] = normalizeCountry(row, id, year)
   for (const [id, row] of Object.entries(record(r.previous))) if (validCountries.has(id)) out.previous[id] = normalizeCountry(row, id, year - 1)
   for (const [id, rows] of Object.entries(record(r.history))) if (validCountries.has(id) && Array.isArray(rows)) {
-    out.history[id] = rows.slice(-32).map(record).filter(p => typeof p.year === 'number' && Number.isFinite(p.year)).map(p => ({ year: numeric(p.year, year, 1900, 100000), growth: numeric(p.growth, .02, -.2, .16), unemployment: numeric(p.unemployment, .06, .015, .4), inflation: numeric(p.inflation, .025, -.5, INFLATION_CEILING), rate: numeric(p.rate, .04, -.1, 1e5), housing: numeric(p.housing, 1, .4, 4), market: numeric(p.market, 1, .12, 8), priceScale: numeric(p.priceScale, 1, 1e-6, 1e6) }))
+    out.history[id] = rows.slice(-HISTORY_YEARS).map(record).filter(p => typeof p.year === 'number' && Number.isFinite(p.year)).map(p => ({ year: numeric(p.year, year, 1900, 100000), growth: numeric(p.growth, .02, -.2, .16), unemployment: numeric(p.unemployment, .06, .015, .4), inflation: numeric(p.inflation, .025, -.5, INFLATION_CEILING), rate: numeric(p.rate, .04, -.1, 1e5), housing: numeric(p.housing, 1, .4, 4), market: numeric(p.market, 1, .12, 8), priceScale: numeric(p.priceScale, 1, 1e-6, 1e6) }))
   }
   // Signed jobs/lending retain gross accumulated changes across midyear reloads;
   // annual simulation nets them and applies the much tighter national effect caps.

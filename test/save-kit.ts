@@ -1,7 +1,8 @@
 // Test doubles for the save storage, shared by the save tests: a localStorage in memory, a
 // hand-written fake of the IndexedDB calls idbSaveBackend makes, and an async backend whose writes
-// the test settles by hand.
-import type { AsyncSaveBackend } from '../src/game/save-backends'
+// the test settles by hand. R2-S5 added the chunk-aware doubles at the end: a chunk store over a Map,
+// and a controlled backend whose chunk puts the test settles by hand too.
+import type { AsyncChunkStore, AsyncSaveBackend, SyncChunkStore } from '../src/game/save-backends'
 
 /** A localStorage that lives in memory. `data` is what it holds, to arrange a test and to check it. */
 export function memoryLocalStorage(initial: Record<string, string> = {}): Storage & { data: Map<string, string> } {
@@ -291,5 +292,101 @@ export function controlledBackend(initial?: string): ControlledBackend {
       write.reject(err)
     },
   }
+  return backend
+}
+
+// --- Chunk stores the test drives (R2-S5) ------------------------------------------------------
+
+export type MemoryChunkStore = SyncChunkStore & {
+  /** What the store holds, by id. Arrange a test with it and check it. */
+  data: Map<string, string>
+  /** The length of every record handed to put(), in order, whether or not it was stored. */
+  putSizes: number[]
+  /** Set it and put() says false (a full storage) and stores nothing. */
+  refuse: boolean
+}
+
+/**
+ * A SyncChunkStore over a Map that records the size of each put, to stand in for the chunk store of a
+ * localStorage or memory backend. Ids are not checked: the real stores refuse an id outside the codec's
+ * grammar, and the codec's own tests pin that every id it makes is inside it.
+ */
+export function memoryChunkStore(initial: Record<string, string> = {}): MemoryChunkStore {
+  const data = new Map(Object.entries(initial))
+  const store: MemoryChunkStore = {
+    data,
+    putSizes: [],
+    refuse: false,
+    ids: () => [...data.keys()].sort(),
+    get: (id) => data.get(id) ?? null,
+    put: (id, record) => {
+      store.putSizes.push(record.length)
+      if (store.refuse) return false
+      data.set(id, record)
+      return true
+    },
+    remove: (ids) => {
+      for (const id of ids) data.delete(id)
+    },
+  }
+  return store
+}
+
+export type ChunkedBackend = ControlledBackend & {
+  readonly chunks: AsyncChunkStore
+  /** Every batch handed to chunks.put(), in order. */
+  chunkPuts: (readonly (readonly [id: string, record: string])[])[]
+  /** The chunk records of the puts that settled (and the ones it started with), by id. */
+  chunkData: Map<string, string>
+  /** Resolve chunk put number `i` (default: the newest): its entries are stored, all of them. A put that already settled is left alone. */
+  settleChunks(i?: number): void
+  /** Reject chunk put number `i` (default: the newest) with `err`: none of its entries is stored. A put that already settled is left alone. */
+  failChunks(i?: number, err?: Error): void
+}
+
+/**
+ * A controlledBackend that has a chunk store as well. Its put stays pending until the test settles or
+ * fails it (all of the batch or none of it, like the IndexedDB store's one transaction); ids(), get()
+ * and remove() answer at once. `initial` is the head record the backend starts with, `chunks` the chunk
+ * records it starts with.
+ */
+export function chunkedBackend(initial?: string, chunks: Record<string, string> = {}): ChunkedBackend {
+  const chunkData = new Map(Object.entries(chunks))
+  const pending: { resolve(): void; reject(err: Error): void; done: boolean }[] = []
+  const nth = (i: number) => {
+    const put = pending[i]
+    if (!put) throw new Error(`chunkedBackend has no chunk put #${i}: ${pending.length} so far`)
+    return put
+  }
+  const store: AsyncChunkStore = {
+    ids: async () => [...chunkData.keys()].sort(),
+    get: async (ids) => ids.map((id) => chunkData.get(id) ?? null),
+    put: (entries) =>
+      new Promise<void>((resolve, reject) => {
+        backend.chunkPuts.push(entries)
+        pending.push({ resolve, reject, done: false })
+      }),
+    remove: async (ids) => {
+      for (const id of ids) chunkData.delete(id)
+    },
+  }
+  const backend: ChunkedBackend = Object.assign(controlledBackend(initial), {
+    chunks: store,
+    chunkPuts: [] as ChunkedBackend['chunkPuts'],
+    chunkData,
+    settleChunks: (i = backend.chunkPuts.length - 1) => {
+      const put = nth(i)
+      if (put.done) return
+      put.done = true
+      for (const [id, record] of backend.chunkPuts[i]) chunkData.set(id, record)
+      put.resolve()
+    },
+    failChunks: (i = backend.chunkPuts.length - 1, err = new Error('controlled chunk put failure')) => {
+      const put = nth(i)
+      if (put.done) return
+      put.done = true
+      put.reject(err)
+    },
+  })
   return backend
 }

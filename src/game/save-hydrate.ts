@@ -7,26 +7,59 @@
 // has kept a life in IndexedDB is marked (idbMarked): from then on a record in the legacy key is a
 // backup written because the database could not be reached or the page was closing, so it is the
 // newer one, and when the database can't be reached a notice says the life is out of reach.
-import type { AsyncSaveBackend, SaveBackend } from './save-backends'
+//
+// R2-S7 (K.5): a record can be a HEAD plus CHUNK records (save-codec.ts). The boot reads the chunks a head names (from IndexedDB for
+// the database's record, from the localStorage chunk store for the legacy and the local ones) before it judges the record, inside
+// the same waits and the same budget as everything else. A chunk that is missing or hostile does not cost the life: the game plays
+// with that part started fresh and a copy of what was lost is kept (a `partial` notice). A head whose core is unreadable is damaged
+// and kept whole, as any damaged record is; a later version's head is newer before any chunk is read, and its chunks are never
+// touched. A database that answers for the head and not for its chunks is out of reach as a whole, like one that hangs.
+import type { AsyncChunkStore, AsyncSaveBackend, SaveBackend, SyncChunkStore } from './save-backends'
 import { IDB_MARKER_KEY, idbMarked, idbSaveBackend, localSaveBackend, markIdbInUse, SAVE_KEY } from './save-backends'
+import { assembleStored, type ChunkSource } from './save-chunk-read'
+import { encodeSave, isChunkedHead, type LostChunk } from './save-codec'
 import type { SaveNoticeKind } from './save-quarantine'
 import { quarantineRecord, scanQuarantine } from './save-quarantine'
-import { migrateSave } from './save-schema'
+import { migrateSave, SAVE_SCHEMA } from './save-schema'
 import { activeBackend, activeBackendName, addSaveNotice, primeCache, protectNewerRecord, savedThisSession, setSaveBackend } from './save-store'
 import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 import type { GameState } from './types'
 
+export type { ChunkSource }
+
 /** What a stored record turned out to be. */
 export type Diagnosis =
-  | { kind: 'ready'; game: GameState; from: number }
+  | {
+      kind: 'ready'
+      game: GameState
+      from: number
+      /** Present when the record was a head with chunks: what of it did not load (empty when all of it did). The game plays without those parts. */
+      lost?: readonly LostChunk[]
+    }
   | { kind: 'newer' | 'tooOld'; version: number }
   | { kind: 'damaged' }
 
-/** Decode (plain, gz1 or gz2), JSON.parse, migrateSave. Any throw is 'damaged'. Never rejects. */
-export async function diagnoseRecord(raw: string, opts?: { minSchema?: number }): Promise<Diagnosis> {
+/**
+ * Decode (plain, gz1 or gz2), JSON.parse, migrateSave. A head with chunks is first assembled from the chunks `opts.chunks` fetches
+ * (without a source every chunk is missing); a later version's head is `newer` before any chunk is fetched. Any throw is 'damaged'.
+ * Never rejects.
+ */
+export async function diagnoseRecord(raw: string, opts?: { minSchema?: number; chunks?: ChunkSource }): Promise<Diagnosis> {
   try {
-    const found = migrateSave(JSON.parse(await decodeSnapshotRecord(raw)), opts)
-    return found.kind === 'invalid' ? { kind: 'damaged' } : found
+    const value: unknown = JSON.parse(await decodeSnapshotRecord(raw))
+    const minSchema = opts?.minSchema === undefined ? undefined : { minSchema: opts.minSchema }
+    if (!isChunkedHead(value)) {
+      const found = migrateSave(value, minSchema)
+      return found.kind === 'invalid' ? { kind: 'damaged' } : found
+    }
+    // A later version's head is never read further: its chunks are not ours to fetch.
+    const version = value.schemaVersion as number
+    if (version > SAVE_SCHEMA) return { kind: 'newer', version }
+    const assembled = await assembleStored(value, opts?.chunks)
+    if (assembled.kind !== 'ready') return { kind: 'damaged' }
+    const found = migrateSave(assembled.game, { ...minSchema, versions: assembled.versions })
+    if (found.kind === 'invalid') return { kind: 'damaged' }
+    return found.kind === 'ready' ? { ...found, lost: assembled.lost } : found
   } catch {
     return { kind: 'damaged' }
   }
@@ -49,7 +82,7 @@ export interface HydrateOptions {
   factory?: IDBFactory
   /** false: do not use IndexedDB at all (the FLAGS.idbSaves switch). Default true. */
   idb?: boolean
-  /** Budget for opening IndexedDB and reading its record, again for the import write, and for each copy and scan; default 3000. */
+  /** Budget for opening IndexedDB and reading its record, for reading the chunks it names, again for the import write, and for each copy and scan; default 3000. */
   timeoutMs?: number
   /** Budget for the whole boot; past it the page plays from localStorage. Default 8000. */
   budgetMs?: number
@@ -106,10 +139,16 @@ function addUnreachableNotice(): void {
   addSaveNotice({ id: IDB_MARKER_KEY, kind: 'unreachable', bytes: 0 })
 }
 
-/** Takes the localStorage record away, but only while it is still `raw`: another tab may have written a newer backup meanwhile. */
+/**
+ * Takes the localStorage record away, but only while it is still `raw`: another tab may have written a newer backup meanwhile.
+ * With the record goes every chunk key of this generation: a head that is gone names none of them, and they would sit in the
+ * site's quota for good.
+ */
 function removeLegacyIf(raw: string): void {
   const legacy = localSaveBackend()
-  if (legacy.read() === raw) legacy.remove()
+  if (legacy.read() !== raw) return
+  legacy.remove()
+  legacy.chunks?.remove(legacy.chunks.ids())
 }
 
 // --- Waiting -------------------------------------------------------------------------------
@@ -148,6 +187,42 @@ const isReady = (c: Candidate): c is Ready => c.found.kind === 'ready'
 const versionOf = (c: Candidate): number | undefined => ('version' in c.found ? c.found.version : undefined)
 /** A record that read fine but lost is a 'stale' copy; the others are kept as what they are. */
 const kindOf = (c: Candidate): SaveNoticeKind => (c.found.kind === 'ready' ? 'stale' : c.found.kind)
+/**
+ * What is kept of a record that lost: the record itself, byte for byte. A head with chunks that read fine is kept as the whole game
+ * instead, because the chunks it names go with it (the legacy ones are swept, the database's are swept by the next save) and a head
+ * alone would be a copy that can't be played.
+ */
+const copyOf = (c: Candidate): string => (c.found.kind === 'ready' && c.found.lost !== undefined ? JSON.stringify(c.found.game) : c.raw)
+
+/** The chunk records of a database as a ChunkSource: the rows by id. It rejects when the database fails. */
+function databaseSource(store: AsyncChunkStore): ChunkSource {
+  return async (ids) => {
+    const rows = await store.get(ids)
+    return new Map(ids.map((id, i) => [id, rows[i] ?? null] as const))
+  }
+}
+
+/** The chunk records of localStorage (or of a synchronous backend) as a ChunkSource. */
+function localSource(store: SyncChunkStore | undefined): ChunkSource | undefined {
+  return store === undefined ? undefined : async (ids) => new Map(ids.map((id) => [id, store.get(id)] as const))
+}
+
+/**
+ * The same, for the boot: a read that fails or goes unanswered for `timeoutMs` marks the database `silent` and answers with
+ * nothing, and the boot throws that candidate away: a record whose chunks could not be read is not a record with missing chunks.
+ */
+function bootSource(store: AsyncChunkStore | undefined, timeoutMs: number, reach: { silent: boolean }): ChunkSource | undefined {
+  if (store === undefined) return undefined
+  const read = databaseSource(store)
+  return async (ids) => {
+    const rows = await within(read(ids), timeoutMs).catch((): typeof TIMED_OUT => TIMED_OUT)
+    if (rows === TIMED_OUT) {
+      reach.silent = true
+      return new Map()
+    }
+    return rows
+  }
+}
 
 interface Chosen {
   /** What the chosen backend holds in the main slot. */
@@ -187,19 +262,37 @@ async function chooseBackend(opts: HydrateOptions, timeoutMs: number, marked: bo
 /**
  * Copies the legacy game into IndexedDB and reads it back: true only when it came back identical,
  * and only then does the localStorage record go. Any failure, mismatch or silence past `timeoutMs`
- * is false and leaves localStorage as it was.
+ * is false and leaves localStorage as it was. A database with a chunk store gets the game as a head
+ * with chunks (the chunks first, the head after them, so the head names only what the database
+ * holds) and is read back through its own chunks; one without gets the one self-contained record.
  */
 async function importLegacy(backend: AsyncSaveBackend, game: GameState, raw: string, timeoutMs: number, check: () => void): Promise<boolean> {
   const json = JSON.stringify(game)
   const attempt = { abandoned: false }
   const copy = async (): Promise<boolean> => {
-    const record = await encodeSnapshotRecord(json)
-    // Past the budget the page has gone back to localStorage: nothing more is written.
+    const store = backend.chunks
+    if (store === undefined) {
+      const record = await encodeSnapshotRecord(json)
+      // Past the budget the page has gone back to localStorage: nothing more is written.
+      if (attempt.abandoned) return false
+      await backend.write(record)
+      if (attempt.abandoned) return false
+      const back = await backend.read()
+      return back !== null && (await decodeSnapshotRecord(back)) === json
+    }
+    const enc = encodeSave(game)
+    const entries: [id: string, record: string][] = []
+    for (const [id, text] of enc.chunks) entries.push([id, await encodeSnapshotRecord(text)])
+    const head = await encodeSnapshotRecord(enc.head)
     if (attempt.abandoned) return false
-    await backend.write(record)
+    if (entries.length > 0) await store.put(entries)
+    if (attempt.abandoned) return false
+    await backend.write(head)
     if (attempt.abandoned) return false
     const back = await backend.read()
-    return back !== null && (await decodeSnapshotRecord(back)) === json
+    if (back === null) return false
+    const found = await diagnoseRecord(back, { chunks: databaseSource(store) })
+    return found.kind === 'ready' && found.lost?.length === 0 && JSON.stringify(found.game) === json
   }
   try {
     const stored = await within(copy(), timeoutMs)
@@ -222,7 +315,7 @@ async function importLegacy(backend: AsyncSaveBackend, game: GameState, raw: str
  */
 async function shelve(loser: Candidate, overwritten: boolean, timeoutMs: number, check: () => void): Promise<boolean> {
   const backend = activeBackend()
-  const copy = await within(quarantineRecord(backend, loser.raw, kindOf(loser), versionOf(loser)), timeoutMs)
+  const copy = await within(quarantineRecord(backend, copyOf(loser), kindOf(loser), versionOf(loser)), timeoutMs)
   check()
   if (copy === TIMED_OUT || copy === null) return false
   try {
@@ -247,6 +340,56 @@ function inPlace(c: Candidate): void {
   addSaveNotice(version === undefined ? { id: SAVE_KEY, kind, bytes: c.raw.length } : { id: SAVE_KEY, kind, bytes: c.raw.length, version })
 }
 
+// --- A save that loaded in part ------------------------------------------------------------
+
+/**
+ * A kept copy of the part of a save that did not load begins with this, so that a rescan of the kept copies knows it without
+ * parsing megabytes: `{ al: 'partial-save', head, chunks }`, the head as it was and the text of each hostile chunk by its id.
+ */
+const PARTIAL_PREFIX = '{"al":"partial-save",'
+/** The most of one hostile chunk the copy keeps, and of all of them together (characters). */
+const PARTIAL_CHUNK_CHARS = 2_000_000
+const PARTIAL_TOTAL_CHARS = 3_000_000
+
+const isPartialCopy = (raw: string): boolean => raw.startsWith(PARTIAL_PREFIX)
+
+/** The copy of what a head lost: the head, and the hostile texts (never a missing one: there is no text). */
+async function partialCopy(raw: string, lost: readonly LostChunk[]): Promise<string> {
+  const head: unknown = JSON.parse(await decodeSnapshotRecord(raw))
+  if (!isChunkedHead(head)) throw new Error('The record is not a head with chunks')
+  const manifest = head.chunks as Record<string, unknown>
+  const texts = new Map<string, string>()
+  let total = 0
+  for (const loss of lost) {
+    if (loss.raw === undefined) continue
+    const ref = manifest[loss.name]
+    const id = typeof ref === 'object' && ref !== null ? (ref as { id?: unknown }).id : undefined
+    if (typeof id !== 'string' || texts.has(id)) continue
+    const text = loss.raw.length > PARTIAL_CHUNK_CHARS ? loss.raw.slice(0, PARTIAL_CHUNK_CHARS) : loss.raw
+    if (total + text.length > PARTIAL_TOTAL_CHARS) continue
+    texts.set(id, text)
+    total += text.length
+  }
+  return JSON.stringify({ al: 'partial-save', head, chunks: Object.fromEntries(texts) })
+}
+
+/**
+ * The game plays, with the parts that did not load started fresh, and a copy of what was lost is kept for the player to download.
+ * Best effort and never in the winner's way: with five copies kept already, or no room, there is no copy and no notice.
+ */
+async function keepPartial(winner: Ready, timeoutMs: number, check: () => void): Promise<void> {
+  const lost = winner.found.lost
+  if (lost === undefined || lost.length === 0) return
+  try {
+    const copy = await within(partialCopy(winner.raw, lost).then((text) => quarantineRecord(activeBackend(), text, 'damaged')), timeoutMs)
+    check()
+    if (copy !== TIMED_OUT && copy !== null) addSaveNotice({ ...copy, partial: true })
+  } catch (err) {
+    if (err === ABANDONED) throw err
+    console.error('Could not keep a copy of the part of the save that did not load:', err)
+  }
+}
+
 // --- Boot ----------------------------------------------------------------------------------
 
 /** The same game once migrated: a record and its copy (a backup the database caught up with) need no second copy. */
@@ -264,17 +407,29 @@ async function boot(opts: HydrateOptions, run: Run, marked: boolean): Promise<Hy
   const legacyRaw = localSaveBackend().read()
   const chosen = await chooseBackend(opts, timeoutMs, marked, check)
   let fellBack = chosen.fellBack
-  const backend = activeBackend()
+  let backend = activeBackend()
 
   const candidates: Candidate[] = []
-  const consider = async (from: Candidate['from'], raw: string | null): Promise<void> => {
-    if (raw) candidates.push({ from, raw, found: await diagnoseRecord(raw, minSchema) })
+  const consider = async (from: Candidate['from'], raw: string | null, chunks: ChunkSource | undefined): Promise<void> => {
+    if (raw) candidates.push({ from, raw, found: await diagnoseRecord(raw, { ...minSchema, chunks }) })
   }
   if (backend.kind === 'async') {
-    await consider('idb', chosen.record)
-    await consider('legacy', legacyRaw)
+    const reach = { silent: false }
+    await consider('idb', chosen.record, bootSource(backend.chunks, timeoutMs, reach))
+    check()
+    if (reach.silent) {
+      // The database answered for the head and not for the chunks it names: it is out of reach as a whole, as one that hangs
+      // is. Nothing it holds is judged, copied or removed; the page plays from localStorage.
+      candidates.length = 0
+      setSaveBackend(null)
+      fellBack = true
+      backend = activeBackend()
+      if (backend.kind === 'sync') await consider('local', backend.read(), localSource(backend.chunks))
+    } else {
+      await consider('legacy', legacyRaw, localSource(localSaveBackend().chunks))
+    }
   } else {
-    await consider('local', chosen.record)
+    await consider('local', chosen.record, localSource(backend.chunks))
   }
   check()
 
@@ -326,8 +481,15 @@ async function boot(opts: HydrateOptions, run: Run, marked: boolean): Promise<Hy
       else inPlace(loser)
     }
 
+    // Before the import below can remove the legacy record and the chunks it names.
+    if (winner !== null) await keepPartial(winner, timeoutMs, check)
+
     if (winner !== null && winner.from === 'idb') {
-      primeCache(JSON.stringify(winner.found.game))
+      // The database's chunks are known to be in storage, so the first save writes only what it changed (and sweeps the rest).
+      const stored =
+        backend.kind === 'async' && backend.chunks !== undefined ? await within(backend.chunks.ids(), timeoutMs).catch((): typeof TIMED_OUT => TIMED_OUT) : TIMED_OUT
+      check()
+      primeCache(JSON.stringify(winner.found.game), stored === TIMED_OUT ? undefined : stored)
       source = 'idb'
       markIdbInUse()
     } else if (winner !== null && winner.from === 'local') {
@@ -356,7 +518,8 @@ async function boot(opts: HydrateOptions, run: Run, marked: boolean): Promise<Hy
 /** Lists the copies already kept, those made just now among them. A failure, or a store too slow to answer, changes nothing else. */
 async function listKeptCopies(minSchema: { minSchema: number } | undefined, timeoutMs: number, check: () => void): Promise<void> {
   try {
-    const diagnose = async (raw: string): Promise<{ kind: SaveNoticeKind; version?: number }> => {
+    const diagnose = async (raw: string): Promise<{ kind: SaveNoticeKind; version?: number; partial?: true }> => {
+      if (isPartialCopy(raw)) return { kind: 'damaged', partial: true }
       const found = await diagnoseRecord(raw, minSchema)
       if (found.kind === 'ready') return { kind: 'stale' }
       return found.kind === 'damaged' ? { kind: 'damaged' } : { kind: found.kind, version: found.version }

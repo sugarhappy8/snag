@@ -405,7 +405,7 @@ describe('music state', () => {
     }
   }
 
-  it('keeps a maxed record under 3,000 nodes and about 20 KB and SAVE_SCHEMA at 2', () => {
+  it('keeps a maxed record under 3,000 nodes and about 20 KB and SAVE_SCHEMA at 3', () => {
     for (const widest of [false, true]) {
       const r = musicStore.read(maxedRecord(widest), g)
       expect([r.ledger.length, r.history.length, r.tours.length, r.mods.length, r.awards.length, r.rows.length, r.memory.length, Object.keys(r.cool).length, r.done.length]).toEqual([40, 8, 8, 6, 24, 12, 16, 24, 24])
@@ -418,6 +418,6 @@ describe('music state', () => {
       expect(musicStore.read(r, g)).toEqual(r) // reading a record again changes nothing
       expect(normalizeExtra({ ...r } as never, g)).toEqual(expect.objectContaining({ migrated: true, policy: { samples: 'cleared' } }))
     }
-    expect(SAVE_SCHEMA).toBe(2)
+    expect(SAVE_SCHEMA).toBe(3)
   })
 })

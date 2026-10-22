@@ -758,7 +758,7 @@ describe('(e) the v4.0.2 fixture', () => {
     const g = result.game
     expect(result.from).toBe(1)
     expect(g.schemaVersion).toBe(SAVE_SCHEMA)
-    expect(SAVE_SCHEMA).toBe(2)
+    expect(SAVE_SCHEMA).toBe(3)
     expect(g.flags.inbox).toBeUndefined()
     expect(g.flags.textMem).toBeUndefined()
     expect(readInbox(g)).toEqual({ v: 1, total: 0, seen: 0, items: [] })

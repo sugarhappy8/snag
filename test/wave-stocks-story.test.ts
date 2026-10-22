@@ -59,7 +59,7 @@ describe('old saves, money paths and notes', () => {
     const r = migrateSave(structuredClone(JSON.parse(gunzipSync(readFileSync('test/fixtures/save-v1.json.gz')).toString()) as Record<string, unknown>))
     if (r.kind !== 'ready') throw new Error(`expected a ready save, got ${JSON.stringify(r)}`)
     const game = r.game; for (let i = 0; i < 3; i++) { game.queue = []; ageUp(game) }
-    expect([SAVE_SCHEMA, ['techWaves', 'techBase'].filter((k) => k in game.flags), investmentListing(game).length > 0]).toEqual([2, [], true])
+    expect([SAVE_SCHEMA, ['techWaves', 'techBase'].filter((k) => k in game.flags), investmentListing(game).length > 0]).toEqual([3, [], true])
   })
   it('no new code path adds money (C-03)', () => {
     for (const f of ['invest/wave-stocks.ts', 'invest/clock.ts', 'business/wave-insider.ts']) expect(readFileSync(`src/game/${f}`, 'utf8'), f).not.toMatch(/\b(addMoney|earnIncome|realize|spend)\(/)

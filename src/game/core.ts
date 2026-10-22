@@ -24,9 +24,10 @@ import type {
 export const GAME_VERSION = 1
 /**
  * Which shape of save the game writes (GameState.schemaVersion). Changing the shape of the saved
- * state bumps it and adds a step to the chain in save-schema.ts.
+ * state bumps it and adds a step to the chain in save-schema.ts. 3 from v5.0.0: versioned slices
+ * and chunks (save-slices.ts); a build that only knows 2 files such a save as `newer` and keeps it.
  */
-export const SAVE_SCHEMA = 2
+export const SAVE_SCHEMA = 3
 
 export function clamp(n: number, lo = 0, hi = 100): number {
   if (Number.isNaN(n)) return lo

@@ -593,11 +593,11 @@ describe('migrateSave repairs the new notice fields', () => {
     expect(JSON.stringify(again.game.queue)).toBe(JSON.stringify(result.game.queue))
   })
 
-  it('still loads the v4.0.2 fixture at schema 2', () => {
-    expect(SAVE_SCHEMA).toBe(2)
+  it('still loads the v4.0.2 fixture at schema 3', () => {
+    expect(SAVE_SCHEMA).toBe(3)
     const result = migrateSave(structuredClone(fixture))
     expect(result.kind).toBe('ready')
-    if (result.kind === 'ready') expect(result.game.schemaVersion).toBe(2)
+    if (result.kind === 'ready') expect(result.game.schemaVersion).toBe(3)
   })
 
   it('a loaded save with a damaged inbox is repaired the first time it is written', () => {

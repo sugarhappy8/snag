@@ -13,12 +13,18 @@
 // "Raw" is the characters of JSON.stringify, the string saveGame writes; "gzip" is node's gzip at level
 // 6. Each part is measured on its own, so the parts don't add up exactly to the whole save.
 //
+// From R2 (save v3) a second table lists the records a chunked save is stored as: the head (the core), the `world` chunk, one row
+// per completed decade of the life log (`log.<n>`) and one per entity shard (`e.<kind>.<n>`), each with its raw characters and its
+// gzip, then their sum (gzip taken record by record, as storage compresses them). The budgets they are held to (core 400 KB, world
+// 1 MB and 600 KB gzipped, a tap writing no chunk) are asserted in test/save-budget.test.ts.
+//
 // --fixture writes gzip(JSON.stringify(a 3-year life with two companies)), a save from the age of 33.
 // test/fixtures/save-v1.json.gz was written by it on the unchanged v2.4.0 engine, as a real old save
 // for the migration tests. Don't regenerate it: a later engine would write a later save.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { encodeSave } from '../src/game/save-codec'
 import type { GameState, Json } from '../src/game/types'
 import { probeLife, type ProbeOptions } from '../test/probe-life'
 
@@ -66,9 +72,21 @@ interface Row {
   gzip: number
 }
 
-function measure(label: string, value: unknown): Row {
-  const json = JSON.stringify(value)
+function measureText(label: string, json: string): Row {
   return { label, raw: json.length, gzip: gzipSync(json, { level: 6 }).length }
+}
+
+function measure(label: string, value: unknown): Row {
+  return measureText(label, JSON.stringify(value))
+}
+
+/** The records a chunked save is stored as: the head, then each chunk in the order of the manifest (world, log decades, entity shards). */
+function chunkRowsOf(g: GameState): Row[] {
+  const e = encodeSave(g)
+  const rows: Row[] = [measureText('head (core)', e.head)]
+  for (const name of Object.keys(e.manifest)) rows.push(measureText(`chunk ${name}`, e.chunks.get(e.manifest[name]!.id)!))
+  rows.push({ label: 'stored in all', raw: rows.reduce((a, r) => a + r.raw, 0), gzip: rows.reduce((a, r) => a + r.gzip, 0) })
+  return rows
 }
 
 /** The whole save, the three world-economy frames, the life log and the assets, and what is left. */
@@ -104,5 +122,14 @@ if (fixtureAt >= 0) {
   console.log()
   console.log('| Part | Raw characters | Gzip bytes (level 6) | Gzip % of raw |')
   console.log('| --- | ---: | ---: | ---: |')
-  for (const r of rowsOf(g)) console.log(`| ${r.label} | ${commas(r.raw)} | ${commas(r.gzip)} | ${((r.gzip / r.raw) * 100).toFixed(2)}% |`)
+  const print = (rows: Row[]): void => {
+    for (const r of rows) console.log(`| ${r.label} | ${commas(r.raw)} | ${commas(r.gzip)} | ${((r.gzip / r.raw) * 100).toFixed(2)}% |`)
+  }
+  print(rowsOf(g))
+  console.log()
+  console.log('Stored as a head and chunks (save v3):')
+  console.log()
+  console.log('| Record | Raw characters | Gzip bytes (level 6) | Gzip % of raw |')
+  console.log('| --- | ---: | ---: | ---: |')
+  print(chunkRowsOf(g))
 }

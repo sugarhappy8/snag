@@ -11,7 +11,11 @@ describe('probeLife', () => {
     const g = probeLife({ seed, birthYear: 1996, businesses: 2, years: 3 })
     expect(g.character.alive).toBe(true)
     expect(businessAssets(g)).toHaveLength(2)
-    expect(Object.keys(economyState(g)!.previous).length).toBeGreaterThan(100)
+    // R2-S10 (A.K9): populated means the countries a reader can name, not all 102. The founder lives in one country, so the
+    // residence is there and the count is far under the 40 that the focus allows. (The title is the name moved-seeds.md row 11 holds.)
+    const previous = Object.keys(economyState(g)!.previous)
+    expect(previous).toContain(g.character.countryId)
+    expect(previous.length).toBeLessThanOrEqual(40)
   })
 
   // The search plays one ten-year life per seed it tries (about 0.2 s each) and a death by illness is rare, so it can take
