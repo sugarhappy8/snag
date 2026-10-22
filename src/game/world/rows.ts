@@ -116,7 +116,7 @@ export function mergeRows<R extends IndexRow>(old: readonly R[], present: Readon
  * a second sync in a year changes nothing, and a state whose shard roots are frozen can be synced). When the shard is absent and the
  * new one is the empty one, nothing is written at all: an old save keeps reading as empty, with no world made for it.
  */
-export function commitShard(g: GameState, name: 'people' | 'firms' | 'homes' | 'holdings', next: object, empty: object): void {
+export function commitShard(g: GameState, name: 'people' | 'firms' | 'homes' | 'holdings' | 'lod', next: object, empty: object): void {
   const have: unknown = readWorld(g)[name]
   if (have === undefined ? sameJson(next, empty) : sameJson(next, have)) return
   ;(ensureWorld(g) as Record<string, unknown>)[name] = next
