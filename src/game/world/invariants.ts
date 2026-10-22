@@ -7,6 +7,7 @@
 //     merge a duplicate row and drop a bad one before this function could see it, and the point is to see it. Each: a v1 shard, a
 //     list of valid rows, one row for an id, at most the shard's cap of rows; the holdings: valid rows, one for each owner and asset,
 //     at most 1,200, every asset summing to 1 within 1e-6
+//   - the frontier (R3): a v1 shard of known fields whose rows, markets, lead and public research are inside their caps (world/frontier.ts)
 //   - the people of the game: unique ids, at most one living spouse
 //   - the index against the live records, only when the index was just built (see `live`): a row stamped with this year names a
 //     record that exists, no more fresh rows than the index may hold, every held asset is in the firms or the homes index
@@ -21,6 +22,7 @@ import { ledgerProblems } from '../kernel/ledger'
 import type { GameState } from '../types'
 import { HOLDING_ROWS_CAP, LOD_CAPS } from './caps'
 import { firmRef } from './firms'
+import { frontierProblems } from './frontier'
 import { OUTSIDE } from './holdings'
 import { homeRef } from './homes'
 import { npcFirmId, personRef } from './people'
@@ -140,6 +142,7 @@ export function worldProblems(g: GameState, opts?: WorldCheckOptions): string[] 
   const firms = indexShard('firms', world.firms, LOD_CAPS.firms, (r) => refOfKind(r.id, 'firm') !== null && refOfKind(r.owner, 'person') !== null && (r.form === 'biz' || r.form === 'npc'), out)
   const homes = indexShard('homes', world.homes, LOD_CAPS.homes, (r) => refOfKind(r.id, 'home') !== null && refOfKind(r.owner, 'person') !== null, out)
   const held = holdingsShard(world.holdings, out)
+  for (const p of frontierProblems(world.frontier)) out.push(`frontier: ${p}`)
 
   // The index against the records, when it was just built.
   const live = opts?.live ?? world.y === g.year

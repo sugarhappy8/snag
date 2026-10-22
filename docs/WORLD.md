@@ -21,6 +21,7 @@ and `src/game/kernel/ids.ts`.
   part of a cycle with the shards it holds. A test or module that calls `normalizeWorld` or `worldShard` imports `world/shards`.
 - The shards of R2: `ledger` (the books, `kernel/ledger.ts`), `people`, `firms`, `homes`, `holdings` and `lod`. The module registry
   of the Kernel track adds `facts` (the facts the bus recorded, at most 400, `world/facts.ts`); it joins the hub with one line.
+  R3 adds `frontier` (how far the world's research is ahead of the calendar path, `world/frontier.ts`, see "The frontier" below).
 - A shard is written by replacing its root (`ensureWorld(g).people = { ...next }`, or `commitShard`), never by editing it in place,
   because the save layer shares each shard root between drafts, frozen. The one exception is `ledger`, which every booking edits in
   place and which the save layer therefore treats as a core slice. Every writer has a test that runs it on a state whose shard roots
@@ -78,6 +79,7 @@ duplicate row and drop a bad one before the check could see it. It checks:
 - the root: a v1 plain object, `y` a year;
 - the three indexes and the holdings table: a v1 shard, a list of valid rows, one row for an id, at most the shard's cap of rows, and
   every asset in the holdings summing to 1 within 1e-6;
+- the frontier (R3): a v1 shard of known fields, every row valid and in its caps, no lead over 12 years and no lead on an AI capability;
 - the people of the game: unique ids and at most one living spouse;
 - the index against the records, only when the world was stamped this year (or `live: true`): a row stamped with this year names a
   record that exists, there are no more fresh rows than the index may hold, and every held asset is in the firms or the homes index.
@@ -143,6 +145,44 @@ what `normalizeWorld` makes of it. `test/world-acceptance.test.ts` loads twelve 
 an array, a future version, a ledger of 50,000 accounts, a people shard of 500 rows, balances of 1e300 and minus 1e300, a ledger
 whose identity is broken, holdings that sum to 7, an `lod` shard of strings, a `__proto__` key, an unknown shard that fills the
 save): each still loads, three years play, the world ends under 40,000 nodes with no unknown key, and the books hold.
+
+## The frontier
+
+Since R3 (v5.1.0) `g.world.frontier` keeps how far the world's research is ahead of the calendar path. History up to 2026 is fixed,
+so only the future is emergent: a push dated 2026 or earlier changes nothing. The code is `world/frontier.ts` (the shard, its one
+writer and its reader), `world/frontier-fields.ts` (the fields) and the ceilings in `world/caps.ts` (`FRONTIER_CAPS`).
+
+- A field is one of 20: the 12 future-facing wave kinds (`ai`, `chips`, `drug`, `space`, `ev`, `automation`, `quantum`, `security`,
+  `fusion`, `neuro`, `drones`, `carbon`) and the 8 AI capabilities (`ai.language` to `ai.science`). The 8 `ai.*` fields are spill
+  only: they give public research and rival pressure, to themselves and to `ai`, and never a lead. The table has room for 32.
+- A field keeps `fold` plus its rows (the lead, in whole centi-years), `pub` (public research other researchers can use, in tenths
+  of an odds point), `ly` (the year of the newest push), `yg` (what it gained in that year) and the newest rows `{ y, w, m, d, o }`:
+  year, who (`you` or `rival`), market, centi-years added, origin hash.
+- Nothing exists until a push. The shard is made by the first accepted disclosure, so an old save, and any life that never meets a
+  push, has no `frontier` key and is byte for byte what v5.0.0 made.
+- The one writer is `applyDisclosure(g, { field, year, size, origin, by, market?, shield? })`. It refuses, in this order, `bad` (the
+  shape), `history` (a year up to 2026), `future` (a year after `g.year`: no foresight), `secret` (a secret is not disclosed) and
+  `repeat` (the same year and origin is stored already), and a refusal writes nothing, not even a world. Otherwise it draws one luck
+  number from the named stream `frontier` (`outcomeStream`, so a Time Machine jump re-rolls the year it lands in), adds one row and
+  replaces the shard root. It reads no clock and never `g.rng`.
+- Readers are pure: `readFrontier`, `frontierLead` (years, two places), `frontierSpill` (whole points), `frontierRows`, `lastPush`.
+  An absent or hostile shard reads as an empty one and nothing is created.
+
+| Rule | Value |
+|---|---|
+| Lead from one disclosure | `size x 2.0` years (you) or `x 1.5` (a rival), times a luck of 0.8 to 1.2 |
+| Most a field gains in a year, in all | 2 years |
+| Most a field holds | 12 years (`FRONTIER_CAPS.leadYears`) |
+| Spill from one disclosure | `1 + 5 size` points (1 to 6) times the shield: open 1, patent 0.5 (the default), secret refused |
+| Public research held | 18 points |
+| Rows | 6 for a market, 4 markets for a field; an older row folds into `fold`, so the lead is never lost |
+| State | at most 3,600 nodes for all 20 fields at their caps; a life with a few pushes is under 150 |
+
+- Bounded and hostile-proof: `normalizeFrontier` keeps only the known fields, whole numbers inside their ranges and valid rows (one
+  for a year and an origin, oldest year first), applies the caps of 6 rows, 4 markets, 2 years a year and 12 years, forces the
+  lead of an AI capability to 0, drops an empty field, and returns a valid shard as itself. `frontierProblems` names every way a stored
+  shard is wrong, and `worldProblems` prints each as a "frontier: ..." line. `worldBudget` counts the rows against the caps.
+- Load order: the shard registers itself when `world/frontier.ts` loads, and `world/shards.ts` imports it, like `facts`.
 
 ## How to add a shard
 
