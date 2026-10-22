@@ -25,7 +25,8 @@ export function worldCash(g: GameState, b: BizState, delta: number, why: Reason)
 
 /**
  * The year closes and the company's cash becomes `next`. A company in the world books the change under `sales` or `inputs` (pass the
- * asset id when the asset is in scope, else the world is searched for the company, so the books name the firm). A company that is
+ * asset id when the asset is in scope, else the world is searched for the company, so the books name the firm) and tallies it as its
+ * operating result, apart from the one-offs booked under the same reasons (the cash walk tells them apart). A company that is
  * not in the world (a listing for sale, a forecast of a new division, an NPC's firm) only changes its cash, so a projection on a copy
  * never touches the books. The cash lands exactly on `next`, bit for bit, as the plain assignment it replaces did. Returns the change
  * of cash.
@@ -35,7 +36,7 @@ export function landCash(g: GameState, b: BizState, next: number, firm?: string)
   if (!Number.isFinite(next) || !Number.isFinite(before)) return 0
   const delta = next - before
   const id = firm ?? firmOf(g, b)
-  if (id !== undefined) firmCash(g, b, delta, delta > 0 ? 'sales' : 'inputs', id)
+  if (id !== undefined) firmCash(g, b, delta, delta > 0 ? 'sales' : 'inputs', id, { operating: true })
   else firmPurse(b).add(delta)
   // A float change can leave the cash an ulp off the number the simulation chose; the books cannot see a change under a dollar.
   if (b.cash !== next) firmPurse(b).add(next - b.cash)

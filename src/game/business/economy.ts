@@ -45,6 +45,7 @@ import { legacyInventionCapital, legacyInventionStock } from '../workshop/legacy
 import { bankAdvanceOf } from './bank-state'
 import { allocatedCorporateTax } from './tax'
 import { landCash } from './settle'
+import { mergeTally } from '../kernel/tally'
 import { bookSupply, saveSupply, supplyConditions, supplyInventoryValue, supplyProfile, type SupplyBook, type SupplyConditions } from './supply'
 import { applyEconomicRivals } from './economic-actors'
 import { applyNpcRivals } from './npc-rivals'
@@ -1000,7 +1001,8 @@ export function refreshValue(a: Asset, b: BizState): void {
  * values. A player company also keeps the Statement lines as whole dollars (the R1 charts read them) and up to HISTORY_ROWS
  * rows; `lean` (NPC companies) writes the nine old fields and keeps SIM_HISTORY, exactly as before. `draws` is the owner
  * bonuses of the year, already inside `other`: a memo for the cash walk, never a second cost. Booking a year twice replaces
- * its row.
+ * its row. A player company's row also takes the tally of its cash moves since the last close (`flows`, by ledger reason) and the
+ * tally starts again; a company whose tally has not started writes no flows this once, and an NPC company keeps neither.
  */
 export function recordYear(b: BizState, stmt: Statement, opts: { draws?: number; lean?: boolean } = {}): YearRecord {
   const rec: YearRecord = {
@@ -1019,7 +1021,13 @@ export function recordYear(b: BizState, stmt: Statement, opts: { draws?: number;
     rec.debt = bookDollars(b.debt)
     setBookLines(rec, stmt)
     rec.draws = bookDollars(opts.draws ?? 0)
-  }
+    // The reasons of every cash move since the last close (kernel/tally.ts). A company whose tally has not started (an old save, a
+    // new company) writes no flows this once, because its tally would miss the moves before it began; the tally starts empty now.
+    // Booking a year twice keeps what the first booking wrote and adds what moved since (the cash on the row is the cash now).
+    const moved = mergeTally(b.history.find((h) => h.year === rec.year)?.flows, b.tally)
+    if (moved !== undefined) rec.flows = moved
+    b.tally = {}
+  } else delete b.tally // an NPC company has no books to close: a tally left from when it was somebody's would only grow stale
   b.history = [...b.history.filter((h) => h.year !== rec.year), rec].slice(-(opts.lean ? SIM_HISTORY : HISTORY_ROWS))
   return rec
 }

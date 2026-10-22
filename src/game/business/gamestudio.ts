@@ -446,9 +446,9 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   // One booking: the year's operating result, sales when it is a gain and inputs when it is a loss (the sim keeps one net number).
   const settled = dollars(b.cash + net + b.yearCosts - b.yearIncome)
   const operating = settled >= b.cash ? 'sales' : 'inputs'
-  firmCash(g, b, settled - b.cash, operating, a.id)
+  firmCash(g, b, settled - b.cash, operating, a.id, { operating: true })
   // A float cash that crosses zero can land an ulp off the whole-dollar figure: this closes that gap and books nothing (it is under a dollar).
-  firmCash(g, b, settled - b.cash, operating, a.id)
+  firmCash(g, b, settled - b.cash, operating, a.id, { operating: true })
   let cashErosion = 0
   if (b.cash > 0) {
     const economy = economyOf(g, b.countryId, year)

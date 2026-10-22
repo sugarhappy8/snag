@@ -15,13 +15,33 @@ import { canAfford } from './core'
 import { book, bookAcct, bookBurn, bookMint, playerAcct, roomFor, tokenSeen, type AcctRef, type Why } from './kernel/ledger'
 import { parseRef } from './kernel/ids'
 import { counterparty, type PoolName, type Reason } from './kernel/reasons'
+import { addTally, liveTally, TALLY_OPERATING, type Tally } from './kernel/tally'
 import type { GameState, Person } from './types'
 
 /** A place cash lives: an account name and a way to change the record behind it. */
 export interface Purse {
   readonly acct: AcctRef
-  /** Applies a change to the record and returns what was applied (a floor or a bad number can make it less than asked, or 0). */
-  add(delta: number): number
+  /**
+   * Applies a change to the record and returns what was applied (a floor or a bad number can make it less than asked, or 0). The
+   * reason is for a company's purse, which names it in its tally (kernel/tally.ts); every other purse ignores it.
+   */
+  add(delta: number, reason?: Reason): number
+}
+
+/** A company's cash record: the cash, and the tally of why it moved since the books last closed (BizState has both). */
+export interface FirmCash {
+  cash: number
+  tally?: Tally
+}
+
+/**
+ * Where a company's cash moves are tallied by reason. `tally: false` keeps a company out of it (an NPC's firm has no books to close).
+ * `operating: true` tallies the move as the year's operating result instead of under its reason: the one booking that lands the
+ * simulation's closing cash (business/settle.ts landCash), so the walk can tell it from the one-offs booked under the same reasons.
+ */
+export interface FirmOpts {
+  tally?: boolean
+  operating?: boolean
 }
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
@@ -79,14 +99,20 @@ function firmAcct(firm?: string | { id: string }): AcctRef {
   return named('firm', typeof firm === 'string' ? firm : firm?.id) ?? 'pool:firms'
 }
 
-/** A company's cash (BizState.cash and the like). Pass the asset id so the books name the firm; without one the account is pool:firms. */
-export function firmPurse(b: { cash: number }, firm?: string | { id: string }): Purse {
+/**
+ * A company's cash (BizState.cash and the like). Pass the asset id so the books name the firm; without one the account is pool:firms.
+ * A move that names its reason is added to the company's tally, when the company keeps one (its books have closed once, so the tally
+ * covers every move since); the tally takes the change of the whole-dollar cash, so the tally and the closing cash never part.
+ */
+export function firmPurse(b: FirmCash, firm?: string | { id: string }, opts?: FirmOpts): Purse {
   return {
     acct: firmAcct(firm),
-    add(delta) {
+    add(delta, reason) {
       if (!finite(delta)) return 0
       const before = b.cash
       b.cash = before + delta
+      const tally = reason !== undefined && opts?.tally !== false ? liveTally(b.tally) : undefined
+      if (tally !== undefined && reason !== undefined) addTally(tally, opts?.operating ? TALLY_OPERATING : reason, Math.round(b.cash) - Math.round(before))
       return plain(b.cash - before)
     },
   }
@@ -112,11 +138,16 @@ export function poolPurse(name: PoolName, country?: string): Purse {
 export function moveCash(g: GameState, from: Purse, to: Purse, amount: number, reason: Reason, token?: string): number {
   if (!finite(amount) || amount <= 0) return 0
   if (token !== undefined && tokenSeen(g, token)) return 0
-  const give = -from.add(-amount)
+  const give = -from.add(-amount, reason)
   if (!(give > 0)) return 0
-  to.add(give)
+  to.add(give, reason)
   book(g, reason, from.acct, to.acct, give, token)
   return give
+}
+
+/** The reason a `why` names. */
+function reasonOfWhy(why: Why): Reason {
+  return typeof why === 'string' ? why : why.reason
 }
 
 /** The token a `why` carries, if any. */
@@ -136,7 +167,7 @@ function change(g: GameState, purse: Purse, why: Why, delta: number): number {
   if (token !== undefined && tokenSeen(g, token)) return 0
   const room = delta > 0 ? roomFor(g, why) : Number.POSITIVE_INFINITY
   const clipped = delta > room
-  const applied = purse.add(clipped ? room : delta)
+  const applied = purse.add(clipped ? room : delta, reasonOfWhy(why))
   bookAcct(g, purse.acct, why, clipped ? applied + (delta - room) : applied)
   return applied
 }
@@ -150,9 +181,12 @@ export function personCash(g: GameState, p: Person, delta: number, why: Why, flo
   return change(g, personPurse(p, floor), why, delta)
 }
 
-/** A company's cash changes by `delta`, booked one-sided under `why`. Pass the asset id so the books name the firm. Returns the change applied. */
-export function firmCash(g: GameState, b: { cash: number }, delta: number, why: Why, firm?: string | { id: string }): number {
-  return change(g, firmPurse(b, firm), why, delta)
+/**
+ * A company's cash changes by `delta`, booked one-sided under `why`. Pass the asset id so the books name the firm. The move is added to
+ * the company's tally by reason (the exact cash walk reads it) unless `opts.tally` is false. Returns the change applied.
+ */
+export function firmCash(g: GameState, b: FirmCash, delta: number, why: Why, firm?: string | { id: string }, opts?: FirmOpts): number {
+  return change(g, firmPurse(b, firm, opts), why, delta)
 }
 
 /** The player pays a person: false (and nothing booked) when the player cannot afford it. */
@@ -207,11 +241,11 @@ export function erodeCash(g: GameState, inflation: number): number {
  * exactly `amount` (no rounding added) unless the burn or mint was clipped, in which case only what was booked applies.
  * Returns the signed change of cash.
  */
-export function erodeFirm(g: GameState, b: { cash: number }, amount: number, firm?: string | { id: string }): number {
+export function erodeFirm(g: GameState, b: FirmCash, amount: number, firm?: string | { id: string }, opts?: FirmOpts): number {
   if (!finite(amount) || amount === 0) return 0
-  const purse = firmPurse(b, firm)
+  const purse = firmPurse(b, firm, opts)
   const whole = Math.round(Math.abs(amount))
   const booked = amount > 0 ? bookBurn(g, 'inflation', purse.acct, whole, 'inflation') : bookMint(g, 'revaluation', purse.acct, whole, 'inflation')
   const applied = booked >= whole ? amount : Math.sign(amount) * booked
-  return purse.add(-applied)
+  return purse.add(-applied, 'inflation')
 }

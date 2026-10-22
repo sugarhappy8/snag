@@ -168,7 +168,7 @@ export function expandNpcCompany(g: GameState, b: BizState, l: NpcLife, firm?: s
   if (l.skill < 65 || !b.last || b.last.net <= 0 || b.outlets.reduce((n,o) => n + o.count, 0) >= 12) return 0
   const move = bestOpening(g, b, Math.max(0, b.cash - b.debt - runningCosts(b)), { abroad: false, maxPayback: 3, maxN: 1 })
   if (!move || move.cost <= 0 || move.cost > b.cash) return 0
-  firmCash(g, b, -move.cost, 'capex', firm)
+  firmCash(g, b, -move.cost, 'capex', firm, { tally: false }) // an NPC's firm keeps no tally: it has no books to close
   b.outlets = withOutlets(b, move.countryId, move.city, move.n, g.year).outlets
   const plan = bestPlan(g, b, { quick: true }); b.price = plan.price; b.production = plan.production
   return move.cost
@@ -206,7 +206,7 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialApp
   const payout = Math.min(Math.max(0, result.stmt.net) * .2, Math.max(0, b.cash - b.debt - typicalIncome(g, l.country)))
   // The firm pays the dividend to the shareholders' pool and each holder takes a part of it. Three one-sided calls, not a move: the
   // float arithmetic of the firm's cash and the owner's money stays as it was (a move would book what the cash really lost).
-  firmCash(g, b, -payout, 'dividend', a.id)
+  firmCash(g, b, -payout, 'dividend', a.id, { tally: false })
   personCash(g, p, payout * b.share * .8, 'dividend')
   if (stake) earnIncome(g, payout * playerShare, 'dividend')
   evolve(g, b, result.stmt, fiscal); stampWave(g, b, fiscal); recordYear(b, result.stmt, { lean: true }); b.history = b.history.slice(-12)
@@ -443,7 +443,7 @@ export function investInNpc(g: GameState, personId: string, amount: number, acqu
     notice(g, 'Company Acquired', `${a.name} is now in your Businesses list. ${p.firstName} received ${money(price)} for their stake and an interim CEO took over. You can separately recruit the founder or add the company to a conglomerate.`)
   } else {
     const share = (current * valuation + amount) / (valuation + amount)
-    moveCash(g, playerPurse(g), firmPurse(b, a.id), amount, 'inject')
+    moveCash(g, playerPurse(g), firmPurse(b, a.id, { tally: false }), amount, 'inject')
     b.valuation += amount; b.share *= valuation / (valuation + amount)
     const asset: Asset = holding ?? { id: `npc-stake:${a.id}`, kind: 'investment', name: `${a.name} private stake`, emoji: '🤝', purchasePrice: 0, value: 0, condition: 100, purchasedAge: g.character.age, upkeep: 0, details: {} }
     asset.purchasePrice += amount; asset.value = b.valuation * share

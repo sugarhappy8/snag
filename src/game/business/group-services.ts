@@ -11,7 +11,7 @@ import { techView } from './deeptech-core'
 import { CHIP_RESERVE, CHIP_SHARE, SISTER_CUT, chipBook, chipSource, readChips, type ChipSupply } from './devices-data'
 import { manageBlock } from './gate'
 import { firmOf } from './settle'
-import { bizOf, businessAssets, readBiz, syncBookRow } from './state'
+import { bizOf, businessAssets, readBiz, shiftFlow, syncBookRow, tallied } from './state'
 import type { BizState, Statement } from './state'
 import { clampN, money, num, pct, rec, str } from './util'
 import { allocatedCorporateTax } from './tax'
@@ -97,10 +97,11 @@ function amend(g: GameState, b: BizState, s: Statement, before: number): void {
   const marginalTax = allocatedCorporateTax(b.countryId, s.pbt, s.revenue + s.otherIncome, 0, 0, g, s.year, b.industry) - allocatedCorporateTax(b.countryId, before, s.revenue + s.otherIncome, 0, 0, g, s.year, b.industry)
   s.corpTax = Math.max(0, oldTax + marginalTax)
   const delta = s.pbt - before - (s.corpTax - oldTax)
-  s.net += delta; firmCash(g, b, delta, delta >= 0 ? 'sales' : 'inputs', firmOf(g, b))
+  const booked = tallied(b)
+  s.net += delta; firmCash(g, b, delta, delta >= 0 ? 'sales' : 'inputs', firmOf(g, b), { operating: true })
   const h = b.history.find(x => x.year === s.year)
-  // The booked row follows the statement: its cost lines (the invoice sits in one) and its books-close cash move with it.
-  if (h) { h.revenue = s.revenue; h.profit = s.net; h.tax = s.corpTax; syncBookRow(h, s, delta) }
+  // The booked row follows the statement: its cost lines (the invoice sits in one) and its books-close cash move with it, and so do its flows.
+  if (h) { h.revenue = s.revenue; h.profit = s.net; h.tax = s.corpTax; syncBookRow(h, s, delta); shiftFlow(b, h, tallied(b) - booked) }
   if (!b.public) b.valuation = valuationOf(b)
 }
 export function settleInternalServices(g: GameState, fiscal: number): void {
