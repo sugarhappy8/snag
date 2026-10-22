@@ -80,6 +80,12 @@ Expected: test/flags.test.ts:88 (eight keys become nine, yearCard); test/era-lat
 | src/game/hubs/year-book.ts | the money ratchet (`money-ratchet.test.ts`: a new file with a counted `.money =` site) | `card.money = money` after the literal | the line goes in with the literal (`...(money ? { money } : {})`), same key order | INT-quiet. The card's `money` is a sentence, not a purse; the ratchet reads the token. No behaviour change. |
 | scripts/bundle-baseline.json | the bundle budget CI step (`node scripts/bundle-budget.mjs`) | baseline v4.1.1 (main at a65349a), 2,868,500 gzip bytes; the merged tree is +82,886 (limit +60,000) | baseline v5.0.0 (main at 85e147b), 2,909,121 (the 'Initial total' of the CI run on that commit); the merged tree is +42,265 | INT-quiet. The budget script says to capture the baseline once per release from the base release (R2 did the same at c68e66a). R3's base is v5.0.0. `allowGrowthBytes` is unchanged at 60,000; the three tracks still to merge have 17,735 bytes left. |
 
+## quiet fix (r3-fix-quiet: the audit fee, the year close, the popup count)
+
+| file | test | before | after | why |
+|---|---|---|---|---|
+| test/fog-valuation.test.ts | the kind `val` > finds the truth of a private company, and none for a listed one or a stranger | `kind.scope(g, key)` equals `{ tier: 1, country: 'us', deal: 4_200_000 }` | it equals `{ tier: 1, country: 'us' }` | whole-diff review, finding 2: the audit of the player's own company was `max(8,000 x wealth, 2% of its valuation)`, so the fee grew with the company with no ceiling ($2B at a $100B valuation) while the analyst stayed at $30K. The scope names the country alone; the 2% of a deal stays in `priceOf` for a target the buyer does not own. A new case plays the audit at 1x, 100x and 10,000x the valuation, and the ceiling row `intel-price` probes the real `val` scope at 100x with a limit that does not grow with the scale |
+
 ## frontier
 
 Expected: test/fixtures/kernel-parity.json (aging gains world.frontier). golden-digests.json only if a golden life crosses 2026 with a deep-tech company.

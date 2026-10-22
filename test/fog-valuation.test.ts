@@ -447,6 +447,19 @@ describe('Realistic mode: Look closer', () => {
     })
   })
 
+  it('the audit of the player\'s own company costs the same at 1x, 100x and 10,000x its valuation (a fee of the object, never of the wealth)', () => {
+    inFog(() => {
+      const fees = [4_200_000, 420_000_000, 42_000_000_000, 4_200_000_000_000].map((valuation, i) => {
+        const { g, a } = firm(23 + i, { valuation })
+        return { analyst: offersFor(g, [valKey(a.id)]).find((o) => o.src === 'analyst')!.price, audit: offersFor(g, [valKey(a.id)]).find((o) => o.src === 'diligence')!.price }
+      })
+      expect(new Set(fees.map((f) => f.audit)).size, `audits ${fees.map((f) => f.audit).join(', ')}`).toBe(1)
+      expect(new Set(fees.map((f) => f.analyst)).size, 'analysts').toBe(1)
+      // The audit is 8,000 x the wealth of the country, to the nearest 1,000: the smallest fee there is and never a share of the company.
+      expect(fees[0]!.audit).toBeLessThanOrEqual(12_000)
+    })
+  })
+
   it('a listed company, or none at all, has no group', () => {
     const listed = firm(22, { public: true })
     inFog(() => {
@@ -591,7 +604,7 @@ describe('the key and its kind', () => {
     expect(kind!.truth(g, key)).toBe(4_200_000)
     expect(kind!.truth(g, valKey('nobody'))).toBeNull()
     expect(labelOfKey(g, key)).toBe('Maple Cafe valuation')
-    expect(kind!.scope?.(g, key)).toEqual({ tier: 1, country: 'us', deal: 4_200_000 })
+    expect(kind!.scope?.(g, key)).toEqual({ tier: 1, country: 'us' })
     const listed = firm(27, { public: true })
     expect(kindOfKey(valKey(listed.a.id))!.truth(listed.g, valKey(listed.a.id))).toBeNull()
   })

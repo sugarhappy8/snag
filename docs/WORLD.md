@@ -198,7 +198,10 @@ Every push goes through `applyDisclosure`, and no wave writer was edited to make
 - A rival landing. `landRivalWaves` (the `techWaves` hook) announces a rival wave through `announceWave`, so it pushes a `rival` row in
   the field of its kind, in the company's market. Its seeded draw (`rivalWave`) is not touched, so the landings are the ones v5.0.0 had.
 - Disclosed research. The port `business.discloseResearch` (`announceResearch`, wave source `effort`) is what the research domains of
-  later releases call. A size of 0.2 or more makes a wave, and the wave's push is the disclosure's (an `ai.<capability>` field
+  later releases call (the careers kit of R6, the war economy of R8, the show circuit of R9, and the Effort step wrappers that follow
+  R3). In v5.1.0 nothing in the game calls it: the research that feeds the frontier today is the research that writes a wave, and
+  every one of those writers (heavy R&D, deep tech, the Workshop race, a rival's landing) pushes through `announceWave`, as above. The
+  product, operations and studio quotes only read the frontier. A size of 0.2 or more makes a wave, and the wave's push is the disclosure's (an `ai.<capability>` field
   narrows it, spill only). A smaller size, or a wave the rules refused, pushes by itself (`pushResearch`, origin `effort:<origin>`).
   A disclosure never counts twice.
 - The year. `stepFrontier` fades public research and lets a rival follow, as above.

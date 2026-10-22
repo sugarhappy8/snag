@@ -13,8 +13,9 @@
 //
 // Idempotent by year: the book remembers the last year it closed, and a second call for the same year changes nothing. It draws no number
 // of its own (the year events task does, exactly as it does for the old order), moves no money, and reads nothing dated after g.year.
-// It never throws: a step that fails puts the queue and the log back as they were and reports { closed: false }, so the store plays the
-// year the old way. (The year events step can leave a draw behind; the state is otherwise as it came in.)
+// It never throws: a step that fails puts the game back as it came in (the queue and the year events task in it, the log, the id counter,
+// and every draw, counter and flag the year events step touched) and reports { closed: false }, so the store plays the year the old way
+// and the task picks the very events it would have picked.
 //
 // Headless ageUp does not call this. Tests that read g.queue after ageUp see what they always saw, with `s`, `a` and `w` on top.
 //
@@ -71,13 +72,39 @@ function yearEntries(g: GameState): LogEntry[] {
 /** The title of the card popup. A reader that ignores `digest` shows this and the headline. */
 const cardTitle = (age: number): string => `The Year You Turned ${age}`
 
+/**
+ * What the year events task writes besides the queue and the log: the draws (`rng`), the counters and the flags (the event memory and
+ * history, the text memory and its family record, the milestones told). A copy taken before the task runs, and put back in place when a
+ * later step fails, so the task replayed by the store draws the same events and the first pick is not on cooldown.
+ */
+interface Undo {
+  rng: number
+  counters: GameState['counters']
+  flags: GameState['flags']
+}
+
+const takeUndo = (g: GameState): Undo => ({ rng: g.rng, counters: structuredClone(g.counters), flags: structuredClone(g.flags) })
+
+/** Put a copy back in the same objects (a key the step added goes, a key it removed comes back, in the order it had). */
+function restoreInPlace<T extends object>(into: T, from: T): void {
+  for (const k of Object.keys(into)) delete (into as Record<string, unknown>)[k]
+  Object.assign(into, from)
+}
+
+function putBack(g: GameState, undo: Undo): void {
+  g.rng = undo.rng
+  restoreInPlace(g.counters, undo.counters)
+  restoreInPlace(g.flags, undo.flags)
+}
+
 /** The close, step by step. Throws on a failure; closeYear catches it and puts the game back. */
-function run(g: GameState, book: ReturnType<typeof readYearBook>): CloseReport {
+function run(g: GameState, book: ReturnType<typeof readYearBook>, undo: { value?: Undo }): CloseReport {
   const L = YEAR_LIMITS
 
   // 1. The year events task: resolved here, so the flavor lines and the event choice are in the queue before the budget.
   const at = g.queue.findIndex(isYearEvents)
   if (at >= 0) {
+    undo.value = takeUndo(g)
     const [task] = g.queue.splice(at, 1)
     if (task && task.kind === 'aiTask') applyFallback(g, task.task)
   }
@@ -154,14 +181,17 @@ export function closeYear(g: GameState): CloseReport {
   const logs0 = g.log.length
   const lines0 = yearEntries(g).length
   const nextId0 = g.nextId
+  const undo: { value?: Undo } = {}
   try {
     const book = readYearBook(g)
     if (book.last >= g.year) return notClosed()
-    return run(g, book)
+    return run(g, book, undo)
   } catch (err) {
     console.error('Closing the year failed:', err)
-    // Put back what a failed close may have touched: the queue, the log lines it added, the id counter. The book and the pending asks are
-    // written last, after every step that can fail, so they are never half written.
+    // Put back what a failed close may have touched: the queue, the log lines it added, the id counter, and what the year events task
+    // wrote (draws, counters, flags). The book and the pending asks are written last, after every step that can fail, so they are never
+    // half written.
+    if (undo.value) putBack(g, undo.value)
     g.queue = queue0
     g.log.length = logs0
     const tail = g.log[g.log.length - 1]

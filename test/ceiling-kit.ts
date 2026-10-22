@@ -13,13 +13,17 @@ import { announceWave, readTechWaves, type WaveInput } from '../src/game/busines
 import { TOP_CEO_MAX_PTS } from '../src/game/business/ceo-edge'
 import { heavyOdds, heavyQuote } from '../src/game/business/heavy-rd'
 import { opsOdds, opsQuote } from '../src/game/business/lab-rules'
+import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { classicIdeas } from '../src/game/business/products'
+import { bizOf } from '../src/game/business/state'
+import { valKey } from '../src/game/business/valuation-fog'
 import { rdCost, rdQuote } from '../src/game/business/rd'
 import { ECONOMY_VERSION, initialCountry } from '../src/game/economy/model'
 import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
 import { realWealthFactor } from '../src/game/history/events-people'
 import { buySecurity, investmentHoldings, investmentListing, yearlyInvestments } from '../src/game/investments'
 import { KNOW_LIMITS, learn, readKnow } from '../src/game/knowledge/contract'
+import { kindOfKey } from '../src/game/knowledge/kinds'
 import { SOURCES, SOURCE_IDS, priceOf, readingSd } from '../src/game/knowledge/sources'
 import { BURNS, LEDGER_CAPS, MINTS, book, bookBurn, bookMint, checkLedger, peekLedger, playerAcct, type AcctRef } from '../src/game/kernel/ledger'
 import { REASONS, type BurnName, type MintName, type Reason } from '../src/game/kernel/reasons'
@@ -642,6 +646,16 @@ const WORLD_ROWS: readonly CeilingProbe[] = [
   },
 ]
 
+/** A private company of the player's, worth `valuation`, and the key of its valuation (what an audit of it reads). */
+function firmWorth(valuation: number): { g: GameState; key: string } {
+  const g = lifeIn('us', 2026)
+  const c = g.character
+  const a = createBusinessAsset(g, 'Probe Cafe', newBiz(g, 'cafe', c.countryId, c.city, { cash: 400_000, quality: 70, brand: 40 }), 0)
+  g.assets.push(a)
+  bizOf(g, a).valuation = valuation
+  return { g, key: valKey(a.id) }
+}
+
 // R3-H4: the Knowledge rows. A source never reads sharper than its floor; a fee follows the scope and the country, not the buyer; the
 // research record never keeps more than its cap of keys.
 const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
@@ -663,7 +677,7 @@ const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
   },
   {
     id: 'intel-price',
-    cap: "a fee follows the scope and the country's wealth, at most 4.5 x 2.75 x 1.5 times the base price, and never the buyer's cash or the wealth of the world; due diligence is the greater of 8,000 x wealth and 2 percent of the deal (R3-H4)",
+    cap: "a fee follows the scope and the country's wealth, at most 4.5 x 2.75 x 1.5 times the base price, and never the buyer's cash or the wealth of the world; due diligence on a deal is the greater of 8,000 x wealth and 2 percent of the deal, and an audit of the player's own company is 8,000 x wealth however much it is worth (R3-H4, R3-G10)",
     run: (scale) =>
       withWealth(scale, () => {
         const t = tightest()
@@ -677,6 +691,11 @@ const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
           const deal = 5_000_000 * scale
           t.add(priceOf('diligence', { tier: 3, countries: 8 * scale, country, deal }), Math.max(8_000 * 1.5, deal * 0.02) + 500, `diligence in ${country} on a deal of ${deal}`)
         }
+        // The audit the player is offered for their own company (the `val` kind): the object is their own asset, so a hundred times its valuation
+        // is the same fee, and the limit does not grow with `scale`.
+        const own = firmWorth(5_000_000 * scale)
+        const scope = kindOfKey(own.key)!.scope!(own.g, own.key)
+        t.add(priceOf('diligence', scope, own.g.character.countryId), 8_000 * 1.5 + 500, `an audit of the player's own company worth ${5_000_000 * scale}`)
         return t.result()
       }),
   },

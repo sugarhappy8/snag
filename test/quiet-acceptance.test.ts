@@ -474,7 +474,8 @@ describe('the hard caps on real lives, played the way the store plays them', () 
  * Mode, the digest), which is what the year close budgets: 3 unrequested choices and 3 notices a year (YEAR_LIMITS). The outcome of a
  * choice the player answered is a reply to them, not an arrival, and the year card is the one popup the roadmap adds to the tycoon's four,
  * so neither is in the count. The other reading, which counts every popup the player sees as the audit did ("two popups per event"), is
- * measured and printed below, and not asserted. Every closed year of a life is counted, from age 1.
+ * measured and printed below, and the roadmap is NOT met on it: it is only guarded against growth (SEEN_GUARD), and docs/QUIET.md says what
+ * is open. L1 is the lead's call, not the owner's. Every closed year of a life is counted, from age 1.
  */
 const ROADMAP = { ordinary: { p90: 3, max: 5 }, rich: { p90: 4, max: 6 }, founder: { mean: 4, companiesCard: 0.9 }, visibleLog: 8 } as const
 
@@ -522,6 +523,43 @@ describe('the popups a year, the other readings, measured and printed (decision 
     })
     console.log(['quiet acceptance, popups a year on the three readings (asserted: the first):', ...rows].join('\n'))
   }, TIMEOUT)
+})
+
+/**
+ * What the player SEES, counted as the audit counted ("two popups per event"): every popup after the store flow, the outcome of a choice they
+ * answered included, the card left out. This is NOT the roadmap's reading (decision L1 counts arrivals, above) and the roadmap's numbers are not
+ * met on it: the year close budgets 3 unrequested choices and 3 notices, and each choice answered costs a second popup, so the design itself
+ * allows 9 where the $50M target says 6. L1 was the lead's call and the owner has not signed it (whole-diff review, 2026-10-23). The numbers
+ * today, from these lives, are in docs/QUIET.md with the options measured (choices 2 and 1, folding the outcomes of answered choices); until
+ * the owner picks one the case below only keeps the player's year from getting noisier. The bounds are today's numbers with room for a draw
+ * to move a life (p90 one step, max two, the tycoon's mean half a popup): a guard against growth, never the roadmap, and never to be read as met.
+ */
+const SEEN_GUARD = { ordinary: { p90: 5, max: 12 }, rich: { p90: 7, max: 12 }, founder: { mean: 7 } } as const
+
+describe('the popups a year the player sees, the audit reading: guarded, not the roadmap (decision L1, owner sign-off pending)', () => {
+  it('no class is noisier than today: ordinary and $50M p90 and max, the tycoon mean, every popup of the store flow counted', () => {
+    const seen = (cls: Class): Spread => spread(popupsPerYear(closedYears(livesOf(cls)), { cards: false }))
+    const ord = seen('ordinary')
+    const rich = seen('rich')
+    const founder = seen('founder')
+    expect(
+      [
+        ...(ord.p90 > SEEN_GUARD.ordinary.p90 ? [`ordinary p90 ${ord.p90}`] : []),
+        ...(ord.max > SEEN_GUARD.ordinary.max ? [`ordinary max ${ord.max}`] : []),
+        ...(rich.p90 > SEEN_GUARD.rich.p90 ? [`rich p90 ${rich.p90}`] : []),
+        ...(rich.max > SEEN_GUARD.rich.max ? [`rich max ${rich.max}`] : []),
+        ...(founder.mean > SEEN_GUARD.founder.mean ? [`tycoon mean ${founder.mean.toFixed(2)}`] : []),
+      ],
+      `popups the player sees a year: ordinary ${show(ord)}; rich ${show(rich)}; tycoon ${show(founder)}`,
+    ).toEqual([])
+  })
+
+  it('the answers are most of the gap: a choice answered costs one more popup, so the player sees more than arrives in every class', () => {
+    for (const cls of ['ordinary', 'rich', 'founder'] as const) {
+      const lives = livesOf(cls)
+      expect(spread(popupsPerYear(closedYears(lives), { cards: false })).mean, cls).toBeGreaterThan(arriving(lives).mean)
+    }
+  })
 })
 
 describe('the log a tycoon sees', () => {

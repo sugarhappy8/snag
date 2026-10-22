@@ -369,6 +369,18 @@ describe('lives', () => {
   )
 
   it(
+    'finds the ledger a backstop in play: the yearly pass lets one company event through a year, so the ledger never reads more than 1',
+    () => {
+      const on = tally(false)
+      expect(on.events).toBeGreaterThanOrEqual(30)
+      // The pass (business/yearly.ts) stops at the first event of a year; the ledger of 2 only binds a caller that skips the pass.
+      expect(on.ledgerMax).toBe(1)
+      expect(on.perYearMax).toBeLessThanOrEqual(1)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'has fewer company events of one family within 5 years with the rule on than with it off',
     () => {
       const on = tally(false)

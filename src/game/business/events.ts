@@ -1028,7 +1028,12 @@ function weightFor(g: GameState, b: BizState, e: BizEvent): number {
   return paceWeight(g, bizPaceKey(e.id), Math.max(0, e.weight(g, b)))
 }
 
-/** The year ledger (R3-Q10): company choices a year across all companies, in g.yearActions under this key (emptied at each age-up). */
+/**
+ * The year ledger (R3-Q10): company choices a year across all companies, in g.yearActions under this key (emptied at each age-up). In play
+ * it is a backstop and never binds: the yearly pass (business/yearly.ts `eventQueued`) lets one company event through a year for all
+ * companies, so the ledger reads 0 or 1 there. Only a caller that skips the pass (a test, a new feature) meets the 2. Rotating which
+ * company rolls first, or one budget for every company event, is a design change that moves every founder's life (a follow-up).
+ */
 const LEDGER = 'pace.biz'
 const LEDGER_MAX = 2
 
@@ -1060,8 +1065,8 @@ export const businessEventInternals = {
 export function maybeBusinessEvent(g: GameState, a: Asset, b: BizState, year: number, managed: boolean): boolean {
   if (g.character.prison || !g.character.alive) return false
   if (b.founded >= year) return false
-  // The year ledger: a tycoon's companies share 2 choices a year. A read, before any roll, so a full ledger draws nothing; the slot is
-  // taken below, where an event is presented (a missed roll costs nothing).
+  // The year ledger: the companies of a caller that bypasses the yearly pass share 2 choices a year. A read, before any roll, so a full
+  // ledger draws nothing; the slot is taken below, where an event is presented (a missed roll costs nothing).
   if (yearActionsUsed(g, LEDGER) >= LEDGER_MAX) return false
   if (b.lastEvent >= year - 1 && !chance(g, 0.3)) return false
   if (!chance(g, managed ? 0.18 : 0.3)) return false
