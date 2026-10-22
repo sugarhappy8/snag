@@ -180,6 +180,8 @@ years, in CI every release. The next release adds one fixture and one line there
 4. Change the shape later by bumping `version` and adding `migrate`. Never rename a key a fixture holds.
 5. Run `test/save-budget.test.ts`: the bytes a tap writes and the size of the head name the lever if the new slice is too big or too busy.
 
+Two R3 keys are `flags` subkeys, so they need no row in `save-slices.ts`: `flags.yearBook` (the year close's book: the last year closed, how many cards were popups, the newest 3 cards) and `flags.pendingAsks` (the unrequested choices a year had no room for, at most 6, none older than 2 years). Both are personal (`world-flags.ts`), read through `hubs/year-book.ts` (`readYearBook`, `readPending`), which repairs a hostile value to bounds on every read and write, and written only by `closeYear`.
+
 ## Contract
 
 | Name | File |
