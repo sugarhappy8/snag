@@ -205,3 +205,14 @@ No fixture moved and no golden digest: the scale of a delta only enters a Realis
 | test/fog-market-regions.test.ts | what-if scenarios > a band is wide enough to be honest and no wider than 30% of its ruler (renamed from: ... of the larger of the move and a tenth of last year's sales) | width at most 2 x 1.298 x 0.3 x max(\|value\|, a tenth of sales) | width at most 2 x 1.298 x 0.3 x `forecastScale(b, value)`, with the ruler at least the old one and under 2.5 times the larger of it and `FORECAST_MIN` | same rule; the band is still never wider than 30% of its ruler and the ruler never smaller than before |
 
 New: test/fog-forecast-scale.test.ts (two moves a factor of 1.5 apart in one step of the ladder read bands of the same width; 400 truths over four decades read at most 14 distinct widths; 10,000-draw coverage 77% to 83%; a delta with no scale is exact).
+
+## card fix (r3-fix-card: the headline is the story, the inline card is a block of the feed)
+
+No fixture moved and no golden digest (`golden.mjs check --plan all` reports none moved): the golden lives age without the year close, so a card is not in them. Four pinned expectations moved with the rule that the headline of the card is the story itself (`headlineOf`: no popup title, no year in front that is the card's year, no emoji), each kept as strong as it was (an exact match on the new line). The layout fix moved no assertion: the pinned wiring of `GameScreen` (the card is drawn before the log, by the same element) still holds, and the new tests are in `test/year-card-ui.test.ts` and `test/year-plan.test.ts`.
+
+| file | test | before | after | why |
+|---|---|---|---|---|
+| test/year-plan.test.ts | the year card > names the top story, the next three, the money, the people, the news, and counts the rest by group | `card.head` was `Just Married!: You said yes.` | `card.head` is `You said yes.` | R3 card fix: a headline that reads "Title!: text" is a label and not a line; the card has no place for the popup's title, and the voice has no exclamation-mark labels. The stories under it still read "title: text" |
+| test/year-plan.test.ts | the year card > leaves out the people, the money and the news when there are none | `card.head` was `Story a: Text of a.` | `card.head` is `Text of a.` | the same rule |
+| test/year-close.test.ts | the card > is the last item of the queue, a notice with the digest, and the text is the headline | `card.head` contained `Big News` (the title of the notice) | `card.head` is `It happened.` (its text); the modal text still equals the head | the same rule: the title of the popup is not part of the headline |
+| test/year-close.test.ts | the card > writes an inline card with the folded stories still on it | the stored card contained `Small Gift` (the title of the folded notice) | the stored head is `A friend sent a gift.` and the stored card contains that text | the same rule; the folded story is still on the card, told by its text |

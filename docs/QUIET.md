@@ -64,8 +64,18 @@ collapsed groups (`YearGroup`: People, Health, Work, Your companies, Money, Law 
 and its best 6 lines. `buildCard` makes it. `GROUP_OF_SOURCE` in `year-plan.ts` says which group a source belongs to, and an unknown
 source is Everyday.
 
+The headline is the top story told by `headlineOf` (the one place it is composed): one plain line, the story itself. The title of the
+popup that carried it is not in it ("Milestones!: ..." read as a label), nor is a year in front of the text that is the card's own year
+(the card says "Age 31, 2027" under it), nor an emoji. A story with no text says its title without the exclamation mark, and a merged
+story says its own title and its total ("Kindness, 3 times. $1.2M in all."). The other lines of the card (stories, people, groups)
+are still `storyLine`, "title: text".
+
 The card is a popup for the first 10 years of a life (`YEAR_LIMITS.popupYears`: the last popup of the year), then it is drawn inline in
-the Life tab and nothing is queued. An heir starts a new count. The screen reads the card as `unknown`: `cleanCard` in
+the Life tab and nothing is queued. The inline card is a block of the feed and not a box over it: `GameScreen` hands it to `LifeLog` as
+its `lead`, which draws it in the one scroller of the Life tab, right before the newest year. It has the height its lines need and no
+scroller of its own, so at phone width it scrolls with the log and clips nothing, and the newest year starts below it (`.year-card.is-inline`
+takes no height, overflow or position; `test/year-card-ui.test.ts` pins that). A new card opens the feed at itself (`scrollTopFor`), and a
+new line follows the newest line as it always did. An heir starts a new count. The screen reads the card as `unknown`: `cleanCard` in
 `yearCardModel.ts` bounds every list and string and gives a `CardView`, `cardOfModal` reads the one a popup carries and `inlineCard`
 reads the one the book kept. The Life log folds a busy year the same way: `viewYearLog` in `logModel.ts` shows at most `LOG_VISIBLE`
 (8) lines, the notable ones first, and folds the rest into one row for each group, with its count. `lineWeight` reads a line's weight
@@ -187,7 +197,7 @@ mechanisms that do, and the order to reach for them.
 | Types: `LogWeight`, `LogEntry`, `YearGroup`, `YearCard` | `src/game/types.ts` |
 | `withLogSource`, `currentLogSource`, `LogOptions`, `log` | `src/game/core.ts` |
 | `NOTICE_WEIGHTS`, `noticeWeightOf`, `noticeWeightFor` | `src/game/notice-weights.ts` |
-| `YEAR_LIMITS`, `GROUP_OF_SOURCE`, `groupOf`, `noticeWeight`, `Story`, `YearMoney`, `moneyFacts`, `moneyLine`, `planNotices`, `buildCard` | `src/game/hubs/year-plan.ts` |
+| `YEAR_LIMITS`, `GROUP_OF_SOURCE`, `groupOf`, `noticeWeight`, `Story`, `storyLine`, `headlineOf`, `YearMoney`, `moneyFacts`, `moneyLine`, `planNotices`, `buildCard` | `src/game/hubs/year-plan.ts` |
 | `YearBook`, `PendingAsk`, `readYearBook`, `writeYearBook`, `readPending`, `writePending` | `src/game/hubs/year-book.ts` |
 | `DEFERRABLE_SCRIPTS`, `CloseReport`, `closeYear` | `src/game/hubs/year-close.ts` |
 | the `yearCard` flag, in `FLAG_DEFS` | `src/game/flags.ts` |
@@ -199,3 +209,4 @@ mechanisms that do, and the order to reach for them.
 | `withVariants` (the 60 most frequent events open with extra scenes) | `src/game/events/variants.ts` |
 | `CardView`, `cleanCard`, `cardOfModal`, `inlineCard` | `src/ui/components/yearCardModel.ts` |
 | `LOG_VISIBLE`, `lineWeight`, `viewYearLog` | `src/ui/components/logModel.ts` |
+| `LifeLog` (its `lead` and `leadKey`), `YearList` (its `lead`), `scrollTopFor` | `src/ui/components/LifeLog.tsx` |
