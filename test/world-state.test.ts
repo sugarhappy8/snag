@@ -311,9 +311,10 @@ describe('the world reaches an heir by clone (RF3)', () => {
     const n = continueAsChild(g, kid.id)
     expect(n).not.toBe(g)
     // R2-L15: the hand-over syncs the world's indexes (the heir's people were rebuilt), so the heir's world is the carried one
-    // plus those four shards. Everything that was in g.world comes along unchanged.
+    // plus those four shards, and (R2-L8) the books: the estate is booked through the ledger, so the heir's world holds a ledger the
+    // parent never wrote. Everything that was in g.world comes along unchanged.
     const carried: Record<string, unknown> = { ...n.world }
-    for (const index of ['people', 'firms', 'homes', 'holdings']) delete carried[index]
+    for (const index of ['people', 'firms', 'homes', 'holdings', 'ledger']) delete carried[index]
     expect(carried).toEqual(g.world)
     expect(n.world?.y).toBe(n.year)
     expect(n.world).not.toBe(g.world)

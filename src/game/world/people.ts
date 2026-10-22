@@ -76,7 +76,7 @@ function before(a: Candidate, b: Candidate): number {
 
 /**
  * Brings the index up to date. Every person of g.people except a pet is a candidate; the first 80 by [owns an NPC company, closeness,
- * id] get a row stamped with this year, the rest are counted in `over` and have none. A row whose person is gone is kept as it was.
+ * id] get a row stamped with this year, the rest are counted in `over` and have none. A row whose person is gone is kept (a `seen` of this year goes back to last year).
  * Nothing is copied from a person and nothing about a person is changed.
  */
 export function syncPeople(g: GameState): void {
@@ -90,6 +90,6 @@ export function syncPeople(g: GameState): void {
   const ranked = [...found.values()].sort(before)
   const chosen = ranked.slice(0, LOD_CAPS.intimate)
   const fresh = chosen.map((c): PersonRow => ({ id: c.id, seen: g.year }))
-  const rows = mergeRows(readPeople(g).rows, new Set(found.keys()), fresh)
+  const rows = mergeRows(readPeople(g).rows, new Set(found.keys()), fresh, g.year)
   commitShard(g, 'people', normalizePeople({ v: 1, rows, over: ranked.length - chosen.length }), EMPTY)
 }

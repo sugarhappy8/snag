@@ -109,11 +109,11 @@ export function rankFirms(g: GameState): FirmRanking {
 /**
  * Brings the index up to date: a 'biz' row for each Asset of kind business (owner the player), an 'npc' row for each person with an old
  * NPC firm (owner that person), the first 20 by [own before NPC, value, id] stamped with this year, the rest counted in `over`.
- * A row whose company is gone is kept as it was. Nothing is copied from a record and no record is changed.
+ * A row whose company is gone is kept (a `seen` of this year goes back to last year). Nothing is copied from a record and no record is changed.
  */
 export function syncFirms(g: GameState): void {
   const { chosen, present, total } = rankFirms(g)
   const fresh = chosen.map((c): FirmRow => ({ id: c.id, form: c.form, owner: c.owner, seen: g.year }))
-  const rows = mergeRows(readFirms(g).rows, present, fresh)
+  const rows = mergeRows(readFirms(g).rows, present, fresh, g.year)
   commitShard(g, 'firms', normalizeFirms({ v: 1, rows, over: total - chosen.length }), EMPTY)
 }

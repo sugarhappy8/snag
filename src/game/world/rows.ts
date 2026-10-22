@@ -3,7 +3,8 @@
 //
 // An index row says "the world knows about this entity": { id, seen } plus a field or two. The record itself (the Person, the
 // Asset, the old NPC firm inside its owner) stays where it is and is never copied here. `seen` is the last year the record was
-// observed in the game: a record that is gone leaves its row behind, with its old `seen`, until the level-of-detail sweep demotes it.
+// observed in the game: a record that is gone leaves its row behind, with its old `seen` (never later than last year), until the
+// level-of-detail sweep demotes it.
 //
 // Pure functions of their arguments, plus commitShard (the writer). No luck, no clock, no import of the game.
 import { parseRef, type EntityRef } from '../kernel/ids'
@@ -106,9 +107,14 @@ export function normalizeIndex<R extends IndexRow>(raw: unknown, cap: number, ro
 /**
  * The rows after a sync: every row already there for a record that is not present now (it is gone, and keeps its old `seen`), plus
  * the rows `fresh` for the records that were selected. A present record that was not selected (it fell past the cap) has no row.
+ * A gone record was not seen in this pass, so a row stamped with `year` (the world was synced earlier this year, then the record
+ * left: a death and the estate before an heir's sync) goes back to last year, and no row claims "seen this year" for a record the
+ * game no longer has.
  */
-export function mergeRows<R extends IndexRow>(old: readonly R[], present: ReadonlySet<string>, fresh: readonly R[]): R[] {
-  return [...old.filter((r) => !present.has(r.id)), ...fresh]
+export function mergeRows<R extends IndexRow>(old: readonly R[], present: ReadonlySet<string>, fresh: readonly R[], year: number): R[] {
+  const back = year - 1
+  const gone = old.filter((r) => !present.has(r.id)).map((r) => (r.seen >= year && back >= SEEN_MIN ? { ...r, seen: back } : r))
+  return [...gone, ...fresh]
 }
 
 /**

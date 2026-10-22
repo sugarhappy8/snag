@@ -83,11 +83,11 @@ export function rankHomes(g: GameState): HomeRanking {
 
 /**
  * Brings the index up to date: a row for each house the player owns, the 150 most valuable (then by id) stamped with this year, the
- * rest counted in `over`. A row whose house is gone is kept as it was. No asset is copied or changed.
+ * rest counted in `over`. A row whose house is gone is kept (a `seen` of this year goes back to last year). No asset is copied or changed.
  */
 export function syncHomes(g: GameState): void {
   const { chosen, present, total } = rankHomes(g)
   const fresh = chosen.map((c): HomeRow => ({ id: c.id, owner: c.owner, seen: g.year }))
-  const rows = mergeRows(readHomes(g).rows, present, fresh)
+  const rows = mergeRows(readHomes(g).rows, present, fresh, g.year)
   commitShard(g, 'homes', normalizeHomes({ v: 1, rows, over: total - chosen.length }), EMPTY)
 }

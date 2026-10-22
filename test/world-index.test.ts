@@ -13,9 +13,11 @@ import type { Asset, GameState, Json, Person } from '../src/game/types'
 import { LOD_CAPS } from '../src/game/world/caps'
 import { firmRef, normalizeFirms, readFirms, syncFirms } from '../src/game/world/firms'
 import { homeRef, normalizeHomes, readHomes, syncHomes } from '../src/game/world/homes'
+import { worldProblems } from '../src/game/world/invariants'
 import { normalizePeople, npcFirmId, personRef, playerRef, readPeople, syncPeople } from '../src/game/world/people'
 import '../src/game/world/shards'
 import { normalizeWorld, shardNames, worldShard } from '../src/game/world/state'
+import { syncWorld } from '../src/game/world/sync'
 import type { FirmsShard, HomesShard, PeopleShard } from '../src/game/world/types'
 import { deepFreeze } from './fuzz-kit'
 import { makeTestGame } from './helpers'
@@ -425,6 +427,64 @@ describe('the homes index', () => {
     deepFreeze(g)
     expect(() => syncHomes(g)).not.toThrow()
     expect(readHomes(g).rows).toHaveLength(2)
+  })
+})
+
+describe('a record that goes in the year it was last seen (the heir who inherits after a sync)', () => {
+  // The world is synced once a year and again for an heir (continueAsChild). A death in the middle of a year leaves rows stamped with
+  // that year, and the estate then removes the dead player and a company or two before the heir's sync. A row of a record that is
+  // not there is not "seen this year": it goes back to last year, or worldProblems(g, { live: true }) names it (the fuzz harness and
+  // the 100-year ledger probe do exactly that after a hand-over).
+  const staleProblems = (g: GameState): string[] => worldProblems(g, { live: true }).filter((p) => p.includes('was seen this year'))
+
+  it('moves the row of a person, a company and a house that went in the same year back to last year', () => {
+    const g = richGame()
+    syncPeople(g)
+    syncFirms(g)
+    syncHomes(g)
+    expect(staleProblems(g)).toEqual([])
+    const friend = g.people.find((p) => p.relation === 'friend' && npcFirmId(p) === null)!
+    g.people = g.people.filter((p) => p !== friend)
+    g.assets = g.assets.filter((a) => a.id !== 'a1' && a.id !== 'a3')
+    syncPeople(g)
+    syncFirms(g)
+    syncHomes(g)
+    expect(readPeople(g).rows.find((r) => r.id === personRef(friend))?.seen).toBe(YEAR - 1)
+    expect(readFirms(g).rows.find((r) => r.id === 'firm:a1')?.seen).toBe(YEAR - 1)
+    expect(readHomes(g).rows.find((r) => r.id === 'home:a3')?.seen).toBe(YEAR - 1)
+    expect(readFirms(g).rows.find((r) => r.id === 'firm:a2')?.seen).toBe(YEAR)
+    expect(readHomes(g).rows.find((r) => r.id === 'home:a4')?.seen).toBe(YEAR)
+    expect(staleProblems(g)).toEqual([])
+  })
+
+  it('leaves a row that went in an earlier year as it was, and a third sync writes nothing', () => {
+    const g = richGame()
+    syncPeople(g)
+    syncFirms(g)
+    syncHomes(g)
+    g.year = YEAR + 3
+    g.assets = g.assets.filter((a) => a.id !== 'a1' && a.id !== 'a3')
+    syncFirms(g)
+    syncHomes(g)
+    expect(readFirms(g).rows.find((r) => r.id === 'firm:a1')?.seen).toBe(YEAR)
+    expect(readHomes(g).rows.find((r) => r.id === 'home:a3')?.seen).toBe(YEAR)
+    const roots = [g.world?.firms, g.world?.homes]
+    const bytes = JSON.stringify(g.world)
+    syncFirms(g)
+    syncHomes(g)
+    expect([g.world?.firms, g.world?.homes]).toEqual(roots)
+    expect(g.world?.firms).toBe(roots[0])
+    expect(JSON.stringify(g.world)).toBe(bytes)
+  })
+
+  it('a hand-over with the whole world: the dead player and a company the estate took leave no fresh row', () => {
+    const g = richGame()
+    syncWorld(g)
+    g.assets = g.assets.filter((a) => a.id !== 'a1')
+    g.people = g.people.filter((p) => p.relation !== 'spouse')
+    syncWorld(g)
+    expect(staleProblems(g)).toEqual([])
+    expect(worldProblems(g, { live: true })).toEqual([])
   })
 })
 
