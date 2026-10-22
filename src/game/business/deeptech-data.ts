@@ -5,6 +5,7 @@
 import type { DegreeKind } from '../types'
 import { CAPS, CAP_IDS, type CapId, type CapMap } from './ai-bench-data'
 import { LEAD_ENDING, capWeight, compositeRating, leadTier, modelRating, modelScore, modelSpec, modelStrength, releasedRating, type BestRival } from './ai-bench'
+import { CAP_LEVEL_MAX, capTask } from './aicap-effort'
 import { MAX_SERIES, nextDrugId, timesDone, type AiModel, type DeepTechIndustry, type TechState } from './deeptech-state'
 
 // ---------------------------------------------------------------------------
@@ -1284,6 +1285,7 @@ function nextGenDef(ind: DeepTechIndustry): ProgramDef {
 /**
  * A capability research track (AI Lab 2.0): two years of work that adds one research level in one capability.
  * Every model trained after it rates higher there. It has no `unlocks` flag and a lab's manager never starts one.
+ * Its price and its odds are the track's task (aicap-effort.ts): 3M x 1.4^level a year, odds .65 whatever the level.
  */
 export function capProgram(cap: CapId): ProgramDef {
   const def = CAPS[cap]
@@ -1294,11 +1296,11 @@ export function capProgram(cap: CapId): ProgramDef {
     emoji: def.emoji,
     blurb: `Research ${def.label.toLowerCase()}. Each level lifts every model you train after it.`,
     years: 2,
-    cost: (t) => 3_000_000 * 1.4 ** levels(t),
-    odds: fixed(0.65),
+    cost: (t) => capTask(cap, levels(t)).cost,
+    odds: (t) => capTask(cap, levels(t)).p0,
     ipShare: 0.3,
     track: cap,
-    gate: (t) => (levels(t) >= 20 ? 'Fully researched.' : t.models.some((m) => (m.rating?.[cap] ?? 0) > 0) ? null : 'Train a model that covers it first.'),
+    gate: (t) => (levels(t) >= CAP_LEVEL_MAX ? 'Fully researched.' : t.models.some((m) => (m.rating?.[cap] ?? 0) > 0) ? null : 'Train a model that covers it first.'),
     win: (x) => {
       const n = levels(x.t) + 1
       x.t.caps[cap] = n
