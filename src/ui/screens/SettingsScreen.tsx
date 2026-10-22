@@ -1,6 +1,7 @@
-// Settings: how money is shown, the Time Machine, About and the danger zone. Also exports the small
+// Settings: how money is shown, how exact the numbers are, the Time Machine, About and the danger zone. Also exports the small
 // screen header / confirm dialog / toast pieces the other out-of-game screens share.
 import { ModalSurface } from '../a11y/ModalSurface'
+import { InfoSettingsSection } from '../components/InfoSettings'
 import { NoticeSettingsSection } from '../components/NoticeSettings'
 import { TimeMachineSettingsSection } from '../components/TimeMachineSettings'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -217,6 +218,8 @@ export function SettingsScreen() {
           {moneyPreview(game)}
         </p>
       </section>
+
+      <InfoSettingsSection />
 
       <NoticeSettingsSection />
 
