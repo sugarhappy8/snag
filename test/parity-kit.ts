@@ -252,7 +252,7 @@ function firstCity(countryId: string): string {
 }
 
 /** A founder (hedge-kit's `rich`) who owns and runs one company of this industry. */
-function industryCompany(industry: string): { g: GameState; a: Asset } {
+export function industryCompany(industry: string): { g: GameState; a: Asset } {
   const g = rich()
   const b0 = newBiz(g, industry as Parameters<typeof newBiz>[1], 'us', firstCity('us'), { cash: 5_000_000 })
   const a = createBusinessAsset(g, `Parity ${industry}`, b0, 1e6)
