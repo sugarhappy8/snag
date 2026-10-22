@@ -52,8 +52,9 @@ Mode are both on. Headless `ageUp` never calls it, so a test that reads `g.queue
    after `g.year` is dropped, so nothing reads the future.
 
 The close is idempotent by year: a second call for the same year changes nothing. It draws no number, moves no money and never
-throws. A step that fails puts the queue and the log back, and the report (`CloseReport`) says `closed: false`, so the store plays the
-year the old way.
+throws. A step that fails puts the game back as it came in (the queue with the year events task in it, the log, and the draws, counters
+and flags the year events step touched), and the report (`CloseReport`) says `closed: false`, so the store plays the year the old way and
+the task picks the events it would have picked.
 
 ## The card
 

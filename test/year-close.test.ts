@@ -15,6 +15,7 @@ import { acctBalance, playerAcct } from '../src/game/kernel/ledger'
 import { EVENT_SCRIPT } from '../src/game/events/helpers'
 import { presentAskDirect, ASK_SCRIPT, BUNDLE_SCRIPT } from '../src/game/events/wealth-resolve'
 import { askDefs } from '../src/game/events/wealth-catalog'
+import { applyFallback } from '../src/game/offline'
 import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState, InputModal, MinigameModal, ModalItem, NoticeModal, YearCard } from '../src/game/types'
@@ -563,6 +564,37 @@ describe('never throws, and leaves the game as it came in', () => {
     expect(g.queue[0]).toEqual(T('t1'))
     expect(g.queue).toHaveLength(2)
     expect('yearBook' in g.flags).toBe(false)
+  })
+
+  it('a failure after the year events task ran leaves every draw, memory and counter as it came in, so the task replays to the very year the old way plays', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    let failures = 0
+    for (const n of [1, 2, 3]) {
+      const g = life(1990, findSeed(() => true, { from: n * 11, label: `failed close life ${n}` }))
+      for (let year = 0; year < 12 && g.character.alive; year++) {
+        ageUp(g)
+        if (!g.character.alive || !g.queue.some((m) => m.kind === 'aiTask' && m.task.type === 'yearEvents')) break
+        const before = JSON.stringify(g)
+        // The old way: the task resolved where it stands (what the store does when the close did not run).
+        const twin = JSON.parse(before) as GameState
+        const task = twin.queue.find((m) => m.kind === 'aiTask')!
+        twin.queue = twin.queue.filter((m) => m !== task)
+        if (task.kind === 'aiTask') applyFallback(twin, task.task)
+        // A close that fails after step 1 (a hole in the queue).
+        g.queue.push(null as unknown as ModalItem)
+        expect(closeYear(g).closed, `life ${n} year ${year}`).toBe(false)
+        failures++
+        g.queue.pop()
+        expect(JSON.stringify(g), `life ${n} year ${year}: a failed close changes nothing`).toBe(before)
+        // The store then resolves the task as it always did: the same year as the twin that never tried the close.
+        const at = g.queue.findIndex((m) => m.kind === 'aiTask')
+        const [again] = g.queue.splice(at, 1)
+        if (again && again.kind === 'aiTask') applyFallback(g, again.task)
+        expect(JSON.stringify(g), `life ${n} year ${year}: the replay is the old way`).toBe(JSON.stringify(twin))
+        g.queue = []
+      }
+    }
+    expect(failures).toBeGreaterThan(20)
   })
 
   it('does nothing for a character who is dead', () => {
