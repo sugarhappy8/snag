@@ -824,7 +824,14 @@ untouched. `ProgCtx.rival` hands `trainWin` the best rival of the year without i
 odds and the pitch hint read the same number.
 
 Research tracks. `capProgram(cap)` builds one program per capability (`cap.<id>`: two years, odds 0.65,
-cost `3M x 1.4^level`, `ipShare` 0.3, no `unlocks`). A finished track adds a research level that every
+cost `3M x 1.4^level`, `ipShare` 0.3, no `unlocks`). Since R3 the price and the odds are read from the
+track's task (`business/aicap-effort.ts`, a leaf adapter: `capTask(cap, level)` is the same calibration as
+the lab's funding quote, with a neutral field, so the odds stay exact at every level). A lost track banks
+know-how in its own capability (`dt.aiLab.cap.<cap>`, at most 15 odds points on the retry, no other
+capability moves) and the Lab Report's line says what it taught. `capKnowledge(t, cap)` is the research level
+as 0 to 100 (5 a level) for the Knowledge screens; it is a view and never an input of the odds, because the
+level already lifts every model through `modelRating`'s `research` term. `modelRating` and its ceiling (the
+market's best plus 90) are not touched. A finished track adds a research level that every
 later model uses. A track is gated on a rated model that covers the capability. Tracks have their own
 pool: `programBlock` allows `1 + floor(log2(sites))` at once (`trackLimit`, sites are the lab's total
 outlets), clamped to 1 through `CAP_IDS.length`, so 1 site runs 1 track, 2 run 2, 8 run 4, 128 run all
