@@ -27,6 +27,8 @@ import { isIndustryLegal, type Industry } from './data/markets'
 import type { BizState } from './business/state'
 import { clampN, money, num, pct, rec } from './business/util'
 import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
+import { pickLine } from './text/pick'
+import { PROMO_LINES, PROMOTED } from './text/pools'
 import { npcCompany } from './npc-company-state'
 import { inheritFamilyTalent, npcHasMainCharacter } from './talents'
 import { ageCeiling } from './mastery'
@@ -104,11 +106,12 @@ export function initializeNpc(g: GameState, p: Person): NpcLife {
   saveNpcLife(p, life)
   return life
 }
+export { PROMO_LINES }
 function milestone(g: GameState, p: Person, l: NpcLife, text: string): void {
   l.history = [...l.history, `${g.year}: ${text}`].slice(-24)
   if ((p.livesWithPlayer || p.relationship >= 55) && (g.yearActions['npc.news'] ?? 0) < 3) {
     g.yearActions['npc.news'] = (g.yearActions['npc.news'] ?? 0) + 1
-    log(g, `${p.firstName}: ${text}`)
+    log(g, `${p.firstName}: ${text === PROMOTED ? pickLine(g, PROMO_LINES) : text}`)
   }
 }
 function storeCompany(p: Person, a: Asset): void { p.data.npcCompany = a as unknown as Json }

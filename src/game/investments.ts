@@ -24,6 +24,8 @@ import { flagOn } from './flags'
 import { isRef } from './kernel/ids'
 import type { AcctRef, Why } from './kernel/ledger'
 import { capitalGainsTax, transactionsLevy } from './nation/rates'
+import { stateLine } from './text/state'
+import { logStateLine } from './text/state-log'
 import { timelineFamily } from './timeMachine'
 import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
@@ -2796,8 +2798,10 @@ export function yearlyInvestments(g: GameState): void {
       const idx = indexName(info, g.year)
       const m = reportedMove(info, g.year, indexReturn(g, info, g.year, ey.index.ret))
       if (stockMarketBlock(g, info)) return
-      if (ey.index.crash) log(g, `The ${idx} crashed ${moveText(m, 0)} this year. Good thing I had nothing in it.`)
-      else if (ey.index.boom) log(g, `The ${idx} boomed ${moveText(m, 0)} this year. I wish I had invested.`)
+      // The day the index crashed or boomed, said through its row (text/state-table.ts): the same kind of day speaks again only
+      // when it is a bigger one or after 5 quiet years.
+      const day = ey.index.crash ? 'index.crash' : ey.index.boom ? 'index.boom' : null
+      if (day) logStateLine(g, stateLine(g, day, Math.abs(m.pct), { slots: { index: idx, move: moveText(m, 0) } }))
     }
     return
   }

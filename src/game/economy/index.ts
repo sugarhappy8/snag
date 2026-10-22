@@ -1,6 +1,7 @@
-import { log } from '../core'
 import { marketOf } from '../data/markets'
 import { historicalCycle, inHistory } from '../history/markets'
+import { stateLine } from '../text/state'
+import { logStateLine } from '../text/state-log'
 import { outcomeTag } from '../timeMachine'
 import type { GameState } from '../types'
 import { COUNTRIES } from '../world'
@@ -47,8 +48,15 @@ export function yearlyEconomy(g: GameState): void {
   storeEconomy(g, next)
   consumeWriteDowns(g)
   const local = next.countries[g.character.countryId], before = opening[g.character.countryId]
-  if (local && before && g.character.age >= 16 && (local.growth < -.02 && before.growth >= -.02 || local.credit < .72 && before.credit >= .72 || local.supply > .12 && before.supply <= .12)) {
-    log(g, `Around me: ${local.causes[0]}`, 'neutral')
+  if (local && before && g.character.age >= 16) {
+    // One line, for the first condition that crossed this year. The row (text/state-table.ts) keeps the same crossing from
+    // speaking again within 5 years; a year with no stated cause says nothing.
+    const crossed = local.growth < -.02 && before.growth >= -.02 ? { key: 'around.growth', value: local.growth } as const
+      : local.credit < .72 && before.credit >= .72 ? { key: 'around.credit', value: local.credit } as const
+      : local.supply > .12 && before.supply <= .12 ? { key: 'around.supply', value: local.supply } as const
+      : null
+    const cause = local.causes[0]
+    if (crossed) logStateLine(g, cause ? stateLine(g, crossed.key, crossed.value, { slots: { cause } }) : null)
   }
 }
 

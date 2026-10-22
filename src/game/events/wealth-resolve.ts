@@ -8,6 +8,8 @@ import type { Reason } from '../kernel/reasons'
 import { touch } from '../love'
 import { chance, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
+import { BOUNDARY_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import { common } from './era'
@@ -36,6 +38,8 @@ import {
   type Answer,
 } from './wealth-core'
 import type { ChoiceOption, GameState, Json, Person } from '../types'
+
+export { BOUNDARY_LINES }
 
 export const ASK_SCRIPT = 'wealth.ask'
 export const LESS_SCRIPT = 'wealth.ask.less'
@@ -302,7 +306,7 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
       const atm = common(g, 'atm') ? 'an ATM' : 'a bank'
       parts.push(`You told ${p.firstName} you love ${p.gender === 'male' ? 'him' : 'her'}, but you're not ${atm}: no more money talk for a while.`)
       parts.push(entitlement(p) >= 60 ? `${p.firstName} did not take it well.` : `${p.firstName} was hurt, then quiet, then (eventually) okay.`)
-      log(g, `I set money boundaries with ${myOf(p)}.`)
+      log(g, fillSlots(pickLine(g, BOUNDARY_LINES), { who: myOf(p) }))
     } else if (respect) {
       bumpRelationship(p, randInt(g, 1, 3))
       if (isDescendant(p)) addEntitlement(p, -4)

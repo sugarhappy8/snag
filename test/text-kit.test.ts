@@ -7,7 +7,7 @@
 //   TEXT_KIT_RECORD=1  writes test/fixtures/text-baseline.json from this run
 //   TEXT_KIT_RECORD=r2 writes test/fixtures/text-baseline-r2.json (R2-B2, the text stream) and prints how repeatedShare and
 //                      sameWithin10 compare with the R1 baseline. The R1 file is left alone: test/text-metrics.test.ts pins it.
-//   TEXT_KIT_ENFORCE=1 also asserts DESIGN_THRESHOLDS on each life (fails today on purpose)
+//   TEXT_KIT_ENFORCE=1 also asserts the rest of DESIGN_THRESHOLDS on each life (fails today on purpose)
 //
 // The harness only reads g.log and the drained popups, so it never changes the game.
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -54,9 +54,15 @@ function numbers(v: unknown, path = 'metrics'): Array<[string, unknown]> {
   return [[path, v]]
 }
 
-function enforce(m: TextMetrics, rich: boolean): void {
+/** The design thresholds a life must meet in every run (R2-P10): the repeated-line share, 5% a life and 8% for the rich one. */
+function enforceAlways(m: TextMetrics, rich: boolean): void {
   const T = DESIGN_THRESHOLDS
   expect(m.repeatedShare, 'repeatedShare').toBeLessThanOrEqual(rich ? T.repeatedShareRich : T.repeatedShare)
+}
+
+/** The rest of the design thresholds, still opt-in (TEXT_KIT_ENFORCE=1): a later release moves each into enforceAlways when its numbers allow. */
+function enforceAll(m: TextMetrics, rich: boolean): void {
+  const T = DESIGN_THRESHOLDS
   expect(m.sameWithin10, 'sameWithin10').toBeLessThanOrEqual(T.sameWithin10)
   expect(m.over3.max, 'over3.max').toBeLessThanOrEqual(T.over3Max)
   expect(m.popupFamilies.maxPerLife, 'popupFamilies.maxPerLife').toBeLessThanOrEqual(T.popupFamilyMax)
@@ -82,7 +88,8 @@ describe('text harness', () => {
         expect(m.cardsPerYear.digest.mean).toBeLessThanOrEqual(m.cardsPerYear.raw.mean)
         // The raw count is the popup count, by definition.
         expect(m.cardsPerYear.raw).toEqual(m.popupsPerYear)
-        if (ENFORCE) enforce(m, spec.rich)
+        enforceAlways(m, spec.rich)
+        if (ENFORCE) enforceAll(m, spec.rich)
       },
       TIMEOUT,
     )

@@ -7,6 +7,8 @@ import { arrestPlayer } from '../crime'
 import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
+import { PRO_SEASON_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { bodyCeiling, crowdedField, masterFirstTime, masteryCap } from '../mastery'
@@ -1023,7 +1025,7 @@ export function yearlyAthlete(g: GameState): void {
   if (knocks[sport.id]) addHeadTrauma(g, knocks[sport.id] * (0.6 + rand(g) * 0.8))
 
   const statLine = seasonStats(g, sport, greatness, d.position)
-  log(g, `I played my ${ordinal(p.seasons)} pro season with the ${d.team}. ${statLine}`, greatness >= 60 ? 'good' : 'neutral')
+  log(g, fillSlots(pickLine(g, PRO_SEASON_LINES), { nth: ordinal(p.seasons), team: d.team, stats: statLine }), greatness >= 60 ? 'good' : 'neutral')
   fameToward(g, greatness * 0.85 + p.championships * 2, 4)
 
   if (rank === 1) {
@@ -1119,6 +1121,8 @@ export function yearlyAthlete(g: GameState): void {
     )
   }
 }
+
+export { PRO_SEASON_LINES }
 
 function seasonStats(g: GameState, sport: Sport, greatness: number, position: string): string {
   const k = greatness / 100

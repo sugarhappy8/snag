@@ -28,6 +28,11 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   nothing.
 - An identity pool (a name, a title or anything stored on a person, an asset, a flag, or something the code branches on) stays
   `pick(g, ...)`. `eraPickPlain` and `vPlain` are the identity versions of `eraPick` and `v`.
+- A status line that comes back every year (a market, an allowance, "around me") is a row of `STATE_TABLE` in
+  `src/game/text/state-table.ts` and one `stateLine(g, key, value, { id?, slots? })` call, never a hand-written "once in five
+  years" gate. It speaks when the value's band changes (at least 2 years after the last line) or after 5 quiet years, in 3 to 6
+  variants that never repeat the last two. It draws nothing (a hash of the life, year and key picks the variant) and keeps its
+  records in `flags.textMem.s`, at most 120.
 - `scripts/codemod-pickline.mjs` finds the prose pools still written with `pick`. A pool that must stay `pick` is listed in
   `scripts/codemod-pickline-skip.json` with a reason, and `test/r2-pickline-ratchet.test.ts` fails on any other.
 
@@ -52,3 +57,11 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   A digest rounds a number that is not an integer to 9 significant digits (`PARITY_DIGITS`): `Math.log`, `Math.exp` and
   `Math.pow` differ in the last bit between CPUs and between Node 22 and 24, and the engine keeps a few unrounded floats, so the
   exact bits would fail on every machine but the one that recorded them. A divergence the canary reports is a real move.
+- `test/stream-isolation.test.ts` adds one draw to one stream in one year and checks that only the slices of that stream's row in
+  `STREAM_SLICES` (`test/stream-tap.ts`) change. A new `stream(g, 'tag', ...)` or `outcomeStream(g, 'tag', ...)` needs a row in the
+  same commit, and the tag must be a string literal so the table can see it. A leak outside the row is a bug, never a reason to
+  widen the row. A stream that a module draws from but no played life reaches yet (`lod`, in `seededEntity`) is marked `driven`: the
+  test calls the module itself in the tapped year, and `year: 0` says the module passes 0 instead of the calendar year.
+- `test/replay-purity.test.ts` ages one life five more years four ways (a `structuredClone`, a JSON reload through `migrateSave`,
+  a Time Machine snapshot loaded at the same age, and `saveGame` then `loadGame` on a memory backend, a chunked save v3) and
+  compares the nine slice digests each year. A failure is a purity bug.

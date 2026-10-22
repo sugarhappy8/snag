@@ -4,7 +4,9 @@
 // returns (wealth-core donationKarma / donationFame).
 import { addHidden, addStat, attractedTo, count, currentPartner, log, notice, preferredGender, remember, removePerson, spend, useYearAction } from '../core'
 import { pick, randInt } from '../rng'
-import { pickSite } from '../text/pick'
+import { pickLine, pickSite } from '../text/pick'
+import { ADMIRER_LINES, SCAM_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import { randomFirstName } from '../world'
 import { eraPick, eraPickPlain, landline } from './era'
 import { channel, folks, mayAsk, scaled, type Ask, type AskDef } from './wealth-ask'
@@ -26,6 +28,8 @@ import {
   yourOf,
 } from './wealth-core'
 import type { GameState, Person } from '../types'
+
+export { ADMIRER_LINES, SCAM_LINES }
 
 function he(p: Person): string {
   return p.gender === 'male' ? 'he' : 'she'
@@ -235,7 +239,7 @@ export const WORLD_ASKS: AskDef[] = [
           }
           count(g, 'scammed')
           addStat(g, 'happiness', -randInt(g, 4, 8))
-          log(g, `I lost ${money(a.amt)} to a scam.`, 'bad')
+          log(g, fillSlots(pickLine(g, SCAM_LINES), { money: money(a.amt) }), 'bad')
           notice(g, 'Scammed', `You sent ${money(a.amt)}. The "opportunity" stopped answering the next morning. The money is gone, and so is a little of your faith in people.`, { emoji: '\u{1F3A3}', tone: 'bad' })
         },
       },
@@ -287,7 +291,7 @@ export const WORLD_ASKS: AskDef[] = [
             return
           }
           addStat(g, 'happiness', randInt(g, 4, 8))
-          log(g, `I spent ${money(a.amt)} on an admirer who left when the gifts stopped.`)
+          log(g, fillSlots(pickLine(g, ADMIRER_LINES), { money: money(a.amt) }))
           notice(g, 'Admirer', `You had a glamorous few months with ${a.name ?? 'your admirer'}: dinners, gifts, a weekend away. When you hinted the gifts might slow down, so did everything else.`, { emoji: '\u{1F942}' })
         },
       },

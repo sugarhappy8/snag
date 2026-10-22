@@ -12,6 +12,8 @@ import { addCvEntry } from '../cv'
 import { localeOf } from '../data/locales'
 import { chance, pick, rand, randInt, uid } from '../rng'
 import { pickLine } from '../text/pick'
+import { stateLine } from '../text/state'
+import { logStateLine } from '../text/state-log'
 import { defineScript } from '../scripts'
 import type { Condition, CvEntry, GameState, Gender, Job, Json, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, flagEmoji, getCountry, randomFirstName, randomLastName } from '../world'
@@ -600,7 +602,9 @@ export function yearlySponsors(g: GameState, sport: string | null, appeal: numbe
       log(g, `${d.brand} renewed my endorsement deal.`, 'good')
     } else log(g, `My endorsement deal with ${d.brand} ended.`)
   }
-  if (total > 0) log(g, `I earned ${short(total)} from endorsements this year.`, 'good')
+  // What the deals paid, said through its row (text/state-table.ts): in the first year, when the sum moves up a step, or after 5
+  // quiet years. A quiet year still takes the log id the line took, so no later id moves.
+  if (total > 0) logStateLine(g, stateLine(g, 'endorse.income', total, { slots: { money: short(total) } }), 'good')
   const recentlyActive = sport !== null || (p.lastActiveAge >= 0 && c.age - p.lastActiveAge <= 3)
   if (recentlyActive) sponsorCall(g, sport ?? 'sports', appeal)
   p.buzz = Math.max(0, Math.round(p.buzz * 0.5))

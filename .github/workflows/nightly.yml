@@ -1,0 +1,277 @@
+name: Nightly
+
+# The deep tier (docs/CI.md). Scheduled runs happen on the default branch only; a pull request that touches this file
+# or its scripts runs the same jobs at smoke size, which is how a change to it is proved before it reaches main.
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+    inputs:
+      scale:
+        description: full or smoke
+        type: choice
+        options: [full, smoke]
+        default: full
+  pull_request:
+    paths: ['.github/workflows/nightly.yml', 'scripts/nightly*', 'test/nightly-*']
+
+# One group per event and branch (or PR). Only a pull request run is cancelled by a newer one: a night that is half done
+# is never thrown away because someone started another by hand.
+concurrency:
+  group: nightly-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  actions: read
+
+# Every size comes from scripts/nightly-lib.mjs (nightlySizes); each job prints its own into $GITHUB_ENV with
+# `node scripts/nightly.mjs sizes`, so the YAML holds no number a test has to keep in step.
+env:
+  NIGHTLY_SCALE: ${{ github.event_name == 'pull_request' && 'smoke' || inputs.scale || 'full' }}
+
+jobs:
+  fuzz:
+    name: Fuzz, shard ${{ matrix.shard }} of 8
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sizes of this shard
+        run: node scripts/nightly.mjs sizes "$NIGHTLY_SCALE" --shard ${{ matrix.shard }}/8 >> "$GITHUB_ENV"
+      - name: Bundle the fuzzer
+        run: node_modules/.bin/esbuild scripts/fuzz-engine.ts --bundle --platform=node --format=esm --sourcemap --outfile=fuzz-engine.mjs
+      - name: Play the lives
+        shell: bash
+        run: |
+          mkdir -p fuzz
+          node --enable-source-maps fuzz-engine.mjs --start "$FUZZ_START" --seeds "$FUZZ_SEEDS" --years "$FUZZ_YEARS" --budget "$FUZZ_BUDGET" --fork --quiet --json fuzz/fuzz-${{ matrix.shard }}.json | tee fuzz/fuzz-${{ matrix.shard }}.log
+      - name: Turn the log into metrics
+        if: ${{ always() }}
+        run: node scripts/nightly.mjs fuzz-metrics --shard ${{ matrix.shard }} --log fuzz/fuzz-${{ matrix.shard }}.log --json fuzz/fuzz-${{ matrix.shard }}.json --out metrics/fuzz-${{ matrix.shard }}.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: metrics-fuzz-${{ matrix.shard }}
+          path: metrics/fuzz-${{ matrix.shard }}.json
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: fuzz-${{ matrix.shard }}
+          path: fuzz
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+
+  balance:
+    name: Balance and ceiling probes, shard ${{ matrix.shard }} of 4
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NIGHTLY_SHARD: ${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sizes of this shard
+        run: node scripts/nightly.mjs sizes "$NIGHTLY_SCALE" --shard ${{ matrix.shard }}/4 >> "$GITHUB_ENV"
+      - name: Bundle the probes
+        run: node_modules/.bin/esbuild scripts/nightly-probes.ts --bundle --platform=node --format=esm --outfile=nightly-probes.mjs
+      - name: Balance probe
+        run: node nightly-probes.mjs balance --start "$BALANCE_START" --count "$BALANCE_COUNT" --years "$BALANCE_YEARS" --out metrics/balance-${{ matrix.shard }}.json
+      - name: Ceiling probe
+        run: node nightly-probes.mjs ceiling --start "$CEILING_START" --count "$CEILING_COUNT" --years "$CEILING_YEARS" --scale "$CEILING_SCALE" --out metrics/ceiling-${{ matrix.shard }}.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: metrics-balance-${{ matrix.shard }}
+          path: metrics
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+
+  # The test files that are slow or need a switch: the 100x ceilings at four scales, every old save for 20 years and 8 reseeds,
+  # the 13-life repeat probe, and the deep golden plan. `env` is the switches of the row, set for that one command.
+  deep:
+    name: Deep, ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ceilings
+            files: test/ceiling-probe.test.ts
+            env: CEILING_PROBE=deep
+          - name: old-saves
+            files: test/old-saves.test.ts
+            env: OLD_SAVES_YEARS=$OLD_SAVES_YEARS OLD_SAVES_RESEEDS=$OLD_SAVES_RESEEDS
+          - name: text
+            files: test/text-repeat.test.ts test/text-kit.test.ts
+            env: TEXT_PROBE_LIVES=$TEXT_PROBE_LIVES
+          - name: golden
+            files: test/golden-digest.test.ts
+            env: GOLDEN_DEEP=1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sizes
+        run: node scripts/nightly.mjs sizes "$NIGHTLY_SCALE" >> "$GITHUB_ENV"
+      - name: Run ${{ matrix.name }}
+        run: env ${{ matrix.env }} NIGHTLY_METRICS_DIR=metrics npx vitest run --maxWorkers=1 ${{ matrix.files }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: metrics-deep-${{ matrix.name }}
+          path: metrics
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+
+  anachronism:
+    name: Anachronism, slice ${{ matrix.slice }} of 8
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SLICE: ${{ matrix.slice }}/8
+      SLICE_DIR: test-slices
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sizes of this slice
+        run: node scripts/nightly.mjs sizes "$NIGHTLY_SCALE" --shard ${{ matrix.slice }}/8 >> "$GITHUB_ENV"
+      - name: Play this slice
+        run: |
+          echo "Slice ${{ matrix.slice }} of 8 plays its share of $ANACHRONISM_LIVES lives"
+          npx vitest run --maxWorkers=1 test/anachronism.test.ts
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: slices-${{ matrix.slice }}
+          path: test-slices
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+
+  anachronism-merge:
+    name: Anachronism, merge the slices
+    needs: anachronism
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SLICE: merge
+      SLICE_DIR: test-slices
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sizes
+        run: node scripts/nightly.mjs sizes "$NIGHTLY_SCALE" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: slices-*
+          path: test-slices
+          merge-multiple: true
+      - name: Check the whole set
+        run: |
+          echo "Merging the 8 slices of $ANACHRONISM_LIVES lives"
+          npx vitest run --maxWorkers=1 test/anachronism.test.ts
+
+  # Every job above hands over a metrics file (or fails, which is recorded too). This job pools them, reads the last good
+  # scheduled night from its artifact and prints the diff, with the hard rules of scripts/nightly-lib.mjs failing the run.
+  # It needs no packages: nightly.mjs is plain Node.
+  metrics:
+    name: Metrics and the diff against the previous night
+    needs: [fuzz, balance, deep, anachronism, anachronism-merge]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: metrics-*
+          path: metrics
+          merge-multiple: true
+      - name: Find the previous night
+        # A smoke run is not comparable with a full night, so only a full run looks for one; having none is not a failure.
+        if: ${{ env.NIGHTLY_SCALE == 'full' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          prev="$(gh run list --workflow nightly.yml --event schedule --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [[ "$prev" =~ ^[0-9]+$ ]]; then
+            gh run download "$prev" -n nightly-metrics -D previous
+          else
+            echo "No successful scheduled night yet."
+          fi
+      - name: Pool the metrics files
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(metrics/*-*.json)
+          if (( ${#files[@]} == 0 )); then
+            echo "No job wrote a metrics file tonight, so nothing was measured." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          node scripts/nightly.mjs merge --out metrics/all.json \
+            --result fuzz=${{ needs.fuzz.result }} \
+            --result balance=${{ needs.balance.result }} \
+            --result deep=${{ needs.deep.result }} \
+            --result anachronism=${{ needs.anachronism.result }} \
+            --result anachronism-merge=${{ needs.anachronism-merge.result }} \
+            "${files[@]}"
+      - name: Diff against the previous night
+        shell: bash
+        run: |
+          # No previous night is a normal first night; under pipefail a missing folder must not stop the step here.
+          prev="$(find previous -name all.json 2>/dev/null | head -n 1 || true)"
+          node scripts/nightly.mjs diff --prev "${prev:-none}" --cur metrics/all.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: nightly-metrics
+          path: metrics/all.json
+          if-no-files-found: ignore
+          retention-days: 30
+          overwrite: true

@@ -2,6 +2,7 @@
 // (eclipses, Olympics, World Cups, a famous asteroid and comet); every other year gets one item
 // from a pool of plausible-to-silly futures, each used once before the pool repeats. Pure and
 // deterministic per year: the same future for every life, no RNG.
+import { GAMES_HEADLINES, WORLD_CUP_HEADLINES } from '../text/pools'
 import type { HeadlineRow, WorldEventKind } from './events-types'
 import { PRESENT_YEAR } from './timeline'
 
@@ -121,6 +122,17 @@ function poolIndex(year: number): number {
   return (((k * STRIDE) % n) + n) % n
 }
 
+export { GAMES_HEADLINES, WORLD_CUP_HEADLINES }
+
+/** The first edition of each after the calendar: the Games of 2036, the World Cup of 2038, every fourth year after. */
+const GAMES_FIRST = 2036
+const WORLD_CUP_FIRST = 2038
+
+/** The line of the edition held in `year` (0 for the first), round and round the pool. */
+function editionLine(pool: readonly string[], year: number, first: number): string {
+  return pool[Math.floor((year - first) / 4) % pool.length]
+}
+
 /** The headlines for a future year (empty for history). */
 export function futureHeadlines(year: number): HeadlineRow[] {
   if (year <= PRESENT_YEAR) return []
@@ -129,9 +141,9 @@ export function futureHeadlines(year: number): HeadlineRow[] {
   out.push([year, kind, 1, 'world', headline])
   // The Games and the World Cup keep their rhythm after the known hosts run out.
   if (year > 2034) {
-    if (year % 4 === 0) out.push([year, 'sport', 1, 'world', 'The Summer Olympics open'])
+    if (year % 4 === 0) out.push([year, 'sport', 1, 'world', editionLine(GAMES_HEADLINES, year, GAMES_FIRST)])
     if (year % 4 === 2) {
-      out.push([year, 'sport', 1, 'world', 'The World Cup kicks off'])
+      out.push([year, 'sport', 1, 'world', editionLine(WORLD_CUP_HEADLINES, year, WORLD_CUP_FIRST)])
       out.push([year, 'sport', 0, 'world', 'The Winter Olympics open'])
     }
   }

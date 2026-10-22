@@ -115,10 +115,16 @@ export function initialCountry(country: string, year: number): CountryEconomy {
   }
 }
 
+/**
+ * The largest annual inflation a country or a history frame may hold: above every figure of data/currencies.ts (Hungary 1946 is
+ * 1e23), so a hyperinflation year reads back unchanged from a save, a clone or a Time Machine snapshot.
+ */
+export const INFLATION_CEILING = 1e24
+
 const RANGES: Partial<Record<keyof CountryEconomy, [number, number]>> = {
   // Historical hyperinflation-era nominal rates and housing crashes must survive a
   // reload unchanged. Procedural years use much tighter bounds in simulation.ts.
-  year: [1900, 100000], outputGap: [-.35, .25], growth: [-.2, .16], inflation: [-.5, 1e7], rate: [-.1, 1e5], unemployment: [.015, .4],
+  year: [1900, 100000], outputGap: [-.35, .25], growth: [-.2, .16], inflation: [-.5, INFLATION_CEILING], rate: [-.1, 1e5], unemployment: [.015, .4],
   wages: [.5, 3], productivity: [.6, 4], skills: [.2, 1], confidence: [.2, 1.5], spending: [.45, 1.6], saving: [.03, .5], credit: [.2, 1.5], liquidity: [.05, .65], defaults: [.002, .3],
   bankStress: [0, 1], privateDebt: [.1, 2.5], governmentDebt: [0, 2.5], fiscal: [-.08, .1], taxShift: [-.06, .08], services: [.45, 1.5], inequality: [.2, .7], mobility: [.1, .9], population: [.5, 2.5], elderly: [.08, .4],
   trade: [.4, 1.5], currency: [.5, 1.8], supply: [0, .65], housing: [.4, 4], rent: [.5, 3], housingReturn: [-.95, 5], bubble: [0, .7], market: [.12, 8], priceScale: [1e-6, 1e6],
@@ -162,7 +168,7 @@ export function economyState(g: GameState): EconomyState | null {
   for (const [id, row] of Object.entries(record(r.countries))) if (validCountries.has(id)) out.countries[id] = normalizeCountry(row, id, year)
   for (const [id, row] of Object.entries(record(r.previous))) if (validCountries.has(id)) out.previous[id] = normalizeCountry(row, id, year - 1)
   for (const [id, rows] of Object.entries(record(r.history))) if (validCountries.has(id) && Array.isArray(rows)) {
-    out.history[id] = rows.slice(-HISTORY_YEARS).map(record).filter(p => typeof p.year === 'number' && Number.isFinite(p.year)).map(p => ({ year: numeric(p.year, year, 1900, 100000), growth: numeric(p.growth, .02, -.2, .16), unemployment: numeric(p.unemployment, .06, .015, .4), inflation: numeric(p.inflation, .025, -.5, 1e7), rate: numeric(p.rate, .04, -.1, 1e5), housing: numeric(p.housing, 1, .4, 4), market: numeric(p.market, 1, .12, 8), priceScale: numeric(p.priceScale, 1, 1e-6, 1e6) }))
+    out.history[id] = rows.slice(-HISTORY_YEARS).map(record).filter(p => typeof p.year === 'number' && Number.isFinite(p.year)).map(p => ({ year: numeric(p.year, year, 1900, 100000), growth: numeric(p.growth, .02, -.2, .16), unemployment: numeric(p.unemployment, .06, .015, .4), inflation: numeric(p.inflation, .025, -.5, INFLATION_CEILING), rate: numeric(p.rate, .04, -.1, 1e5), housing: numeric(p.housing, 1, .4, 4), market: numeric(p.market, 1, .12, 8), priceScale: numeric(p.priceScale, 1, 1e-6, 1e6) }))
   }
   // Signed jobs/lending retain gross accumulated changes across midyear reloads;
   // annual simulation nets them and applies the much tighter national effect caps.
