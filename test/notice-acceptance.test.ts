@@ -39,6 +39,7 @@ import { DIGEST_MAX, DIGEST_MIN, digestRows, digestTone, headNoticeRun, mergeabl
 import { deepFreeze } from './fuzz-kit'
 import { NEVER_ROUTE_TABLE, noticeOfRow } from './notice-table'
 import { playLife } from './play-kit'
+import { findSeed } from './seed-kit'
 
 // Minimal in-memory localStorage, installed before the store loads its settings.
 vi.hoisted(() => {
@@ -782,12 +783,19 @@ describe('(e) the v4.0.2 fixture', () => {
 // (f) A life played headless
 
 describe('(f) a seeded 25-year life through ageUp', () => {
-  const SEED = 21
   const BIRTH = 2000
+  // A life whose people had a promotion line in the 25 years (that is the one text family a site names, below). R3-Q8 moved the
+  // event picks, so the life that used to be here (seed 21) no longer has one; the seed is found, not pinned. Looked up when a test
+  // asks, not while the file loads.
+  const lifeSeed = (): number =>
+    findSeed((s) => 'npc.promotion' in (playLife({ seed: s, birthYear: BIRTH, untilAge: 25 }).g.flags.textMem as unknown as TextMem).f, {
+      from: 21,
+      label: 'a 25-year life with an NPC promotion line',
+    })
 
   sweep('never routes: no inbox, no quietMode change, and the text memory holds the flavor ring and the pools the kit wrote', () => {
     store.updateSettings({ quietMode: true })
-    const { g, years } = playLife({ seed: SEED, birthYear: BIRTH, untilAge: 25 })
+    const { g, years } = playLife({ seed: lifeSeed(), birthYear: BIRTH, untilAge: 25 })
     expect(g.character.age).toBe(25)
     expect(g.queue).toEqual([])
     // Routing is store-only: nothing was written to the inbox, and the settings were not touched.
@@ -802,21 +810,31 @@ describe('(f) a seeded 25-year life through ageUp', () => {
     expect(popups.some((p) => p.kind === 'notice' && p.weight === 'minor')).toBe(true)
     // The text memory is the flavor ring and the pools of the converted sites (R2-A3: before the codemod nothing but flavor used
     // the kit, so this said "the ring and nothing else"). A site that names its pool notes a family (pickSite never names one);
-    // R2-P10 named one, the promotion line of an NPC's year (defineLines('npc.promotion') in text/pools.ts), so it is the only family.
+    // R2-P10 named one, the promotion line of an NPC's year (defineLines('npc.promotion') in text/pools.ts), so it is the only text family.
+    // R3-Q8 adds the pace families of the event library ('pop.ev.<family>', text/pace.ts): they share the family record, so they are
+    // told apart by their prefix and checked on their own.
     const mem = g.flags.textMem as unknown as TextMem
     expect(mem).toBeDefined()
     expect(textMemProblems(mem)).toEqual([])
     expect(Object.keys(mem.p).length).toBeGreaterThan(0)
     expect(Object.keys(mem.p).length).toBeLessThanOrEqual(TEXT_MEM_LIMITS.pools)
-    expect(mem.f).toEqual({ 'npc.promotion': '2019,2025' })
-    expect(Object.keys(mem.r)).toEqual(['flavor'])
+    const texts = Object.entries(mem.f).filter(([k]) => !k.startsWith('pop.'))
+    expect(texts.map(([k]) => k)).toEqual(['npc.promotion'])
+    expect(texts[0][1]).toMatch(/^\d{4}(?:,\d{4})*$/)
+    const paced = Object.keys(mem.f).filter((k) => k.startsWith('pop.'))
+    expect(paced.length).toBeGreaterThan(0)
+    for (const k of paced) expect(k, k).toMatch(/^pop\.ev\.[a-z][a-zA-Z0-9.]*$/)
+    // R3-Q13 adds two rings of text: the words of the flavor lines ('flavorText', so one sentence in two era packs is not told twice) and the
+    // sentences event outcomes wrote lately ('told', text/told.ts).
+    expect(Object.keys(mem.r).sort()).toEqual(['flavor', 'flavorText', 'told'])
     expect(mem.r.flavor.length).toBeGreaterThan(0)
     expect(JSON.stringify(g.flags)).not.toContain('flavorRecent')
   })
 
   sweep('is the same life with both flags on and with both off', () => {
-    const on = playLife({ seed: SEED, birthYear: BIRTH, untilAge: 25 })
-    const off = withFlags({ noticeDigest: false, quietInbox: false }, () => playLife({ seed: SEED, birthYear: BIRTH, untilAge: 25 }))
+    const seed = lifeSeed()
+    const on = playLife({ seed, birthYear: BIRTH, untilAge: 25 })
+    const off = withFlags({ noticeDigest: false, quietInbox: false }, () => playLife({ seed, birthYear: BIRTH, untilAge: 25 }))
     expect(JSON.stringify(on.g)).toBe(JSON.stringify(off.g))
     expect(JSON.stringify(on.years)).toBe(JSON.stringify(off.years))
   })

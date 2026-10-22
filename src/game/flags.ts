@@ -4,8 +4,9 @@
 // only decides whether the inbox code exists in the build).
 //
 // Rules for every track:
-// - These eight keys are the complete R1 set. Nobody adds, renames or flips a key; only the lead's release
-//   commit changes a default, together with the package.json version (test/flags.test.ts fails on either half).
+// - These eight keys are the complete R1 set; R3 adds a ninth, yearCard (below). Nobody else adds, renames or flips a key;
+//   only the lead's release commit changes a default, together with the package.json version (test/flags.test.ts fails on
+//   either half).
 // - Production code reads FLAGS.key or flagOn('key') at the place of use. Never keep one in a module-level const.
 // - Tests use withFlags, or setFlags plus resetFlags. Never a module mock and never an assignment to FLAGS.
 // - R1 flags change presentation only. A flag that changes simulation output must be stamped into the save when
@@ -40,6 +41,10 @@ export const FLAG_DEFS = {
   quietInbox: { default: true, ships: '4.1.0' },
   // The IndexedDB boot (K.5a).
   idbSaves: { default: true, ships: '4.1.0' },
+  // The year close in the store flow (R3, E.D2): ageUpAction closes the year with a card, folds the small notices into the log and
+  // budgets the unrequested choices, when Quiet Mode is on too. Headless ageUp is never touched. On since 5.1.0: the release commit
+  // flipped it together with the version.
+  yearCard: { default: true, ships: '5.1.0' },
 } as const satisfies Record<string, FlagDef>
 
 export type FlagKey = keyof typeof FLAG_DEFS

@@ -16,8 +16,12 @@ import { moveCash, personCash } from '../cash'
 import { addMoney, addRelationship, log, notice, scriptChoice } from '../core'
 import { notePerson } from '../people'
 import { chance, rand, randFloat, randInt, weightedPick } from '../rng'
-import { stateLine } from '../text/state'
+import { askGapOk, notePopup } from '../text/pace'
+import { pickLine } from '../text/pick'
+import { AVOIDING_LINES, VENTURE_LOST_LINES } from '../text/pools'
+import { fillSlots, stateLine } from '../text/state'
 import { logStateLine } from '../text/state-log'
+import { askIsStoryline, askPaceKey } from './ask-families'
 import { askDefs } from './wealth-catalog'
 import { askedPurse, wholePurse } from './purses'
 import { ADULT_SCRIPT, presentAsk, presentBundle } from './wealth-resolve'
@@ -176,7 +180,7 @@ function collectLoans(g: GameState): void {
       updateTies(g, p, (x) => {
         x.marks.avoid = g.year
       })
-      if (said === undefined || g.year - said >= 5) log(g, `${cap(myOf(p))} has been avoiding me ever since I lent ${p.gender === 'male' ? 'him' : 'her'} money.`)
+      if (said === undefined || g.year - said >= 5) log(g, fillSlots(pickLine(g, AVOIDING_LINES), { who: cap(myOf(p)) }))
     }
   }
 }
@@ -216,7 +220,7 @@ function settleVentures(g: GameState): void {
       log(g, `${cap(x.what)} fizzled. ${cap(who)} paid me back ${money(back)} of the ${money(x.amt)} I put in.`)
     } else {
       if (p && p.alive) addRelationship(p, -randInt(g, 0, 3))
-      log(g, `${cap(x.what)} went under. The ${money(x.amt)} I put in went with it.`, 'bad')
+      log(g, fillSlots(pickLine(g, VENTURE_LOST_LINES), { what: x.what, money: money(x.amt) }), 'bad')
     }
   }
   writePending(g, keep)
@@ -312,6 +316,10 @@ export function requestCandidates(g: GameState, tier: number): Candidate[] {
   for (const def of askDefs()) {
     if (def.minTier > tier) continue
     if (prison && !def.prison) continue
+    // A kind of ask that was put to you within PACE.askGap years waits, unless a storyline holds it (events/ask-families.ts), and one that
+    // was put to you PACE.askLife times in this life is over (both in askGapOk). It is asked before the weight and the people, so a
+    // held-back family costs no reads.
+    if (!askGapOk(g, askPaceKey(def.id), askIsStoryline(def.id))) continue
     if (def.people) {
       for (const p of def.people(g)) {
         const last = readTies(g, p).marks[`ask.${def.id}`] ?? 0
@@ -349,6 +357,7 @@ function queueRequests(g: GameState, tier: number, budget: number): void {
     const a = c.def.build(g, tier, c.p)
     if (!a || !Number.isFinite(a.amt) || a.amt < 0) continue
     kinds.add(c.def.id)
+    holdBackFamily(pool, c.def.id)
     if (c.p) {
       people.add(c.p.id)
       updateTies(g, c.p, (t) => {
@@ -358,7 +367,32 @@ function queueRequests(g: GameState, tier: number, budget: number): void {
     if (a.small && small.length < 4) small.push(a)
     else big.push(a)
   }
-  for (const a of big) presentAsk(g, a)
+  // Every ask that is presented notes its family, whether it is a popup, a part of a bundle or sent to a secretary's inbox.
+  for (const a of big) {
+    noteAsk(g, a)
+    presentAsk(g, a)
+  }
+  for (const a of small) noteAsk(g, a)
   if (small.length === 1) presentAsk(g, small[0])
   else if (small.length > 1) presentBundle(g, small)
+}
+
+/**
+ * An ask of a family was just picked: the other plain asks of that family leave this year's pool, so a family speaks once a year (a
+ * storyline ask stays). The gap in requestCandidates cannot do this, because the note is written where the ask is presented, after
+ * the picks. Taking them out of the pool, rather than skipping them when they come up, costs no draw.
+ */
+function holdBackFamily(pool: Candidate[], id: string): void {
+  const fam = askPaceKey(id)
+  if (fam === undefined) return
+  for (let i = pool.length - 1; i >= 0; i--) {
+    const other = pool[i].def.id
+    if (askPaceKey(other) === fam && !askIsStoryline(other)) pool.splice(i, 1)
+  }
+}
+
+/** The family of an ask spoke this year (text/pace.ts): it waits PACE.askGap years unless a storyline holds it. */
+function noteAsk(g: GameState, a: Ask): void {
+  const key = askPaceKey(a.k)
+  if (key !== undefined) notePopup(g, key)
 }

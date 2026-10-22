@@ -16,6 +16,7 @@ import { country, friends, grandkids, inUniversity, mother, father, pets, playSp
 import { anachronistic, eraOk, eraStrip, kidPrize, movieKind, radioShow, showName, venueExists } from './era'
 import { eraFlavorPools } from './era-life'
 import { textLineId, textRng, type TextRng } from '../text/draw'
+import { fnv1a, mix32 } from '../text/hash'
 import { ringRead, ringWrite } from '../text/memory'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
@@ -584,6 +585,16 @@ function poolsFor(g: GameState): Pool[] {
 /** The recent-lines window lives in the shared text memory (text/memory.ts): one ring of the last 60 'pool:index' keys across all pools. */
 const FLAVOR_RING = 'flavor'
 const FLAVOR_RING_CAP = 60
+/**
+ * A second ring of the same size remembers the words of the lines, not their pool and index (R3-Q13): the 2000s packs began as copies of
+ * the 1980s ones, so one sentence sits in two pools under two keys, and a life that crosses the year of the change would hear it twice.
+ * A key is 't' and 8 hex digits of the sentence as it reads without its era gate.
+ */
+const FLAVOR_TEXT_RING = 'flavorText'
+
+function textKey(line: string): string {
+  return 't' + mix32(fnv1a(eraStrip(line))).toString(16).padStart(8, '0')
+}
 
 function recentKeys(g: GameState): string[] {
   const ring = ringRead(g, FLAVOR_RING)
@@ -631,6 +642,7 @@ export function addFlavorLines(g: GameState): void {
   if (pools.length === 0) return
   const tok = tokens(g, t)
   const recent = recentKeys(g)
+  const recentText = ringRead(g, FLAVOR_TEXT_RING) ?? []
   const used = new Set<string>()
   let added = 0
   for (let attempt = 0; attempt < 12 && added < want; attempt++) {
@@ -638,15 +650,15 @@ export function addFlavorLines(g: GameState): void {
     if (!pool) break
     const options = t
       .shuffle(pool.lines.map((line, i) => ({ line, key: `${pool.key}:${i}` })))
-      .filter((o) => !recent.includes(o.key))
-    let chosen: { text: string; key: string } | null = null
+      .filter((o) => !recent.includes(o.key) && !recentText.includes(textKey(o.line)))
+    let chosen: { text: string; key: string; said: string } | null = null
     for (const o of options) {
       if (!eraOk(g, o.line)) continue
       const filled = fill(eraStrip(o.line), tok)
       const text = filled ? localizeLine(g, filled, t, tok) : null
       if (text && anachronistic(g, text)) continue
       if (text) {
-        chosen = { text, key: o.key }
+        chosen = { text, key: o.key, said: textKey(o.line) }
         break
       }
     }
@@ -654,9 +666,11 @@ export function addFlavorLines(g: GameState): void {
     if (!chosen) continue
     log(g, chosen.text, pool.tone ?? 'neutral', textLineId(g))
     recent.push(chosen.key)
+    recentText.push(chosen.said)
     added++
   }
   ringWrite(g, FLAVOR_RING, recent, FLAVOR_RING_CAP)
+  ringWrite(g, FLAVOR_TEXT_RING, recentText, FLAVOR_RING_CAP)
   delete g.flags.flavorRecent
 }
 

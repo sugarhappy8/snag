@@ -2,6 +2,8 @@
 // clicking a menu, and defaults preserve the familiar life loop.
 import { addStat, formatMoney, log, notice, spend } from './core'
 import { bound, economyOf } from './economy'
+import { postureNodes } from './effort/menu'
+import { effortStrain } from './effort/persona'
 import { getCountry } from './world'
 import type { GameState, Json, MenuGroup } from './types'
 
@@ -58,7 +60,7 @@ export function yearlyHousehold(g: GameState): void {
   const schoolWork = g.character.education.current && g.character.job ? 9 : 0
   const debtStress = g.character.money < 0 ? 6 : 0
   const before = h.fatigue
-  h.fatigue = bound(h.fatigue * .78 + Math.max(0, hours - 40) * .65 + extraJob + schoolWork + debtStress + p.strain, 0, 100)
+  h.fatigue = bound(h.fatigue * .78 + Math.max(0, hours - 40) * .65 + extraJob + schoolWork + debtStress + p.strain + effortStrain(g), 0, 100)
   addStat(g, 'health', p.recovery - (h.fatigue >= 65 ? 2 : 0))
   if (p.id === 'family' || p.id === 'recovery') addStat(g, 'happiness', 2)
   if (h.fatigue >= 65) addStat(g, 'happiness', -2)
@@ -70,5 +72,6 @@ export const lifePrioritiesMenu: MenuGroup = {
   subtitle: g => { const h = householdView(g); return `${PRIORITIES.find(p => p.id === h.priority)!.label} · ${h.fatigue >= 65 ? 'exhausted' : h.fatigue >= 35 ? 'stretched' : 'manageable workload'}` },
   header: () => 'Choose a routine, then let it run. Time spent on one part of life leaves less for another. No yearly clicking is required.',
   children: g => [{ type: 'info', id: 'priority.context', text: `Fatigue ${Math.round(householdView(g).fatigue)}/100. Long work weeks, two jobs, studying while employed and money worries build strain. Recovery takes time. Extra adult learning costs ${formatMoney(annualLearningCost(g))}/year; accumulated skills help later performance.` },
-    ...PRIORITIES.map(p => ({ type: 'action' as const, id: `priority.${p.id}`, label: `${p.label}${householdView(g).priority === p.id ? ' (current)' : ''}`, emoji: '🧭', subtitle: p.text, disabledReason: (gg: GameState) => householdView(gg).priority === p.id ? 'Your current routine.' : null, run: (gg: GameState) => { setLifePriority(gg, p.id) } }))],
+    ...PRIORITIES.map(p => ({ type: 'action' as const, id: `priority.${p.id}`, label: `${p.label}${householdView(g).priority === p.id ? ' (current)' : ''}`, emoji: '🧭', subtitle: p.text, disabledReason: (gg: GameState) => householdView(gg).priority === p.id ? 'Your current routine.' : null, run: (gg: GameState) => { setLifePriority(gg, p.id) } })),
+    ...postureNodes(g)],
 }

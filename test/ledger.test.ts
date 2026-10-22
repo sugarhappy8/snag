@@ -785,16 +785,16 @@ describe('the tables', () => {
   const NAMES = [
     'asset.buy', 'asset.sell', 'benefit', 'bond.redeem', 'bribe', 'capex', 'career.cost', 'career.income', 'claim', 'crime.cost',
     'crime.take', 'dividend', 'divorce', 'donation', 'draw', 'emigration', 'estate', 'fee.bank', 'fee.gov', 'fine',
-    'firm.sale', 'gamble', 'gift', 'health', 'inflation', 'inheritance', 'inject', 'inputs', 'invest.income', 'leisure',
+    'firm.sale', 'gamble', 'gift', 'health', 'inflation', 'inheritance', 'inject', 'inputs', 'intel', 'invest.income', 'leisure',
     'legal', 'living', 'loan.interest', 'loan.principal', 'loan.repay', 'luck', 'marketing', 'payroll', 'pension', 'premium',
     'prize', 'property.buy', 'property.sell', 'purchase', 'rent', 'rnd', 'royalty', 'sales', 'severance', 'support',
     'tax.capgains', 'tax.corp', 'tax.estate', 'tax.income', 'tax.property', 'tax.sales', 'tax.transaction', 'trade.buy', 'trade.sell', 'tuition',
     'unreasoned', 'wage', 'writeoff',
   ]
 
-  it('has the 63 reasons of the design, a pinned list so a deletion is a decision', () => {
+  it('has the 64 reasons of the design, a pinned list so a deletion is a decision', () => {
     expect(Object.keys(REASONS).sort()).toEqual([...NAMES].sort())
-    expect(Object.keys(REASONS).length).toBe(63)
+    expect(Object.keys(REASONS).length).toBe(64)
     expect(Object.keys(REASONS).length).toBeLessThanOrEqual(80)
   })
 

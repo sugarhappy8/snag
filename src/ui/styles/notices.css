@@ -46,6 +46,137 @@
   overflow-wrap: anywhere;
 }
 
+/* Year card (R3-Q6): the popup that closes a year, and the same card drawn inline in the Life tab (YearCard.tsx).
+   Tokens only, so it follows light and dark mode. A category is a details row at least as tall as a touch target; its
+   count is a number in text, not a colour. The popup card is a .popup, which already scrolls. */
+
+.year-card-when {
+  margin: -2px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+}
+
+.year-card-lines {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.year-card-line {
+  padding-left: 10px;
+  border-left: 3px solid var(--hairline);
+  font-size: 14.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.year-card-glyph {
+  margin-right: 6px;
+}
+
+.year-card-groups {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+  text-align: left;
+}
+
+.year-card-group {
+  background: var(--card-2);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+
+.year-card-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--target);
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.year-card-count {
+  flex: none;
+  min-width: 2ch;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.year-card-group-lines {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 12px 12px;
+  list-style: none;
+}
+
+.year-card-group-line {
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.year-card-more {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Inline: a block of the Life feed (LifeLog.tsx, the lead slot), right before the newest year. It takes the height its lines need
+   and has no scroller of its own, so it scrolls with the lines around it: it never shares a short phone screen with the log, and
+   nothing of either is clipped or drawn under the other. Do not give it a height, a max-height or an overflow. */
+.year-card.is-inline {
+  margin: 0;
+  padding: 12px 14px 4px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+
+/* The slot is always in the feed (an empty one draws nothing). With a card in it, the card sits a year's gap below the year before
+   it, and the newest year keeps the rule and the gap it has when it follows a year directly (global.css .lifelog-year + .lifelog-year). */
+.lifelog-lead:empty {
+  display: none;
+}
+
+.lifelog-year + .lifelog-lead:not(:empty) {
+  margin-top: 14px;
+}
+
+.lifelog-year + .lifelog-lead + .lifelog-year {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+.year-card-head {
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.year-card.is-inline .year-card-when {
+  margin: 0 0 10px;
+  text-align: left;
+}
+
 /* Life log fold (R1-T8): years older than the last three are one row each (LifeLog.tsx). The row is a button inside the
    year heading, so it reads as the same heading and a screen reader finds it by its level. Tokens only, so it follows
    light and dark mode; the focus ring comes from the global :focus-visible rule. */
@@ -90,6 +221,57 @@
 .lifelog-year.is-collapsed + .lifelog-year.is-collapsed {
   margin-top: 0;
   padding-top: 0;
+}
+
+/* Life log groups (R3-Q7): inside a busy year, the routine lines and the overflow fold into one closed row per category
+   (LifeLog.tsx, logModel.ts). The row is a native details, so the keyboard opens it with no script; its count is text
+   ("3 lines"), and the chevron is a shape, not a colour. Tokens only, so it follows light and dark mode. */
+
+.lifelog-fold {
+  margin: 2px 0 0;
+}
+
+.lifelog-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--target);
+  padding: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+
+.lifelog-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lifelog-fold > summary::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.lifelog-fold[open] > summary::after {
+  transform: rotate(225deg);
+}
+
+.lifelog-fold-count {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lifelog-entry.lifelog-folded {
+  padding-left: 10px;
+  border-left: 3px solid var(--hairline);
 }
 
 /* Inbox sheet (R1-T6): where routine notices wait while Quiet Mode is on (InboxSheet.tsx). Tokens only, so it follows

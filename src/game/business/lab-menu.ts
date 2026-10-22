@@ -5,14 +5,18 @@
 // money moves in lab-year.ts, whose entry points check everything again. The start, patent and hire rows carry the
 // Business talent's purple hint: the expected value from the same rule the action uses (opsValue, patentValue,
 // teamValue), worked out once per company state (market-menu-kit cached) and never a roll.
+import { revealPolicyOf } from '../effort/hooks'
+import { knowHowOf } from '../effort/knowhow'
+import { researchOdds } from '../effort/why'
 import { talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { bizWorth, type Worth } from './economy'
 import { manageBlock } from './gate'
 import { heavyEligible } from './heavy-rd'
 import { labCreditRate, labTierOf, OPS_MAX_RUNG, opsProgram, PATENT_AGE, TEAM_MIN_YEARS, TEAM_ODDS, type OpsProgram } from './lab-data'
-import { licenseBlock, opsBlock, opsGain, opsOdds, opsOffers, opsPrice, opsValue, opsYears, patentableFamilies, patentBlock, patentTerms, patentValue, teamBlock, teamCap, teamFee, teamPay, teamValue } from './lab-rules'
-import { readLab, teamPower, teamSlots } from './lab-state'
+import { opsField } from './lab-effort'
+import { licenseBlock, opsBlock, opsGain, opsOffers, opsPrice, opsQuote, opsValue, opsWhyLine, patentableFamilies, patentBlock, patentTerms, patentValue, teamBlock, teamCap, teamFee, teamPay, teamValue } from './lab-rules'
+import { LAB_TRACKS, readLab, teamPower, teamSlots } from './lab-state'
 import { LAB_LABEL, LAB_TIP } from './lab-text'
 import { doHire, doLicense, doOps, doPatent, doRelease } from './lab-year'
 import { cached, hinting, live, mAct } from './market-menu-kit'
@@ -74,28 +78,42 @@ function headerRows(g: GameState, a: Asset, b: BizState): MenuNode[] {
   return nodes
 }
 
+/** A program at work: "Cost cut: 2 years left, 46% odds" when every number shows, else the odds as the policy reads them. */
+function runningSay(g: GameState, program: string, left: string, odds: number): string {
+  if (revealPolicyOf(g).exact) return LAB_TIP.running(program, left, String(Math.round(odds * 100)))
+  return LAB_TIP.runningWords(program, left, researchOdds(g, odds))
+}
+
 /** The Operations R&D part: a row for each program at work, then one action for each program on offer. */
 function opsNodes(g: GameState, a: Asset, b: BizState): MenuNode[] {
   const nodes: MenuNode[] = [{ type: 'heading', id: `biz.labOpsH.${a.id}`, label: LAB_LABEL.ops }]
   for (const p of readLab(b).programs) {
     const def = opsProgram(p.id)
     if (!def) continue
-    nodes.push({ type: 'info', id: `biz.labRun.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: LAB_TIP.running(def.label, plural(Math.max(1, p.years - p.progress), 'year'), String(Math.round(p.odds * 100))) })
+    nodes.push({ type: 'info', id: `biz.labRun.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: runningSay(g, def.label, plural(Math.max(1, p.years - p.progress), 'year'), p.odds) })
   }
   const offers = opsOffers(g, b)
   if (!offers.length) nodes.push({ type: 'info', id: `biz.labNone.${a.id}`, emoji: '\u{1F4AD}', text: LAB_TIP.none() })
+  // What failed tries taught the lab, by track: only once there is something (a lab that never failed shows nothing new).
+  const learned = LAB_TRACKS.map((t) => ({ t, k: Math.round(knowHowOf(b.knowHow, opsField(t))) })).filter((x) => x.k > 0)
+  if (learned.length > 0) nodes.push({ type: 'info', id: `biz.labKnow.${a.id}`, emoji: '\u{1F4A1}', text: LAB_TIP.know(learned.map((x) => `${LAB_LABEL.track[x.t]} ${x.k}`).join(', ')) })
   for (const p of offers) nodes.push(opsAction(a, p))
   return nodes
 }
 
-/** The numbers a row shows, from the same functions the start and the year end use. */
-function quote(g: GameState, a: Asset, p: OpsProgram): { price: string; years: string; odds: string; effect: string } {
-  const b = readBiz(g, live(g, a))
+/** The numbers a row shows, from the same functions the start and the year end use (the engine's quote for this company). */
+function quote(g: GameState, a: Asset, p: OpsProgram): { price: string; years: string; odds: string; band: string; effect: string; why: string } {
+  const cur = live(g, a)
+  const b = readBiz(g, cur)
+  const q = opsQuote(g, b, p.rung, p.track, cur)
   return {
     price: money(opsPrice(b, p.rung)),
-    years: plural(opsYears(b, p.rung), 'year'),
-    odds: String(Math.round(opsOdds(g, b, p.rung) * 100)),
-    effect: (opsGain(g, b, p.id).effect * 100).toFixed(1),
+    years: plural(q.years, 'year'),
+    odds: String(Math.round(q.p * 100)),
+    band: researchOdds(g, q.p),
+    effect: (opsGain(g, b, p.id, cur).effect * 100).toFixed(1),
+    // "Odds 46%: skill +3, team +6": the confirm adds it only when it names a term ("Odds 46%" alone repeats the sentence it joins).
+    why: opsWhyLine(g, b, p.rung, p.track, cur),
   }
 }
 
@@ -104,16 +122,18 @@ function opsAction(a: Asset, p: OpsProgram): MenuAction {
   return mAct(a, `lab.ops.${p.id}`, p.label, TRACK_EMOJI[p.track], {
     subtitle: (g) => {
       const q = quote(g, a, p)
-      return LAB_TIP.ops(q.price, q.years, q.odds, LAB_TIP[p.track](q.effect))
+      const effect = LAB_TIP[p.track](q.effect)
+      return revealPolicyOf(g).exact ? LAB_TIP.ops(q.price, q.years, q.odds, effect) : LAB_TIP.opsWords(q.price, q.years, q.band, effect)
     },
     confirm: (g) => {
       const q = quote(g, a, p)
-      return LAB_TIP.confirm(p.label, q.price, q.years, q.odds)
+      const ask = revealPolicyOf(g).exact ? LAB_TIP.confirm(p.label, q.price, q.years, q.odds) : LAB_TIP.confirmWords(p.label, q.price, q.years, q.band)
+      return `${ask}${q.why.includes(':') ? ` ${q.why}.` : ''}`
     },
     // A program that can't go ahead (busy track, cooldown) says nothing: its reason is on the row. Cash alone doesn't hide it.
     hint: hintFor(a, (g, cur, b) => {
       if (opsBlock(g, b, p.id, true)) return null
-      const value = cached(g, cur, `lab.ops.${p.id}`, () => opsValue(g, b, p.id, worthOf(g, cur)))
+      const value = cached(g, cur, `lab.ops.${p.id}`, () => opsValue(g, b, p.id, worthOf(g, cur), cur))
       return value > 0 ? LAB_TIP.opsHint(money(value), String(HORIZON)) : LAB_TIP.noPay()
     }),
     disabled: (g, b) => opsBlock(g, b, p.id),
@@ -217,7 +237,7 @@ function hireAction(a: Asset): MenuAction {
     // What the next scientist adds against a year's pay; nothing when the trade has no team or it is full (the reason is on the row).
     hint: hintFor(a, (g, cur, b) => {
       if (readLab(b).team.length >= teamCap(b)) return null
-      const tv = cached(g, cur, 'lab.team', () => teamValue(g, b, worthOf(g, cur)))
+      const tv = cached(g, cur, 'lab.team', () => teamValue(g, b, worthOf(g, cur), cur))
       return tv.value > 0 ? LAB_TIP.teamHint(money(tv.gain), money(tv.pay)) : LAB_TIP.noPay()
     }),
     disabled: (g, b) => teamBlock(g, b, 'hire'),

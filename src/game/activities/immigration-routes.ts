@@ -8,6 +8,7 @@
 import { jobRequirementProblem } from '../careers'
 import { currentPartner, formatMoney, netWorth } from '../core'
 import { cvScore, fitContext, jobFit, jobMarket } from '../cv'
+import { hintLead, hintPct } from '../fog/hint/contract'
 import {
   ENGLISH_WORKPLACES,
   EXCLUSIONS,
@@ -1200,7 +1201,7 @@ export function bestRouteHint(g: GameState, routes: RouteEval[]): string {
   if (!open.length) return ''
   const score = (r: RouteEval) => r.odds * 100 - r.wait * 6 - (r.toPr === null ? 15 : r.toPr) * 2 - (r.fee + r.invest) / 50_000
   const best = [...open].sort((a, b) => score(b) - score(a))[0]
-  return talentHint(g, 'Business', `Smartest route: ${best.label} (${pct(best.odds)} odds, ${prPhrase(best)}).`)
+  return talentHint(g, 'Business', `Smartest route: ${best.label} (${hintPct(best.odds)} odds, ${prPhrase(best)}).`)
 }
 
 /** Investing talent: what a locked golden-visa stake is likely to be worth when it unlocks. */
@@ -1225,7 +1226,7 @@ export function lockHint(g: GameState, kind: InvestKind, amount: number, years: 
           : kind === 'fund'
             ? 'with big swings either way'
             : 'property tends to hold its value'
-  return talentHint(g, 'Investing', `Expect about ${formatMoney(back)} back after ${years} year${years === 1 ? '' : 's'} (${change >= 0 ? '+' : ''}${Math.round(change * 100)}% in today's money): ${why}.`)
+  return talentHint(g, 'Investing', `Expect about ${formatMoney(back)} back after ${years} year${years === 1 ? '' : 's'} (${hintLead()}${change >= 0 ? '+' : ''}${Math.round(change * 100)}% in today's money): ${why}.`)
 }
 
 export function oddsText(r: RouteEval): string {

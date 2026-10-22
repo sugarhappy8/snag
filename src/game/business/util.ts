@@ -1,5 +1,6 @@
 // Small helpers shared by the business modules (numbers, JSON, text).
 import { formatCents, formatMoney, shortMoney, showMoney } from '../core'
+import { maskFigures, rankNoise } from '../fog/hint/contract'
 import { hasTalent, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Json } from '../types'
 
@@ -135,14 +136,22 @@ export function cleanName(s: string | undefined, fallback: string, max = 36): st
  * The Business talent's purple hint on the choice that works out best by expected value (`ev`
  * in dollars; null = not a real option). Adds nothing without the talent or with fewer than two
  * scored options. `why` may give the hint a reason ('' or undefined for the default line).
+ *
+ * The talent ranks on its gut, not on the engine's numbers (R3-G11): in Realistic mode each value is read through rankNoise (the
+ * same draw the hint figures use), so two close options can swap places and the mark can land on the one that is a little worse.
+ * The margin handed to `why` and the default line stays a size (the gap between the two options the gut ranked first, taken in
+ * true values), and the figure in the text goes through the lens like every other. Exact mode ranks by the true value.
  */
 export function markBest<T extends ChoiceOption>(g: GameState, choices: T[], ev: (id: string) => number | null, why?: (id: string, margin: number) => string | undefined): T[] {
   if (!hasTalent(g, 'Business')) return choices
   const scored = choices.map((c) => ({ c, v: ev(c.id) })).filter((x): x is { c: T; v: number } => x.v !== null && Number.isFinite(x.v))
   if (scored.length < 2) return choices
-  scored.sort((x, y) => y.v - x.v)
-  const best = scored[0]
-  const margin = best.v - scored[1].v
+  // One key per option: the menu (its option ids and labels, figures masked) and the option. The same menu in the same year reads the same.
+  const menu = scored.map((x) => `${x.c.id}:${maskFigures(String(x.c.label ?? ''))}`).sort().join('|')
+  const ranked = scored.map((x) => ({ ...x, r: rankNoise(g, `${menu}|${x.c.id}`, x.v) }))
+  ranked.sort((x, y) => y.r - x.r)
+  const best = ranked[0]
+  const margin = Math.abs(best.v - ranked[1].v)
   const reason = why?.(best.c.id, margin)
   const text = reason || (margin >= 500 ? `Best move: about ${money(margin)} better than the next best option` : 'Best move, by a hair: the options are nearly even')
   best.c.hint = talentHint(g, 'Business', text)

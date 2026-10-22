@@ -5,6 +5,8 @@
 import { chartInfo, lineSpec, scorecardSpec } from '../charts'
 import type { ChartSpec } from '../charts/spec'
 import { addStat, formatCents, formatMoney, log, notice, remember, scriptChoice, useYearAction } from '../core'
+import { revealPolicyOf } from '../effort/hooks'
+import { oddsChip, oddsLine } from '../effort/why'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
@@ -57,12 +59,12 @@ import {
 import { aiLine, benchRows, benchSeries, firstRows, summaryClause } from './deeptech-bench'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
-import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, slotCount, startProgram, startTrial, stopPrograms, trackCount, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
+import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programQuote, slotCount, startProgram, startTrial, stopPrograms, trackCount, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
 import { MAX_SERIES, SERIES, milestoneListingBlock, timesDone, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
 import { CHIP_LANES, laneOpen, type ChipLane } from './silicon-data'
-import { laneSubtitle, policySubtitle, siliconRows } from './silicon-text'
+import { laneSubtitle, policySubtitle, siliconBoard } from './silicon-text'
 import { bizOf, findBusiness, readBiz, runsIt, type BizState } from './state'
 import { deepWaveIf, INSIDER_WARNING } from './tech-wave-data'
 import { clampN, money, num, pct, plural, rec, str, toJson, unitMoney, units } from './util'
@@ -136,7 +138,7 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
   return dtAct(a, `rd.${def.id}`, def.label(t0), def.emoji, {
     subtitle: (g) => {
       const { b, t } = view(g, a)
-      return `${def.years} yr${def.years === 1 ? '' : 's'} · ${money(programCost(b, t, def))}/yr · ${Math.round(def.odds(t) * 100)}% base odds · ${def.blurb}`
+      return `${def.years} yr${def.years === 1 ? '' : 's'} · ${money(programCost(b, t, def))}/yr · ${oddsChip(g, def.odds(t), 'base odds')} · ${def.blurb}`
     },
     disabled: (_g, b, t) => programBlock(b, t, def),
     hint: (g) => {
@@ -167,7 +169,7 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
       defaultValue: () => '100',
       preview: (g, v) => {
         const { b, t } = view(g, a)
-        const terms = programTerms(b, t, def, v / 100)
+        const terms = programQuote(b, t, def, v / 100, g)
         // What it really costs and takes at the lab's current pace: progress moves a whole pace
         // step at every year-end, and each year is billed at the pace's cost.
         const pace = PACES.find((x) => x.id === t.pace) ?? PACES[1]
@@ -175,7 +177,9 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
         const yearly = terms.cost * pace.cost
         const funds = techFunds(b, t)
         const short = yearly > funds ? ` · more than the ${money(funds)} in the R&D account and cash covers` : ''
-        return `${money(yearly)} a year for ${yrs(n)} at a ${pace.label.toLowerCase()} pace (${money(yearly * n)} in all) · ${Math.round(terms.odds * 100)}% base odds${short}`
+        // What moved the odds off the plan's own (the budget, the lab's know-how in the trade, the world's research), when anything did.
+        const why = terms.quote.reasons.length > 0 ? ` · ${oddsLine(terms.quote, revealPolicyOf(g))}` : ''
+        return `${money(yearly)} a year for ${yrs(n)} at a ${pace.label.toLowerCase()} pace (${money(yearly * n)} in all) · ${oddsChip(g, terms.odds, 'base odds')}${why}${short}`
       },
     },
     run: (g, cur, b, t, input) => {
@@ -219,7 +223,7 @@ function labMenu(a: Asset): MenuGroup {
       for (const p of t.programs) {
         nodes.push(
           dtAct(a, `cancel.${p.key}`, p.name, p.emoji, {
-            subtitle: `${programLine(p)} · tap to cancel`,
+            subtitle: `${programLine(p, g)} · tap to cancel`,
             confirm: (gg) => {
               const owed = grantsOwed(gg, b, t, p).reduce((sum, x) => sum + x.amount, 0)
               return `Cancel ${p.name}? The ${money(p.spent)} spent so far is gone.${owed > 0 ? ` Grant money it hasn't spent yet (${money(owed)}) goes back to the agency.` : ''}`
@@ -470,7 +474,7 @@ function fundingMenu(a: Asset): MenuGroup {
             subtitle: (gg) => {
               const v = view(gg, a)
               const amt = grantAmount(v.b, v.t, gr)
-              return `${amt > 0 ? `about ${money(amt)}` : gr.capex ? 'for capital projects' : 'for running R&D'} · ${Math.round(grantOdds(gg, a, v.b, v.t, gr) * 100)}% odds · ${gr.blurb}`
+              return `${amt > 0 ? `about ${money(amt)}` : gr.capex ? 'for capital projects' : 'for running R&D'} · ${oddsChip(gg, grantOdds(gg, a, v.b, v.t, gr))} · ${gr.blurb}`
             },
             disabled: (gg, bb, tt) => grantBlock(gg, a, bb, tt, gr),
             hint: (gg) => (best && best.id === gr.id ? talentHint(gg, 'Business', 'Apply here first: the best odds-weighted money on offer.') : null),
@@ -504,8 +508,8 @@ function fundingMenu(a: Asset): MenuGroup {
 // ---------------------------------------------------------------------------
 // Industry screens
 
-function infoNode(a: Asset, key: string, text: string, emoji: string): MenuNode {
-  return { type: 'info', id: `dt.i.${key}.${a.id}`, text, emoji }
+function infoNode(a: Asset, key: string, text: string, emoji: string, conf?: 0 | 1 | 2 | 3): MenuNode {
+  return { type: 'info', id: `dt.i.${key}.${a.id}`, text, emoji, ...(conf !== undefined ? { conf } : {}) }
 }
 
 /**
@@ -578,11 +582,11 @@ function chipsNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode
   if (t.deal) nodes.push(infoNode(a, 'deal', `${t.deal.name}: ${money(t.deal.perYear)}/yr for ${plural(t.deal.years, 'more year')}`, '\u{1F91D}'))
   // Silicon 2.0, from stage 2: goodwill and where the chips stand, then one price row per open extra lane and the pricing policy.
   if (t.stage >= 2) {
-    const rows = siliconRows(g, b, t)
+    const { rows, conf } = siliconBoard(g, b, t)
     nodes.push(
       infoNode(a, 'goodwill', rows.goodwill, '\u{1F91D}'),
-      infoNode(a, 'perf', rows.perf, '\u{1F4CA}'),
-      infoNode(a, 'quality', rows.quality, '\u{1F4CA}'),
+      infoNode(a, 'perf', rows.perf, '\u{1F4CA}', conf.perf),
+      infoNode(a, 'quality', rows.quality, '\u{1F4CA}', conf.quality),
       infoNode(a, 'price', rows.price, '\u{1F4CA}'),
       infoNode(a, 'share', rows.share, '\u{1F4CA}'),
     )
@@ -745,7 +749,7 @@ function drugMenu(a: Asset, d0: Drug): MenuGroup {
       if (!d.failed && d.phase < 4 && !d.partner) {
         nodes.push(
           dtAct(a, `trial.${d.id}`, `Start ${trialName(d, b.countryId).replace(`${d.name}: `, '')}`, d.phase >= 3 ? '\u{1F4DC}' : '\u{1F9EA}', {
-            subtitle: `${money(trialCost(b, d))}/yr · ${Math.round(trialOdds(d) * 100)}% odds`,
+            subtitle: (gg) => `${money(trialCost(b, d))}/yr · ${oddsChip(gg, trialOdds(d))}`,
             disabled: (_gg, bb, tt) => {
               const dd = tt.drugs.find((x) => x.id === d.id)
               return dd ? trialBlock(bb, tt, dd) : 'Gone.'

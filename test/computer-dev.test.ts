@@ -222,7 +222,7 @@ describe('getting a computer', () => {
 })
 
 describe('learning to code', () => {
-  it('tutorials raise skill and the language, three times a year', () => {
+  it('tutorials raise skill and the language, three times a year at full value and a fourth at half value (the focus pool)', () => {
     const g = kid(4, 12)
     giveLaptop(g)
     learnInternals.studyTutorial(g, 'python')
@@ -231,9 +231,49 @@ describe('learning to code', () => {
     learnInternals.studyTutorial(g, 'python')
     learnInternals.studyTutorial(g, 'scratch')
     const s = codingSkill(g)
+    // The same draws once at full value (the twin's counter is back at zero) and once as the fourth of the year.
+    const twin = structuredClone(g)
+    twin.yearActions = {}
+    learnInternals.studyTutorial(twin, 'python')
     learnInternals.studyTutorial(g, 'python')
-    expect(codingSkill(g)).toBe(s)
+    expect(g.counters.codingSessions).toBe(4)
+    const full = codingSkill(twin) - s
+    const half = codingSkill(g) - s
+    expect(half).toBeGreaterThanOrEqual(0)
+    expect(half).toBeLessThanOrEqual(full)
     expect(screenTime(g)).toBeGreaterThan(0)
+  })
+
+  it('the fourth tutorial of a year is worth less than a full one: the focus multiplier is applied where the skill is earned', () => {
+    // The same draws twice from one state (the twin's counter is back at zero), at a whole run of ages and lives. A gain is whole points,
+    // so one life can round the half back up to the full value; the lives together cannot, unless the site drops `use.mult`.
+    let fullTotal = 0
+    let halfTotal = 0
+    let fullLang = 0
+    let halfLang = 0
+    for (let seed = 1; seed <= 24; seed++) {
+      const g = kid(seed, 12)
+      giveLaptop(g)
+      for (const lang of ['python', 'python', 'scratch']) learnInternals.studyTutorial(g, lang)
+      const skill = codingSkill(g)
+      const level = languageLevel(g, 'python')
+      const twin = structuredClone(g)
+      twin.yearActions = {}
+      learnInternals.studyTutorial(twin, 'python')
+      learnInternals.studyTutorial(g, 'python')
+      expect(g.counters.codingSessions, `life ${seed}`).toBe(4)
+      const full = codingSkill(twin) - skill
+      const half = codingSkill(g) - skill
+      expect(half, `life ${seed}: the fourth never beats a full one`).toBeLessThanOrEqual(full)
+      expect(languageLevel(g, 'python') - level, `life ${seed}: nor does the language`).toBeLessThanOrEqual(languageLevel(twin, 'python') - level)
+      fullTotal += full
+      halfTotal += half
+      fullLang += languageLevel(twin, 'python') - level
+      halfLang += languageLevel(g, 'python') - level
+    }
+    expect(fullTotal, 'a full tutorial teaches something in this run of lives').toBeGreaterThan(0)
+    expect(halfTotal, 'the fourth teaches strictly less than a full one, in skill').toBeLessThan(fullTotal)
+    expect(halfLang, 'and in the language').toBeLessThan(fullLang)
   })
 
   it('has diminishing returns and an age ceiling', () => {

@@ -16,9 +16,9 @@ The aging seam is `ageUp`: the clock and the economy step run first, then one en
 |---|---|
 | `geopolitics` | the geopolitics step (empty) |
 | `world` | the world step W1 to W6: demography, labor, firms, housing, government, prices (empty) |
-| `frontier` | frontier and rival ledgers (empty) |
+| `frontier` | the world frontier's year (R3): world.frontier 10 fades public research and lets a rival follow your disclosures (`world/frontier-step.ts`) |
 | `society` | the society step (empty) |
-| `life` | history 10, digest 20, household 30, relationships 40, sharedProjects 50, givingFund 60, background 70, royalty 80, royalCareers 90, health 100, education 110, professions 120 |
+| `life` | history 10, digest 20, household 30, effort.you 35, relationships 40, sharedProjects 50, givingFund 60, background 70, royalty 80, royalCareers 90, health 100, education 110, professions 120 |
 | `careers` | career 10, special 20 |
 | `government` | nation 10 |
 | `firms` | workshop 10, corruption 20, business 30, techWaves 40 |
@@ -68,8 +68,10 @@ When a domain needs another domain, it imports that domain's `contract.ts`, or d
 | Port | Defined in | Bound by |
 |---|---|---|
 | `business.revalueCompany` | `business/contract.ts` | `business/economy.ts` |
+| `business.discloseResearch` | `business/contract.ts` | `business/tech-waves.ts` |
 | `computer.gameMakingMenu` | `computer/contract.ts` | `special/gamedev-make.ts` |
 | `activities.relocate` | `activities/contract.ts` | `activities/immigration-move.ts` |
+| `talents.hintLens` | `talents.ts` | `fog/hint/lens.ts` |
 | `workplace.ordinaryJobs` | `workplace/contract.ts` | `careers.ts` |
 
 An unbound port degrades quietly (an empty menu row, a skipped revaluation), so `test/hub-entry.test.ts` checks that every port is bound after entering through `aging` and `menus`. A test that fails only because a provider is not loaded gets a side-effect import of the provider, never a changed assertion.
@@ -82,7 +84,7 @@ A baseline can only shrink. Never edit one by hand; a stale entry or a new one f
 |---|---|
 | L0 kernel | `src/game/kernel/**`, and the root files `types`, `rng`, `core`, `scripts`, `talents`, `assetHooks`, `flags`, `world-flags`, `notice-weights`, `timeMachine` |
 | L1 data | `src/game/data/**`, `history/**`, `text/**`, `world.ts` |
-| L2 world | `src/game/economy/**`, `world/**`, and `nation/state.ts`, `effects.ts`, `trade-policy.ts` |
+| L2 world | `src/game/economy/**`, `world/**`, `effort/**`, and `nation/state.ts`, `effects.ts`, `trade-policy.ts` |
 | L3 domains | everything else under `src/game` |
 | L4 assembly | `src/game/modules/**`, `hubs/**`, and the root files `aging`, `menus`, `life`, the save files, `snapshot-codec`, `offline`, `birth-background`, `life-series`, `inbox`, `notice-policy` |
 | L5 ui | `src/ui/**` and the shell files of `src` |
@@ -147,3 +149,4 @@ One line each. A track that adds a file here adds its line; `test/kernel-accepta
 - `src/game/kernel/spreads.ts` - the bid-ask spreads of the pools: `ask` and `bid`, so no pool trades at the mid price both ways.
 - `src/game/kernel/streams.ts` - named streams, `stream` and `outcomeStream`: the only source of luck a world module may use.
 - `src/game/kernel/tally.ts` - a company's cash by reason: the small tally the exact cash walk is built from, bounded and whole dollars.
+- `docs/QUIET.md` - how a year closes in the store (R3): the fields `s`, `a` and `w`, the weights, the budget, the year card, the `yearCard` flag and the pace families. Its code is in `src/game/hubs` and `src/game/text/pace.ts`, not in the kernel.

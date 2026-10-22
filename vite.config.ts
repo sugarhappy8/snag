@@ -17,6 +17,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.test.ts'],
+    // Every test file starts in Exact information mode (R3-H1): the Realistic default is for players; a fog test flips it with
+    // withInfoMode. The setup file is not a test (no .test.ts suffix), so `include` leaves it out.
+    setupFiles: ['./test/setup-exact.ts'],
     testTimeout: 15_000,
     maxWorkers: 2,
     // Heaviest files first, by scripts/test-timings.json (docs/CI.md).

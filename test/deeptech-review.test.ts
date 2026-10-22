@@ -22,6 +22,7 @@ import { runScript } from '../src/game/scripts'
 import type { AnnualReportData, Asset, ChoiceModal, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { openTiles } from './helpers'
+import { findSeed } from './seed-kit'
 
 function adultIn(countryId: string, money: number, seed = 3, smarts = 90): GameState {
   const g = createNewLife({ seed, year: 2000, countryId })
@@ -222,12 +223,24 @@ describe('deep tech review: side revenue and windfalls', () => {
   })
 
   it("values the company the same at year end and after a later action (no double-counted year)", () => {
-    const g = adultIn('us', 1_000_000, 11)
-    const a = company(g, 'cybersecurity', { stage: 2, level: 60, done: ['detect', 'platform'] }, { cash: 5_000_000 })
-    for (let y = 0; y < 4; y++) {
+    // Four years of a cybersecurity firm. The last year's popups are answered after its valuation is struck, so a popup that spends company
+    // cash (a celebrity deal, say) is an action of its own and rightly moves the next valuation; the test is about the year, so the life is
+    // one where the last year's popups leave the cash alone. It is found, not pinned: the merge of the quiet track moved the event picks and
+    // the life of seed 11 now meets that deal in year four.
+    const play = (seed: number): { g: GameState; a: Asset; settled: boolean } => {
+      const g = adultIn('us', 1_000_000, seed)
+      const a = company(g, 'cybersecurity', { stage: 2, level: 60, done: ['detect', 'platform'] }, { cash: 5_000_000 })
+      for (let y = 0; y < 3; y++) {
+        ageUp(g)
+        drain(g, YEAR_PREFS)
+      }
       ageUp(g)
+      const cash = bizOf(g, a).cash
       drain(g, YEAR_PREFS)
+      return { g, a, settled: bizOf(g, a).cash === cash }
     }
+    const seed = findSeed((s) => play(s).settled, { from: 11, label: 'a cybersecurity firm whose last year-end popups leave its cash alone' })
+    const { g, a } = play(seed)
     const b = bizOf(g, a)
     const before = b.valuation
     expect(before).toBeGreaterThan(0)

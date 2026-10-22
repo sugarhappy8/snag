@@ -3,12 +3,13 @@
 // expect envelopes, unions that strike, currencies that melt, hurricanes and earthquakes).
 import { currencyOf } from '../data/currencies'
 import { firmCash } from '../cash'
-import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice } from '../core'
+import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import type { Why } from '../kernel/ledger'
 import { arrestPlayer } from '../crime'
 import { marketOf } from '../data/markets'
 import { chance, pick, rand, randInt, weightedPick } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
+import { notePopup, paceWeight } from '../text/pace'
 import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
@@ -17,6 +18,7 @@ import { bizWorth, ceoSkill, equipmentValue, expectedFx, LASTING_YEARS, localEco
 import { marketViewOf, shareText } from './competition'
 import { bizHas, eraFits } from './era'
 import { COMPETITION_EVENTS } from './competition-events'
+import { bizPaceKey } from './event-families'
 import { EXTRA_EVENTS } from './events-extra'
 import { isFinanceFirm } from './finance-firm-state'
 import { sellBusiness } from './exit'
@@ -1014,13 +1016,26 @@ const EVENTS: BizEvent[] = [
  */
 const ANY_COMPANY = new Set(['audit', 'strike', 'lawsuit', 'embezzle', 'disaster', 'tacos', 'poached'])
 
-/** An event's weight for this company (0: it can't happen here). */
+/**
+ * An event's weight for this company (0: it can't happen here). The pace rule (R3-Q10, text/pace.ts, events/families): a family that
+ * hit any company of the portfolio within 5 years weighs a quarter as much, so ten firms hear about inspectors and rivals at the rate
+ * one owner would. It is a weight, not a ban: with nothing else open the event is picked as often as ever. Pure.
+ */
 function weightFor(g: GameState, b: BizState, e: BizEvent): number {
   if (isFinanceFirm(b) && !ANY_COMPANY.has(e.id)) return 0
   // A food company with a live Operations Desk record has its own inspection and critic (business/sector-state.ts).
   if (sectorOwnsEvent(b, e.id)) return 0
-  return Math.max(0, e.weight(g, b))
+  return paceWeight(g, bizPaceKey(e.id), Math.max(0, e.weight(g, b)))
 }
+
+/**
+ * The year ledger (R3-Q10): company choices a year across all companies, in g.yearActions under this key (emptied at each age-up). In play
+ * it is a backstop and never binds: the yearly pass (business/yearly.ts `eventQueued`) lets one company event through a year for all
+ * companies, so the ledger reads 0 or 1 there. Only a caller that skips the pass (a test, a new feature) meets the 2. Rotating which
+ * company rolls first, or one budget for every company event, is a design change that moves every founder's life (a follow-up).
+ */
+const LEDGER = 'pace.biz'
+const LEDGER_MAX = 2
 
 /**
  * Chance a given event hits this company in a year (for the Business talent's what-ifs, such as
@@ -1050,6 +1065,9 @@ export const businessEventInternals = {
 export function maybeBusinessEvent(g: GameState, a: Asset, b: BizState, year: number, managed: boolean): boolean {
   if (g.character.prison || !g.character.alive) return false
   if (b.founded >= year) return false
+  // The year ledger: the companies of a caller that bypasses the yearly pass share 2 choices a year. A read, before any roll, so a full
+  // ledger draws nothing; the slot is taken below, where an event is presented (a missed roll costs nothing).
+  if (yearActionsUsed(g, LEDGER) >= LEDGER_MAX) return false
   if (b.lastEvent >= year - 1 && !chance(g, 0.3)) return false
   if (!chance(g, managed ? 0.18 : 0.3)) return false
   const options = EVENTS.filter((e) => weightFor(g, b, e) > 0)
@@ -1057,5 +1075,8 @@ export function maybeBusinessEvent(g: GameState, a: Asset, b: BizState, year: nu
   const ev = weightedPick(g, options, (e) => weightFor(g, b, e))
   b.lastEvent = year
   ev.present(g, a, b)
+  useYearAction(g, LEDGER, LEDGER_MAX)
+  const key = bizPaceKey(ev.id)
+  if (key !== undefined) notePopup(g, key)
   return true
 }

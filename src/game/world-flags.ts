@@ -78,19 +78,19 @@ const PERSONAL: readonly string[] = [
   'computerLockedUntil', 'computerMoney', 'cravingAge', 'creative.pieces', 'creditCleanYears', 'creditDefaults',
   'creditLastMiss', 'creditReviewedYear', 'crimeFamily', 'cryptoBuys', 'cvCaughtAge', 'deathRecorded', 'deported',
   'dev', 'devFamilyComputer', 'devFamilyPcSeen', 'devParentLaptopAge', 'devScreenPromise', 'devUsedLaptopYear',
-  'diet', 'dietSurvivor', 'edu.moments', 'embezzled', 'era.pill', 'eventCooldowns', 'everydayBought', 'examScore',
+  'diet', 'dietSurvivor', 'edu.moments', 'effort.you', 'embezzled', 'era.pill', 'eventCooldowns', 'everydayBought', 'examScore',
   'eyesight', 'eyesightCorrected', 'eyewear', 'fin.team', 'finalOccupation', 'firedJobs', 'fosterCare', 'fugitive',
   'grandkidsSeen', 'greek', 'guardianId', 'hadGrandchild', 'healthInsurance', 'hero', 'heroicDeath',
   'history.covidVaccinated', 'history.done', 'history.polioVaccinated', 'history.raidYear', 'homelessLineAge',
   'homelessSince', 'household', 'identity.birthGender', 'identity.gender', 'identity.surgery', 'illegalImmigrant',
   'imm', 'inbox', 'inDenial', 'instruments', 'inventionImpact', 'investLossCarry', 'investmentsSettledYear',
-  'jobListingSeed', 'jobsRejected', 'knownAddictions', 'lastAdmissionsQ', 'lastBirthAge', 'lastCodedAge',
+  'jobListingSeed', 'jobsRejected', 'know', 'knownAddictions', 'lastAdmissionsQ', 'lastBirthAge', 'lastCodedAge',
   'lastGrades', 'lastInterviewQ', 'latentTalent', 'lawsuit.grievances', 'license.flightHours', 'lifeSeries',
   'livingLineAge', 'loanMisses', 'lowHealthWarned', 'lowHealthWarnedAge', 'lux.b', 'lux.fam.at', 'lux.heat',
   'lux.lots', 'lux.showN', 'luxury.bought', 'luxury.secretary', 'luxury.society', 'luxury.societyBanned',
   'luxury.societyRejected', 'luxury.staff', 'martialArts', 'mcs.mastered', 'memoryBest', 'midlifeCrisis',
   'missedPayments', 'missedThisYear', 'mobGrudge', 'nation.me', 'nepo.favors', 'out', 'overdosed', 'parentsStatus',
-  'partTimeShifts', 'petBan', 'pregnancy', 'previousGeneration', 'prisonLife', 'professions', 'puberty',
+  'partTimeShifts', 'pendingAsks', 'petBan', 'pregnancy', 'previousGeneration', 'prisonLife', 'professions', 'puberty',
   'readDictionary', 'recordedGrave', 'recordedRibbon', 'recoveredAddictions', 'rehabSuccess', 'relapseAge',
   'royalPrivateHoldings', 'royalty', 'screenTime', 'selectiveExamTaken', 'sexualityRealized', 'sharedProjects',
   'skill.voice', 'special.actor.bollywood', 'special.actor.booed', 'special.actor.comforted',
@@ -104,7 +104,7 @@ const PERSONAL: readonly string[] = [
   'talentHintsUsed', 'talentNoticeAge', 'talentsRevealed', 'taxableIncome', 'taxesPaid', 'textMem', 'timeMachine',
   'trainRobbed', 'triedSpicyDiet', 'valedictorian', 'visitedWinnipeg', 'walkHeartAttack', 'wealth.bound.door',
   'wealth.bound.strangers', 'wealth.cd', 'wealth.donated', 'wealth.pending', 'will.escrow', 'will.pot',
-  'will.pressY', 'will.state', 'workshop',
+  'will.pressY', 'will.state', 'workshop', 'yearBook',
 ]
 
 // Keys built from a template or a helper. Each prefix here is a `flags[`prefix${x}`]` site in src/, bar heavy.,
@@ -168,6 +168,10 @@ export const WHOLE_FLAGS_SITES: Readonly<Record<string, number>> = {
   // The save diet's focus walk (A.K9) reads every flag but the economy's own for the countries a life is tied to.
   'src/game/economy/focus.ts':              1,
   'src/game/history/market-events.ts':      1,
+  // A failed year close puts back the flags the year events step wrote. Those are not a fixed set of keys (the event memory and
+  // history, the text memory and its family record, the milestones told), so the copy and the restore take the object whole:
+  // the type of the copy, its key, the clone, the restore into g.flags and the read of the copy (quiet fix 2).
+  'src/game/hubs/year-close.ts':            5,
   'src/game/life.ts':                       2,
   'src/game/nation/state.ts':               1,
   'src/game/save-schema.ts':                4,

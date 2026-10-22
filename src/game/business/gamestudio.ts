@@ -261,7 +261,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   const share = want > b.employees && want > 0 ? b.employees / want : 1
   const engines = simulateStudioEngines(g, st, year, {
     employees: b.employees, wage, quality: b.quality, leadership: ceoSkill(g, b), brand: b.brand,
-    operations: ops * speed, open, market: iy.mult * mf * nationalMarket(g, b.industry, b.countryId, year).demand,
+    operations: ops * speed, open, market: iy.mult * mf * nationalMarket(g, b.industry, b.countryId, year).demand, asset: a,
   })
   production += engines.costs
   notes.push(...engines.notes)

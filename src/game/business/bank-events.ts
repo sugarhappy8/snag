@@ -11,6 +11,7 @@ import { ref } from '../kernel/ids'
 import type { Reason } from '../kernel/reasons'
 import { chance, pick, rand } from '../rng'
 import { defineScript } from '../scripts'
+import { oddsKey, oddsView } from '../fog/odds/contract'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
@@ -431,9 +432,11 @@ const EVENTS: BankEvent[] = [
       const company = pick(x.g, BORROWERS)
       const exposure = Math.round(loanTotal(x.book) * (.02 + .03 * rand(x.g)))
       const odds = clampN(.45 + bankTeamSkill(x.g, x.b) / 400 - x.m.crisis * .3, .15, .75)
+      // The odds are the banker's to guess: a word, or a percent with the talent (R3-G8). Exact mode keeps the old line.
+      const view = oddsView(x.g, oddsKey(x.a.id, 'recover'), odds)
       const choices = hintBest(x.g, [
         { id: 'writeoff', label: 'Write it off now (lose about 60%)', emoji: '✂️' },
-        { id: 'extend', label: `Give them time (${pct(odds)} chance they recover)`, emoji: '🔄' },
+        { id: 'extend', label: view.exact ? `Give them time (${pct(odds)} chance they recover)` : `Give them time (chance they recover: ${view.text})`, emoji: '🔄' },
         { id: 'seize', label: 'Seize the collateral (lose about 40%, bad press)', emoji: '🏗️' },
       ], { writeoff: .6 * exposure, extend: (1 - odds) * .9 * exposure, seize: .4 * exposure + exposure * .05 }, (id) => id === 'extend' ? 'Give them time: the odds beat a sure loss' : id === 'seize' ? 'Seize the collateral: the cheapest way out' : 'Write it off: waiting is likely to cost more')
       ask(x, 'bigDefault', 'A Big Borrower Wobbles', `${company}, one of ${x.a.name}'s biggest borrowers, can't make its payments on ${money(exposure)} of loans.`, choices, '💥', { exposure, odds })

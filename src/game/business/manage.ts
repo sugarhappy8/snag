@@ -13,9 +13,10 @@ import { collectMenu, registerModules, type MenuEntry } from '../kernel/registry
 import { companyScreen } from '../hubs/company'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
+import { oddsShown } from '../fog/odds/contract'
 import { hasTalent, talentHint } from '../talents'
 import type { TechId } from '../history/timeline'
-import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
 import { askingSalary, baseManagerValue, becomeCeo, ceoPayNorm, ceoSeverance, ceoValue, handOver, headhunterFee, managerName, maxOwnerSalary, optimizerGain, ownerTakesOver, shortlist, SMART_SKILL, STYLE_INFO, styleOf, type SearchKind } from './career'
 import {
@@ -70,7 +71,7 @@ import { afterSuccession, familyCandidates } from './nepo-succession'
 import { briefNodes, capexCaption, passHint, payDividend } from './board-menu'
 import { dividendMenu } from './dividend-menu'
 import { controlsBoard, boardView, mandateDef, ownerSeats } from './board-state'
-import { debtComfort, lowerFirst, oddsText, payableCash, payCap, payoutCash, refusedThisYear, sustainablePayout } from './board-vote'
+import { boardOddsKey, debtComfort, lowerFirst, oddsText, payableCash, payCap, payoutCash, refusedThisYear, sustainablePayout } from './board-vote'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
@@ -83,7 +84,10 @@ import { economicReportMenu } from './economic-report'
 import { booksMenu } from './books-menu'
 import { complexityShare, productIdeas } from './products'
 import { bestRdBudget, bestRdIdea, ordinaryProjects, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
-import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOdds, heavyOf, heavyOffers, heavyYears, startHeavy } from './heavy-rd'
+import { revealPolicyOf } from '../effort/hooks'
+import { hintOdds, oddsChip, researchOdds } from '../effort/why'
+import { rdOddsLine } from './rd-effort'
+import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOf, heavyOffers, heavyQuote, heavyWhyLine, startHeavy } from './heavy-rd'
 import type { Breakthrough } from './heavy-data'
 import { heavyStartsWave, INSIDER_WARNING } from './tech-wave-data'
 import { readMarketNews } from '../history/market-events'
@@ -94,6 +98,7 @@ import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
 import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 import { climateLine, dashboardRows } from './dashboard'
+import { stakeText, valueChip, valueText } from './valuation-fog'
 import { franchiseMenu } from './franchise'
 import { labMenus } from './lab-menu'
 import { milestonesMenu } from './milestones'
@@ -106,6 +111,8 @@ type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 /** A management action that re-reads the live business before running. */
 function act(a: Asset, key: string, label: string, emoji: string, opts: {
   subtitle?: string | ((g: GameState) => string)
+  /** The confidence of an estimate the subtitle prints (R3, valuation-fog.ts); `{}` or left out for an exact subtitle. */
+  chip?: Pick<MenuAction, 'conf' | 'asOf'>
   hint?: (g: GameState) => string | null
   disabled?: (g: GameState, b: BizState) => string | null
   confirm?: (g: GameState) => string | null
@@ -118,6 +125,7 @@ function act(a: Asset, key: string, label: string, emoji: string, opts: {
     label,
     emoji,
     subtitle: opts.subtitle,
+    ...(opts.chip ?? {}),
     ...(opts.hint ? { hint: opts.hint } : {}),
     disabledReason: (g) => {
       const block = manageBlock(g, a)
@@ -486,7 +494,7 @@ function rdPreview(g: GameState, a: Asset, idea: string, budget: number): string
   const b = readBiz(g, cur)
   const q = rdQuote(g, b, idea, budget)
   const total = rangeOf(g, cur).pull.total
-  const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, `${Math.round(q.odds * 100)}% odds`, `quality ~${q.quality} vs ${rivalsWord(q.offer, q.field)}`]
+  const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, rdOddsLine(g, q), `quality ~${q.quality} vs ${rivalsWord(q.offer, q.field)}`]
   if (q.lift > 0) parts.push(`about +${customersPct(q.lift / (1 + total))} customers at launch`)
   if (rdCrowding(b) > 1) parts.push(`the team is stretched: ${plural(ordinaryProjects(b).length, 'project')} already running`)
   if (budget > b.cash) parts.push(`${money(budget - Math.max(0, b.cash))} more than the company has`)
@@ -507,7 +515,7 @@ function ideaAction(a: Asset, b0: BizState, idea: string, ctxKey: string, field:
       const cur = live(gg, a)
       if (!hinting(gg, cur)) return null
       const best = bestBudgetFor(gg, cur, idea)
-      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${Math.round(best.odds * 100)}% odds, quality ~${best.quality}, worth about ${money(best.value)} on average)` : 'Not worth it now: no budget would earn back its cost while leaving the company a cash cushion')
+      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${hintOdds(gg, best.odds)} odds, quality ~${best.quality}, worth about ${money(best.value)} on average)` : 'Not worth it now: no budget would earn back its cost while leaving the company a cash cushion')
     },
     subtitle: `Costs ~${shortMoney(range.normal)} to develop · ${trendWord(demandTrend(info.family, ctxKey, field.year))} · ${rivalsWord(f.offer, f.quality)}`,
     disabled: (_g, bb) => (bb.cash < range.min ? `Needs at least ${money(range.min)} of company cash (${money(range.min - Math.max(0, bb.cash))} short).` : null),
@@ -568,19 +576,25 @@ function leadOf(family: string, field: Field, year: number): number | undefined 
 
 /** One breakthrough row: what it costs, how long, the odds, and when rivals could follow. */
 function heavyAction(a: Asset, x: Breakthrough): MenuAction {
+  // The engine's quote for this company (the asset is passed in: the menu reads a copy of the state, which no asset owns).
   const quote = (g: GameState) => {
-    const b = readBiz(g, live(g, a))
-    const years = heavyYears(b)
-    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(heavyOdds(g, b) * 100), lead: heavyLead({ year: g.year + years, years }), wave: heavyStartsWave(b.industry, x, g.year + years) }
+    const cur = live(g, a)
+    const b = readBiz(g, cur)
+    const q = heavyQuote(g, b, x.name, cur)
+    const years = q.years
+    return { cost: heavyCost(g, b) ?? 0, years, odds: q.p, lead: heavyLead({ year: g.year + years, years }), wave: heavyStartsWave(b.industry, x, g.year + years) }
   }
   return act(a, `heavy.${x.name}`, x.name, '\u{1F52C}', {
     subtitle: (g) => {
       const q = quote(g)
-      return `${money(q.cost)} · ${q.years} years · ${q.odds}% odds · rivals could follow about ${q.lead}`
+      return `${money(q.cost)} · ${q.years} years · ${oddsChip(g, q.odds)} · rivals could follow about ${q.lead}`
     },
     confirm: (g) => {
       const q = quote(g)
-      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone.${q.wave ? ` ${INSIDER_WARNING}` : ''}`
+      const cur = live(g, a)
+      // The odds line that follows says the chance the way the policy lets the player read it, so Realistic does not say it twice.
+      const chance = revealPolicyOf(g).exact ? ` and has about ${researchOdds(g, q.odds)} odds of working` : ''
+      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years${chance}. If it flops, the money is gone. ${heavyWhyLine(g, readBiz(g, cur), x.name, cur)}.${q.wave ? ` ${INSIDER_WARNING}` : ''}`
     },
     disabled: (g, bb) => heavyBlock(g, bb, x.name, a.id),
     run: (gg, cur, bb) => {
@@ -635,7 +649,7 @@ function productsMenu(a: Asset): MenuGroup {
       const trim = linesToRetire(g, b)
       if (trim > 0) return talentHint(g, 'Business', `Retire your ${trim === 1 ? 'weakest line' : `${trim} weakest lines`}: they cost more to run than they sell`)
       const best = cachedHint(g, cur, 'rdIdea', () => bestRdIdea(g, b, productIdeas(g, b, IDEAS_SHOWN), Math.max(0, b.cash - rdReserve(b))))
-      return talentHint(g, 'Business', best ? `Develop ${best.idea}: about ${money(best.budget)} is the best budget (${Math.round(best.quote.odds * 100)}% odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: no new line would earn back its cost, or the company needs its cash cushion')
+      return talentHint(g, 'Business', best ? `Develop ${best.idea}: about ${money(best.budget)} is the best budget (${hintOdds(g, best.quote.odds)} odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: no new line would earn back its cost, or the company needs its cash cushion')
     },
     header: (g) => {
       const b = readBiz(g, a)
@@ -683,7 +697,7 @@ function productsMenu(a: Asset): MenuGroup {
         for (const p of dev.slice(0, TOP_LINES)) {
           const left = Math.max(0, p.years - p.progress)
           const quality = typeof p.quality === 'number' ? ` · quality ~${Math.round(p.quality)}` : ''
-          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${Math.round(p.odds * 100)}% odds${quality} · ${money(p.budget)} budget${p.heavy === true ? ' · Heavy R&D' : ''}` })
+          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${oddsChip(g, p.odds)}${quality} · ${money(p.budget)} budget${p.heavy === true ? ' · Heavy R&D' : ''}` })
         }
         if (dev.length > TOP_LINES) nodes.push({ type: 'info', id: `biz.devMore.${a.id}`, emoji: '\u{1F52C}', text: `…and ${plural(dev.length - TOP_LINES, 'more project')}.` })
       }
@@ -1540,10 +1554,11 @@ function maxPassing(g: GameState, a: Asset, b: BizState, make: (v: number) => Pr
   return Math.round(x)
 }
 
-/** ' · needs the board (🔮 about 70% to pass)' for a slider caption. */
+/** ' · needs the board (🔮 about 70% to pass)' for a slider caption (with the Business talent, or after a read of that vote). */
 function boardCaption(g: GameState, a: Asset, b: BizState, p: Proposal): string {
   if (!needsVote(g, a, b, p)) return ''
-  return ` \u{00B7} needs the board${hasTalent(g, 'Business') ? ` (\u{1F52E} ${oddsText(passOdds(g, a, b, p))} to pass)` : ''}`
+  const shown = oddsShown(g, boardOddsKey(a, p.kind), () => passOdds(g, a, b, p))
+  return ` \u{00B7} needs the board${shown ? ` (${shown} to pass)` : ''}`
 }
 
 function moneyNodes(a: Asset, g: GameState): MenuNode[] {
@@ -2060,14 +2075,14 @@ export function shopCompany(g: GameState, a: Asset, b: BizState): void {
     const sale = (amount: number) =>
       b.cooked > 0 ? (1 - SALE_COLLAPSE) * board(amount) * (amount - b.valuation) * b.share + SALE_COLLAPSE * fxValue(g, b, w, { brand: -15, arrest: 0.5 * 3 }) : board(amount) * (amount - b.valuation) * b.share
     markBest(g, choices, (id) => (id === 'keep' ? 0 : id.startsWith('o') ? sale(offers[Number(id.slice(1))]?.amount ?? 0) : null), (id) =>
-      id === 'keep' ? 'Best move: every offer is below what it is worth to you' : `Best offer: the most money above what the company is worth${hasBoard(g, b) ? ` (the board: ${oddsText(board(offers[Number(id.slice(1))]?.amount ?? 0))} to approve)` : ''}`,
+      id === 'keep' ? 'Best move: every offer is below what it is worth to you' : `Best offer: the most money above what the company is worth${hasBoard(g, b) ? ` (the board: ${oddsText(board(offers[Number(id.slice(1))]?.amount ?? 0), g, boardOddsKey(a, 'sell'))} to approve)` : ''}`,
     )
   }
   scriptChoice(
     g,
     SELL,
     `Sell ${a.name}`,
-    `Your broker collected offers for the whole company (valued at about ${money(b.valuation)}).${b.share < 1 ? ` You own ${pct(b.share)}, so that's your cut, after the investors' preference.` : ''}${hasBoard(g, b) ? ' The board votes on whichever offer you pick.' : ''}`,
+    `Your broker collected offers for the whole company (${valueText(g, a, b, 'valued at', { about: true })}).${b.share < 1 ? ` You own ${pct(b.share)}, so that's your cut, after the investors' preference.` : ''}${hasBoard(g, b) ? ' The board votes on whichever offer you pick.' : ''}`,
     choices,
     { emoji: '\u{1F91D}', data: { assetId: a.id, offers: toJson(offers) } },
   )
@@ -2085,7 +2100,8 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
   if (!b.public) {
     nodes.push(
       act(a, 'sell', group ? 'Sell This Division' : 'Sell the Company', '\u{1F3F7}\u{FE0F}', {
-        subtitle: `Valued at about ${money(b.valuation)}${b.share < 1 ? ` (your ${pct(b.share)}: ${money(b.valuation * b.share)}) \u{00B7} the board must agree` : ''}${group ? ` \u{00B7} it leaves ${group.core.name}` : ''}`,
+        subtitle: `${valueText(g, a, b, 'Valued at', { about: true })}${b.share < 1 ? ` (your ${pct(b.share)}: ${stakeText(g, a, b, b.valuation * b.share)}) \u{00B7} the board must agree` : ''}${group ? ` \u{00B7} it leaves ${group.core.name}` : ''}`,
+        chip: valueChip(g, a, b),
         run: (gg, cur, bb) => shopCompany(gg, cur, bb),
       }),
     )
@@ -2168,7 +2184,7 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   const def = industryDef(b.industry)
   const m = marketOf(b.countryId)
   const e = localEcon(b.industry, b.countryId, b.city)
-  const rows: [string, string][] = []
+  const rows: [string, string, Pick<MenuInfo, 'conf' | 'asOf'>?][] = []
   rows.push([def.emoji, `${def.label} \u{00B7} ${b.city}, ${getCountry(b.countryId).name} \u{00B7} ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`])
   if (runsIt(g, a)) rows.push(['\u{1F454}', `Run by you, the CEO \u{00B7} salary ${money(b.ownerSalary)}/yr`])
   else rows.push(['\u{1F454}', b.manager ? `CEO ${managerName(b.manager)} \u{00B7} skill ${b.manager.skill}/100 \u{00B7} ${financeTarget(b) ? `${financeProfileShort(b.manager)} \u{00B7} finance skill ${Math.round(financeLeadershipSkill(b, b.manager))}/100` : STYLE_INFO[styleOf(b.manager)].label.toLowerCase()} \u{00B7} ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''}${!financeTarget(b) && b.manager.skill > SMART_SKILL ? ' \u{00B7} plans with the numbers' : ''}` : 'No one is running it day to day.'])
@@ -2189,11 +2205,11 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   }
   const s = b.last
   if (s) rows.push(['\u{1F4CA}', `${s.year}: sales ${money(s.revenue)} \u{00B7} ${s.net >= 0 ? 'profit' : 'loss'} ${money(Math.abs(s.net))} \u{00B7} corporate tax ${money(s.corpTax)}${s.salesTax > 0 ? ` \u{00B7} ${m.salesTaxName} ${money(s.salesTax)}` : ''}`])
-  rows.push(['\u{1F4B0}', `${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${money(stakeValue(b))}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} \u{00B7} cash ${money(b.cash)}${b.debt > 0 ? ` \u{00B7} debt ${money(b.debt)}` : ''}`])
+  rows.push(['\u{1F4B0}', `${valueText(g, a, b, b.public ? 'Market cap' : 'Valuation')}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${stakeText(g, a, b)}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} \u{00B7} cash ${money(b.cash)}${b.debt > 0 ? ` \u{00B7} debt ${money(b.debt)}` : ''}`, valueChip(g, a, b)])
   rows.push(['\u{1F30D}', climateLine(b, e.wage)])
   const note = eraNote(g, b.countryId, m.businessNote).trim()
   if (note) rows.push(['\u{1F4DD}', note])
-  return rows.filter(([, text]) => !!text).map(([emoji, text], i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji }))
+  return rows.filter(([, text]) => !!text).map(([emoji, text, chip], i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji, ...(chip ?? {}) }))
 }
 
 /** Who the CEO answers to, and the hired CEO's last letter (short; the Board menu has the rest). */

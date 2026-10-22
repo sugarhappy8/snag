@@ -14,6 +14,9 @@ import { clampN, num, rec, str } from './util'
 import { readFamilyShares } from './family-share-state'
 import { dividendField, type DividendPolicy } from './dividend-policy'
 import { addTally, liveTally, readTally, TALLY_OPERATING } from '../kernel/tally'
+import { normalizeFx } from '../effort/fx'
+import { readKnowHow } from '../effort/knowhow'
+import type { Fx } from '../effort/types'
 
 // The cash walk (charts/books.ts) reads a company's tally through here, as it reads the rest of the books.
 export { readTally, TALLY_OPERATING }
@@ -88,6 +91,11 @@ export interface RdProject {
   heavy?: true
   /** What a heavy project cost, paid when it started (it is what the pioneer's record keeps). */
   cost?: number
+  /**
+   * What the project has learned about its own effort (effort/fx.ts, nine bounded numbers). Written only when it carries
+   * something (a setback, a banked cause), so a default project saves byte for byte what v5.0.0 saved; missing on old saves.
+   */
+  fx?: Fx
   /** Calendar year it started. */
   started: number
 }
@@ -394,6 +402,12 @@ export interface BizState {
   retired?: string[]
   /** Year the last Heavy R&D project launched or flopped: the five-year wait for the next one starts there. Missing: never had one. */
   heavyLast?: number
+  /**
+   * What the company has learned from research that failed, by field (effort/knowhow.ts: 0 to 100, at most 40 fields, keys such as
+   * 'rd.fizz' or 'dt.fusion'). It lives with the company, so an heir inherits it. Only a failed project banks (at most 15 odds
+   * points in all); a win and an NPC company bank none. Missing on old saves and on companies that never failed a project.
+   */
+  knowHow?: Record<string, number>
   outlets: Outlet[]
   /**
    * Extra production capacity at the home site: production lines, ovens, sewing lines,
@@ -634,11 +648,24 @@ const MAX_HEAVY_YEARS = 6
  * the Heavy R&D marks: `heavy` is believed only when it is exactly `true` and the project is one of
  * the catalogue's breakthroughs, `cost` only on such a project and only as a finite number from 0.
  */
-function projectExtras(x: Record<string, Json>, name: string): Pick<RdProject, 'quality' | 'family' | 'kind' | 'heavy' | 'cost'> {
+function projectExtras(x: Record<string, Json>, name: string): Pick<RdProject, 'quality' | 'family' | 'kind' | 'heavy' | 'cost' | 'fx'> {
   const { quality, family, kind } = lineExtras(x)
   const heavy = x.heavy === true && breakthroughByName(name) !== null
   const cost = heavy && typeof x.cost === 'number' && Number.isFinite(x.cost) && x.cost >= 0 ? Math.min(1e15, x.cost) : undefined
-  return { ...(quality !== undefined ? { quality } : {}), ...(family ? { family } : {}), ...(kind ? { kind } : {}), ...(heavy ? { heavy: true as const } : {}), ...(cost !== undefined ? { cost } : {}) }
+  const fx = readProjectFx(x.fx)
+  return { ...(quality !== undefined ? { quality } : {}), ...(family ? { family } : {}), ...(kind ? { kind } : {}), ...(heavy ? { heavy: true as const } : {}), ...(cost !== undefined ? { cost } : {}), ...(fx !== undefined ? { fx } : {}) }
+}
+
+/**
+ * A project's stored effort record: the engine's `normalizeFx` of a record (every number cut to its cap), or nothing. A value that is
+ * not a record, and a record that carries nothing (every number at its fresh value: no progress, no setback, no stamp), is damaged
+ * or empty and is dropped, never repaired, so a project that never needed one saves without the key.
+ */
+function readProjectFx(raw: Json | undefined): Fx | undefined {
+  if (!rec(raw)) return undefined
+  const fx = normalizeFx(raw)
+  const carries = fx.progress !== 0 || fx.quality !== 0 || fx.spent !== 0 || fx.hours !== 0 || fx.setbacks !== 0 || fx.insight !== 0 || fx.fatigue !== 0 || fx.last !== -1
+  return carries ? fx : undefined
 }
 
 function readProduct(x: Record<string, Json>): Product | null {
@@ -787,6 +814,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   const retired = readRetired(d.retired)
   // A year, or nothing: a damaged value must never leave Heavy R&D waiting for good.
   const heavyLast = typeof d.heavyLast === 'number' && Number.isFinite(d.heavyLast) && d.heavyLast >= 1800 && d.heavyLast <= 2300 ? Math.round(d.heavyLast) : null
+  // The company's research know-how: valid fields only, each 0 to 100, at most 40 (effort/knowhow.ts); left out when it holds none.
+  const knowHow = readKnowHow(d.knowHow)
   // Chip fabs and the sister's chip record: devices only, and a damaged value is dropped, never repaired (devices-data.ts).
   const fabs = readFabs(d.fabs)
   const chips = readChips(d.chips)
@@ -829,6 +858,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(Array.isArray(d.rd) ? { rd: projects } : {}),
     ...(retired.length ? { retired } : {}),
     ...(heavyLast !== null ? { heavyLast } : {}),
+    ...(Object.keys(knowHow).length > 0 ? { knowHow } : {}),
     outlets,
     ...(num(d.lines) >= 1 ? { lines: Math.round(clampN(num(d.lines), 0, 1e9)) } : {}),
     ...(industry === 'devices' && fabs > 0 ? { fabs } : {}),

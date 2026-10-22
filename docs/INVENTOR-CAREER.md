@@ -12,7 +12,7 @@ The code lives in `src/game/workshop/`.
    else about one year in seven from age 10. Some sparks arrive as a popup ("While folding
    laundry, you had an idea…": write it down / forget it); the scene fits your stage of life
    (school for kids, meetings and traffic for adults, the garden for retirees) and the era
-   (`yearly.sparkScenes`). **💭 Brainstorm** twice a year; the odds come from smarts, skill and the
+   (`yearly.sparkScenes`). **💭 Brainstorm** twice a year (1 focus week each); the odds come from smarts, skill and the
    talent. Ideas offered lately (forgotten or scrapped) wait their turn while fresh ones remain
    (`Workshop.seen`, the last 40).
 2. **The catalog** (`catalog.ts`): 160+ everyday ideas in ten categories (gadget, home, toy,
@@ -27,14 +27,33 @@ The code lives in `src/game/workshop/`.
    The **future race** gives modern lives the same chase: 13 clearly fictional breakthroughs
    (Pocket Fusion Cell, Dream Recorder, Tooth-Regrowing Gel…) open from 2016-2025, each with a
    rival's deadline rolled per family (10-40 years after it opens; `market.raceYear`), so no real
-   date is ever claimed. Firsts are world state (`g.flags['workshop.firsts']`, kept for heirs):
-   history can't be beaten twice in one timeline.
-4. **🔧 Build a prototype** (3 a year, 5 for geniuses) in a popup: 🛡️ Play it safe (narrow
+   date is ever claimed. Nine of the 13 sit in a field of the world frontier (`market.FUTURE_FIELD`):
+   a leap in that field (R3, `world/frontier.ts`) pulls the rival's deadline in by the whole years
+   of its lead (`market.raceShift`), never below `from + 10`, never above the rolled year and never
+   before the year of the latest push. The idea's page says so ("Recent leaps pulled this race in
+   by N years."); with no leap, or for a history idea, nothing moves. Firsts are world state
+   (`g.flags['workshop.firsts']`, kept for heirs): history can't be beaten twice in one timeline.
+4. **🔧 Build a prototype** (3 focus weeks each, 2 for geniuses; see "Focus weeks and the bench") in a popup: 🛡️ Play it safe (narrow
    range), 🚀 Go bold (wide range: more masterpieces and more explosions) or 💸 Cheap & cheerful
    (40% of the cost, lower quality). Costs by difficulty ≈ $150 / $1.5K / $8K / $40K / $250K
    at local prices; kids under 16 build easy things from scrap for free. Results: 💥 disaster
    (funny line, small health/happiness hit), 🔩 sort of works, ✅ works, 🌟 masterpiece (88+).
    Quality is the best build so far. Every build raises skill (0-100, diminishing).
+
+   **Focus weeks and the bench** (R3-M9). Builds and brainstorms draw on the same pool of 12
+   focus weeks a year as Study Harder, club practice, lessons and tutorials
+   (`effort/focus.ts`; the counters in `g.yearActions` count weeks). A build is 3 weeks (2 for a
+   genius) and a brainstorm 1, so three builds and two brainstorms use 11 weeks and a genius's
+   five and two use all 12. `buildLimit` is that plan (3, or 5), `buildsLeft` what the pool still
+   holds. A build past the pool still runs, as overtime that adds fatigue at the year's end;
+   at most two builds past the limit (`MAX_OVERTIME_BUILDS`), and a burned-out inventor can't
+   build at all. Lab access (`workshopTools`: a university or graduate student 0.4, the owner of
+   a company with a research or deep-tech lab 0.6, the larger of the two) adds up to 5 quality
+   points to a build (`WORKSHOP_TOOLS_MAX`) and cuts its blow-up chance to 85%. A hired bench
+   assistant (`bench.ts`, `Workshop.helper`: $4,000 a year at local prices through `payroll`,
+   paid when hired and then once a year by the yearly step, gone when it can't be paid, skill 40
+   and 3 more a year) adds up to 3 points and cuts blow-ups to 92%. Money buys none of it. The
+   idea's menu shows the odds line of a safe build with its labelled terms (`buildQuote`).
 5. **📜 Patent** (quality 40+): the home filing fee (`patentLaw`, from the national market data)
    or worldwide (×6). A patented idea becomes an Asset (`kind: 'invention'`) that shows in
    Assets, counts in net worth, can be sold and is inherited. Worldwide patents sell everywhere;

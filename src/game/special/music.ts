@@ -4,6 +4,8 @@
 import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, scriptInput, useYearAction } from '../core'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
+import { RESIGN_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import { crowdedField } from '../mastery'
 import { musicMastersMenu, yearlyMusicRights } from './music-rights'
@@ -776,7 +778,7 @@ const contractRenewScript = defineScript('special.music.renew', (g, choice, data
     d.contractYears = o.years
     d.advancePerYear = Math.round(o.advance / o.years)
     job.salary = d.advancePerYear
-    log(g, `I re-signed with ${d.label}.`, 'good')
+    log(g, fillSlots(pickLine(g, RESIGN_LINES), { who: d.label ?? 'the label' }), 'good')
     return say(g, 'Contract Renewed', `You re-signed with ${d.label} for ${o.years} more years and ${money(o.advance)}.`, '\u{270D}\u{FE0F}', 'good')
   }
   const label = d.label

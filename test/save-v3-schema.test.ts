@@ -12,6 +12,7 @@
 //   tm-v4.1.1.json.gz         v4.1.1 Time Machine: its index, its backend entries and the state at each of four snapshots
 //   idb-v4.1.1.json.gz        v4.1.1 as IndexedDB held it: the gz2 record, the localStorage marker and the plain JSON
 //   save-v5.0.0-heavy.json.gz v5.0.0 (the first schema 3 writer), a 20-year life with four companies, the inline v3 form
+//   save-v5.1.0-heavy.json.gz v5.1.0 (R3), the same life on the engine of the release commit: its log lines carry the source `s`
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
@@ -125,6 +126,20 @@ describe('the fixtures load and run five years', () => {
     const raw = load('save-v5.0.0-heavy.json.gz')
     expect(raw.schemaVersion).toBe(3)
     expect(raw).toHaveProperty('world')
+    const { game, from } = ready(raw)
+    expect(from).toBe(3)
+    expectPlayable(game, game.year)
+  })
+
+  // The schema v5.1.0 wrote, as a literal (R3 added optional fields and no schema step). The log lines of its years carry the source `s`
+  // that aging.ts stamps around each hook, which a v5.0.0 save never has.
+  it('the v5.1.0 save is schema 3, needs no step, carries the R3 log sources, and plays', () => {
+    const raw = load('save-v5.1.0-heavy.json.gz')
+    expect(raw.schemaVersion).toBe(3)
+    expect(raw).toHaveProperty('world')
+    const entries = (raw.log as { entries: { s?: unknown }[] }[]).flatMap((y) => y.entries)
+    expect(entries.some((e) => typeof e.s === 'string')).toBe(true)
+    expect((load('save-v5.0.0-heavy.json.gz').log as { entries: { s?: unknown }[] }[]).flatMap((y) => y.entries).some((e) => 's' in e)).toBe(false)
     const { game, from } = ready(raw)
     expect(from).toBe(3)
     expectPlayable(game, game.year)

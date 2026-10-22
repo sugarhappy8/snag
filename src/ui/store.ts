@@ -13,6 +13,8 @@ import { useSyncExternalStore } from 'react'
 import { ageUp } from '../game/aging'
 import { bindMoneyContext, moneyContextOf, netWorth, notice } from '../game/core'
 import { FLAGS } from '../game/flags'
+import { closeYear } from '../game/hubs/year-close'
+import { markAnswer, settleAnswer } from '../game/hubs/year-outcomes'
 import { emptyInbox, inboxUnread, markSeen, routeMinorNotices } from '../game/inbox'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
 import { lifeSpark } from '../game/life-series'
@@ -481,6 +483,14 @@ function resolveModal(g: GameState, id: string, handler: ModalHandler): void {
   g.queue = [...rest.slice(0, idx), ...added, ...rest.slice(idx)]
 }
 
+/**
+ * The quiet year (R3): the year card flag and the Quiet Mode setting are both on. The year close (ageUpAction) and the calm outcomes of an
+ * answered choice (chooseOption) read this and nothing else; with it off the year is played as it always was.
+ */
+function quietYears(): boolean {
+  return FLAGS.yearCard && quietModeOn(state.settings)
+}
+
 export function ageUpAction(): void {
   const g = state.game
   if (!g || !g.character.alive || g.queue.length > 0) return
@@ -488,8 +498,10 @@ export function ageUpAction(): void {
   clearReturnPoint()
   // The Time Machine keeps the new year as it starts (once its popups are done).
   expectSnapshot(g.lifeId, g.character.age + 1)
+  // The year close (R3, E.D2) is the store flow only: headless ageUp never calls it.
+  const close = quietYears()
   try {
-    act(ageUp)
+    if (!(close && ageUpAndClose())) act(ageUp)
   } catch (err) {
     // A bug in a yearly hook must not trap the player on this birthday with a dead button. act()
     // never commits a draft that threw, so the last good year stays; the error is still logged
@@ -498,6 +510,28 @@ export function ageUpAction(): void {
     act((draft) => {
       notice(draft, 'Something Went Wrong', "This year couldn't be played out, so nothing changed and your life is saved as it was. Tap + Age to try again; doing something else first can help.", { emoji: '\u{26A0}\u{FE0F}', tone: 'bad' })
     })
+  }
+}
+
+/**
+ * ageUp and the year close in one act() (R3, E.D2). True when the year was committed. closeYear is built not to throw; if it does, the
+ * draft is dropped (act never commits one that threw) and this returns false, so the caller plays the year the old way: a broken close
+ * never costs the player the birthday. A failure of ageUp itself, or of anything after the mutator, is not caught here.
+ */
+function ageUpAndClose(): boolean {
+  let closing = false
+  try {
+    act((g) => {
+      ageUp(g)
+      closing = true
+      closeYear(g)
+      closing = false
+    })
+    return true
+  } catch (err) {
+    if (!closing) throw err
+    console.error('Closing the year failed:', err)
+    return false
   }
 }
 
@@ -529,11 +563,18 @@ export function dismissNotices(ids: readonly string[]): void {
   })
 }
 
+/**
+ * The player answers a choice. In a quiet year (quietYears) the outcome it queues is settled by game/hubs/year-outcomes.ts: a calm one
+ * (weight 0 to 1 by the weights the year close reads, never bad, health, legal or large-money, never one that leads to another decision)
+ * goes to the life log and is no popup; everything else is queued as it always was. Headless runScript never does this.
+ */
 export function chooseOption(id: string, choiceId: string): void {
   const queued = state.game?.queue.find((modal) => modal.id === id)
   if (!queued || queued.kind !== 'choice' || !queued.choices.some((option) => option.id === choiceId)) return
+  const quiet = quietYears()
   handleModal(id, (g, modal) => {
     if (modal.kind !== 'choice') return
+    const mark = quiet ? markAnswer(g) : null
     if (modal.source === 'script' && modal.scriptId) {
       runScript(g, modal.scriptId, choiceId, modal.data, modal)
     } else {
@@ -541,6 +582,7 @@ export function chooseOption(id: string, choiceId: string): void {
       // generic offline outcome, right away.
       resolveTask(g, { type: 'resolveChoice', event: modal, choiceId })
     }
+    if (mark) settleAnswer(g, mark)
   })
 }
 

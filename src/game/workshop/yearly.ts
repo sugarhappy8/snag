@@ -8,6 +8,8 @@ import { earnIncome, formatMoney, log, notice, scriptChoice } from '../core'
 import { economicRoll, recordEconomicActivity } from '../economy'
 import { anachronistic, cars, common } from '../events/era'
 import { rand } from '../rng'
+import { pickLine } from '../text/pick'
+import { NOTEBOOK_FULL_LINES } from '../text/pools'
 import { defineScript } from '../scripts'
 import { outcomeTag } from '../timeMachine'
 import type { GameState, Json } from '../types'
@@ -16,6 +18,7 @@ import { catalogIdea, isHistory, type Category } from './catalog'
 import { yearlyWorkshopEvent } from './events'
 import { needsMigration } from './migrate'
 import { curveAt, curveOver, familyOf, invCurve, raceYear, saturation } from './market'
+import { settleHelper } from './bench'
 import { addIdea, addRep, blurbOf, drawIdea, dropIdea, inventions, isGenius, logIdea, mutWorkshop, recordFirst, storeInv, worldFirsts, type Owned } from './notebook'
 import { NOTEBOOK_MAX, rec, text, type Workshop } from './state'
 
@@ -179,7 +182,7 @@ function sparks(g: GameState, ws: Workshop): void {
   let popup = false
   for (let i = 0; i < n; i++) {
     if (ws.ideas.length >= NOTEBOOK_MAX) {
-      log(g, 'A brilliant idea struck, but my notebook was full. It floated away.')
+      log(g, pickLine(g, NOTEBOOK_FULL_LINES))
       return
     }
     const def = drawIdea(g, ws)
@@ -225,6 +228,7 @@ export function yearlyWorkshop(g: GameState): void {
   settleInventions(g, ws)
   if (ws.last >= g.year) return
   ws.last = g.year
+  settleHelper(g, ws)
   // Saves from before the timeline-wide record: this life's firsts join it.
   const firsts = worldFirsts(g)
   for (const m of ws.made) if (m.first && !firsts.has(m.id)) recordFirst(g, m.id)

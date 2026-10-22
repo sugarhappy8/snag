@@ -480,10 +480,45 @@ export interface Asset {
  */
 export type Tone = 'good' | 'bad' | 'neutral' | 'event'
 
+/**
+ * How much a line or popup matters to the year (R3, E.D1). 0 trivia, 1 routine, 2 notable (what a title the weight table does not
+ * know counts as), 3 life-changing (never folded). Only the store's year close reads it; a line without one is a 2.
+ */
+export type LogWeight = 0 | 1 | 2 | 3
+
 export interface LogEntry {
   id: string
   text: string
   tone: Tone
+  /** Where the line came from: the name of the yearly hook (or module) that wrote it, 1 to 24 characters. Absent for a line the player's own action made. */
+  s?: string
+  /** The money the line is about, in whole dollars, |a| at most 1e15. The year close ranks and sums by it. */
+  a?: number
+  w?: LogWeight
+}
+
+/** The groups a year card folds its small stories into, in display order (R3, E.D2). */
+export type YearGroup = 'people' | 'body' | 'work' | 'companies' | 'money' | 'law' | 'world' | 'life'
+
+/** The year in one card (R3, E.D2): a headline, a few stories, the money line, and the rest counted by group. */
+export interface YearCard {
+  v: 1
+  year: number
+  age: number
+  /** Headline of the year, at most 90 characters. */
+  head: string
+  /** At most 3, each at most 90. */
+  stories: string[]
+  /** The ledger line, at most 90. */
+  money?: string
+  /** At most 3, each at most 90. */
+  people?: string[]
+  /** The news headline of the year, at most 90. */
+  world?: string
+  /** Collapsed categories: the count and at most 6 lines of at most 90. */
+  groups: { k: YearGroup; n: number; lines: string[] }[]
+  /** Not queued as a popup: the Life tab draws it. */
+  inline?: true
 }
 
 export interface LogYear {
@@ -522,6 +557,13 @@ export interface NoticeModal {
   weight?: 'minor'
   /** Where an inbox row leads: a place key such as 'assets/home/mortgage' (Navigation's placeKey). Validated by R1-T5's readers; R1 emitters set none. */
   link?: string
+  /** The yearly hook that queued it (see LogEntry.s). A popup the player's own action made has none and the year close never touches it. */
+  s?: string
+  /** The money it is about (see LogEntry.a). */
+  a?: number
+  w?: LogWeight
+  /** The year card (R3, E.D2): when set, the UI draws this instead of the text. The UI cleans every field of it. */
+  digest?: YearCard
 }
 
 export interface ChoiceModal {
@@ -540,6 +582,8 @@ export interface ChoiceModal {
   scriptId?: string
   data?: Json
   personId?: string
+  /** The yearly hook that queued it (see LogEntry.s). A choice with a source is one the player did not ask for. */
+  s?: string
 }
 
 export type MinigameKind = 'blackjack' | 'horseRace' | 'burglary' | 'prisonEscape' | 'slots' | 'pickpocket' | 'annualReport' | 'nationReport'
@@ -786,6 +830,8 @@ interface MenuBase {
   badge?: (g: GameState) => string | number | null
   /** Information confidence 0 to 3 (H.3, R3 renders it). */
   conf?: 0 | 1 | 2 | 3
+  /** The year of the reading behind this row (an integer not after the current year); the chip adds "as of <year>" at 2 or more years old. */
+  asOf?: number
   /** A tiny trend drawn at the end of a row (stock lists, G.6). Null, or fewer than 2 points, draws nothing. Must be pure and read settled years only. */
   spark?: (g: GameState) => (number | null)[] | null
 }
@@ -819,6 +865,8 @@ export interface MenuInfo {
   chart?: (g: GameState) => ChartSpec | null
   /** Information confidence 0 to 3 (H.3, R3 renders it). */
   conf?: 0 | 1 | 2 | 3
+  /** The year of the reading behind this row (an integer not after the current year); the chip adds "as of <year>" at 2 or more years old. */
+  asOf?: number
 }
 
 /** A section heading inside a menu list. */

@@ -80,6 +80,7 @@ export const CASH_LABELS: Readonly<Record<string, string>> = {
   'firm.sale': 'Sale of a part of the business',
   inject: 'Money you put in',
   inputs: 'Supplies and services',
+  intel: 'Reports and analysts',
   'invest.income': 'Investment income',
   legal: 'Lawyers',
   luck: OTHER_MOVES,

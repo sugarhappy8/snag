@@ -219,12 +219,17 @@ export function rememberPool(mem: TextMem, key: string, n: number, index: number
   evict(mem.p, TEXT_MEM_LIMITS.pools)
 }
 
-/** Notes that the family was used this year: appends g.year, drops years 10 or more behind it and years after it, keeps the newest 12. */
-export function noteFamily(g: GameState, fam: string): void {
+/**
+ * Notes that the family was used this year: appends g.year, drops years 10 or more behind it and years after it, keeps the newest 12.
+ * With `lifetime` the years 10 or more behind stay (the newest 12 still do): a family that counts its uses for the whole life (the ask
+ * families of text/pace.ts, R3 decision L2) must not forget the ones the 10 year window would drop. The record is no longer than 12
+ * years either way, so the memory stays inside its caps.
+ */
+export function noteFamily(g: GameState, fam: string, lifetime = false): void {
   if (!isMemKey(fam) || !Number.isInteger(g.year) || g.year < 0 || g.year > 999_999) return
   const mem = writableTextMem(g)
   const years = (Object.hasOwn(mem.f, fam) ? parseFamily(mem.f[fam]) : null) ?? []
-  const kept = years.filter((y) => y > g.year - TEXT_MEM_LIMITS.famWindow && y <= g.year)
+  const kept = years.filter((y) => (lifetime || y > g.year - TEXT_MEM_LIMITS.famWindow) && y <= g.year)
   kept.push(g.year)
   delete mem.f[fam]
   mem.f[fam] = kept.slice(-TEXT_MEM_LIMITS.famYears).join(',')
@@ -246,6 +251,50 @@ export function familyStats(g: GameState, fam: string): { last: number | null; c
     if (y > g.year - TEXT_MEM_LIMITS.famWindow) count10++
   }
   return { last, count10 }
+}
+
+/**
+ * Pure. The years the family record holds, ascending, read the way familyStats reads them, for a hot path (R3-Q8 pace asks it for every
+ * event it weighs): it reads the one record instead of sanitizing the whole memory, so a year's pick costs a few reads, not a few
+ * hundred. An own key, a valid key and a record that is exactly the codec; a family map over its cap is the one case that needs the
+ * full clean (it keeps the newest 120 keys), so it asks the sanitized memory. Null for a family that was never noted or a damaged one.
+ * Years after g.year are still in the list: each reader drops them (no foresight).
+ */
+function yearsOf(g: GameState, fam: string): number[] | null {
+  const raw = g.flags.textMem
+  if (!isPlain(raw) || raw.v !== 1 || !isPlain(raw.f) || !isMemKey(fam)) return null
+  const f = raw.f
+  let keys = 0
+  for (const _ in f) {
+    if (++keys > TEXT_MEM_LIMITS.families) {
+      const clean = readTextMem(g).f
+      return Object.hasOwn(clean, fam) ? parseFamily(clean[fam]) : null
+    }
+  }
+  const rec = Object.hasOwn(f, fam) ? f[fam] : undefined
+  if (typeof rec !== 'string' || rec.length > MAX_FAMILY_RECORD) return null
+  return parseFamily(rec)
+}
+
+/**
+ * Pure. The same answer as familyStats(g, fam).last, for a hot path (R3-Q8 pace asks it for every event it weighs): see yearsOf.
+ * A year not after g.year, as familyStats.
+ */
+export function familyLast(g: GameState, fam: string): number | null {
+  let last: number | null = null
+  for (const y of yearsOf(g, fam) ?? []) if (y <= g.year) last = y
+  return last
+}
+
+/**
+ * Pure. How many years the family record holds that are not after g.year (R3 decision L2: the ask families count their uses over a
+ * life, and noteFamily keeps those years with `lifetime`). The record holds at most 12, so a count never passes 12. A family that was
+ * never noted, a damaged record and a key the memory would not hold are 0. Reads the one record, as familyLast does.
+ */
+export function familyUses(g: GameState, fam: string): number {
+  let n = 0
+  for (const y of yearsOf(g, fam) ?? []) if (y <= g.year) n++
+  return n
 }
 
 /** The named ring, oldest first, or null when it was never written. A copy. */

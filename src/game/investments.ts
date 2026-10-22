@@ -78,6 +78,7 @@ import {
   type SecYear,
 } from './invest/engine'
 import { classFacts, lineOpen, linesOf, lineYear, votesText, type Line } from './invest/class-data'
+import { marketRead, swingLook, swingRow } from './invest/contract'
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
 import { addMarketShock, indexShockFactor, marketBreakthroughs, orderFlowFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { buyImpact, saleImpact } from './invest/liquidity'
@@ -1864,10 +1865,15 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       else if (q.yield > 0) rows.push(`${q.type === 'crypto' ? 'Rewards' : q.type === 'reit' ? 'Payout' : 'Dividend'}: ${rateText(q.yield)} a year, taxed as income.`)
       rows.push(...extraInfo)
       rows.forEach((text, i) => nodes.push({ type: 'info', id: `inv-oinfo-${q.secId}-${i}`, text }))
+      // How much a stock, penny stock or coin swings (R3-G9): Realistic mode only, with its chip and a way to look closer.
+      const swing = q.type === 'stock' || q.type === 'penny' || q.type === 'crypto' ? swingRow(gg, q.secId) : null
+      if (swing) nodes.push(swing)
       if (trailed) nodes.push(...chartInfo(`inv-ochart-${q.secId}`, '📈', (_x, spec) => spec?.summary ?? '', (g3) => growthChart(g3, q)))
       if (held) nodes.push({ type: 'info', id: `inv-oheld-${q.secId}`, text: `You own ${formatMoney(held.value)} of this (${change(basis(held) > 0 ? (held.value - basis(held)) / basis(held) : 0)} overall).`, emoji: '💼' })
       nodes.push(buyAction(gg, q, !!held))
       if (held) nodes.push(...sellActions(gg, held))
+      const look = swing ? swingLook(gg, q.secId) : null
+      if (look) nodes.push(look)
       for (const line of q.lines ?? []) nodes.push(...lineSection(gg, line))
       return nodes
     },
@@ -2202,6 +2208,8 @@ function newsLines(g: GameState): string[] {
   // An analyst call on the year just gone: no better than a coin flip about what comes next.
   const tip = seededTip(g, l.info)
   if (tip) lines.push(tip)
+  const read = marketRead(g, l.info)
+  if (read) lines.push(read)
   const inst = investInstinct(g)
   if (inst) lines.push(`${HINT_EMOJI} ${instinctLine(inst)}`)
   return lines

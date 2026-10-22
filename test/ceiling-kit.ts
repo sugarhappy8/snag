@@ -8,10 +8,23 @@
 // `limit`. `at` says which case that was ("ng in 1950"), so a failure points at the input and not only at the term.
 //
 // To cover a new cap: add the entry to test/ceiling-list.json and a row here in the same commit.
+import { WAVE_KINDS, type WaveKind } from '../src/game/business/tech-wave-data'
+import { announceWave, readTechWaves, type WaveInput } from '../src/game/business/tech-waves'
+import { TOP_CEO_MAX_PTS } from '../src/game/business/ceo-edge'
+import { heavyOdds, heavyQuote } from '../src/game/business/heavy-rd'
+import { opsOdds, opsQuote } from '../src/game/business/lab-rules'
+import { createBusinessAsset, newBiz } from '../src/game/business/founding'
+import { classicIdeas } from '../src/game/business/products'
+import { bizOf } from '../src/game/business/state'
+import { valKey } from '../src/game/business/valuation-fog'
+import { rdCost, rdQuote } from '../src/game/business/rd'
 import { ECONOMY_VERSION, initialCountry } from '../src/game/economy/model'
 import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
 import { realWealthFactor } from '../src/game/history/events-people'
 import { buySecurity, investmentHoldings, investmentListing, yearlyInvestments } from '../src/game/investments'
+import { KNOW_LIMITS, learn, readKnow } from '../src/game/knowledge/contract'
+import { kindOfKey } from '../src/game/knowledge/kinds'
+import { SOURCES, SOURCE_IDS, priceOf, readingSd } from '../src/game/knowledge/sources'
 import { BURNS, LEDGER_CAPS, MINTS, book, bookBurn, bookMint, checkLedger, peekLedger, playerAcct, type AcctRef } from '../src/game/kernel/ledger'
 import { REASONS, type BurnName, type MintName, type Reason } from '../src/game/kernel/reasons'
 import { SPREADS, ask, bid } from '../src/game/kernel/spreads'
@@ -29,10 +42,19 @@ import type { GameState } from '../src/game/types'
 import { COUNTRIES } from '../src/game/world'
 import { readFirms } from '../src/game/world/firms'
 import { readHomes } from '../src/game/world/homes'
+import { FRONTIER_CAPS } from '../src/game/world/caps'
+import { applyDisclosure, frontierLead, frontierRows, readFrontier } from '../src/game/world/frontier'
+import { FIELD_IDS, FIELDS, fieldOfKind } from '../src/game/world/frontier-fields'
 import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod'
 import { readPeople } from '../src/game/world/people'
+import { APPROACHES, MAX_OVERTIME_BUILDS, buildLimit, resolveBuild } from '../src/game/workshop/build'
+import { catalogIdea, type Level } from '../src/game/workshop/catalog'
+import { HELPER_CENTRE_MAX, WORKSHOP_TOOLS_MAX, buildNumbers } from '../src/game/workshop/effort'
+import { addIdea, mutWorkshop } from '../src/game/workshop/notebook'
 import '../src/game/world/shards'
+import { EFFORT_ROWS } from './effort-ceilings'
 import { makeTestGame } from './helpers'
+import { labGame, patchLab } from './lab-kit'
 import { flowTotal } from './ledger-kit'
 
 export interface CeilingProbe {
@@ -156,6 +178,58 @@ function adaptationRow(id: string, cap: string, pick: 'fee' | 'annual'): Ceiling
   }
 }
 
+/** `x` to nine decimals, so a float that lands one step past a round limit does not read as over it. */
+const to9 = (x: number): number => Math.round(x * 1e9) / 1e9
+
+/**
+ * R3-M9: builds a year. An ordinary inventor and a genius with `scale` times the money build until the Workshop refuses; the count is at
+ * most the year's limit plus the two overtime builds.
+ */
+function workshopOvertimeRow(): CeilingProbe {
+  return {
+    id: 'workshop-overtime',
+    cap: "a year's builds stop at the pool's limit plus two overtime builds, whatever the weeks, money or skill (R3-M9)",
+    run: (scale) => {
+      const t = tightest()
+      for (const genius of [false, true]) {
+        const g = makeTestGame(7, { age: 30, money: 5_000_000 * scale, talents: genius ? ['Inventor'] : [], countryId: 'us' })
+        g.year = 2026
+        addIdea(g, mutWorkshop(g), catalogIdea('pocket-tool')!)
+        let made = 0
+        while (made < 1000 && resolveBuild(g, { kind: 'idea', id: 'pocket-tool' }, 'cheap')) made += 1
+        t.add(made, buildLimit(g) + MAX_OVERTIME_BUILDS, `${genius ? 'a genius' : 'an ordinary inventor'} with ${scale}x the money`)
+      }
+      return t.result()
+    },
+  }
+}
+
+/**
+ * R3-M9: what the bench adds to a build. Lab access and an assistant are fed `scale` times their full value (and Infinity is read as full);
+ * the quality centre gains at most 5 and 3 points, and the blow-up chance falls by at most 1 - 0.85 x 0.92.
+ */
+function workshopToolsRow(): CeilingProbe {
+  return {
+    id: 'workshop-tools',
+    cap: 'lab access adds at most 5 quality points to a build and an assistant at most 3, and blow-ups never fall below 78 percent of their chance (R3-M9)',
+    run: (scale) => {
+      const t = tightest()
+      const g = lifeIn('us', 2026)
+      for (const ap of Object.values(APPROACHES)) {
+        for (const d of [1, 3, 5] as Level[]) {
+          const def = { cat: 'gadget' as const, d }
+          const base = { skill: 0, smarts: 50, genius: false, builds: 0 }
+          const none = buildNumbers(g, base, def, ap)
+          const full = buildNumbers(g, { ...base, tools: scale, helper: scale }, def, ap)
+          t.add(to9((full.low + full.high - (none.low + none.high)) / 2), to9(WORKSHOP_TOOLS_MAX + HELPER_CENTRE_MAX), `the quality centre at ${scale}x, difficulty ${d}`)
+          t.add(to9(1 - full.kaboom / none.kaboom), to9(1 - 0.85 * 0.92), `the blow-up cut at ${scale}x, difficulty ${d}`)
+        }
+      }
+      return t.result()
+    },
+  }
+}
+
 /** A saved fame profile in a life of fame 100, one year of fame upkeep, and what the profile holds after it. */
 function fameYear(profile: Record<string, unknown>): { podcast: { listeners: number } | null; books: { earned: number; royalty: number }[] } {
   const g = makeTestGame(1, { age: 30, money: 0 })
@@ -185,6 +259,35 @@ const LIFE_ROWS: readonly CeilingProbe[] = [
         }
         return t.result()
       }),
+  },
+  {
+    id: 'top-ceo-edge',
+    cap: "a top hired CEO adds at most 3 odds points to a company's research and moves no money (R3, J.8)",
+    run: (scale) => {
+      const t = tightest()
+      // A company of a hundred times the cash, the value, the head count and the rating a life reaches, and a budget a hundred times the cost.
+      const f = labGame(11, 'restaurant', { year: 2030, cash: 80_000_000 * scale })
+      const { g, b } = f
+      b.valuation *= scale
+      patchLab(b, (d) => {
+        d.team = Array.from({ length: 3 * scale }, () => g.year - 1)
+      })
+      const idea = classicIdeas(g, b)[0]!
+      for (const skill of [89, 90, 95, 100, 100 * scale]) {
+        b.ceo = 'manager'
+        b.manager = { firstName: 'Ada', lastName: 'Grid', gender: 'female', skill, salary: 100_000, since: g.year - 1 }
+        const at = `skill ${skill}`
+        t.add(heavyQuote(g, b).reasons.find((x) => x.key === 'ceo')?.pts ?? 0, TOP_CEO_MAX_PTS, `a breakthrough at ${at}`)
+        t.add(opsQuote(g, b, 3, 'cost').reasons.find((x) => x.key === 'ceo')?.pts ?? 0, TOP_CEO_MAX_PTS, `an Operations program at ${at}`)
+        const r = rdQuote(g, b, idea, rdCost(b, idea) * 100 * scale)
+        t.add(r.why.find((x) => x.key === 'ceo')?.pts ?? 0, TOP_CEO_MAX_PTS, `a product at ${at}`)
+        // The odds stay under the legacy clamp of each system: .6, .92, .95.
+        t.add(heavyOdds(g, b), 0.6, `breakthrough odds at ${at}`)
+        t.add(opsOdds(g, b, 1), 0.92, `program odds at ${at}`)
+        t.add(r.odds, 0.95, `product odds at ${at}`)
+      }
+      return t.result()
+    },
   },
   {
     id: 'endorsement-deal',
@@ -248,6 +351,8 @@ const LIFE_ROWS: readonly CeilingProbe[] = [
   },
   adaptationRow('adaptation-fee', 'an adaptation fee stops at 150 times the typical income (R0-8)', 'fee'),
   adaptationRow('adaptation-royalty', 'adaptation royalties stop at 15 times the typical income a year (R0-8)', 'annual'),
+  workshopOvertimeRow(),
+  workshopToolsRow(),
   {
     id: 'podcast-audience',
     cap: '30,000,000 listeners (R0-14)',
@@ -480,7 +585,131 @@ const WORLD_ROWS: readonly CeilingProbe[] = [
       return t.result()
     },
   },
+  {
+    id: 'frontier-caps',
+    cap: 'a research field is at most 12 years ahead of the calendar and gains at most 2 of them in a year, public research stops at 18 points and one disclosure adds at most 6, and a field keeps at most 24 rows (R3-F1)',
+    // 20 x scale disclosures of size 1 and shield open (the most spill), by both sides, across `scale` years: 20 a year over the 12 lead
+    // fields, six markets, far more than the 2 or 3 a life writes. Every year each field's lead is read against 12 years, its gain
+    // of the year against 2, its public research against 18 points, the spill of one disclosure against 6 and its rows against 24.
+    run: (scale) => {
+      const t = tightest()
+      const g = lifeIn('us', 2027)
+      const leads = FIELD_IDS.filter((f) => FIELDS[f].lead)
+      const leadMax = FRONTIER_CAPS.leadYears
+      const rowsMax = FRONTIER_CAPS.rowsPerMarket * FRONTIER_CAPS.marketsPerField
+      for (let i = 0; i < scale; i++) {
+        const year = 2027 + i
+        g.year = year
+        const before = leads.map((f) => frontierLead(g, f))
+        for (let k = 0; k < 20; k++) {
+          const field = leads[k % leads.length]!
+          const r = applyDisclosure(g, { field, year, size: 1, origin: `ceil|${year}|${k}`, by: k % 2 === 0 ? 'you' : 'rival', market: `m${k % 6}`, shield: 'open' })
+          if (r.applied) t.add(r.spill, FRONTIER_CAPS.spillPerDisclosure * 10, `one disclosure of size 1, shield open, in ${field}, tenths of a point`)
+          else t.add(1, 0, `a disclosure of ${field} in ${year} was refused: ${r.why}`)
+        }
+        leads.forEach((f, j) => {
+          const lead = frontierLead(g, f)
+          t.add(lead, leadMax, `${f} after ${i + 1} years of 20 disclosures a year`)
+          t.add(Math.round((lead - before[j]!) * 100) / 100, FRONTIER_CAPS.yearYears, `${f} in year ${i + 1} of the run`) // the lead is in whole centi-years, so cents are exact
+          t.add((readFrontier(g).f[f]?.pub ?? 0) / 10, FRONTIER_CAPS.spillPoints, `${f} public research after ${i + 1} years`)
+          t.add(frontierRows(g, f).length, rowsMax, `${f} rows after ${i + 1} years`)
+        })
+      }
+      return t.result()
+    },
+  },
+  {
+    id: 'waves-per-year',
+    cap: "at most 2 tech waves a year come from the player's side, whatever the source and however many are announced (R3-F3)",
+    // 2 x scale distinct waves from the player's side in one year, for each source in turn and then all the sources mixed, over the
+    // 12 future-facing kinds. The stored waves of that year that are not a rival's are read against 2.
+    run: (scale) => {
+      const t = tightest()
+      const kinds = (Object.keys(WAVE_KINDS) as WaveKind[]).filter((k) => fieldOfKind(k) !== null)
+      const sources = ['deeptech', 'heavy', 'workshop', 'race', 'effort'] as const
+      const announce = (source: (typeof sources)[number], i: number): WaveInput => ({
+        kind: kinds[i % kinds.length]!,
+        source,
+        origin: source === 'heavy' ? `energy|world#ceil ${i}` : `ceil ${source} ${i}`,
+        name: 'Probe wave',
+        size: 0.5,
+        market: 'world',
+      })
+      for (const only of [...sources, 'mixed'] as const) {
+        const g = lifeIn('us', 2030)
+        for (let i = 0; i < 2 * scale; i++) announceWave(g, announce(only === 'mixed' ? sources[i % sources.length]! : only, i))
+        const stored = readTechWaves(g).filter((w) => w.source !== 'rival' && w.year === 2030).length
+        t.add(stored, 2, `${2 * scale} ${only} waves announced in one year`)
+      }
+      return t.result()
+    },
+  },
 ]
 
-/** Every row: the R0 and R1 growth terms, then the world rows. */
-export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS]
+/** A private company of the player's, worth `valuation`, and the key of its valuation (what an audit of it reads). */
+function firmWorth(valuation: number): { g: GameState; key: string } {
+  const g = lifeIn('us', 2026)
+  const c = g.character
+  const a = createBusinessAsset(g, 'Probe Cafe', newBiz(g, 'cafe', c.countryId, c.city, { cash: 400_000, quality: 70, brand: 40 }), 0)
+  g.assets.push(a)
+  bizOf(g, a).valuation = valuation
+  return { g, key: valKey(a.id) }
+}
+
+// R3-H4: the Knowledge rows. A source never reads sharper than its floor; a fee follows the scope and the country, not the buyer; the
+// research record never keeps more than its cap of keys.
+const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
+  {
+    id: 'intel-floors',
+    cap: 'no source reads sharper than its floor whatever the spend, the quality or the talent: press 20 percent, report 12, analyst 8, due diligence 3, an illegal source at least 5 (R3-H4)',
+    run: (scale) => {
+      const t = tightest()
+      for (const id of SOURCE_IDS) {
+        for (const quality of [0, 0.5, 1, 5]) {
+          for (const talent of [false, true]) {
+            // `scale` times the ordinary spend: the term that could in principle make a read arbitrarily sharp.
+            t.add(SOURCES[id].floor, readingSd(id, { quality, talent, spend: 1e6 * scale, ref: 1 }), `${id} at quality ${quality}${talent ? ' with a talent' : ''}`)
+          }
+        }
+      }
+      return t.result()
+    },
+  },
+  {
+    id: 'intel-price',
+    cap: "a fee follows the scope and the country's wealth, at most 4.5 x 2.75 x 1.5 times the base price, and never the buyer's cash or the wealth of the world; due diligence on a deal is the greater of 8,000 x wealth and 2 percent of the deal, and an audit of the player's own company is 8,000 x wealth however much it is worth (R3-H4, R3-G10)",
+    run: (scale) =>
+      withWealth(scale, () => {
+        const t = tightest()
+        for (const id of ['press', 'report', 'analyst', 'investigator', 'informant', 'hacker'] as const) {
+          for (const country of ['us', 'mc', 'ng', 'ch']) {
+            // The widest scope there is, `scale` times as many countries as a life spans (the term counts at most 8).
+            t.add(priceOf(id, { tier: 3, countries: 8 * scale, country }), SOURCES[id].price * 4.5 * 2.75 * 1.5 + 50, `${id} in ${country}`)
+          }
+        }
+        for (const country of ['us', 'mc', 'ng']) {
+          const deal = 5_000_000 * scale
+          t.add(priceOf('diligence', { tier: 3, countries: 8 * scale, country, deal }), Math.max(8_000 * 1.5, deal * 0.02) + 500, `diligence in ${country} on a deal of ${deal}`)
+        }
+        // The audit the player is offered for their own company (the `val` kind): the object is their own asset, so a hundred times its valuation
+        // is the same fee, and the limit does not grow with `scale`.
+        const own = firmWorth(5_000_000 * scale)
+        const scope = kindOfKey(own.key)!.scope!(own.g, own.key)
+        t.add(priceOf('diligence', scope, own.g.character.countryId), 8_000 * 1.5 + 500, `an audit of the player's own company worth ${5_000_000 * scale}`)
+        return t.result()
+      }),
+  },
+  {
+    id: 'know-keys',
+    cap: 'the research record keeps at most 120 keys, however many a life reads (R3-H4)',
+    run: (scale) => {
+      const g = lifeIn('us', 2026)
+      const n = KNOW_LIMITS.keys * scale
+      for (let i = 0; i < n; i++) learn(g, `mkt:c${i}:size`, { mid: 1e6 + i, sd: 0.2, src: 'press' })
+      return { value: Object.keys(readKnow(g)?.k ?? {}).length, limit: KNOW_LIMITS.keys, at: `${n} keys learned in one year` }
+    },
+  },
+]
+
+/** Every row: the R0 and R1 growth terms, the world rows, the effort rows (R3-E9, test/effort-ceilings.ts), then the Knowledge rows (R3-H4). */
+export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS, ...KNOWLEDGE_ROWS]

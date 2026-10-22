@@ -4,6 +4,7 @@
 // last closed fiscal year, or the plan year for the one competitiveness figure).
 // Legacy models (no rating, or trained before 2012) keep today's wording, read at the model's own year.
 import { PRESENT_YEAR } from '../history/timeline'
+import { isExact } from '../knowledge/contract'
 import { capMilestone, capOpen } from './ai-bench'
 import type { AiFirst } from './ai-bench-claims'
 import { CAP_IDS, CAPS, isCapId, type CapId } from './ai-bench-data'
@@ -80,7 +81,8 @@ export function benchRows(fam: string, t: Models, year: number): BenchLine[] {
   const row = (r: ScoreRow, pick: (x: LabStanding) => ScoreRow | undefined): string =>
     `${scoreText(r)} ${trendArrow(r.trend)} ${spark(series.map((x) => (x ? (pick(x)?.mine ?? 0) : 0)))}`
   const out: BenchLine[] = [header, { id: 'overall', text: row(s.composite, (x) => x.composite) }]
-  if (s.leader?.modeled) out.push({ id: 'leader', text: `Best lab: ${s.leader.name} (modeled).` })
+  // R3-G5: the board is a public leaderboard. Exact mode keeps the old "modeled" disclaimer; Realistic calls it published.
+  if (s.leader?.modeled) out.push({ id: 'leader', text: `Best lab: ${s.leader.name} (${isExact() ? 'modeled' : 'published'}).` })
   for (const r of s.caps) out.push({ id: r.id, text: row(r, (x) => x.caps.find((c) => c.id === r.id)) })
   return out
 }

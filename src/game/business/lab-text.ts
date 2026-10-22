@@ -24,6 +24,8 @@ export const LAB_LOG: Record<string, Say> = {
 export const LAB_SAY: Record<string, Say> = {
   // The owner's notice when a program starts: name, program, price, years ("2 years"), odds in percent.
   started: (name, program, price, years, odds) => `${name} is working on ${program}. It costs ${price} and has ${odds}% odds in about ${years}. If it fails, the money is gone.`,
+  // The same notice when the chance is a word or a rounded figure ("likely", "about 60%"): the last piece is the policy's band, not a percent.
+  startedWords: (name, program, price, years, band) => `${name} is working on ${program}. It costs ${price} and takes about ${years}. Odds ${band}. If it fails, the money is gone.`,
   notEligible: () => 'Operations R&D is for product companies. This one runs its own kind of R&D.',
   pickProgram: () => 'Pick a program first.',
   unknownProgram: (name) => `${name} isn't an Operations R&D program.`,
@@ -78,13 +80,19 @@ export const LAB_TIP: Record<string, Say> = {
   },
   none: () => 'No program is open this year yet.',
   running: (program, left, odds) => `${program}: ${left} left, ${odds}% odds`,
+  // The same row when the chance is a word or a rounded figure: the third piece is the policy's band.
+  runningWords: (program, left, band) => `${program}: ${left} left, odds ${band}`,
+  opsWords: (price, years, band, effect) => `${price} · ${years} · odds ${band} · ${effect}`,
   // A program row's subtitle: price, years ("2 years"), odds in percent and what a win does (one of the three below).
   ops: (price, years, odds, effect) => `${price} · ${years} · ${odds}% odds · ${effect}`,
   cost: (percent) => `unit costs fall up to ${percent}%`,
   yield: (percent) => `output rises up to ${percent}%`,
   quality: (percent) => `demand rises up to ${percent}%`,
+  // The lab's know-how row: what failed tries taught it, by track ("unit cost 6, quality 3").
+  know: (list) => `What failed tries taught the lab: ${list}. The next try is likelier.`,
   // The confirm before a program starts: it repeats the price, the years and the odds.
   confirm: (program, price, years, odds) => `Start ${program}? It costs ${price} and has about ${odds}% odds in ${years}. If it fails, the money is gone.`,
+  confirmWords: (program, price, years, band) => `Start ${program}? It costs ${price} and takes ${years}, odds ${band}. If it fails, the money is gone.`,
   // The team's info row: scientists now, the trade's cap, a year's pay each, the odds points and the slots ("2 more slots") they add.
   team: (n, cap, pay, points, slots) => `${n} of ${cap} scientists at ${pay} a year each. Odds +${points} points and ${slots}.`,
   // The team rows' subtitles: what it costs now and every year, and what the release costs.
