@@ -530,7 +530,8 @@ export function yearlyWrestler(g: GameState): void {
   else pay = job.salary
   let merch = 0
   if (j.tier === 2) merch = tidy((p.popularity / 100) ** 3 * 2_500_000)
-  if (pay + merch > 0) earnIncome(g, pay + merch)
+  if (pay > 0) earnIncome(g, pay, 'wage')
+  if (merch > 0) earnIncome(g, merch, 'royalty')
   if (j.tier === 0) job.salary = pay
   // Crowds move on unless creative keeps featuring you; booking momentum fades too.
   p.popularity = Math.max(0, Math.min(100, Math.round(p.popularity * 0.85 + j.push * 0.12)))
@@ -543,7 +544,7 @@ export function yearlyWrestler(g: GameState): void {
   if (j.tier === 2 && p.popularity >= 70 && j.push >= 60) {
     const main = j.push >= 80
     const bonus = tidy(main ? 250_000 + p.popularity * 5_000 : 75_000)
-    earnIncome(g, bonus)
+    earnIncome(g, bonus, 'wage')
     addFame(g, main ? 6 : 2)
     if (main) honor(g, 'Headlined Colossal Clash, the biggest wrestling show of the year.', 'Colossal Clash main eventer', 'CWE', 8)
     lines.push(main ? `You MAIN-EVENTED Colossal Clash in front of 80,000 people (${short(bonus)} bonus).` : `You had a match at Colossal Clash (${short(bonus)} bonus).`)

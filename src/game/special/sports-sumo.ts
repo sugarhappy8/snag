@@ -406,7 +406,7 @@ export function yearlySumo(g: GameState): void {
     pay += r.pay
   }
   pay = tidy(pay)
-  earnIncome(g, pay)
+  earnIncome(g, pay, 'wage') // one booking: the stipend and the prizes
   job.salary = pay
   job.title = `Sumo Wrestler (${DIVS[d.div]})`
   p.bestDiv = Math.max(p.bestDiv, d.div)

@@ -586,7 +586,7 @@ const streamLengthScript = defineScript('special.social.streamLength', (g, choic
   let tips = 0
   if (acct.monetized) {
     tips = Math.round(viewers * len.hours * (0.05 + rand(g) * 0.2))
-    if (tips > 0) earnIncome(g, tips)
+    if (tips > 0) earnIncome(g, tips, 'royalty')
   }
   log(g, `I livestreamed ${cat.label} on Glitch for ${len.hours} hours.`, r.good ? 'good' : 'neutral')
   sync(g)
@@ -636,7 +636,7 @@ const promoScript = defineScript('special.social.promo', (g, choice, data) => {
   const acct = account(g, offer.platform)
   if (!acct) return
   if (choice !== 'accept') return say(g, plat.name, `You turned down ${offer.sponsor}. Your integrity remains intact (for now).`, '\u{1F91D}')
-  earnIncome(g, offer.pay)
+  earnIncome(g, offer.pay, 'royalty')
   count(g, 'sponsoredPosts')
   let text = `You promoted ${offer.product} for ${offer.sponsor} on ${plat.name} and earned ${money(offer.pay)}.`
   if (offer.shady && chance(g, 0.7)) {
@@ -803,7 +803,7 @@ const buyScript = defineScript('special.social.buy', (g, choice, data) => {
   const acct = account(g, plat.id)
   const pack = BUY_PACKS.find((b) => b.id === choice)
   if (!acct || !pack) return
-  if (!spend(g, pack.cost)) return tell(g, plat.name, `You can't afford ${money(pack.cost)} for fake ${plat.noun}.`, '\u{1F4B8}')
+  if (!spend(g, pack.cost, 'purchase')) return tell(g, plat.name, `You can't afford ${money(pack.cost)} for fake ${plat.noun}.`, '\u{1F4B8}')
   acct.followers += pack.amount
   acct.fake = boundedFake((acct.fake ?? 0) + pack.amount, acct.followers)
   acct.spam += pack.amount >= 100_000 ? 3 : pack.amount >= 10_000 ? 2 : 1
@@ -854,7 +854,7 @@ const hackScript = defineScript('special.social.hack', (g, choice, data) => {
   if (!acct) return
   let text: string
   if (choice === 'pay') {
-    if (spend(g, d.ransom)) {
+    if (spend(g, d.ransom, 'crime.take')) {
       if (chance(g, 0.7)) text = `You paid the hacker ${money(d.ransom)} and got your ${plat.name} account back.`
       else {
         scaleFollowers(acct, 0.6)
@@ -1186,7 +1186,7 @@ export function yearlySocial(g: GameState): void {
       const [lo, hi] = plat.payRate
       const income = Math.min(Math.round(organic(acct) * (lo + rand(g) * (hi - lo)) * Math.min(1, recentPosts / 4)), 1500 * typicalIncome(g))
       if (income > 0) {
-        earnIncome(g, income)
+        earnIncome(g, income, 'royalty')
         count(g, 'influencerIncome', income)
         log(g, `My ${plat.name} ${plat.stream ? 'streams' : 'content'} earned ${money(income)}.`, 'good')
       }

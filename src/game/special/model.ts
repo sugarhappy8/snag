@@ -173,7 +173,7 @@ const headshotScript = defineScript('special.model.headshot', (g, choice) => {
   const ph = PHOTOGRAPHERS.find((x) => x.id === choice)
   if (!ph) return
   if (!useYearAction(g, 'model.headshot', 1)) return tell(g, 'Headshots', 'You already had headshots taken this year.', '\u{1F4F7}')
-  if (!spend(g, ph.cost)) {
+  if (!spend(g, ph.cost, 'purchase')) {
     g.yearActions['model.headshot'] = 0
     return tell(g, 'Headshots', `You can't afford the ${money(ph.cost)} photo session.`, '\u{1F4B8}')
   }
@@ -253,7 +253,7 @@ const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
     log(g, `I didn't book the ${gig.name.toLowerCase()} gig.`, 'bad')
     return say(g, 'Casting', pickSite(g, [`The casting director for the ${gig.name.toLowerCase()} said you weren't the look they wanted.`, `You showed up to the ${gig.name.toLowerCase()} casting and were told to "work on your angles".`, `You lost the ${gig.name.toLowerCase()} gig to someone's cousin.`], 0xd9a0c827), gig.emoji, 'bad')
   }
-  if (!bookFreelance(g, gig.name, gig.pay)) earnIncome(g, gig.pay)
+  if (!bookFreelance(g, gig.name, gig.pay)) earnIncome(g, gig.pay, 'wage')
   modelProfile(g).gigs += 1
   count(g, 'modelGigs')
   addStat(g, 'happiness', 4)
@@ -378,14 +378,14 @@ export const bookingScript = defineScript('special.model.booking', (g, choice) =
   modelProfile(g).gigs += 1
   count(g, 'modelGigs')
   if (score >= 45) {
-    earnIncome(g, pay)
+    earnIncome(g, pay, 'wage')
     bump(job, randInt(g, 4, 9))
     addFame(g, b.fame)
     addStat(g, 'happiness', 5)
     log(g, `I modeled for a ${b.label.toLowerCase()}.`, 'good')
     say(g, b.label, `${pickLine(g, ['You nailed it.', 'The client was thrilled.', 'You owned every second of it.'])} ${pickLine(g, ['The photographer called you "the face of the season".', 'The designer hugged you afterwards.', 'You did not trip once. A personal best.'])} You earned ${money(pay)}.`, b.emoji, 'good')
   } else {
-    earnIncome(g, Math.round(pay / 3))
+    earnIncome(g, Math.round(pay / 3), 'wage')
     bump(job, -randInt(g, 3, 8))
     addStat(g, 'happiness', -4)
     log(g, `My ${b.label.toLowerCase()} didn't go well.`, 'bad')
@@ -563,7 +563,7 @@ const fashionWeekScript = defineScript('special.model.fashionWeek', (g, choice, 
   const score = marketability(g) + randInt(g, -15, 20) + (hasTalent(g, 'Modeling') ? 8 : 0)
   const pay = Math.round((job.salary * 0.3 * (0.8 + rand(g) * 0.5)) / 100) * 100
   if (score >= 55) {
-    earnIncome(g, pay)
+    earnIncome(g, pay, 'wage')
     addFame(g, randInt(g, 3, 6))
     bump(job, 10)
     addStat(g, 'happiness', 10)
@@ -586,7 +586,7 @@ const fashionWeekScript = defineScript('special.model.fashionWeek', (g, choice, 
       )
     }
   } else {
-    earnIncome(g, Math.round(pay / 2))
+    earnIncome(g, Math.round(pay / 2), 'wage')
     addFame(g, 1)
     bump(job, -5)
     log(g, `I stumbled at ${city} Fashion Week.`, 'bad')
@@ -668,7 +668,7 @@ export function yearlyModel(g: GameState): void {
   syncTenure(g, job)
   const d = mdata(job)
   const agency = AGENCIES.find((a) => a.name === job.company) ?? AGENCIES[d.tier] ?? AGENCIES[0]
-  earnIncome(g, job.salary)
+  earnIncome(g, job.salary, 'wage')
   bump(job, (c.stats.looks - 60) / 10 + (d.gigsThisYear > 0 ? 3 : -4) + randInt(g, -5, 5))
   d.gigsThisYear = 0
   fameToward(g, [8, 15, 28, 45, 75][job.level] ?? 10, 3)
