@@ -4,6 +4,7 @@
 // never in the player's net worth. Money moves only through spend, realize and the relatives' own
 // savings (Person.money), and every action keeps the books whole: a fund never creates money.
 // Nothing here reads or advances g.rng; ids come from uid, a counter.
+import { personCash } from '../cash'
 import { fullName, log, notice, spend } from '../core'
 import { typicalIncome } from '../events/wealth-core'
 import { isEstranged, willRole } from '../events/will-core'
@@ -111,7 +112,7 @@ export function startFund(g: GameState, owner: 'person' | 'family', seed: number
   const need = seedMin(g)
   const dollars = Number.isFinite(seed) ? Math.round(seed) : Number.NaN
   if (!(dollars >= need)) return refuse(g, 'Start a Fund', `A fund starts at ${money(need)}.`)
-  if (dollars > g.character.money || !spend(g, dollars)) return refuse(g, 'Start a Fund', "You can't cover that.")
+  if (dollars > g.character.money || !spend(g, dollars, 'trade.buy')) return refuse(g, 'Start a Fund', "You can't cover that.")
   const f: HedgeFund = {
     v: 1,
     owner,
@@ -179,7 +180,7 @@ export function putIn(g: GameState, assetId: string, dollars: number): boolean {
   if (d > g.character.money) return refuse(g, title, "You can't cover that.")
   const full = roomBlock(f, d)
   if (full) return refuse(g, title, full)
-  if (!spend(g, d)) return refuse(g, title, "You can't cover that.")
+  if (!spend(g, d, 'trade.buy')) return refuse(g, title, "You can't cover that.")
   const bought = d / unitPrice(f)
   f.nav += d
   f.units += bought
@@ -357,7 +358,7 @@ export function invite(g: GameState, assetId: string, personId: string): boolean
   const full = roomBlock(f, c.amount)
   if (full) return refuse(g, title, full)
   const bought = c.amount / unitPrice(f)
-  c.person.money -= c.amount
+  personCash(g, c.person, -c.amount, 'trade.buy')
   f.nav += c.amount
   f.units += bought
   f.holders.push({ id: c.person.id, units: bought })
@@ -374,9 +375,9 @@ function dropUnits(f: HedgeFund, h: Holder, value: number): void {
 }
 
 /** Pays a living holder their value in cash. */
-function cashOut(f: HedgeFund, h: Holder, p: Person): number {
+function cashOut(g: GameState, f: HedgeFund, h: Holder, p: Person): number {
   const value = unitsValue(f, h.units)
-  p.money += value
+  personCash(g, p, value, 'trade.sell')
   dropUnits(f, h, value)
   return value
 }
@@ -389,7 +390,7 @@ export function payOutHolder(g: GameState, assetId: string, personId: string): b
   const h = f.holders.find((x) => x.id === personId)
   const p = g.people.find((x) => x.id === personId)
   if (!h || !p || !p.alive) return false
-  const value = cashOut(f, h, p)
+  const value = cashOut(g, f, h, p)
   saveFund(a, f)
   notice(g, 'Paid Out', `${p.firstName} took ${money(value)} out of ${a.name}.`, { emoji: EMOJI })
   return true
@@ -433,7 +434,7 @@ function passOn(g: GameState, f: HedgeFund, h: Holder, dead: Person, name: strin
     else if (f.holders.length < MAX_HOLDERS) f.holders.push({ id, units: part })
     else {
       // The fund is full of holders: this heir is paid in cash instead.
-      heir.money += worth
+      personCash(g, heir, worth, 'trade.sell')
       f.units = Math.max(0, f.units - part)
       f.nav = Math.max(0, f.nav - worth)
     }
@@ -463,7 +464,7 @@ export function settleHolders(g: GameState, f: HedgeFund, name: string): string[
     const p = g.people.find((x) => x.id === h.id)
     if (!p || !p.alive) continue
     if (p.relationship < LEAVE_BELOW || p.data.disowned === true || isEstranged(g, p)) {
-      cashOut(f, h, p)
+      cashOut(g, f, h, p)
       lines.push(`${p.firstName} took their money out of the ${name}.`)
     }
   }

@@ -5,7 +5,9 @@
 // division to the right mandate, upgrading a weak division CEO), the group board's review of the
 // group CEO, and the group's value (the conglomerate discount, or the share price of a listed
 // group). The treasury also covers a division's cash hole before it turns into a crisis.
+import { firmCash, firmPurse, moveCash } from '../cash'
 import { formatMoney, log, notice } from '../core'
+import type { Reason } from '../kernel/reasons'
 import { masterBusiness } from '../mastery'
 import { bell, chance } from '../rng'
 import type { Asset, GameState } from '../types'
@@ -57,27 +59,29 @@ function inputs(grp: Group): DivisionInput[] {
   return grp.members.map((x) => ({ id: x.a.id, b: x.b, own: x.m.own }))
 }
 
-function credit(b: BizState, n: number): void {
+function credit(g: GameState, a: Asset, b: BizState, n: number, reason: Reason): void {
   const v = Math.max(0, Math.round(n))
   if (!v) return
-  b.cash += v
+  firmCash(g, b, v, reason, a.id)
   b.yearIncome += v
   if (!b.public) b.valuation = Math.round(b.valuation + v)
 }
 
-function charge(b: BizState, n: number): void {
+function charge(g: GameState, a: Asset, b: BizState, n: number, reason: Reason): void {
   const v = Math.max(0, Math.round(n))
   if (!v) return
-  b.cash -= v
+  firmCash(g, b, -v, reason, a.id)
   b.yearCosts += v
   if (!b.public) b.valuation = Math.max(0, Math.round(b.valuation - v))
 }
 
-function shift(from: BizState, to: BizState, n: number): void {
+/** Cash between two divisions of a group: one move between their purses (no P&L, no pool). */
+function shift(g: GameState, fromX: GroupMember, toX: GroupMember, n: number): void {
+  const from = fromX.b
+  const to = toX.b
   const v = Math.max(0, Math.round(n))
   if (!v) return
-  from.cash -= v
-  to.cash += v
+  moveCash(g, firmPurse(from, fromX.a.id), firmPurse(to, toX.a.id), v, 'inject')
   if (!from.public) from.valuation = Math.max(0, Math.round(from.valuation - v))
   if (!to.public) to.valuation = Math.round(to.valuation + v)
 }
@@ -101,7 +105,7 @@ export function groupRescue(g: GameState, a: Asset, b: BizState): void {
     if (need <= 0) break
     const take = Math.min(need, o.spare)
     if (take <= 0) continue
-    shift(o.x.b, me.b, take)
+    shift(g, o.x, me, take)
     need -= take
     moved += take
   }
@@ -158,12 +162,12 @@ function paydown(g: GameState, grp: Group, x: GroupMember, share: number): numbe
   for (const o of sisters.sort((p, q) => q.spare - p.spare)) {
     if (need <= 0) break
     const take = Math.min(need, o.spare)
-    shift(o.o.b, b, take)
+    shift(g, o.o, x, take)
     need -= take
   }
   const done = Math.min(pay - need, b.debt, Math.max(0, b.cash))
   b.debt = Math.max(0, Math.round(b.debt - done))
-  b.cash -= done
+  firmCash(g, b, -done, 'loan.repay', x.a.id)
   return done
 }
 
@@ -248,7 +252,7 @@ function boardReview(g: GameState, grp: Group): void {
   const out = hired ? grp.core.manager : null
   const sev = out ? ceoSeverance(out, g.year) : 0
   if (sev > 0) {
-    charge(treasuryOf(grp).b, sev)
+    charge(g, treasuryOf(grp).a, treasuryOf(grp).b, sev, 'payroll')
     paySeverance(g, treasuryOf(grp).b.countryId, out, sev)
   }
   clearGroupCeoJob(g, out)
@@ -294,7 +298,7 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
   for (const x of grp.members) {
     if (x.m.integrated > 0 || x.m.joined > fiscal) continue
     const cost = integrationCost(x.b)
-    charge(x.b, cost)
+    charge(g, x.a, x.b, cost, 'inputs')
     x.m.integrated = g.year
     syn.integration += cost
   }
@@ -308,8 +312,8 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
     if (chipSupplied(g, grp, x.a.id, fiscal)) { d.crossSell = 0; d.crossSellValue = 0 }
     const part = x.m.joined > fiscal ? 0 : x.m.joined === fiscal ? 0.5 : 1
     if (part > 0) {
-      credit(x.b, d.backOffice * part)
-      charge(x.b, d.complexity * part)
+      credit(g, x.a, x.b, d.backOffice * part, 'inputs')
+      charge(g, x.a, x.b, d.complexity * part, 'inputs')
       syn.backOffice += Math.round(d.backOffice * part)
       syn.complexity += Math.round(d.complexity * part)
     }
@@ -329,7 +333,7 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
     const total = available.reduce((s, v) => s + v, 0)
     const pay = Math.min(Math.round(core.manager.salary), total)
     let remaining = pay
-    grp.members.forEach((x, i) => { const part = Math.min(available[i], remaining, i === grp.members.length - 1 ? remaining : Math.floor(pay * available[i] / Math.max(1, total))); charge(x.b, part); remaining -= part })
+    grp.members.forEach((x, i) => { const part = Math.min(available[i], remaining, i === grp.members.length - 1 ? remaining : Math.floor(pay * available[i] / Math.max(1, total))); charge(g, x.a, x.b, part, 'payroll'); remaining -= part })
     syn.hq = pay - remaining
     payFamilyGroupCeo(g, grp, syn.hq)
     if (syn.hq < core.manager.salary) core.memo.push(`Group CEO salary was underpaid: ${money(syn.hq)} of ${money(core.manager.salary)}; project cash was protected.`)

@@ -1,6 +1,7 @@
 // Investment firms 2.0: the yearly report popup, story events with choices, and the regulators.
 // Popups resolve in script handlers that re-check the live company; arrests and closures happen
 // only when the player answers, never in the middle of the yearly business loop.
+import { firmCash } from '../cash'
 import { addHidden, addStat, count, log, notice, remember, scriptChoice, spend } from '../core'
 import { arrestPlayer } from '../crime'
 import { marketInstinct } from '../invest/instinct'
@@ -210,8 +211,8 @@ export const PROBE = defineScript('fund.probe', (g, choice, data) => {
   if (choice === 'lawyer') {
     // The firm pays if it can, otherwise you do; with no money for lawyers you end up cooperating.
     const fee = lawyerFee(b)
-    if (b.cash >= fee) { b.cash -= fee; b.yearCosts += fee; evidence = .45; severity = 3 }
-    else if (spend(g, fee)) { evidence = .45; severity = 3 }
+    if (b.cash >= fee) { firmCash(g, b, -fee, 'legal', a.id); b.yearCosts += fee; evidence = .45; severity = 3 }
+    else if (spend(g, fee, 'legal')) { evidence = .45; severity = 3 }
     else log(g, `I couldn't afford the lawyers, so I cooperated with the regulators after all.`, 'bad')
   }
   saveFund(b, f)
@@ -225,7 +226,7 @@ export const PONZI_END = defineScript('fund.ponzi.end', (g, choice, data) => {
   const b = bizOf(g, a), f = readFund(b)
   if (!f.ponzi) return
   const hole = Math.round(f.ponzi.hole)
-  if (choice === 'cover' && spend(g, hole)) {
+  if (choice === 'cover' && spend(g, hole, 'trade.buy')) {
     f.ponzi = null
     f.rep = Math.max(0, f.rep - .1)
     saveFund(b, f)
@@ -243,7 +244,7 @@ function ponziCollapse(g: GameState, a: Asset, b: BizState, f: FundState, severi
   const culprit = !f.ponzi?.by || f.ponzi.by === g.character.id
   const taken = f.ponzi?.fees ?? 0
   const clawback = culprit ? Math.min(Math.max(0, g.character.money), Math.round(taken * .5)) : 0
-  if (clawback > 0) spend(g, clawback)
+  if (clawback > 0) spend(g, clawback, 'legal')
   if (culprit) { count(g, 'ponziSchemes'); addHidden(g, 'karma', -20) }
   remember(g, `My investment firm ${a.name} collapsed as a Ponzi scheme.`)
   declareBankruptcy(g, a, b, `${culprit ? 'Your' : 'The inherited'} Ponzi scheme collapsed.${clawback > 0 ? ` Courts clawed back ${money(clawback)} of your personal money for the victims.` : ''}`)
@@ -346,7 +347,8 @@ const EVENTS: FundEvent[] = [
       }
       const fine = pickId === 'report' ? Math.round(loss * .1) : 0
       const paid = Math.min(Math.max(0, x.b.cash), loss + fine)
-      x.b.cash -= paid; x.b.yearCosts += paid
+      // One booking: the trader's loss and the fine (the loss is the larger part).
+      firmCash(g, x.b, -paid, 'trade.buy', x.a.id); x.b.yearCosts += paid
       // Whatever the firm can't cover is a disclosed loss to clients (not a crime).
       if (paid < loss + fine) x.f.aum = Math.max(0, x.f.aum - (loss + fine - paid))
       x.f.compliance = Math.min(100, x.f.compliance + (pickId === 'report' ? 20 : 10))
@@ -422,7 +424,7 @@ const EVENTS: FundEvent[] = [
       if (pickId !== 'launch') return
       const cost = Math.max(0, Number(d.cost) || 0)
       if (x.b.cash < cost) { notice(g, 'No Budget', 'The company can’t afford a campaign right now.', { emoji: '📣' }); return }
-      x.b.cash -= cost; x.b.yearCosts += cost
+      firmCash(g, x.b, -cost, 'marketing', x.a.id); x.b.yearCosts += cost
       if (chance(g, activistOdds(g, x.b))) {
         x.f.bonus = clampN(x.f.bonus + randFloat(g, .01, .03), -.5, .2)
         addHidden(g, 'fame', 2)
@@ -443,7 +445,7 @@ const EVENTS: FundEvent[] = [
       const win = pickId === 'fight' && chance(g, fightOdds(x.b, x.f))
       const cost = pickId === 'settle' ? claim : win ? claim * .15 : claim * 2
       const paid = Math.min(Math.max(0, x.b.cash), cost)
-      x.b.cash -= paid; x.b.yearCosts += paid
+      firmCash(g, x.b, -paid, 'legal', x.a.id); x.b.yearCosts += paid
       if (pickId === 'fight' && !win) x.f.rep = Math.max(0, x.f.rep - .05)
       if (pickId === 'fight') notice(g, win ? 'Case Dismissed' : 'Case Lost', win ? `The judge tossed it. Legal bills: ${money(paid)}.` : `The jury sided with the client. It cost ${money(paid)}.`, { emoji: '⚖️', tone: win ? 'good' : 'bad' })
     },

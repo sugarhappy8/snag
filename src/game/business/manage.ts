@@ -1,5 +1,6 @@
 // Management actions on an owned business: marketing, products, quality, expansion, money,
 // leadership and the exits. Each action re-reads the business from state when it runs.
+import { firmCash, firmPurse, moveCash, playerPurse } from '../cash'
 import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, shortMoney, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { venueOwnerMenu } from './venues'
@@ -281,7 +282,7 @@ function campaignAction(a: Asset, c: Campaign, b0: BizState, g0: GameState): Men
       const cost = adCost(b, c.base)
       if (b.cash < cost) return noCash(g, cur, cost, 'the campaign')
       if (!useYearAction(g, `biz.campaign.${cur.id}`, 2)) return tooBusy(g, 'run two campaigns for this company')
-      b.cash -= cost
+      firmCash(g, b, -cost, 'marketing', cur.id)
       b.yearCosts += cost
       if (c.id === 'influencers' && chance(g, INFLUENCER_FAIL)) {
         b.brand = clampN(b.brand - 6, 0, 100)
@@ -1015,7 +1016,7 @@ function openAction(a: Asset, b0: BizState, countryId: string, city: string): Me
       if (b.cash < cost) return noCash(g, cur, cost, `${plural(n, 'new location')}`)
       const gain = expansionGain(g, cur, countryId, city, n)
       if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Open ${plural(n, `new ${industryDef(b.industry).site}`, `new ${industryDef(b.industry).sitePlural}`)} in ${city} for ${money(cost)}` })) return
-      b.cash -= cost
+      firmCash(g, b, -cost, 'capex', cur.id)
       const existing = b.outlets.find((o) => o.countryId === countryId && o.city === city)
       if (existing) existing.count += n
       else b.outlets.push({ countryId, city, count: n, opened: g.year })
@@ -1163,7 +1164,7 @@ function closeOutletAction(a: Asset, b0: BizState, countryId: string, city: stri
       const refund = Math.round(localEcon(b.industry, countryId, city).capital * n * 0.35)
       o.count -= n
       b.outlets = b.outlets.filter((x) => x.count > 0)
-      b.cash += refund
+      firmCash(g, b, refund, 'capex', cur.id)
       b.morale = clampN(b.morale - 6, 0, 100)
       b.production = Math.min(b.production, maxProduction(g, b))
       b.valuation = valuationOf(b)
@@ -1250,7 +1251,7 @@ function buildLinesAction(a: Asset, b0: BizState): MenuAction {
       if (b.cash < cost) return noCash(g, cur, cost, plural(n, line.one, line.many))
       const gain = linesGain(g, cur, n)
       if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Build ${plural(n, line.one, line.many)} for ${money(cost)}` })) return
-      b.cash -= cost
+      firmCash(g, b, -cost, 'capex', cur.id)
       b.lines = linesOf(b) + n
       b.valuation = valuationOf(b)
       refreshValue(cur, b)
@@ -1285,7 +1286,7 @@ function sellLinesAction(a: Asset, b0: BizState): MenuAction {
       if (n < 1) return
       const refund = Math.round(lineCost(b, n) * 0.35)
       b.lines = linesOf(b) - n
-      b.cash += refund
+      firmCash(g, b, refund, 'capex', cur.id)
       b.production = Math.min(b.production, maxProduction(g, b))
       b.valuation = valuationOf(b)
       refreshValue(cur, b)
@@ -1340,7 +1341,7 @@ export function buildFabAction(a: Asset): MenuAction {
       if (b.cash < cost) return noCash(g, cur, cost, 'a chip fab')
       const gain = fabGain(g, cur)
       if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Build a chip fab for ${money(cost)}` })) return
-      b.cash -= cost
+      firmCash(g, b, -cost, 'capex', cur.id)
       b.fabs = readFabs(b.fabs) + 1
       b.valuation = valuationOf(b)
       refreshValue(cur, b)
@@ -1429,7 +1430,7 @@ function consultantAction(a: Asset): MenuAction {
       const fee = adCost(b, 6_000)
       if (b.cash < fee) return noCash(g, cur, fee, 'the consultant')
       if (!useYearAction(g, `biz.consultant.${cur.id}`, 1)) return tooBusy(g, `hired a consultant for ${cur.name}`)
-      b.cash -= fee
+      firmCash(g, b, -fee, 'inputs', cur.id)
       b.yearCosts += fee
       const best = bestPrice(g, b)
       const def = industryDef(b.industry)
@@ -1555,8 +1556,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
       run: (gg, cur, bb, input) => {
         const n = amount(input, gg.character.money)
         if (n <= 0) return
-        addMoney(gg, -n)
-        bb.cash += n
+        moveCash(gg, playerPurse(gg), firmPurse(bb, cur.id), n, 'inject')
         bb.invested += n
         log(gg, `I invested ${money(n)} of my own money in ${cur.name}.`)
         notice(gg, 'Cash Injected', `You moved ${formatMoney(n)} into ${cur.name}. Company cash: ${formatMoney(bb.cash)}.`, { emoji: '\u{1F4E5}' })
@@ -1628,7 +1628,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
         const rate = companyLoanRate(bb, gg)
         bb.debtRate = bb.debt > 0 ? (bb.debtRate * bb.debt + rate * n) / (bb.debt + n) : rate
         bb.debt += n
-        bb.cash += n
+        firmCash(gg, bb, n, 'loan.principal', cur.id)
         notice(gg, 'Loan Approved', `${cur.name} borrowed ${formatMoney(n)} at ${pct(rate, 1)}. Company debt: ${formatMoney(bb.debt)}. Interest comes out of profits every year.`, { emoji: '\u{1F3E6}' })
       },
     }),
@@ -1643,7 +1643,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
           const n = amount(input, Math.min(bb.debt, Math.max(0, bb.cash)))
           if (n <= 0) return
           bb.debt -= n
-          bb.cash -= n
+          firmCash(gg, bb, -n, 'loan.repay', cur.id)
           if (bb.debt <= 0) bb.debt = 0
           notice(gg, 'Debt Repaid', `${cur.name} repaid ${formatMoney(n)}. ${bb.debt > 0 ? `${formatMoney(bb.debt)} still owed.` : 'The company is debt-free!'}`, { emoji: '\u{1F4B3}', tone: 'good' })
         },
@@ -1733,10 +1733,11 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
         if (yearActionsUsed(gg, `biz.bonus.${cur.id}`) >= 1) return tooBusy(gg, 'taken a bonus')
         if (!boardAllows(gg, cur, bb, bonusP(n))) return
         useYearAction(gg, `biz.bonus.${cur.id}`, 1)
-        bb.cash -= n
+        // Both sides name the draw; the owner's side is earnIncome so the bonus stays taxable income.
+        firmCash(gg, bb, -n, 'draw', cur.id)
         bb.yearCosts += n
         bb.ownerDraws = (bb.ownerDraws ?? 0) + n
-        earnIncome(gg, n)
+        earnIncome(gg, n, 'draw')
         const greedy = bb.last && bb.last.net < 0
         if (greedy) {
           bb.morale = clampN(bb.morale - 8, 0, 100)
@@ -1825,16 +1826,16 @@ export function managerValue(w: Worth, m: Manager): number {
 }
 
 /** Pay a headhunter from company cash first, then the owner's pocket. Null means unaffordable. */
-function payFee(g: GameState, b: BizState, fee: number): 'company' | 'owner' | 'split' | null {
+function payFee(g: GameState, a: Asset, b: BizState, fee: number): 'company' | 'owner' | 'split' | null {
   const cost = Math.max(0, Math.round(Number.isFinite(fee) ? fee : 0))
   const fromCompany = Math.min(cost, Math.max(0, b.cash))
   const fromOwner = cost - fromCompany
   if (fromOwner > Math.max(0, g.character.money)) return null
   if (fromCompany > 0) {
-    b.cash -= fromCompany
+    firmCash(g, b, -fromCompany, 'inputs', a.id)
   }
   if (fromOwner > 0) {
-    addMoney(g, -fromOwner)
+    addMoney(g, -fromOwner, 'inputs')
     b.invested += fromOwner
   }
   // The expense is the whole invoice regardless of whether the company paid it directly or the
@@ -1850,7 +1851,7 @@ function payFee(g: GameState, b: BizState, fee: number): 'company' | 'owner' | '
 function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow: 'replace' | 'stepDown'): void {
   const key = `biz.headhunt.${a.id}`
   const fee = headhunterFee(b, kind, yearActionsUsed(g, key))
-  const by = payFee(g, b, fee)
+  const by = payFee(g, a, b, fee)
   if (!by) {
     notice(g, 'Not Enough Cash', `The headhunter wants ${formatMoney(fee)}. ${a.name}'s cash and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return

@@ -1,10 +1,12 @@
 // R&D 3.0 bookings: what the lab earns and pays for a fiscal year, booked once before the year is
 // simulated, the way bookFranchiseYear books royalties. Credit, grant and royalty are
-// `b.cash += x; b.yearIncome += x`; payroll is `b.cash -= x; b.yearCosts += x`. Cash moves exactly once,
+// `firmCash(+x); b.yearIncome += x`; payroll is `firmCash(-x); b.yearCosts += x`. Cash moves exactly once,
 // here: the statement and the corporate tax count the amounts through yearIncome and yearCosts, and every
 // amount has a ledger field (lab-state.ts LabRow) and a line on the annual report. Nothing here draws
 // g.rng, and a year booked is never booked again (`lab.booked`).
+import { firmCash } from '../cash'
 import { log, notice } from '../core'
+import type { Reason } from '../kernel/reasons'
 import { chance } from '../rng'
 import type { Asset, GameState } from '../types'
 import { boardAllows } from './board'
@@ -41,6 +43,9 @@ interface LabMove {
   key: Exclude<keyof LabRow, 'year'>
   amount: number
 }
+
+/** The credit and the grant are the state paying the lab; royalties come from licensees; the team is payroll. */
+const LAB_REASON: Record<LabMove['key'], Reason> = { credit: 'benefit', grant: 'benefit', royalty: 'royalty', payroll: 'payroll' }
 
 /**
  * The royalties a year's licensed patents earn: for each patent licensed and still shielded in the year
@@ -95,10 +100,10 @@ export function bookLabYear(g: GameState, a: Asset, b: BizState, fiscal: number)
   for (const m of moves) {
     if (!(m.amount > 0)) continue
     if (m.key === 'payroll') {
-      b.cash -= m.amount
+      firmCash(g, b, -m.amount, LAB_REASON[m.key], a.id)
       b.yearCosts += m.amount
     } else {
-      b.cash += m.amount
+      firmCash(g, b, m.amount, LAB_REASON[m.key], a.id)
       b.yearIncome += m.amount
     }
     row[m.key] = m.amount
@@ -137,7 +142,7 @@ export function startOps(g: GameState, a: Asset, b: BizState, id: string, pay: b
     if (grant > 0) d.lastGrant = g.year
   }
   if (pay) {
-    b.cash -= price
+    firmCash(g, b, -price, 'rnd', a.id)
     b.yearCosts += price
   }
   const program: LabProgram = { id: def.id, started: g.year, years, progress: 0, odds, price, grant }
@@ -226,7 +231,7 @@ export function doHire(g: GameState, a: Asset): boolean {
   const fee = teamFee(b)
   const gain = Math.max(0, teamValue(g, b).gain / 5)
   if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: fee + teamPay(b), gain, label: LAB_LABEL.hireVote })) return false
-  b.cash -= fee
+  firmCash(g, b, -fee, 'inputs', cur.id)
   b.yearCosts += fee
   const d = draftLab(b)
   d.team.push(g.year)
@@ -251,7 +256,7 @@ export function doRelease(g: GameState, a: Asset): boolean {
   }
   const fee = teamFee(b)
   if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: fee, gain: 0, label: LAB_LABEL.releaseVote })) return false
-  b.cash -= fee
+  firmCash(g, b, -fee, 'payroll', cur.id)
   b.yearCosts += fee
   const d = draftLab(b)
   d.team.shift()
@@ -275,7 +280,7 @@ export function fileLabPatent(g: GameState, a: Asset, b: BizState, family: strin
   }
   const t = patentTerms(g, b, family)
   if (pay) {
-    b.cash -= t.fee
+    firmCash(g, b, -t.fee, 'legal', a.id)
     b.yearCosts += t.fee
   }
   const filed: LabPatent = { family, filed: g.year, until: t.until, mode, lic: mode === 'license' ? g.year + 1 : 0, plan: t.plan, book: t.book, earned: 0 }
