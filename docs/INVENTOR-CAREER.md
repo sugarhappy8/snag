@@ -27,8 +27,12 @@ The code lives in `src/game/workshop/`.
    The **future race** gives modern lives the same chase: 13 clearly fictional breakthroughs
    (Pocket Fusion Cell, Dream Recorder, Tooth-Regrowing Gel…) open from 2016-2025, each with a
    rival's deadline rolled per family (10-40 years after it opens; `market.raceYear`), so no real
-   date is ever claimed. Firsts are world state (`g.flags['workshop.firsts']`, kept for heirs):
-   history can't be beaten twice in one timeline.
+   date is ever claimed. Nine of the 13 sit in a field of the world frontier (`market.FUTURE_FIELD`):
+   a leap in that field (R3, `world/frontier.ts`) pulls the rival's deadline in by the whole years
+   of its lead (`market.raceShift`), never below `from + 10`, never above the rolled year and never
+   before the year of the latest push. The idea's page says so ("Recent leaps pulled this race in
+   by N years."); with no leap, or for a history idea, nothing moves. Firsts are world state
+   (`g.flags['workshop.firsts']`, kept for heirs): history can't be beaten twice in one timeline.
 4. **🔧 Build a prototype** (3 a year, 5 for geniuses) in a popup: 🛡️ Play it safe (narrow
    range), 🚀 Go bold (wide range: more masterpieces and more explosions) or 💸 Cheap & cheerful
    (40% of the cost, lower quality). Costs by difficulty ≈ $150 / $1.5K / $8K / $40K / $250K
