@@ -2,10 +2,13 @@
 // banking events with real choices. They run after a year is booked (from the owner's report or
 // the hired CEO's turn), use the game RNG only here (never in the settlement or menus), and move
 // company cash only through b.cash + b.yearCosts / b.yearIncome so the next statement books it.
-import { addHidden, addMoney, count, log, notice, scriptChoice, spend } from '../core'
+import { firmCash, moveCash, playerPurse, firmPurse } from '../cash'
+import { addHidden, count, log, notice, scriptChoice, spend } from '../core'
 import { arrestPlayer } from '../crime'
 import { brandsFor } from '../data/brands'
 import { marketOf } from '../data/markets'
+import { ref } from '../kernel/ids'
+import type { Reason } from '../kernel/reasons'
 import { chance, pick, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -29,14 +32,14 @@ function ownerReachable(g: GameState, a: Asset): boolean {
   return c.alive && c.age >= 18 && !c.prison && !!findBusiness(g, a.id) && !manageBlock(g, a)
 }
 
-/** Company cash spent on something this year: moved now, booked in the next statement. */
-function bookCost(b: BizState, amount: number): void {
+/** Company cash spent on something this year: moved now (booked in the ledger under `reason`), booked in the next statement. */
+function bookCost(g: GameState, a: Asset, b: BizState, amount: number, reason: Reason): void {
   const x = Math.max(0, Math.round(amount))
-  b.cash -= x; b.yearCosts += x
+  firmCash(g, b, -x, reason, a.id); b.yearCosts += x
 }
-function bookIncome(b: BizState, amount: number): void {
+function bookIncome(g: GameState, a: Asset, b: BizState, amount: number, reason: Reason): void {
   const x = Math.max(0, Math.round(amount))
-  b.cash += x; b.yearIncome += x
+  firmCash(g, b, x, reason, a.id); b.yearIncome += x
 }
 /** Loans that turned out to be worthless leave the client book; shareholders refill the reserves. */
 function removeLoans(book: BankBook, amount: number): number {
@@ -192,10 +195,10 @@ function queueRun(g: GameState, a: Asset, b: BizState): void {
   scriptChoice(g, RUN, 'Bank Run!', `A line of worried savers stretches around the block at ${a.name}. Another ${money(wave)} could walk out the door this week.`, choices, { emoji: '🏃', data: { assetId: a.id } })
 }
 
-function fireSale(b: BizState, book: BankBook, wave: number, m: BankMarket): number {
+function fireSale(g: GameState, a: Asset, b: BizState, book: BankBook, wave: number, m: BankMarket): number {
   const loss = Math.round(payWithdrawals(book, wave, m, true))
   book.deposits -= wave
-  bookCost(b, loss)
+  bookCost(g, a, b, loss, 'writeoff')
   return loss
 }
 function centralBankLoan(b: BizState, book: BankBook, wave: number, m: BankMarket): void {
@@ -228,7 +231,7 @@ export function resolveRun(g: GameState, a: Asset, b: BizState, choice: string, 
       notice(g, 'Panic Over', `You ${stage.look} and promised every saver was safe. People believed you. The queue melted away by lunchtime.`, { emoji: '🎤', tone: 'good' })
       return
     }
-    const loss = fireSale(b, book, wave, m)
+    const loss = fireSale(g, a, b, book, wave, m)
     adjustTrust(book, -8)
     saveBank(b, book)
     log(g, `I ${stage.did}, but it didn't stop the run on ${a.name}.`, 'bad')
@@ -239,9 +242,9 @@ export function resolveRun(g: GameState, a: Asset, b: BizState, choice: string, 
     const t = bailoutTerms(g, b, book)
     b.share = clampN(b.share * (1 - t.stake), .01, 1)
     diluteBusinessEquity(b, 1 - t.stake)
-    b.cash += t.inject
+    firmCash(g, b, t.inject, { reason: 'firm.sale', with: ref('gov', b.countryId) }, a.id)
     if (m.lender) centralBankLoan(b, book, wave, m)
-    else fireSale(b, book, wave, m)
+    else fireSale(g, a, b, book, wave, m)
     adjustTrust(book, 12); addHidden(g, 'karma', -4); addHidden(g, 'fame', 4)
     count(g, 'bankBailouts')
     saveBank(b, book)
@@ -257,7 +260,7 @@ export function resolveRun(g: GameState, a: Asset, b: BizState, choice: string, 
     if (!auto) notice(g, 'Lender of Last Resort', `The central bank lent ${money(wave)} at ${pct(penaltyRate(m), 1)}. Every saver was paid. The loan is company debt; it is repaid as cash returns.`, { emoji: '💵' })
     return
   }
-  const loss = fireSale(b, book, wave, m)
+  const loss = fireSale(g, a, b, book, wave, m)
   adjustTrust(book, 2)
   saveBank(b, book)
   if (loss > 0) log(g, `${a.name} sold loans at a ${money(loss)} loss to pay off panicked savers.`, 'bad')
@@ -314,8 +317,8 @@ export function resolveSeize(g: GameState, a: Asset, b: BizState, choice: string
   const need = seizeNeed(g, b, book)
   if (need <= 0) { recapitalized(b, book); return }
   if (choice === 'inject' && g.character.money >= need) {
-    addMoney(g, -need)
-    b.cash += need; b.invested += need
+    moveCash(g, playerPurse(g), firmPurse(b, a.id), need, 'inject')
+    b.invested += need
     recapitalized(b, book)
     log(g, `I put ${money(need)} into ${a.name} to keep the regulators away.`, 'neutral')
     notice(g, 'Recapitalized', `${money(need)} of your money went into ${a.name}. The examiners packed up their boxes.`, { emoji: '💰' })
@@ -325,7 +328,7 @@ export function resolveSeize(g: GameState, a: Asset, b: BizState, choice: string
     const inject = Math.round(need * 1.1), stake = clampN(inject / (investorValue(b) + inject), .05, .75)
     b.share = clampN(b.share * (1 - stake), .01, 1)
     diluteBusinessEquity(b, 1 - stake)
-    b.cash += inject
+    firmCash(g, b, inject, 'firm.sale', a.id)
     recapitalized(b, book)
     log(g, `I sold ${pct(stake)} of ${a.name} to investors to satisfy the regulators.`, 'neutral')
     notice(g, 'Fresh Capital', `Investors put ${money(inject)} into ${a.name} for ${pct(stake)} of it. You now own ${pct(b.share)}.`, { emoji: '🤝' })
@@ -350,7 +353,7 @@ function dirtyMoneyCheck(g: GameState, a: Asset, b: BizState): void {
   if (book.heat <= 0) return
   if (chance(g, book.heat / 250)) {
     const fine = Math.round(Math.max(200_000 * costScale(b.countryId), Math.max(0, bankCapital(b, book)) * .1))
-    bookCost(b, fine)
+    bookCost(g, a, b, fine, 'fine')
     adjustTrust(book, -30); book.heat = 0
     saveBank(b, book)
     log(g, `Investigators traced dirty money through ${a.name}.`, 'bad')
@@ -408,10 +411,10 @@ const EVENTS: BankEvent[] = [
     },
     resolve: (x, choice) => {
       const amount = n(x.d, 'amount'), fine = n(x.d, 'fine')
-      removeLoans(x.book, amount); bookCost(x.b, amount)
+      removeLoans(x.book, amount); bookCost(x.g, x.a, x.b, amount, 'writeoff')
       if (choice === 'hush') {
         if (chance(x.g, .35)) {
-          bookCost(x.b, fine); adjustTrust(x.book, -15)
+          bookCost(x.g, x.a, x.b, fine, 'fine'); adjustTrust(x.book, -15)
           notice(x.g, 'Whistleblower!', `A clerk leaked the cover-up. ${x.a.name} paid a ${money(fine)} fine and the papers had a field day.`, { emoji: '📰', tone: 'bad' })
         } else log(x.g, `${x.a.name} quietly wrote off ${money(amount)} of fake loans.`, 'neutral')
         addHidden(x.g, 'karma', -3)
@@ -439,13 +442,13 @@ const EVENTS: BankEvent[] = [
       const exposure = Math.min(n(x.d, 'exposure'), loanTotal(x.book))
       if (choice === 'extend') {
         if (chance(x.g, n(x.d, 'odds'))) { notice(x.g, 'They Pulled Through', `The borrower recovered and paid on time. Patience paid.`, { emoji: '🔄', tone: 'good' }); return }
-        removeLoans(x.book, exposure); bookCost(x.b, exposure * .9)
+        removeLoans(x.book, exposure); bookCost(x.g, x.a, x.b, exposure * .9, 'writeoff')
         notice(x.g, 'They Went Under', `The borrower collapsed anyway. ${x.a.name} lost ${money(exposure * .9)}.`, { emoji: '📉', tone: 'bad' })
         return
       }
       removeLoans(x.book, exposure)
-      if (choice === 'seize') { bookCost(x.b, exposure * .4); adjustTrust(x.book, -3); log(x.g, `${x.a.name} seized a struggling borrower's assets.`, 'neutral') }
-      else { bookCost(x.b, exposure * .6); log(x.g, `${x.a.name} wrote off ${money(exposure * .6)} of bad loans.`, 'bad') }
+      if (choice === 'seize') { bookCost(x.g, x.a, x.b, exposure * .4, 'writeoff'); adjustTrust(x.book, -3); log(x.g, `${x.a.name} seized a struggling borrower's assets.`, 'neutral') }
+      else { bookCost(x.g, x.a, x.b, exposure * .6, 'writeoff'); log(x.g, `${x.a.name} wrote off ${money(exposure * .6)} of bad loans.`, 'bad') }
     },
   },
   {
@@ -466,11 +469,11 @@ const EVENTS: BankEvent[] = [
     },
     resolve: (x, choice) => {
       const consult = n(x.d, 'consult'), fine = n(x.d, 'fine'), bribe = n(x.d, 'bribe')
-      if (choice === 'bribe' && !x.managed && spend(x.g, bribe)) {
+      if (choice === 'bribe' && !x.managed && spend(x.g, bribe, 'bribe')) {
         addHidden(x.g, 'karma', -8)
         const caught = clampN(.3 + (100 - marketOf(x.b.countryId).corruption) / 300, .15, .8)
         if (chance(x.g, caught)) {
-          bookCost(x.b, fine); adjustTrust(x.book, -20)
+          bookCost(x.g, x.a, x.b, fine, 'fine'); adjustTrust(x.book, -20)
           notice(x.g, 'Caught on Camera', `The examiner was wearing a wire. ${x.a.name} was fined ${money(fine)} and the police want a word with you.`, { emoji: '🚨', tone: 'bad' })
           saveBank(x.b, x.book)
           arrestPlayer(x.g, 'bribing a bank examiner', 3)
@@ -481,15 +484,15 @@ const EVENTS: BankEvent[] = [
         return
       }
       if (choice === 'fight') {
-        bookCost(x.b, consult * .7)
+        bookCost(x.g, x.a, x.b, consult * .7, 'legal')
         if (chance(x.g, .5)) { x.book.heat = Math.max(0, x.book.heat - 10); notice(x.g, 'They Backed Off', `Your lawyers buried the examiners in paperwork. They went home.`, { emoji: '⚖️', tone: 'good' }); return }
-        bookCost(x.b, fine * 1.5); adjustTrust(x.book, -8)
+        bookCost(x.g, x.a, x.b, fine * 1.5, 'fine'); adjustTrust(x.book, -8)
         notice(x.g, 'Bad Move', `The examiners took the fight personally. ${x.a.name} was fined ${money(fine * 1.5)}.`, { emoji: '⚖️', tone: 'bad' })
         return
       }
-      bookCost(x.b, consult)
+      bookCost(x.g, x.a, x.b, consult, 'legal')
       if (x.book.heat >= 30) {
-        bookCost(x.b, fine); adjustTrust(x.book, -5); x.book.heat = 0
+        bookCost(x.g, x.a, x.b, fine, 'fine'); adjustTrust(x.book, -5); x.book.heat = 0
         notice(x.g, 'They Found Something', `The examiners followed a trail of odd deposits. ${x.a.name} was fined ${money(fine)}.`, { emoji: '🔍', tone: 'bad' })
       } else {
         adjustTrust(x.book, 2)
@@ -536,7 +539,7 @@ const EVENTS: BankEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice === 'app' && !hasProduct(x.book, 'app') && productGate(x.b, x.book, 'app', x.g.year).ok && x.b.cash >= n(x.d, 'appCost')) {
-        bookCost(x.b, n(x.d, 'appCost')); x.book.products.app = x.g.year
+        bookCost(x.g, x.a, x.b, n(x.d, 'appCost'), 'capex'); x.book.products.app = x.g.year
         log(x.g, `${x.a.name} launched its own banking app.`, 'good')
         return
       }
@@ -558,12 +561,12 @@ const EVENTS: BankEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice === 'pay') {
-        bookCost(x.b, n(x.d, 'ransom'))
+        bookCost(x.g, x.a, x.b, n(x.d, 'ransom'), 'crime.cost')
         if (chance(x.g, .25)) { adjustTrust(x.book, -8); notice(x.g, 'They Leaked It Anyway', 'The hackers took the money and dumped customer data online.', { emoji: '💻', tone: 'bad' }) }
         else adjustTrust(x.book, -1)
         return
       }
-      bookCost(x.b, n(x.d, 'restore')); adjustTrust(x.book, -4); x.book.shock = .93
+      bookCost(x.g, x.a, x.b, n(x.d, 'restore'), 'inputs'); adjustTrust(x.book, -4); x.book.shock = .93
       log(x.g, `${x.a.name} spent a week offline after a hack.`, 'bad')
     },
   },
@@ -585,7 +588,7 @@ const EVENTS: BankEvent[] = [
       if (choice === 'take') {
         const amount = n(x.d, 'amount')
         x.book.deposits += amount; x.book.reserves += amount
-        bookIncome(x.b, n(x.d, 'fee'))
+        bookIncome(x.g, x.a, x.b, n(x.d, 'fee'), 'crime.take')
         x.book.heat = clampN(x.book.heat + 45, 0, 100)
         addHidden(x.g, 'karma', -12); addHidden(x.g, 'notoriety', 5)
         notice(x.g, 'Deposited', 'The money is in. So is a new kind of fear every time someone knocks.', { emoji: '🧳' })
@@ -595,7 +598,7 @@ const EVENTS: BankEvent[] = [
         addHidden(x.g, 'karma', 5); adjustTrust(x.book, 2)
         if (chance(x.g, .15)) {
           const cost = Math.round(20_000 * costScale(x.b.countryId))
-          bookCost(x.b, cost)
+          bookCost(x.g, x.a, x.b, cost, 'inputs')
           notice(x.g, 'A Message', `Someone smashed every window at ${x.a.name}'s main branch. Repairs: ${money(cost)}.`, { emoji: '🧱', tone: 'bad' })
         } else log(x.g, `I reported a money launderer to the police.`, 'good')
         return
@@ -623,7 +626,7 @@ const EVENTS: BankEvent[] = [
       const stake = terms.stake
       x.b.share = clampN(x.b.share * (1 - stake), .01, 1)
       diluteBusinessEquity(x.b, 1 - stake)
-      x.b.cash += inject
+      firmCash(x.g, x.b, inject, { reason: 'firm.sale', with: ref('gov', x.b.countryId) }, x.a.id)
       adjustTrust(x.book, 10); addHidden(x.g, 'karma', -3); addHidden(x.g, 'fame', 3)
       count(x.g, 'bankBailouts')
       log(x.g, `The state took ${pct(stake)} of ${x.a.name} in a rescue.`, 'neutral')

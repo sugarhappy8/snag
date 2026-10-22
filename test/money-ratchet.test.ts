@@ -85,6 +85,21 @@ const MIGRATED: readonly string[] = [
   'src/game/workshop/events.ts',
   'src/game/workshop/launch.ts',
   'src/game/workshop/yearly.ts',
+  // R2-L11: business A
+  'src/game/business/bank-events.ts',
+  'src/game/business/board-ceo.ts',
+  'src/game/business/competition-events.ts',
+  'src/game/business/conglomerate-actions.ts',
+  'src/game/business/conglomerate-year.ts',
+  'src/game/business/fund-events.ts',
+  'src/game/business/gamestudio.ts',
+  'src/game/business/hedge-fund.ts',
+  'src/game/business/lab-year.ts',
+  'src/game/business/manage.ts',
+  'src/game/business/market-strategy.ts',
+  'src/game/business/nepo-year.ts',
+  'src/game/business/staff.ts',
+  'src/game/business/yearly.ts',
 ]
 
 /** The comment that says a raw `.cash` or `.money` write is not a purse. */

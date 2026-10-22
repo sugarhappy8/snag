@@ -3,11 +3,13 @@
 // and admire merit; the press notices; the company's numbers move a little (capped) with a mismatched
 // or excellent relative. Nothing here creates money: pay comes out of company cash, the part above
 // the going rate is not tax-deductible, and the relative pays income tax on every dollar.
+import { firmCash, personCash } from '../cash'
 import { addRelationship, getPerson, log, notice, scriptChoice, useYearAction } from '../core'
 import { addEntitlement, entitlement, personCountry, typicalIncome } from '../events/wealth-core'
 import { isEstranged } from '../events/will-core'
 import { incomeTax } from '../finance'
 import { hasTech } from '../history/timeline'
+import type { Reason } from '../kernel/reasons'
 import { marketOf } from '../data/markets'
 import { notePerson } from '../people'
 import { chance, randInt } from '../rng'
@@ -271,6 +273,17 @@ function rescueCeo(g: GameState, a: Asset, b: BizState): void {
   }
 }
 
+/**
+ * A relative's money moves to `Math.round(p.money + delta)`, as it always did (it rounds the whole balance, not just the change);
+ * the books take the whole dollars of that change. `floor` 0 keeps it from going below zero.
+ */
+function kinMoney(g: GameState, p: Person, delta: number, why: Reason, floor?: number): number {
+  const target = Math.max(floor ?? Number.NEGATIVE_INFINITY, Math.round(p.money + delta))
+  const done = personCash(g, p, target - p.money, why, floor)
+  // A balance that crosses zero can land an ulp off the whole-dollar target: this closes that gap and books nothing (it is under a dollar).
+  return done + personCash(g, p, target - p.money, why, floor)
+}
+
 function companyYear(g: GameState, a: Asset, out: Outcome[]): void {
   const b = bizOf(g, a)
   rescueCeo(g, a, b)
@@ -294,14 +307,14 @@ function companyYear(g: GameState, a: Asset, out: Outcome[]): void {
   const ratio = due > 0 ? clampN(cashOk / due, 0, 1) : 1
   const paidTotal = Math.round(due * ratio)
   if (paidTotal > 0) {
-    b.cash -= paidTotal
+    firmCash(g, b, -paidTotal, 'payroll', a.id)
     b.yearCosts += paidTotal
   }
   let disallowed = 0
   for (const e of payroll) {
     const got = Math.round(e.job.pay * ratio)
     const net = got - incomeTax(b.countryId, got)
-    e.p.money = Math.round(e.p.money + Math.max(0, net))
+    kinMoney(g, e.p, Math.max(0, net), 'wage')
     const market = marketPay(b, e.job.rank)
     disallowed += Math.max(0, e.job.pay - market * ABOVE_MARKET) * ratio
     e.job.unpaid = ratio < 0.999 ? e.job.unpaid + 1 : 0
@@ -310,12 +323,12 @@ function companyYear(g: GameState, a: Asset, out: Outcome[]): void {
   }
   const extra = Math.min(Math.round(disallowed * marketOf(b.countryId).corporateTax), Math.max(0, b.cash))
   if (extra > 0) {
-    b.cash -= extra
+    firmCash(g, b, -extra, 'tax.corp', a.id)
     b.yearCosts += extra
   }
   for (const e of emps.filter((x) => isCeoOf(b, x.p) && b.manager)) {
     const sal = b.manager?.salary ?? 0
-    e.p.money = Math.round(e.p.money + Math.max(0, sal - incomeTax(b.countryId, sal)))
+    kinMoney(g, e.p, Math.max(0, sal - incomeTax(b.countryId, sal)), 'wage')
   }
   if (ratio < 0.999 && due > 0) log(g, `${a.name} could only pay its family staff ${Math.round(ratio * 100)}% of what they were due.`, 'bad')
 
@@ -414,12 +427,12 @@ function arcs(g: GameState): void {
       if (years >= 3 && chance(g, years >= 9 ? 0.4 : 0.14)) {
         p.data.founder = -1
         if (chance(g, 0.4)) {
-          p.money = Math.round(p.money + typicalIncome(g, personCountry(g, p)) * randInt(g, 4, 30))
+          kinMoney(g, p, typicalIncome(g, personCountry(g, p)) * randInt(g, 4, 30), 'luck')
           p.occupation = 'Founder'
           addRelationship(p, 4)
           log(g, `${myKin(p)}'s company took off.`, 'good')
         } else {
-          p.money = Math.max(0, Math.round(p.money - Math.min(p.money * 0.6, typicalIncome(g, personCountry(g, p)) * 3)))
+          kinMoney(g, p, -Math.min(p.money * 0.6, typicalIncome(g, personCountry(g, p)) * 3), 'luck', 0)
           p.occupation = 'Unemployed'
           log(g, `${myKin(p)}'s company folded. ${p.firstName} says it was a great education.`, 'bad')
         }
@@ -428,7 +441,7 @@ function arcs(g: GameState): void {
     const made = typeof p.data.nepoSelfMade === 'number' ? p.data.nepoSelfMade : 0
     if (made > 0 && p.age >= 24 && g.year - made >= 4 && chance(g, 0.04)) {
       p.data.nepoSelfMade = -made
-      p.money = Math.round(p.money + typicalIncome(g, personCountry(g, p)) * randInt(g, 1, 6))
+      kinMoney(g, p, typicalIncome(g, personCountry(g, p)) * randInt(g, 1, 6), 'wage')
       addRelationship(p, 3)
       p.stats.happiness = clampN(p.stats.happiness + 5, 0, 100)
       log(g, `${myKin(p)} got a big promotion at ${his(p)} own job. ${He(p)} mentioned ${he(p)} did not need your help.`, 'good')

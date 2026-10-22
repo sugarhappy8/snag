@@ -13,7 +13,9 @@
 //
 // The what-if evaluators here are pure (no g.rng): the Business talent's hints and the board's
 // mandate assessment use them too, so a hint names exactly what a good CEO would do.
+import { firmCash } from '../cash'
 import { earnIncome } from '../core'
+import type { Reason } from '../kernel/reasons'
 import { isIndustryLegal, marketOf } from '../data/markets'
 import { bell, chance, rand, randInt, uid, weightedPick } from '../rng'
 import type { Asset, GameState } from '../types'
@@ -406,8 +408,8 @@ function signedMoney(n: number): string {
   return n >= 0 ? `+${money(n)}` : money(n)
 }
 
-function spend(t: Turn, amount: number, capex: boolean): void {
-  t.b.cash -= amount
+function spend(t: Turn, amount: number, capex: boolean, reason: Reason): void {
+  firmCash(t.g, t.b, -amount, reason, t.a.id)
   if (capex) noteSpend(t.g, t.st, amount)
   t.moved += Math.abs(amount)
 }
@@ -431,12 +433,12 @@ function staffTurn(t: Turn): void {
     const sev = Math.round((s.salary * severanceMonths(b.countryId)) / 12)
     if (net >= 0 || -net * LASTING_YEARS <= sev) break
     b.staff = b.staff.filter((x) => x.id !== s.id)
-    b.cash -= sev
+    firmCash(g, b, -sev, 'payroll', t.a.id)
     b.yearCosts += sev
     b.morale = clampN(b.morale - 4, 0, 100)
     if (chance(g, laborProtection(b.countryId) * 0.25 + (s.trait === 'shady' ? 0.1 : 0))) {
       const cost = Math.round(s.salary * (0.5 + rand(g)))
-      b.cash -= cost
+      firmCash(g, b, -cost, 'legal', t.a.id)
       b.yearCosts += cost
     }
     gone++
@@ -451,7 +453,7 @@ function staffTurn(t: Turn): void {
     const fee = interviewFee(b, role, hired)
     if (b.cash - fee - localPay(b.countryId, role.pay) < reserveDollars(b, t.st)) break
     if (t.judge(best.value) <= fee) break
-    b.cash -= fee
+    firmCash(g, b, -fee, 'inputs', t.a.id)
     b.yearCosts += fee
     const w2 = bizWorth(g, b)
     const list = Array.from({ length: t.m.skill === 100 ? 8 : t.m.skill >= 95 ? 5 : 3 }, () => candidate(g, b, role))
@@ -558,7 +560,7 @@ function productTurn(t: Turn): void {
   for (let i = 0; i < Math.max(0, max); i++) {
     const pick = bestRdWithin(g, b, spendable(t), bizWorth(g, b), t.judge)
     if (!pick) break
-    spend(t, pick.budget, true)
+    spend(t, pick.budget, true, 'rnd')
     b.yearCosts += pick.budget
     const info = lineInfo(pick.idea, b.industry)
     rdOf(b).push({ id: uid(g, 'rd'), name: pick.idea, budget: pick.budget, years: pick.years, progress: 0, odds: Math.round(pick.odds * 1000) / 1000, boost: 0, quality: pick.quality, family: info.family, kind: info.kind, started: g.year })
@@ -577,7 +579,7 @@ function productTurn(t: Turn): void {
   for (let i = 0; i < labMoves + (style === 'costCutter' ? 1 : 0); i++) {
     const move = bestLabMove(g, b, spendable(t), bizWorth(g, b), t.judge, i >= labMoves)
     if (!move) break
-    spend(t, move.price, true)
+    spend(t, move.price, true, 'rnd')
     b.yearCosts += move.price
     if (move.kind === 'ops') {
       startOps(g, t.a, b, move.id, false)
@@ -604,7 +606,7 @@ function siteTurn(t: Turn): void {
     if (o) {
       o.count -= close.n
       b.outlets = b.outlets.filter((x) => x.count > 0)
-      b.cash += -close.cost
+      firmCash(g, b, -close.cost, 'capex', t.a.id)
       b.morale = clampN(b.morale - 6, 0, 100)
       t.moved += -close.cost
       t.big = true
@@ -621,7 +623,7 @@ function siteTurn(t: Turn): void {
     const open = bestOpening(g, b, spendable(t), { abroad, maxPayback, judge: t.judge, base, tilt: style === 'grower' ? 1.05 : 1, maxN: room })
     if (!open) break
     room -= open.n
-    spend(t, open.cost, true)
+    spend(t, open.cost, true, 'capex')
     const existing = b.outlets.find((o) => o.countryId === open.countryId && o.city === open.city)
     if (existing) existing.count += open.n
     else b.outlets.push({ countryId: open.countryId, city: open.city, count: open.n, opened: g.year })
@@ -632,7 +634,7 @@ function siteTurn(t: Turn): void {
   const lines = bestLines(g, b, spendable(t), { maxPayback, judge: t.judge, base, maxN: Math.max(t.st.mandate === 'cash' ? 0 : 1, Math.ceil((linesOf(b) + totalOutlets(b)) * pace)) })
   const line = lineOf(b.industry)
   if (lines && line) {
-    spend(t, lines.cost, true)
+    spend(t, lines.cost, true, 'capex')
     b.lines = linesOf(b) + lines.n
     t.big = true
     t.lines.push(`Built ${plural(lines.n, line.one, line.many)} for ${money(lines.cost)}.`)
@@ -656,7 +658,7 @@ function debtTurn(t: Turn): void {
   if (pay < Math.max(1_000, b.debt * 0.05)) return
   b.debt -= pay
   if (b.debt < 1) b.debt = 0
-  b.cash -= pay
+  firmCash(t.g, b, -pay, 'loan.repay', t.a.id)
   t.moved += pay
   t.big = true
   t.lines.push(`Repaid ${b.debt > 0 ? '' : 'the last '}${money(pay)} of debt at ${Math.round(b.debtRate * 1000) / 10}%.${b.debt > 0 ? ` ${money(b.debt)} left.` : ''}`)
@@ -674,9 +676,9 @@ function payoutTurn(t: Turn): void {
   const free = Math.max(0, payoutCash(a, b) - reserveDollars(b, t.st) - t.reserved)
   const payout = Math.round(mandate === 'cash' ? free : Math.min(free, 0.5 * Math.max(0, b.last?.net ?? 0)))
   if (payout < Math.max(1_000, b.valuation * 0.005)) return
-  b.cash -= payout
+  firmCash(g, b, -payout, 'dividend', a.id)
   const mine = Math.round(payout * b.share)
-  if (g.character.alive && mine > 0) earnIncome(g, mine)
+  if (g.character.alive && mine > 0) earnIncome(g, mine, 'dividend')
   if (b.public && b.sharesOut > 0) {
     b.sharePrice = round2(Math.max(0.05, b.sharePrice - (payout / b.sharesOut) * classFactor(b)))
     b.valuation = Math.round(b.sharePrice * b.sharesOut)

@@ -5,6 +5,7 @@
 // tape that eat into it, and diminishing returns. `quote*` is pure (no RNG, no state writes) and is
 // what the menu, the scenario table and the Business talent's purple hints all read; `run*` is what
 // the buttons do, using the same numbers.
+import { firmCash } from '../cash'
 import { count, formatMoney, log, notice, useYearAction } from '../core'
 import { industryDemand, marketOf } from '../data/markets'
 import type { Asset, GameState } from '../types'
@@ -226,7 +227,7 @@ export function runEnter(g: GameState, a: Asset, b: BizState, country: string, m
     return false
   }
   const st = marketOfBiz(b)
-  b.cash -= q.cost
+  firmCash(g, b, -q.cost, 'capex', a.id)
   b.yearCosts += q.cost
   st.entries = st.entries.filter((e) => e.country !== country)
   st.entries.push({ country, home: b.countryId, mode, year: g.year, until: g.year + MODE_TERM[mode] - 1 })
@@ -279,7 +280,7 @@ export function runCampaign(g: GameState, a: Asset, b: BizState, country: string
     return false
   }
   const st = marketOfBiz(b)
-  b.cash -= q.cost
+  firmCash(g, b, -q.cost, 'marketing', a.id)
   b.yearCosts += q.cost
   st.campaigns = [...st.campaigns.filter((c) => c.country !== country && c.until + 2 >= g.year), { country, home: b.countryId, year: g.year, until: g.year + CAMPAIGN_TERM - 1 }].slice(-12)
   st.lastMove = g.year
@@ -314,7 +315,7 @@ export function runDefend(g: GameState, a: Asset, b: BizState): boolean {
   }
   if (!useYearAction(g, `biz.mkt.defend.${a.id}`, 1)) return false
   const st = marketOfBiz(b)
-  b.cash -= q.cost
+  firmCash(g, b, -q.cost, 'marketing', a.id)
   b.yearCosts += q.cost
   st.defendUntil = g.year + DEFEND_TERM - 1
   st.lastMove = g.year
@@ -352,7 +353,7 @@ export function runSupply(g: GameState, a: Asset, b: BizState): boolean {
   }
   if (!useYearAction(g, `biz.mkt.supply.${a.id}`, 1)) return false
   const st = marketOfBiz(b)
-  b.cash -= q.cost
+  firmCash(g, b, -q.cost, 'inputs', a.id)
   b.yearCosts += q.cost
   st.supplyUntil = g.year + SUPPLY_TERM - 1
   st.lastMove = g.year
@@ -415,7 +416,7 @@ export function runLicense(g: GameState, a: Asset, b: BizState, rivalId: string)
     return false
   }
   const st = marketOfBiz(b)
-  b.cash -= q.cost
+  firmCash(g, b, -q.cost, 'royalty', a.id)
   b.yearCosts += q.cost
   const t = techOf(b)
   t.level = clampN(t.level + LICENSE_TECH, 0, 100)
