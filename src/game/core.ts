@@ -84,7 +84,9 @@ export function addMoney(g: GameState, delta: number, why?: Why): number {
   if (!Number.isFinite(before) || !Number.isFinite(delta) || !Number.isFinite(before + delta)) return 0
   const token = tokenOf(why)
   if (token !== undefined && tokenSeen(g, token)) return 0
-  const want = Math.round(before + delta) - before
+  // The books carry the cash rounded to whole dollars (erodeCash leaves a fraction behind), so a change is booked against Math.round(before):
+  // the booking then lands the books exactly on the new whole-dollar cash, even when the fraction is an exact half dollar.
+  const want = Math.round(before + delta) - Math.round(before)
   const after = Math.round(before + (delta > 0 ? Math.min(delta, roomFor(g, why)) : delta))
   g.character.money = after
   // The books get the whole amount: a mint clips it to the same room the cash was clipped to, and logs the cap row.
@@ -104,7 +106,7 @@ export function spend(g: GameState, amount: number, why?: Why): boolean {
   if (token !== undefined && tokenSeen(g, token)) return false
   const before = g.character.money
   g.character.money = Math.round(before - amount)
-  bookPlayer(g, why, g.character.money - before)
+  bookPlayer(g, why, g.character.money - Math.round(before))
   return true
 }
 
@@ -125,7 +127,7 @@ export function earnIncome(g: GameState, amount: number, why?: Why): number {
   const got = Math.min(amount, room)
   g.character.money = Math.round(before + got)
   g.flags.taxableIncome = Math.round(prev + got)
-  bookPlayer(g, why, Math.round(money) - before)
+  bookPlayer(g, why, Math.round(money) - Math.round(before))
   return plain(g.character.money - before)
 }
 

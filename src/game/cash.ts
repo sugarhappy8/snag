@@ -217,21 +217,24 @@ export function writeoff(g: GameState, amount: number, from?: AcctRef): number {
  * The yearly erosion of the player's cash: the engine stores purchasing power, so held cash is divided by 1 + inflation. What it loses
  * is the declared inflation burn; what a negative balance (a debt) loses, or cash gains when prices fall, is the capped revaluation mint.
  * The cash keeps the engine's own arithmetic (it is not rounded: idle cash must stay fixed in local nominal units, to the cent, and
- * test/korean-cash.test.ts holds it there); the books take the whole dollars of the change, and the next whole-dollar booking
- * (every wrapper call rounds the cash) closes the gap of under half a dollar. The cash takes only what the ledger booked when a cap
- * clipped the burn or mint, so the rest stays unapplied. Returns the signed change of cash.
+ * test/korean-cash.test.ts holds it there). The books carry the cash rounded to whole dollars, so the erosion books the change of the
+ * rounded cash (Math.round(before) less Math.round(next)), not the rounding of the change: the two differ by a dollar when the change
+ * is an exact half dollar, and that dollar would stay unbooked for good. The next whole-dollar booking (every wrapper call rounds the
+ * cash and books against the rounded cash too) closes the gap of at most half a dollar exactly. The cash takes only what the ledger
+ * booked when a cap clipped the burn or mint, so the rest stays unapplied. Returns the signed change of cash.
  */
 export function erodeCash(g: GameState, inflation: number): number {
   const before = g.character.money
   if (!finite(inflation) || inflation <= -1 || !finite(before)) return 0
   const next = before / (1 + inflation)
   const me = playerAcct(g)
+  const whole = Math.round(before) - Math.round(next)
   if (next < before) {
-    const done = bookBurn(g, 'inflation', me, before - next, 'inflation')
-    g.character.money = done >= Math.round(before - next) ? next : before - done
+    const done = bookBurn(g, 'inflation', me, whole, 'inflation')
+    g.character.money = done >= whole ? next : before - done
   } else if (next > before) {
-    const done = bookMint(g, 'revaluation', me, next - before, 'inflation')
-    g.character.money = done >= Math.round(next - before) ? next : before + done
+    const done = bookMint(g, 'revaluation', me, -whole, 'inflation')
+    g.character.money = done >= -whole ? next : before + done
   }
   return plain(g.character.money - before)
 }

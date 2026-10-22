@@ -311,6 +311,79 @@ describe('tokens', () => {
   })
 })
 
+describe('erosion at an exact half dollar (found by the strict drift run: seeds 119 and 133)', () => {
+  // The cash keeps the engine's own arithmetic after an erosion, so at a rate of 0.2 a whole-dollar cash lands on a half dollar when
+  // it is 3 more than a multiple of 6. The books carry the cash rounded to whole dollars, so the next booking must close the gap
+  // exactly, whichever way the half dollar was rounded. It used to leave the books one dollar off the cash.
+  it('13,047 at 20% leaves 10,872.5, and the next payment keeps the cash and the books together', () => {
+    const g = withMoney(13_047)
+    const before = booksOf(g)
+    erodeCash(g, 0.2)
+    expect(g.character.money).toBe(10_872.5)
+    addMoney(g, -1_321, 'living')
+    expect(g.character.money).toBe(9_552)
+    expect(driftSince(g, before)).toBe(0)
+    expectConserved(g)
+  })
+
+  it('a receipt, a spend and an income after the same half dollar book to the cent as well', () => {
+    for (const act of [(g: GameState) => addMoney(g, 100, 'wage'), (g: GameState) => spend(g, 100, 'purchase'), (g: GameState) => earnIncome(g, 100, 'wage'), (g: GameState) => addMoney(g, 0.4, 'luck')]) {
+      const g = withMoney(13_047)
+      const before = booksOf(g)
+      erodeCash(g, 0.2)
+      expect(g.character.money).toBe(10_872.5)
+      act(g)
+      expect(Number.isInteger(g.character.money)).toBe(true)
+      expect(driftSince(g, before)).toBe(0)
+    }
+  })
+
+  it('two erosions in a row, then a booking: still exact', () => {
+    const g = withMoney(13_047)
+    const before = booksOf(g)
+    erodeCash(g, 0.2)
+    erodeCash(g, 0.2)
+    erodeCash(g, -0.2)
+    expect(Math.abs(driftSince(g, before))).toBeLessThanOrEqual(0.5)
+    addMoney(g, -7, 'living')
+    expect(driftSince(g, before)).toBe(0)
+  })
+
+  it('a move out of the player after the half dollar books the same cash', () => {
+    const g = withMoney(13_047)
+    const before = booksOf(g)
+    erodeCash(g, 0.2)
+    moveCash(g, playerPurse(g), poolPurse('retail'), 1_321, 'purchase')
+    expect(driftSince(g, before)).toBe(0)
+  })
+
+  it('holds for every whole-dollar cash from -400 to 400 at +20% and -20%, after each kind of booking', () => {
+    const acts: ((g: GameState) => unknown)[] = [
+      (g) => addMoney(g, -37, 'living'),
+      (g) => addMoney(g, 38, 'wage'),
+      (g) => earnIncome(g, 99, 'wage'),
+      (g) => spend(g, 1, 'purchase'),
+      (g) => moveCash(g, playerPurse(g), poolPurse('retail'), 5, 'purchase'),
+    ]
+    const off: string[] = []
+    for (let money = -400; money <= 400; money++) {
+      for (const rate of [0.2, -0.2]) {
+        for (let i = 0; i < acts.length; i++) {
+          const g = withMoney(money)
+          const before = booksOf(g)
+          erodeCash(g, rate)
+          if (Math.abs(driftSince(g, before)) > 0.5) off.push(`${money} at ${rate} after erosion`)
+          // A spend the player cannot afford is refused and changes nothing, so it closes nothing.
+          if (i === 3 && g.character.money < 1) continue
+          acts[i]!(g)
+          if (g.character.money !== Math.round(g.character.money) || driftSince(g, before) !== 0) off.push(`${money} at ${rate}, booking ${i}: drift ${driftSince(g, before)}`)
+        }
+      }
+    }
+    expect(off.slice(0, 10)).toEqual([])
+  })
+})
+
 describe('erosion', () => {
   it('burns the inflation of cash: 1,000,000 at 10% leaves 909,090.91 and burns 90,909 whole dollars', () => {
     const g = withMoney(1_000_000)
