@@ -155,7 +155,7 @@ refused, so nothing averages the noise away, and a different source helps only t
 | Id | Kind | Base sd | Floor | Price at tier 1 | Reads |
 |---|---|---|---|---|---|
 | `own` | free, 3 year actions | .45 x (1.5 - smarts / 100) | .25 | 0 | mkt, riv, cmp, eco, pol, sec, fund, odds, scn |
-| `news` | free, through `ingestSignal` | .30 | .20 | 0 | any |
+| `news` | free, through `ingestSignal` (no screen yet, see the note below) | .30 | .20 | 0 | any |
 | `press` | a year of a trade title | .30 | .20 | 1,200 | mkt, riv, cmp, eco, pol, sec, scn |
 | `report` | once | .18 | .12 | 9,000 | mkt, riv, cmp, eco, scn, odds |
 | `analyst` | engaged | .12 | .08 | 30,000 | mkt, riv, cmp, val, sec, fund, scn, odds |
@@ -166,6 +166,11 @@ refused, so nothing averages the noise away, and a different source helps only t
 | `desk` | standing orders only | .14 | .10 | .6 x analyst | as analyst |
 | `lab` | research results only, free | .20 | .15 | 0 | riv, mkt, cmp |
 
+- **Not wired in v5.1.0.** Two parts of the engine have tests and no screen that uses them. `ingestSignal`, the free `news` source, has no
+  caller in the game: no news item yet says something about a key. Exposure (`exp` in `EstimateOpts`, the player's own presence cutting the
+  passive sd by up to 40%) is passed by no screen: no company's presence yet tells more about a rival. Both are a design choice (which item
+  says what about which key, how much presence tells), so they are a follow-up, and `test/knowledge-unwired.test.ts` fails the day a
+  screen uses one, so this note changes with it.
 - **Price** is `round100(base x [1, 2.2, 4.5][tier - 1] x (1 + .25 (countries - 1)) x clamp(country wealth, .3, 1.5))`: the scope of the
   keys and the wealth of the country read, never the buyer's cash. A hundred times the money pays the same fee. A key kind says its scope
   (tier 1 a business or a street, 2 a country, 3 the world, how many countries, the deal size for diligence).
