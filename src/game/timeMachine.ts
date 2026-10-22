@@ -13,7 +13,7 @@
 //     wars) is the same in every timeline: knowing it is fair game, as in real life.
 // Everything here is pure: no storage, no React, no Math.random.
 import { log, moneyContextOf, remember, roleLabel } from './core'
-import { FORKS_FLAG, forkTag, timelineForks, type TimelineFork } from './kernel/forks'
+import { FORKS_FLAG, FORKS_MAX, forkTag, timelineForks, type TimelineFork } from './kernel/forks'
 import type { GameState, Json } from './types'
 
 // The fork readers moved to the kernel (R2); every importer of this module keeps its imports.
@@ -137,9 +137,12 @@ export function stirSeed(seed: number, salt: number): number {
 /** Separates a family seed from its encoded forks in timelineFamily(). */
 const FORK_MARK = '@'
 
-/** The forks after one more jump to the start of `year` (forks at or after it no longer matter). */
+/**
+ * The forks after one more jump to the start of `year` (forks at or after it no longer matter). At most the newest FORKS_MAX, the
+ * most timelineForks reads back: a list that was stored is the list that is read.
+ */
 export function addFork(forks: readonly TimelineFork[], year: number, salt: string): TimelineFork[] {
-  return [...forks.filter((f) => f.year < year), { year, salt }]
+  return [...forks.filter((f) => f.year < year), { year, salt }].slice(-FORKS_MAX)
 }
 
 /**

@@ -20,8 +20,13 @@ export interface TimelineFork {
 
 export const FORKS_FLAG = 'timelineForks'
 
-/** The newest forks kept when reading the flag. timelineForks runs on every text draw, so the list it walks is bounded. */
-const FORKS_MAX = 128
+/**
+ * The newest forks kept, when the flag is read and when a jump writes it. timelineForks runs on every text draw, so the list it walks
+ * is bounded. A life holds one fork per start year (addFork) and an heir inherits the list, so a family reaches the bound only by
+ * jumping in 128 different calendar years (Sandbox mode, or more than forty generations with the three jumps a life has): past it the
+ * oldest fork is let go at the jump, and the years it governed roll as the original timeline does.
+ */
+export const FORKS_MAX = 128
 
 function isObj(v: Json | undefined): v is { [key: string]: Json } {
   return typeof v === 'object' && v !== null && !Array.isArray(v)

@@ -347,6 +347,24 @@ describe('kernel/forks and the timeMachine re-exports', () => {
     expect(timelineForks({ flags: { timelineForks: many.slice(0, 3) } })).toEqual(many.slice(0, 3))
   })
 
+  it('a jump never stores more forks than the reader keeps: at the cap the oldest fork goes at the jump, not silently at the next read', () => {
+    // 128 forks from 1900 on, one per year (a family line that jumped in 128 different years: only sandbox play gets there).
+    const full = Array.from({ length: 128 }, (_, i) => ({ year: 1900 + i, salt: `s${i.toString(36)}` }))
+    expect(tm.addFork(full, 2100, 'new')).toHaveLength(128)
+    expect(tm.addFork(full, 2100, 'new').at(-1)).toEqual({ year: 2100, salt: 'new' })
+    expect(tm.addFork(full, 2100, 'new')[0]).toEqual(full[1])
+    // Under the cap nothing is lost, and a jump to an old year still drops the forks at or after it first.
+    expect(tm.addFork(full.slice(0, 3), 2100, 'new')).toEqual([...full.slice(0, 3), { year: 2100, salt: 'new' }])
+    expect(tm.addFork(full, 1950, 'new')).toEqual([...full.slice(0, 50), { year: 1950, salt: 'new' }])
+    // What arriveInPast stores is what timelineForks reads back: the same list.
+    const from = makeTestGame(7)
+    from.year = 2100
+    from.flags[FORKS_FLAG] = full
+    const arrived = tm.arriveInPast(from, structuredClone(from))
+    expect(arrived.flags[FORKS_FLAG]).toHaveLength(128)
+    expect(timelineForks(arrived)).toEqual(arrived.flags[FORKS_FLAG])
+  })
+
   it('forkTag, timelineTag and outcomeTag keep their meaning, and timelineTag takes a bare flags object', () => {
     const forks = [{ year: 2010, salt: 'a1' }, { year: 2015, salt: 'b2' }]
     expect(forkTag(forks, 2010)).toBe('')

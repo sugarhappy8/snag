@@ -135,7 +135,7 @@ One line each. A track that adds a file here adds its line; `test/kernel-accepta
 
 - `src/game/kernel/bus.ts` - the bus: `emit`, `setBusGuard`, `busStats`; synchronous, bounded, handlers in module id order.
 - `src/game/kernel/fact.ts` - the `Fact` type, `FACT_LIMITS` and `normalizeFact`, the one door a fact comes in by.
-- `src/game/kernel/forks.ts` - the Time Machine's timeline forks and the tags they put on seeded rolls (`timeMachine.ts` re-exports it).
+- `src/game/kernel/forks.ts` - the Time Machine's timeline forks and the tags they put on seeded rolls (`timeMachine.ts` re-exports it). A family keeps its newest 128 forks (`FORKS_MAX`, read and written alike): there is one fork per start year, so the bound is reached only by jumping in 128 different calendar years, and the oldest fork is then let go at the jump.
 - `src/game/kernel/ids.ts` - entity ids such as `person:p42` and `firm:a7`: `EntityRef`, `ref`, `isRef`, `parseRef`.
 - `src/game/kernel/ledger-types.ts` - the saved shape of the ledger, types only.
 - `src/game/kernel/ledger.ts` - the ledger: `book`, `bookMint`, `bookBurn`, `checkLedger`, `flowsOf`; every dollar is an entry between two accounts.
