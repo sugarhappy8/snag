@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { bindMoneyContext, setMoneyDisplay, showMoney } from '../src/game/core'
 import { currencyChangeAt, currencyInflation, currencyOf, unitsPerDollar } from '../src/game/data/currencies'
+import { withYearly } from '../src/game/kernel/registry'
 import { makeTestGame } from './helpers'
 
 afterEach(() => { setMoneyDisplay({ mode: 'usd', nominal: false }); bindMoneyContext(null) })
@@ -13,8 +14,7 @@ describe('cash during South Korea’s early won years', () => {
     bindMoneyContext(g)
     setMoneyDisplay({ mode: 'local', nominal: true })
     expect(showMoney(g.character.money).amount).toBeCloseTo(2000)
-    const hooks = YEARLY_HOOKS.splice(0)
-    try { ageUp(g) } finally { YEARLY_HOOKS.push(...hooks) }
+    withYearly('aging', [], () => ageUp(g))
     expect(g.character.age).toBe(13)
     expect(showMoney(g.character.money).amount).toBeCloseTo(2000)
   })
@@ -33,8 +33,7 @@ describe('cash during South Korea’s early won years', () => {
     g.year = year - 1
     bindMoneyContext(g)
     setMoneyDisplay({ mode: 'local', nominal: true })
-    const hooks = YEARLY_HOOKS.splice(0)
-    try { ageUp(g) } finally { YEARLY_HOOKS.push(...hooks) }
+    withYearly('aging', [], () => ageUp(g))
     expect(showMoney(g.character.money).amount).toBeCloseTo(2000 / (currencyChangeAt('kr', year)?.per ?? 1))
   })
 
@@ -43,8 +42,7 @@ describe('cash during South Korea’s early won years', () => {
       const g = makeTestGame(1, { age: 12, countryId: 'kr', money: 1000 })
       g.year = 1962
       setMoneyDisplay({ mode: 'local', nominal })
-      const hooks = YEARLY_HOOKS.splice(0, YEARLY_HOOKS.length, ['test income', gg => { gg.character.money += 100 }])
-      try { ageUp(g) } finally { YEARLY_HOOKS.splice(0, YEARLY_HOOKS.length, ...hooks) }
+      withYearly('aging', [{ seam: 'aging', phase: 'life', order: 10, run: gg => { gg.character.money += 100 } }], () => ageUp(g))
       return g.character.money
     }
     expect(run(true)).toBeCloseTo(1000 / (1 + currencyInflation('kr', 1963)) + 100)
@@ -56,16 +54,14 @@ describe('cash during South Korea’s early won years', () => {
     g.year = year - 1
     setMoneyDisplay({ mode: 'local', nominal: true })
     bindMoneyContext(g)
-    const hooks = YEARLY_HOOKS.splice(0)
-    try { ageUp(g) } finally { YEARLY_HOOKS.push(...hooks) }
+    withYearly('aging', [], () => ageUp(g))
     expect(showMoney(g.character.money).amount).toBeCloseTo(2000 / (currencyChangeAt(country, year)?.per ?? 1))
   })
 
   it('keeps future US-dollar nominal cash fixed under simulated US inflation', () => {
     const g = makeTestGame(1, { age: 12, countryId: 'us', money: 2000 })
     g.year = 2026; bindMoneyContext(g); setMoneyDisplay({ mode: 'usd', nominal: true })
-    const hooks = YEARLY_HOOKS.splice(0)
-    try { for (let y = 0; y < 20; y++) ageUp(g) } finally { YEARLY_HOOKS.push(...hooks) }
+    withYearly('aging', [], () => { for (let y = 0; y < 20; y++) ageUp(g) })
     expect(showMoney(g.character.money).amount).toBeCloseTo(2000)
   })
 })

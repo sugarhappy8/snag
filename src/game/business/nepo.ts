@@ -11,7 +11,7 @@
 // parents: an arranged summer job, an opening for the child of a famous parent).
 //
 // manage.ts businessView appends nepoNodes(g, a) after the Leadership rows, relationships.ts
-// personActions appends nepoPersonNodes(g, p), and aging.ts YEARLY_HOOKS runs yearlyNepo after the
+// personActions appends nepoPersonNodes(g, p), and the yearly registry (modules/yearly-aging.ts) runs yearlyNepo after the
 // wealth hook.
 import { yearlyNepoLife } from '../events/nepo-life'
 import type { Asset, GameState, MenuNode, Person } from '../types'

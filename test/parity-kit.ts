@@ -29,13 +29,14 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { becomeCeo } from '../src/game/business/career'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { businessView } from '../src/game/business/manage'
 import { bizOf } from '../src/game/business/state'
 import { INDUSTRY_IDS } from '../src/game/data/markets'
 import { resetFlags } from '../src/game/flags'
+import { withYearly, yearlyEntries, type YearlyEntry } from '../src/game/kernel/registry'
 import { migrateSave } from '../src/game/save-schema'
 import { SPECIAL_YEARLY } from '../src/game/special'
 import { fnv1a } from '../src/game/text/hash'
@@ -95,18 +96,37 @@ const tracing = (out: string[], prefix: string, list: Hooks): Hooks => list.map(
   hook(g)
 }])
 
-// K8: over YEARLY_HOOKS and SPECIAL_YEARLY. K9 and K10 swap these bodies to the registry.
+/** The aging seam of the registry: the entries in run order, and the name of one (its module id without the `yearly.` prefix). */
+const AGING_PREFIX = 'yearly.'
+const agingEntries = (): readonly (YearlyEntry & { id: string })[] => yearlyEntries('aging')
+const agingName = (e: { id: string }): string => (e.id.startsWith(AGING_PREFIX) ? e.id.slice(AGING_PREFIX.length) : e.id)
+
+/** Runs `fn` with the aging entries replaced by `next` (in the order given), through the registry's own test seam. */
+const withAgingEntries = <T>(next: readonly (YearlyEntry & { id: string })[], fn: () => T): T => withYearly('aging', next, fn)
+
+// K9: the aging accessors read the registry (yearlyEntries, withYearly). The special accessors still read SPECIAL_YEARLY until K10.
 export const yearly: YearlyAccess = {
-  names: (seam) => (seam === 'aging' ? YEARLY_HOOKS : SPECIAL_YEARLY).map(([name]) => name),
-  traced: (out, fn) => withList(YEARLY_HOOKS, tracing(out, '', YEARLY_HOOKS), () => withList(SPECIAL_YEARLY, tracing(out, 'special.', SPECIAL_YEARLY), fn)),
+  names: (seam) => (seam === 'aging' ? agingEntries().map(agingName) : SPECIAL_YEARLY.map(([name]) => name)),
+  traced: (out, fn) =>
+    withAgingEntries(
+      agingEntries().map((e) => ({
+        ...e,
+        run: (g: GameState) => {
+          out.push(agingName(e))
+          e.run(g)
+        },
+      })),
+      () => withList(SPECIAL_YEARLY, tracing(out, 'special.', SPECIAL_YEARLY), fn),
+    ),
   reordered: (reorder, fn) => {
-    const names = YEARLY_HOOKS.map(([name]) => name)
+    const entries = agingEntries()
+    const names = entries.map(agingName)
     const order = reorder(names.slice())
-    const byName = new Map(YEARLY_HOOKS)
+    const byName = new Map(entries.map((e) => [agingName(e), e]))
     if (order.length !== names.length || new Set(order).size !== names.length || order.some((n) => !byName.has(n))) {
       throw new Error(`yearly.reordered: the new order is not a permutation of ${names.join(', ')}`)
     }
-    return withList(YEARLY_HOOKS, order.map((name) => [name, byName.get(name)!]), fn)
+    return withAgingEntries(order.map((name) => byName.get(name)!), fn)
   },
 }
 
