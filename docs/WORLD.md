@@ -167,6 +167,11 @@ writer and its reader), `world/frontier-fields.ts` (the fields) and the ceilings
   replaces the shard root. It reads no clock and never `g.rng`.
 - Readers are pure: `readFrontier`, `frontierLead` (years, two places), `frontierSpill` (whole points), `frontierRows`, `lastPush`.
   An absent or hostile shard reads as an empty one and nothing is created.
+- The year (R3-F2, `world/frontier-step.ts`, module `world.frontier`, aging phase `frontier`, order 10): `stepFrontier` fades public
+  research to `floor(pub x 0.9)` and lets a rival follow each row of yours that has a lead, is one to four years old and is not
+  followed yet, with a chance of 30% a year drawn from the named stream (`followDraw`). A follow marks your row (`f: 1`) and adds a
+  rival row worth `floor(d / 2)` (at least 1, cut to the room the field has left). It is idempotent by `shard.y`, does nothing up to
+  2026 or with no shard (so no `frontier` key appears), and logs nothing.
 
 | Rule | Value |
 |---|---|

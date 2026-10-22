@@ -20,6 +20,9 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   `pick`, `shuffle`, `.rng`, `Math.random` and `Date` are findings.
 - A roll that is really the player's own, inside such a file, carries `// rng-ok: <reason of 12 or more characters>` on its own
   line or on the line before it.
+- The tag `frontier` (R3, `world/frontier.ts` and `world/frontier-step.ts`) is drawn with `outcomeStream`, with the field, a one-letter
+  kind (`d` for a disclosure's luck, `f` for a rival's follow) and the origin key as the id. A Time Machine jump re-rolls the
+  unfinished year and keeps the finished ones. Its row in `STREAM_SLICES` is `driven`: no played life writes a disclosure yet.
 
 ## Words: `pickLine` and `pick`
 

@@ -65,7 +65,8 @@ describe('the aging hooks are modules in the pinned phases', () => {
 
   it('the ids are the names, and the registry runs them in the table order', () => {
     const ran = yearlyEntries('aging').map((e) => e.id)
-    expect(ran.slice(0, TABLE.length)).toEqual(TABLE.map(([name]) => `yearly.${name}`))
+    // R3-F2: the frontier phase sits between the world and the life phases, so the world frontier's step runs first of all.
+    expect(ran.slice(0, TABLE.length + 1)).toEqual(['world.frontier', ...TABLE.map(([name]) => `yearly.${name}`)])
   })
 
   it('every phase of the table is a phase of the aging seam, and the orders are multiples of ten so a track can insert between two', () => {
@@ -102,7 +103,7 @@ describe('a track adds a hook by registering a module', () => {
     expect(trace.filter((id) => id === 'ext.k9between')).toHaveLength(1)
     const at = trace.indexOf('ext.k9between')
     expect(trace.slice(at - 1, at + 2)).toEqual(['yearly.relationships', 'ext.k9between', 'yearly.sharedProjects'])
-    expect(trace[0]).toBe('yearly.history')
+    expect(trace.slice(0, 2)).toEqual(['world.frontier', 'yearly.history'])
     expect(trace[trace.length - 1]).toBe('yearly.world')
   })
 
