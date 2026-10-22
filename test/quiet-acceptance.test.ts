@@ -27,9 +27,13 @@ import { YEAR_LIMITS } from '../src/game/hubs/year-plan'
 import { createNewLife } from '../src/game/life'
 import type { ChoiceModal, GameState, LogEntry, ModalItem, NoticeModal, YearCard } from '../src/game/types'
 import { EVENT_SCRIPT } from '../src/game/events/helpers'
+import { ASK_FAMILIES } from '../src/game/events/ask-families'
+import { readTextMem } from '../src/game/text/memory'
+import { PACE, notePopup, paceKey } from '../src/game/text/pace'
 import { STATE_LIMITS } from '../src/game/text/state'
 import { STATE_TABLE } from '../src/game/text/state-table'
 import { LOG_VISIBLE, viewYearLog } from '../src/ui/components/logModel'
+import { makeTestGame } from './helpers'
 import { closeProblems, foldRecords, ledgerClean, lifeProblems, popupsPerYear, spread, visibleLines } from './close-kit'
 import { playLife, type ClosedYear, type PlayedYear } from './play-kit'
 import { probeLife } from './probe-life'
@@ -541,23 +545,82 @@ describe('the log a tycoon sees', () => {
  * them, and measured the way the text kit and R2's text-repeat probe measure them: the repetition targets are about the LINES of the life log
  * (decision L2), and a line is its normalized text (test/text-metrics.ts). A life repeats at most 5% of its lines (8% when rich), no line shows
  * up more than 3 times in a life, the same line is never told twice within 10 years, and a state line (text/state.ts) is not told twice
- * within the 5 years its row waits. Popup scenes are not lines: they follow family pacing (a family at most 6 times a life), measured on
- * the event library as test/pace-families.test.ts measures it. The thresholds are the design's and are never loosened to fit a number.
+ * within the 5 years its row waits. Popup scenes are not lines: they follow family pacing. Where the rule is a bar it is asserted: an event
+ * popup title at most 6 times a life (as test/pace-families.test.ts measures it) and an ask family at most once in PACE.askGap (4) years, a
+ * thread bar. Where the rule is a weight (events, company events, the career kit) a family may come twice in 5 years and an ask family
+ * has no count of its own, so those readings are printed for every engine and not asserted. The thresholds are the design's and are
+ * never loosened to fit a number.
  */
 interface ProbePlayed {
   spec: ProbeLife
   trace: LifeTrace
   metrics: TextMetrics
+  /** The years each pace family spoke in the life, by memory key ('pop.ask.loan'), read from the text kit's family record after every year. */
+  families: Map<string, number[]>
 }
 
 let probe: ProbePlayed[] | undefined
 function probed(): ProbePlayed[] {
   probe ??= probeLives(13).map((spec) => {
-    const { years } = playLife({ seed: spec.seed, birthYear: spec.birthYear, untilAge: PROBE_UNTIL_AGE, rich: spec.rich, close: true })
+    const families = new Map<string, number[]>()
+    const { years } = playLife({
+      seed: spec.seed,
+      birthYear: spec.birthYear,
+      untilAge: PROBE_UNTIL_AGE,
+      rich: spec.rich,
+      close: true,
+      onYear: (g) => noteFamilies(g, families),
+    })
     const trace: LifeTrace = { seed: spec.seed, birthYear: spec.birthYear, rich: spec.rich, years }
-    return { spec, trace, metrics: textMetrics(trace) }
+    return { spec, trace, metrics: textMetrics(trace), families }
   })
   return probe
+}
+
+/**
+ * Read-only, after a year is played: a pace family that spoke this year has a new last year in the text kit's record (text/pace.ts notes
+ * it where an engine presents). The record is a list of years, newest last, so a change of the last one is one more telling.
+ */
+function noteFamilies(g: GameState, into: Map<string, number[]>): void {
+  for (const [key, record] of Object.entries(readTextMem(g).f)) {
+    if (!key.startsWith('pop.')) continue
+    const last = Number(record.split(',').pop())
+    if (!Number.isInteger(last)) continue
+    const told = into.get(key)
+    if (!told) into.set(key, [last])
+    else if (told[told.length - 1] !== last) told.push(last)
+  }
+}
+
+/** The families a thread holds (a crisis, the will): the ask gap does not hold them back, so they may come twice within it. */
+const STORYLINE_FAMILIES: ReadonlySet<string> = new Set(Object.values(ASK_FAMILIES).flatMap((a) => (a.storyline === true ? [paceKey('ask', a.family)] : [])))
+
+/** Ask families that were offered again within `gap` years of the telling before, a thread bar: "pop.ask.loan (years 2040, 2042)". */
+function askGapMisses(families: ReadonlyMap<string, readonly number[]>, gap: number): string[] {
+  const out: string[] = []
+  for (const [key, told] of families) {
+    if (!key.startsWith('pop.ask.') || STORYLINE_FAMILIES.has(key)) continue
+    for (let i = 1; i < told.length; i++) if (told[i]! - told[i - 1]! < gap) out.push(`${key} (years ${told[i - 1]}, ${told[i]})`)
+  }
+  return out
+}
+
+/** One engine's families over the lives: how many tellings, the most one family spoke in a life, how many went over 6 in a life, the closest two. */
+function engineRow(lives: readonly ProbePlayed[], engine: 'ev' | 'ask' | 'biz' | 'kit'): string {
+  let families = 0
+  let most = 0
+  let over = 0
+  let closest: number | null = null
+  for (const p of lives) {
+    for (const [key, told] of p.families) {
+      if (!key.startsWith(`pop.${engine}.`)) continue
+      families++
+      most = Math.max(most, told.length)
+      if (told.length > DESIGN_THRESHOLDS.popupFamilyMax) over++
+      for (let i = 1; i < told.length; i++) closest = closest === null ? told[i]! - told[i - 1]! : Math.min(closest, told[i]! - told[i - 1]!)
+    }
+  }
+  return `${engine.padEnd(3)} ${families} family-lives, most times one spoke in a life ${most}, over ${DESIGN_THRESHOLDS.popupFamilyMax} in a life ${over}, closest two ${closest ?? 'none'} years apart`
 }
 
 const who = (p: ProbePlayed): string => `seed ${p.spec.seed}${p.spec.rich ? ' (rich)' : ''}`
@@ -639,6 +702,8 @@ describe('repetition on the 13-life probe', () => {
         `  lines told twice within 10 years   ${lives.reduce((n, p) => n + p.metrics.sameWithin10, 0)} (target ${DESIGN_THRESHOLDS.sameWithin10})`,
         `  state lines told twice within ${STATE_LIMITS.every} years   ${lives.reduce((n, p) => n + stateRepeats(p.trace).length, 0)} (target 0)`,
         `  event popups by title   most in a life ${Math.max(...scenes.map((m) => m.popupFamilies.maxPerLife))}, titles over ${DESIGN_THRESHOLDS.popupFamilyMax} ${scenes.reduce((n, m) => n + m.popupFamilies.over6, 0)}`,
+        `  pace families by engine (the record of text/pace.ts; events, company events and the kit are weighted, asks wait ${PACE.askGap} years):`,
+        ...(['ev', 'ask', 'biz', 'kit'] as const).map((e) => `    ${engineRow(lives, e)}`),
         `  all popups by title (the cards, notices and asks too)   most in a life ${Math.max(o.popupFamilies.maxPerLife, r.popupFamilies.maxPerLife)}, titles over ${DESIGN_THRESHOLDS.popupFamilyMax} ${o.popupFamilies.over6 + r.popupFamilies.over6}`,
         ...lives.map((p) => `  ${who(p).padEnd(16)} share ${share(p.metrics.repeatedShare)}, most ${p.metrics.over3.max}x, within 10 years ${p.metrics.sameWithin10}`),
       ].join('\n'),
@@ -680,4 +745,43 @@ describe('repetition on the 13-life probe', () => {
     })
     expect(misses).toEqual([])
   }, TIMEOUT)
+
+  it('an ask family is offered at most once in PACE.askGap (4) years, a thread bar: the pacing of the asks, whoever asks', () => {
+    const misses = probed().flatMap((p) => {
+      const again = askGapMisses(p.families, PACE.askGap)
+      return again.length > 0 ? [`${who(p)}: ${again.slice(0, 5).join('; ')}`] : []
+    })
+    expect(misses).toEqual([])
+    // The probe has to have met asks, or the case above would pass on lives nobody asked anything of.
+    const asked = probed().reduce((n, p) => n + [...p.families.keys()].filter((k) => k.startsWith('pop.ask.')).length, 0)
+    expect(asked, 'ask families told in the 13 lives').toBeGreaterThan(20)
+  }, TIMEOUT)
+})
+
+describe('the ask gap checker', () => {
+  it('finds a family told again inside the gap, and leaves a thread, a family that waited and another engine alone', () => {
+    const lives = new Map<string, number[]>([
+      ['pop.ask.loan', [2030, 2033]],
+      ['pop.ask.gifts', [2030, 2034]],
+      ['pop.ask.crisis', [2030, 2031]],
+      ['pop.ev.scam', [2030, 2031]],
+    ])
+    expect(askGapMisses(lives, 4)).toEqual(['pop.ask.loan (years 2030, 2033)'])
+    expect(STORYLINE_FAMILIES.has('pop.ask.crisis')).toBe(true)
+    expect(STORYLINE_FAMILIES.has('pop.ask.loan')).toBe(false)
+  })
+
+  it('reads the family record of a life: a new last year is one more telling, and the same year is not told twice', () => {
+    const g = makeTestGame(3, { age: 30 })
+    const into = new Map<string, number[]>()
+    const key = paceKey('ask', 'loan')
+    notePopup(g, key)
+    noteFamilies(g, into)
+    noteFamilies(g, into)
+    const first = g.year
+    g.year += 5
+    notePopup(g, key)
+    noteFamilies(g, into)
+    expect(into.get(key)).toEqual([first, first + 5])
+  })
 })

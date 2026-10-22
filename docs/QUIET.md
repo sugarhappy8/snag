@@ -121,8 +121,13 @@ equals the books, and nothing folded without a record. It also states the roadma
 - **Repetition is about lines of the life log**, on the 13-life probe of `test/text-probe.ts`, with a line compared as
   `test/text-metrics.ts` compares it (lower case, every run of digits one `#`): repeated lines at most 5% (8% for a rich life), no line
   more than 3 times in a life, no line twice within 10 years, a state line once in 5 years. Popup scenes are not lines: they follow family
-  pacing, and the case holds the event library's popup titles to 6 a life, as `test/pace-families.test.ts` does. How far a family may
-  repeat across every engine (the ask families of a rich life, the gaps the weights allow) is printed.
+  pacing. Where the rule is a bar the case asserts it: the event library's popup titles at most 6 a life, as `test/pace-families.test.ts`
+  does, and an ask family at most once in 4 years (`PACE.askGap`, a storyline bar). Where the rule is a weight (events, company events,
+  the career kit) a family may come again within 5 years, and an ask family has no count of its own, so those readings are printed for
+  every engine and not asserted. On the 13 lives: events, one pace family 8 times in a life at most and two tellings as close as 1 year;
+  asks, one family 15 times in a 60-year rich life, never closer than 4 years. A popup family "at most 6 a life" is therefore held for
+  event titles and not for the ask families of a rich life: that wants a longer ask gap, which moves the money a rich life gives away, and
+  is the lead's call (R3 `00-crosscheck.md` L2).
 
 A threshold is never loosened to fit a number: a miss is fixed in the text it comes from.
 
