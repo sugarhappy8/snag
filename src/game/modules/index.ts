@@ -9,8 +9,13 @@
 // the company view.
 import { registerModules, type ModuleDef } from '../kernel/registry'
 import { factsModule } from '../world/facts'
+import { MENU_MODULES } from './menus-core'
 import { YEARLY_AGING } from './yearly-aging'
 
-export const MODULES: readonly ModuleDef[] = [factsModule, ...YEARLY_AGING]
+export const MODULES: readonly ModuleDef[] = [
+  ...MENU_MODULES, // the rows of the Assets, Shopping and Activities menus (menus.ts imports this file for them)
+  factsModule,
+  ...YEARLY_AGING,
+]
 
 registerModules(MODULES)
