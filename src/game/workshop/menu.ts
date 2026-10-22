@@ -1,17 +1,21 @@
 // Activities › 💡 Inventor's Workshop, and the Assets screen of an invention. Pure: menus only
 // read state (readWorkshop/readInv never write and never touch g's RNG), including the hints.
 import { formatMoney, yearActionsUsed } from '../core'
+import { FOCUS_WEEKS, focusLeft } from '../effort/focus'
+import { whyNodes } from '../effort/why'
 import { talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { BRAINSTORMS, brainstorm, brainstormBlock, brainstormOdds, buildBlock, buildCost, buildLimit, buildsLeft, startBuild, type Target } from './build'
+import { BRAINSTORMS, BRAINSTORM_WEEKS, brainstorm, brainstormBlock, brainstormOdds, buildBlock, buildCost, buildQuote, buildWeeks, helperWage, startBuild, type Target } from './build'
+import { HELPER_SKILL_STEP, helperBlock, hireHelper, releaseHelper } from './bench'
+import { HELPER_CENTRE_MAX, WORKSHOP_TOOLS_MAX } from './effort'
 import { CATEGORIES, DIFFICULTY_LABEL, stars, type IdeaDef } from './catalog'
 import {
   benchFor, benchHint, companyLaunchBlock, crowdBlock, dealsLeft, filePatent, giveAway, isFirst, launchBlock, launchLimit, license, licenseQuote, makeInCompany, patentBlock, patentCost,
   pitch, pitchBlock, pitchVenue, routeQuotes, scrapIdea, sellBlock, sellStream, shopRights, startCrowd, streamSaleBlock, subjectOf, LAUNCH_MIN, PATENT_MIN, type Bench, type RouteQuote,
 } from './launch'
 import { patentActive, pitchOdds, raceYear, trueAppeal } from './market'
-import { blurbOf, findInvention, fittingCompanies, historyOpen, inventions, isGenius, MIN_AGE, readWorkshop, type Owned } from './notebook'
+import { blurbOf, findInvention, fittingCompanies, historyOpen, inventions, isGenius, MIN_AGE, readWorkshop, toolsFrom, type Owned } from './notebook'
 import { NOTEBOOK_MAX, noteDef, rankOf, type Inv, type NoteIdea, type Workshop } from './state'
 
 const ROUTE_LABEL: Record<string, string> = { license: 'licensed', pitch: 'investor deal', crowd: 'crowdfunded, made by you', company: 'made in your company', open: 'free for the world', sold: 'rights sold', legacy: 'old lab' }
@@ -88,9 +92,15 @@ function pitchOddsFor(g: GameState, b: Bench): number {
 function buildAction(t: Target, def: IdeaDef): MenuAction {
   return {
     type: 'action', id: `ws.build.${t.kind}.${t.id}`, label: 'Build a Prototype', emoji: '\u{1F527}',
-    subtitle: (g) => { const c = buildCost(g, def, 'cheap'); return `${buildsLeft(g)}/${buildLimit(g)} builds left · from ${c ? formatMoney(c) : 'free'}` },
+    subtitle: (g) => { const c = buildCost(g, def, 'cheap'); return `${focusLeft(g)} of ${FOCUS_WEEKS} focus weeks left · a build takes ${buildWeeks(g)} weeks · from ${c ? formatMoney(c) : 'free'}` },
     disabledReason: (g) => buildBlock(g, t), run: (g) => startBuild(g, t),
   }
+}
+
+/** The odds line of a safe build under its action: "Odds 83%: your skill +8, hard build -9, lab access +1" (what the player may read follows the reveal policy). Pure. */
+function whyRow(g: GameState, t: Target, def: IdeaDef, builds: number): MenuNode {
+  const odds = whyNodes(g, buildQuote(g, readWorkshop(g), def, builds, 'safe'), `ws.${t.kind}.${t.id}.why`)[0]!
+  return { ...odds, text: `${typeof odds.text === 'string' ? odds.text : ''} (playing it safe)` }
 }
 
 function patentActions(t: Target, name: string, home: boolean): MenuAction[] {
@@ -129,7 +139,7 @@ function ideaNode(g: GameState, idea: NoteIdea): MenuGroup {
       ]
       if (isFirst(gg, def)) nodes.push({ type: 'info', id: `ws.idea.race.${idea.id}`, emoji: '\u{23F3}', text: def.future ? `Future race: rivals are close. Get it on the market by ${raceYear(gg, def)} and it's yours.` : `History race: get it on the market by ${def.real} and the world will remember you.` })
       // Patent and launch rows appear once they can matter; until then the quality line says how to unlock them.
-      nodes.push(buildAction(t, def), ...(cur.q >= PATENT_MIN ? patentActions(t, def.name, true) : []), ...(cur.q >= LAUNCH_MIN ? [launchMenu(t, def.name)] : []), {
+      nodes.push(buildAction(t, def), whyRow(gg, t, def, cur.builds), ...(cur.q >= PATENT_MIN ? patentActions(t, def.name, true) : []), ...(cur.q >= LAUNCH_MIN ? [launchMenu(t, def.name)] : []), {
         type: 'action', id: `ws.scrap.${idea.id}`, label: 'Scrap This Idea', emoji: '\u{1F5D1}\u{FE0F}', subtitle: 'Frees a page in your notebook',
         confirm: () => `Crumple up the ${def.name}?`, run: (g2) => { scrapIdea(g2, idea.id) },
       })
@@ -151,7 +161,7 @@ export function inventionNodes(g: GameState, a: Asset): MenuNode[] {
   if (inv.stage === 'patented') {
     nodes.push({ type: 'info', id: `ws.inv.wait.${a.id}`, emoji: '\u{1F4E6}', text: `Not on sale yet. Worth about ${formatMoney(a.value)} to a buyer today.${isFirst(g, def) ? ` Beat history: launch by ${raceYear(g, def)}!` : ''}` })
     const hint = (gg: GameState) => { const b = bench(gg, t); return b ? benchHint(gg, readWorkshop(gg), b) || null : null }
-    nodes.push({ ...buildAction(t, def), hint }, ...(inv.patent?.scope === 'home' ? patentActions(t, def.name, false) : []), launchMenu(t, def.name))
+    nodes.push({ ...buildAction(t, def), hint }, whyRow(g, t, def, inv.builds), ...(inv.patent?.scope === 'home' ? patentActions(t, def.name, false) : []), launchMenu(t, def.name))
     return nodes
   }
   const since = inv.launched > g.year - 1 ? `On sale from ${inv.launched}` : `On sale since ${inv.launched}`
@@ -190,6 +200,33 @@ function inventionNode(g: GameState, o: Owned): MenuGroup {
   return { type: 'menu', id: `ws.inv.${o.a.id}`, label: o.a.name, emoji: o.a.emoji, subtitle: inventionSubtitle(g, o.a), children: (gg) => { const cur = findInvention(gg, o.a.id); return cur ? inventionNodes(gg, cur.a) : [{ type: 'info', id: `ws.inv.gone2.${o.a.id}`, text: 'You no longer own this.' }] } }
 }
 
+/** What the bench gives a build: a line for lab access when there is any, and the hire or the release of an assistant. Pure. */
+function benchNodes(g: GameState): MenuNode[] {
+  const nodes: MenuNode[] = []
+  const t = toolsFrom(g)
+  if (t.from !== 'none') {
+    const quality = Math.round(WORKSHOP_TOOLS_MAX * t.tools * 10) / 10
+    const cut = Math.round(15 * t.tools)
+    nodes.push({ type: 'info', id: 'ws.bench.tools', emoji: '\u{1F52C}', text: `${t.from === 'school' ? 'School lab' : 'Company lab'}: builds gain ${quality} quality and blow up ${cut}% less often.` })
+  }
+  const helper = readWorkshop(g).helper
+  const wage = formatMoney(helperWage(g))
+  if (helper) {
+    nodes.push({
+      type: 'action', id: 'ws.helper.release', label: 'Let Your Assistant Go', emoji: '\u{1F9F0}',
+      subtitle: `Skill ${Math.round(helper.skill)} · ${wage} a year · +${Math.round((HELPER_CENTRE_MAX * helper.skill) / 10) / 10} quality`,
+      confirm: () => "Let your assistant go? This year's pay isn't refunded.", run: (gg) => { releaseHelper(gg) },
+    })
+  } else {
+    nodes.push({
+      type: 'action', id: 'ws.helper.hire', label: 'Hire a Bench Assistant', emoji: '\u{1F9F0}',
+      subtitle: `${wage} a year · up to +${HELPER_CENTRE_MAX} quality, fewer blow-ups, +${HELPER_SKILL_STEP} skill a year`,
+      disabledReason: (gg) => helperBlock(gg), confirm: (gg) => `Hire an assistant for ${formatMoney(helperWage(gg))} a year?`, run: (gg) => { hireHelper(gg) },
+    })
+  }
+  return nodes
+}
+
 function howItWorks(): MenuGroup {
   const lines = [
     '\u{1F4AD} Ideas land in your notebook (max 12): brainstorm, or wait for inspiration.',
@@ -226,10 +263,10 @@ export const workshopMenu: MenuGroup = {
     const ws = readWorkshop(g)
     const nodes: MenuNode[] = [{
       type: 'action', id: 'ws.brainstorm', label: 'Brainstorm', emoji: '\u{1F4AD}',
-      subtitle: (gg) => `${BRAINSTORMS - Math.min(BRAINSTORMS, yearActionsUsed(gg, 'workshop.brainstorm'))}/${BRAINSTORMS} left this year`,
+      subtitle: (gg) => `${BRAINSTORMS - Math.min(BRAINSTORMS, yearActionsUsed(gg, 'workshop.brainstorm') / BRAINSTORM_WEEKS)}/${BRAINSTORMS} left this year · ${BRAINSTORM_WEEKS} focus week each`,
       hint: (gg) => talentHint(gg, 'Inventor', `${Math.round(brainstormOdds(gg, readWorkshop(gg)) * 100)}% chance of an idea`) || null,
       disabledReason: (gg) => brainstormBlock(gg), run: (gg) => { brainstorm(gg) },
-    }]
+    }, ...benchNodes(g)]
     nodes.push({ type: 'heading', id: 'ws.notebookH', label: `Notebook (${ws.ideas.length}/${NOTEBOOK_MAX})` })
     if (!ws.ideas.length) nodes.push({ type: 'info', id: 'ws.notebook.empty', text: 'Your notebook is empty. Brainstorm, or wait for inspiration to strike.' })
     const sorted = [...ws.ideas].sort((x, y) => Number(historyOpen(g, noteDef(y))) - Number(historyOpen(g, noteDef(x))) || y.q - x.q)

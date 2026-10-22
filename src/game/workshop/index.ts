@@ -5,6 +5,7 @@ export { readWorkshop, mutWorkshop, inventions, findInvention, candidates, isGen
 export { readInv, migrateLegacy, legacyPatents, needsMigration } from './migrate'
 export { legacyInventionCapital, legacyInventionStock } from './legacy-capital'
 export { brainstorm, buildOdds, buildWhy, resolveBuild, startBuild } from './build'
+export { hireHelper, releaseHelper, workshopHelpers, workshopTools } from './bench'
 export { acceptOffer, filePatent, giveAway, license, makeInCompany, pitch, runCrowd, sellStream, shopRights } from './launch'
 export { yearlyWorkshop, settleInventions } from './yearly'
 export { workshopMenu, inventionNodes, inventionSubtitle } from './menu'

@@ -1,10 +1,12 @@
 // Building prototypes and brainstorming. buildOdds/brainstormOdds are pure and are exactly the
 // probabilities the resolvers roll against, so the Inventor talent's purple hints are honest.
-import { addStat, count, formatMoney, log, notice, scriptChoice, spend, useYearAction, yearActionsUsed } from '../core'
+import { addStat, count, formatMoney, log, notice, scriptChoice, spend, yearActionsUsed } from '../core'
 import { goodsMult } from '../assets'
+import { FOCUS_WEEKS, focusLeft, focusPreview, focusReason, spendFocus } from '../effort/focus'
 import { newFx } from '../effort/fx'
+import { burnedOut } from '../effort/persona'
 import { step } from '../effort/step'
-import type { Outcome, Reason } from '../effort/types'
+import type { Outcome, Quote, Reason } from '../effort/types'
 import { payoffLine } from '../effort/why'
 import { ageCeiling, capAt, liftSkill } from '../mastery'
 import { rand } from '../rng'
@@ -12,8 +14,8 @@ import { defineScript } from '../scripts'
 import { hasMainCharacter, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Json } from '../types'
 import { type IdeaDef } from './catalog'
-import { BUILD_COST, brainstormChance, buildNumbers, buildReasons, buildTask, type BuildFacts } from './effort'
-import { addIdea, addRep, drawIdea, findIdea, findInvention, isGenius, logIdea, mutWorkshop, readWorkshop, storeInv, workshopBlock } from './notebook'
+import { BUILD_COST, brainstormChance, buildLineQuote, buildNumbers, buildReasons, buildTask, type BuildFacts } from './effort'
+import { addIdea, addRep, drawIdea, findIdea, findInvention, helperShare, isGenius, logIdea, mutWorkshop, readWorkshop, storeInv, workshopBlock, workshopTools } from './notebook'
 import { NOTEBOOK_MAX, noteDef, rec, text, type Workshop } from './state'
 
 export type Approach = 'safe' | 'bold' | 'cheap'
@@ -24,11 +26,35 @@ export const APPROACHES: Record<Approach, { label: string; emoji: string; cost: 
 }
 export const MASTERPIECE = 88
 
-export function buildLimit(g: GameState): number {
-  return isGenius(g) ? 5 : 3
+/** Focus weeks one brainstorm takes, and how many brainstorms a year the pool is planned for. */
+export const BRAINSTORM_WEEKS = 1
+export const BRAINSTORMS = 2
+/** Builds a year may run past the limit, as overtime (fatigue at the year's end). Past these a year is over, however many weeks are left. */
+export const MAX_OVERTIME_BUILDS = 2
+
+/** Focus weeks one build takes out of the year's pool of 12: 3, or 2 for a genius (the Inventor talent builds faster). */
+export function buildWeeks(g: GameState): number {
+  return isGenius(g) ? 2 : 3
 }
+/** The builds a year plans for: what the pool holds beside two brainstorms (3, or 5 for a genius). Past it a build is overtime. */
+export function buildLimit(g: GameState): number {
+  return Math.floor((FOCUS_WEEKS - BRAINSTORMS * BRAINSTORM_WEEKS) / buildWeeks(g))
+}
+/** Builds made this year. The counter counts focus weeks, like every key of the pool. */
+function buildsMade(g: GameState): number {
+  return Math.floor(yearActionsUsed(g, 'workshop.build') / buildWeeks(g))
+}
+/** Builds the pool still holds without overtime: the weeks left over the weeks a build takes. */
 export function buildsLeft(g: GameState): number {
-  return Math.max(0, buildLimit(g) - yearActionsUsed(g, 'workshop.build'))
+  return Math.floor(focusLeft(g) / buildWeeks(g))
+}
+/** What a build spends of the pool; the key's own full is the limit's weeks (the weeks past it are worth half, which a build does not use). */
+const buildFull = (g: GameState): number => buildLimit(g) * buildWeeks(g)
+
+/** What a bench assistant is paid a year at nominal prices (bench.ts hires one), and at local prices. */
+export const HELPER_WAGE = 4000
+export function helperWage(g: GameState): number {
+  return Math.round(HELPER_WAGE * goodsMult(g))
 }
 
 /** Prototype cost (local prices); kids under 16 build easy things from scrap for free. */
@@ -48,9 +74,9 @@ export function effectiveSkill(g: GameState, ws: Workshop): number {
   return hasMainCharacter(g) ? Math.max(ws.skill, ageCeiling(g.character.age, SKILL_CEILING)) : ws.skill
 }
 
-/** What a build reads of the maker (pure): effective skill, smarts, whether a genius, and the idea's earlier builds. */
+/** What a build reads of the maker (pure): effective skill, smarts, whether a genius, the idea's earlier builds, lab access and the assistant. */
 function factsOf(g: GameState, ws: Workshop, builds: number): BuildFacts {
-  return { skill: effectiveSkill(g, ws), smarts: g.character.stats.smarts, genius: isGenius(g), builds }
+  return { skill: effectiveSkill(g, ws), smarts: g.character.stats.smarts, genius: isGenius(g), builds, tools: workshopTools(g), helper: helperShare(ws) }
 }
 
 /**
@@ -66,6 +92,10 @@ export function buildOdds(g: GameState, ws: Workshop, def: IdeaDef, builds: numb
 /** The labelled lines of a build's odds ("your skill +3, hard build -6, know-how +5"), for a panel to print with the core's `oddsLine`. Pure. */
 export function buildWhy(g: GameState, ws: Workshop, def: IdeaDef, builds: number, approach: Approach): readonly Reason[] {
   return buildReasons(g, factsOf(g, ws, builds), def, APPROACHES[approach])
+}
+/** A build's quote for the odds line of a menu (`whyNodes`): the odds it works as rolled, with every labelled term. Pure. */
+export function buildQuote(g: GameState, ws: Workshop, def: IdeaDef, builds: number, approach: Approach): Quote {
+  return buildLineQuote(g, factsOf(g, ws, builds), def, APPROACHES[approach])
 }
 const round2 = (x: number) => Math.round(x * 10_000) / 10_000
 const pct = (x: number) => `${Math.round(x * 100)}%`
@@ -93,7 +123,8 @@ export function buildBlock(g: GameState, t: Target): string | null {
   const reason = workshopBlock(g)
   if (reason) return reason
   if (!benchOf(g, readWorkshop(g), t)) return 'That idea is no longer on your bench.'
-  if (buildsLeft(g) <= 0) return `You're out of workshop time this year (${buildLimit(g)} builds).`
+  if (burnedOut(g)) return "You're burned out. Rest before you build again."
+  if (buildsMade(g) >= buildLimit(g) + MAX_OVERTIME_BUILDS || focusReason(g, 'workshop.build', buildFull(g), buildWeeks(g)) !== null) return "You're out of workshop time this year."
   return null
 }
 
@@ -132,7 +163,8 @@ export function startBuild(g: GameState, t: Target): void {
     return
   }
   choices.push({ id: 'cancel', label: 'Not today', emoji: '\u{1F6AA}' })
-  scriptChoice(g, BUILD_SCRIPT, `Build: ${bench.def.name}`, `${bench.def.emoji} How do you build it? ${bench.q ? `Best so far: ${Math.round(bench.q)}/100.` : 'First attempt!'}`, choices, { emoji: '\u{1F527}', data: { kind: t.kind, id: t.id } as unknown as Json })
+  const tires = focusPreview(g, 'workshop.build', buildFull(g), buildWeeks(g)).overtime > 0 ? ' This build runs past your focus weeks and will tire you.' : ''
+  scriptChoice(g, BUILD_SCRIPT, `Build: ${bench.def.name}`, `${bench.def.emoji} How do you build it? ${bench.q ? `Best so far: ${Math.round(bench.q)}/100.` : 'First attempt!'}${tires}`, choices, { emoji: '\u{1F527}', data: { kind: t.kind, id: t.id } as unknown as Json })
 }
 
 /**
@@ -161,7 +193,7 @@ export function resolveBuild(g: GameState, t: Target, approach: Approach): { res
   if (!bench) return null
   const cost = buildCost(g, bench.def, approach)
   if (!spend(g, cost, 'purchase')) return null
-  useYearAction(g, 'workshop.build', buildLimit(g))
+  spendFocus(g, 'workshop.build', buildFull(g), buildWeeks(g))
   // Main Character Syndrome: the first build lifts inventing skill to what this age allows.
   ws.skill = liftSkill(g, 'workshop.inventing', 'craft', 'inventing', ws.skill, ageCeiling(g.character.age, SKILL_CEILING))
   const odds = buildOdds(g, ws, bench.def, bench.builds, approach)
@@ -227,8 +259,6 @@ const BUILD_SCRIPT = defineScript('workshop.build', (g, choice, data) => {
 // ---------------------------------------------------------------------------
 // Brainstorming
 
-export const BRAINSTORMS = 2
-
 /** Exact chance a brainstorm produces an idea (pure). On the effort engine like a build: today's number at the default actor. */
 export function brainstormOdds(g: GameState, ws: Workshop): number {
   return brainstormChance(g, factsOf(g, ws, 0))
@@ -237,7 +267,9 @@ export function brainstormOdds(g: GameState, ws: Workshop): number {
 export function brainstormBlock(g: GameState): string | null {
   const reason = workshopBlock(g)
   if (reason) return reason
-  if (yearActionsUsed(g, 'workshop.brainstorm') >= BRAINSTORMS) return 'Your brain needs a rest. Two brainstorms a year.'
+  if (yearActionsUsed(g, 'workshop.brainstorm') >= BRAINSTORMS * BRAINSTORM_WEEKS) return 'Your brain needs a rest. Two brainstorms a year.'
+  const pool = focusReason(g, 'workshop.brainstorm', BRAINSTORMS * BRAINSTORM_WEEKS, BRAINSTORM_WEEKS)
+  if (pool) return pool
   if (readWorkshop(g).ideas.length >= NOTEBOOK_MAX) return 'Your notebook is full. Scrap an idea first.'
   return null
 }
@@ -247,7 +279,7 @@ const BLANK = ['You stared at a blank page for an hour. The page won.', 'You had
 export function brainstorm(g: GameState): IdeaDef | null {
   if (brainstormBlock(g)) return null
   const ws = mutWorkshop(g)
-  useYearAction(g, 'workshop.brainstorm', BRAINSTORMS)
+  spendFocus(g, 'workshop.brainstorm', BRAINSTORMS * BRAINSTORM_WEEKS, BRAINSTORM_WEEKS)
   if (rand(g) >= brainstormOdds(g, ws)) {
     notice(g, '\u{1F4AD} Brainstorm', line(g, BLANK, ''), { emoji: '\u{1F4AD}' })
     return null

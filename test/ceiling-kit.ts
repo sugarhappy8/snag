@@ -31,6 +31,10 @@ import { readFirms } from '../src/game/world/firms'
 import { readHomes } from '../src/game/world/homes'
 import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod'
 import { readPeople } from '../src/game/world/people'
+import { APPROACHES, MAX_OVERTIME_BUILDS, buildLimit, resolveBuild } from '../src/game/workshop/build'
+import { catalogIdea, type Level } from '../src/game/workshop/catalog'
+import { HELPER_CENTRE_MAX, WORKSHOP_TOOLS_MAX, buildNumbers } from '../src/game/workshop/effort'
+import { addIdea, mutWorkshop } from '../src/game/workshop/notebook'
 import '../src/game/world/shards'
 import { makeTestGame } from './helpers'
 import { flowTotal } from './ledger-kit'
@@ -156,6 +160,58 @@ function adaptationRow(id: string, cap: string, pick: 'fee' | 'annual'): Ceiling
   }
 }
 
+/** `x` to nine decimals, so a float that lands one step past a round limit does not read as over it. */
+const to9 = (x: number): number => Math.round(x * 1e9) / 1e9
+
+/**
+ * R3-M9: builds a year. An ordinary inventor and a genius with `scale` times the money build until the Workshop refuses; the count is at
+ * most the year's limit plus the two overtime builds.
+ */
+function workshopOvertimeRow(): CeilingProbe {
+  return {
+    id: 'workshop-overtime',
+    cap: "a year's builds stop at the pool's limit plus two overtime builds, whatever the weeks, money or skill (R3-M9)",
+    run: (scale) => {
+      const t = tightest()
+      for (const genius of [false, true]) {
+        const g = makeTestGame(7, { age: 30, money: 5_000_000 * scale, talents: genius ? ['Inventor'] : [], countryId: 'us' })
+        g.year = 2026
+        addIdea(g, mutWorkshop(g), catalogIdea('pocket-tool')!)
+        let made = 0
+        while (made < 1000 && resolveBuild(g, { kind: 'idea', id: 'pocket-tool' }, 'cheap')) made += 1
+        t.add(made, buildLimit(g) + MAX_OVERTIME_BUILDS, `${genius ? 'a genius' : 'an ordinary inventor'} with ${scale}x the money`)
+      }
+      return t.result()
+    },
+  }
+}
+
+/**
+ * R3-M9: what the bench adds to a build. Lab access and an assistant are fed `scale` times their full value (and Infinity is read as full);
+ * the quality centre gains at most 5 and 3 points, and the blow-up chance falls by at most 1 - 0.85 x 0.92.
+ */
+function workshopToolsRow(): CeilingProbe {
+  return {
+    id: 'workshop-tools',
+    cap: 'lab access adds at most 5 quality points to a build and an assistant at most 3, and blow-ups never fall below 78 percent of their chance (R3-M9)',
+    run: (scale) => {
+      const t = tightest()
+      const g = lifeIn('us', 2026)
+      for (const ap of Object.values(APPROACHES)) {
+        for (const d of [1, 3, 5] as Level[]) {
+          const def = { cat: 'gadget' as const, d }
+          const base = { skill: 0, smarts: 50, genius: false, builds: 0 }
+          const none = buildNumbers(g, base, def, ap)
+          const full = buildNumbers(g, { ...base, tools: scale, helper: scale }, def, ap)
+          t.add(to9((full.low + full.high - (none.low + none.high)) / 2), to9(WORKSHOP_TOOLS_MAX + HELPER_CENTRE_MAX), `the quality centre at ${scale}x, difficulty ${d}`)
+          t.add(to9(1 - full.kaboom / none.kaboom), to9(1 - 0.85 * 0.92), `the blow-up cut at ${scale}x, difficulty ${d}`)
+        }
+      }
+      return t.result()
+    },
+  }
+}
+
 /** A saved fame profile in a life of fame 100, one year of fame upkeep, and what the profile holds after it. */
 function fameYear(profile: Record<string, unknown>): { podcast: { listeners: number } | null; books: { earned: number; royalty: number }[] } {
   const g = makeTestGame(1, { age: 30, money: 0 })
@@ -248,6 +304,8 @@ const LIFE_ROWS: readonly CeilingProbe[] = [
   },
   adaptationRow('adaptation-fee', 'an adaptation fee stops at 150 times the typical income (R0-8)', 'fee'),
   adaptationRow('adaptation-royalty', 'adaptation royalties stop at 15 times the typical income a year (R0-8)', 'annual'),
+  workshopOvertimeRow(),
+  workshopToolsRow(),
   {
     id: 'podcast-audience',
     cap: '30,000,000 listeners (R0-14)',

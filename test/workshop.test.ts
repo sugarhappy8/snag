@@ -19,7 +19,7 @@ import { SPECIAL_TALENTS } from '../src/game/talents'
 import { TALENTS } from '../src/game/life'
 import type { ChoiceModal, GameState, MenuAction, MenuNode } from '../src/game/types'
 import { ALL_IDEAS, CATEGORIES, HISTORY, IDEAS, catalogIdea } from '../src/game/workshop/catalog'
-import { APPROACHES, brainstorm, brainstormOdds, buildCost, buildOdds, buildLimit, resolveBuild, skillGain, startBuild, type Approach } from '../src/game/workshop/build'
+import { APPROACHES, MAX_OVERTIME_BUILDS, brainstorm, brainstormOdds, buildCost, buildOdds, buildLimit, resolveBuild, skillGain, startBuild, type Approach } from '../src/game/workshop/build'
 import {
   benchFor, benchHint, crowdBlock, dealsLeft, filePatent, giveAway, launchBlock, license, makeInCompany, patentBlock, pitch, routeQuotes, runCrowd, sellStream, shopRights, subjectOf,
 } from '../src/game/workshop/launch'
@@ -191,16 +191,16 @@ describe('building prototypes', () => {
     expect(bold.hint).toContain(`${Math.round(o.master * 100)}%`)
   })
 
-  it('grows skill with diminishing returns, twice as fast for a genius, and limits builds per year', () => {
+  it('grows skill with diminishing returns, twice as fast for a genius, and limits builds per year to the limit and two overtime builds', () => {
     const g = inventor()
     expect(skillGain(g, 0, 3, 'works')).toBeGreaterThan(skillGain(g, 50, 3, 'works'))
     expect(skillGain(g, 50, 3, 'works')).toBeGreaterThan(skillGain(g, 90, 3, 'works'))
     expect(skillGain(inventor({ genius: true }), 40, 3, 'works')).toBeCloseTo(skillGain(g, 40, 3, 'works') * 2)
     give(g, 'pocket-tool', 0)
-    for (let i = 0; i < buildLimit(g); i++) expect(resolveBuild(g, idea('pocket-tool'), 'cheap')).not.toBeNull()
+    for (let i = 0; i < buildLimit(g) + MAX_OVERTIME_BUILDS; i++) expect(resolveBuild(g, idea('pocket-tool'), 'cheap')).not.toBeNull()
     expect(resolveBuild(g, idea('pocket-tool'), 'cheap')).toBeNull()
     expect(readWorkshop(g).skill).toBeGreaterThan(0)
-    expect(counter(g, 'prototypes')).toBe(3)
+    expect(counter(g, 'prototypes')).toBe(5)
     expect(buildLimit(inventor({ genius: true }))).toBe(5)
   })
 
