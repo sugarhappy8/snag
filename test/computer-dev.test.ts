@@ -222,7 +222,7 @@ describe('getting a computer', () => {
 })
 
 describe('learning to code', () => {
-  it('tutorials raise skill and the language, three times a year', () => {
+  it('tutorials raise skill and the language, three times a year at full value and a fourth at half value (the focus pool)', () => {
     const g = kid(4, 12)
     giveLaptop(g)
     learnInternals.studyTutorial(g, 'python')
@@ -231,8 +231,16 @@ describe('learning to code', () => {
     learnInternals.studyTutorial(g, 'python')
     learnInternals.studyTutorial(g, 'scratch')
     const s = codingSkill(g)
+    // The same draws once at full value (the twin's counter is back at zero) and once as the fourth of the year.
+    const twin = structuredClone(g)
+    twin.yearActions = {}
+    learnInternals.studyTutorial(twin, 'python')
     learnInternals.studyTutorial(g, 'python')
-    expect(codingSkill(g)).toBe(s)
+    expect(g.counters.codingSessions).toBe(4)
+    const full = codingSkill(twin) - s
+    const half = codingSkill(g) - s
+    expect(half).toBeGreaterThanOrEqual(0)
+    expect(half).toBeLessThanOrEqual(full)
     expect(screenTime(g)).toBeGreaterThan(0)
   })
 

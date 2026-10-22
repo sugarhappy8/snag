@@ -2,6 +2,7 @@
 // Books, diet, martial arts and the memory test live in their own files.
 import { personCash } from '../cash'
 import { addHidden, addMoney, addRelationship, addStat, count, log, relationLabel, remember, scriptChoice, useYearAction } from '../core'
+import { FOCUS_FULL_TEXT, focusPreview, focusReason, spendFocus } from '../effort/focus'
 import { createPerson, notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
@@ -946,11 +947,11 @@ export function skillLevel(g: GameState, id: string): number {
 }
 
 function takeLesson(g: GameState, l: LessonDef): void {
-  if ((g.yearActions[`act.lesson.${l.id}`] ?? 0) >= 3) {
-    result(g, l.label, pickLine(g, [
-      'Your coach says you need a break. Come back next year.',
-      "You've taken enough lessons this year. Your coach is out of new exercises.",
-    ]), l.emoji)
+  // A week of the year's focus pool (effort/focus.ts). The check comes before the coach is paid; the fourth lesson of a year is
+  // worth half, and the 25th week is refused.
+  const key = `act.lesson.${l.id}`
+  if (!focusPreview(g, key, 3).ok) {
+    result(g, l.label, FOCUS_FULL_TEXT, l.emoji)
     return
   }
   const cost = localPrice(g, l.price)
@@ -959,14 +960,14 @@ function takeLesson(g: GameState, l: LessonDef): void {
     brokeNotice(g, cost, l.label.toLowerCase())
     return
   }
-  useYearAction(g, `act.lesson.${l.id}`, 3)
+  const use = spendFocus(g, key, 3)
   count(g, `${l.id}Lessons`)
   const talented = hasTalent(g, l.id === 'acting' ? 'Acting' : l.id === 'voice' ? 'Music' : 'Modeling')
   const lessonTop = l.id === 'modeling' ? ageCeiling(g.character.age, { from: 12, full: 18, floor: 45 }) : ageCeiling(g.character.age, { from: 6, full: 17, floor: 30 })
   const prior = skillLevel(g, l.id)
   // Main Character Syndrome: the first lesson is already mastery (to the age ceiling).
   const before = liftSkill(g, `lesson.${l.id}`, 'stage', l.label.replace(/ Lessons?$/, '').toLowerCase(), prior, lessonTop)
-  const grown = Math.min(100, before + Math.round(randInt(g, 5, 13) * (talented ? 1.7 : 1)))
+  const grown = Math.min(100, before + Math.round(randInt(g, 5, 13) * (talented ? 1.7 : 1) * use.mult))
   const after = capAt(g, grown, lessonTop, before)
   g.flags[`skill.${l.id}`] = after
   addStat(g, 'happiness', randInt(g, 1, 4))
@@ -985,7 +986,7 @@ function lessonAction(l: LessonDef): MenuAction {
     emoji: l.emoji,
     subtitle: (g) => `${money(localPrice(g, l.price))} · Skill: ${skillLevel(g, l.id)}%`,
     visible: (g) => !g.character.prison,
-    disabledReason: (g) => gate(g, { minAge: l.minAge }),
+    disabledReason: (g) => gate(g, { minAge: l.minAge }) ?? focusReason(g, `act.lesson.${l.id}`, 3),
     run: (g) => takeLesson(g, l),
   }
 }
