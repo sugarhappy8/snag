@@ -8,15 +8,15 @@ import { personCash } from '../cash'
 import { fullName, log, notice, spend } from '../core'
 import { typicalIncome } from '../events/wealth-core'
 import { isEstranged, willRole } from '../events/will-core'
-import { gameIncomeTax } from '../finance'
 import { lossCarry, minTrade, realize } from '../investments'
+import { capitalGainsTax } from '../nation/rates'
 import { uid } from '../rng'
 import type { Asset, GameState, Json, Person } from '../types'
 import { cashOutFamilyHolders, familyStakeHeirs } from './dynasty-ownership'
 import type { HedgeStrategy, MacroCall } from './fund-state'
 import { macroBlock, marketBlock, personBlock, seedMin, strategyBlock } from './hedge-model'
 import { HEDGE_STRATEGY_IDS, MACRO_CALL_IDS, MAX_HOLDERS, readHedge, RUNNING_COST, unitPrice, unitsValue, type HedgeFund, type Holder } from './hedge-record'
-import { clampN, money, num, pct } from './util'
+import { clampN, money, pct } from './util'
 
 /** The share of their own savings a relative puts in. */
 export const INVITE_SHARE = 0.2
@@ -202,9 +202,9 @@ export interface TakeQuote {
 
 /**
  * What taking out `fraction` (0 to 1) of your units pays, before tax, and what the tax on the gain
- * would be (the way an investment sale is taxed: carried losses first, then the marginal rate). A take
- * out that is all of it, or leaves less than the smallest trade, closes the fund: then the quote is for
- * all your units and `relatives` is what the relatives get. Pure.
+ * would be (the way an investment sale is taxed: carried losses first, then the nation's capital gains
+ * rate). A take out that is all of it, or leaves less than the smallest trade, closes the fund: then
+ * the quote is for all your units and `relatives` is what the relatives get. Pure.
  */
 export function takeQuote(g: GameState, fund: HedgeFund, fraction: number): TakeQuote {
   const f = merged(g, fund)
@@ -216,8 +216,7 @@ export function takeQuote(g: GameState, fund: HedgeFund, fraction: number): Take
   const basis = Math.round(f.cost * part)
   const gain = gross - basis
   const taxable = Math.max(0, gain - Math.min(lossCarry(g), Math.max(0, gain)))
-  const before = Math.max(0, num(g.flags.taxableIncome))
-  const tax = taxable > 0 ? Math.max(0, gameIncomeTax(g, before + taxable) - gameIncomeTax(g, before)) : 0
+  const tax = capitalGainsTax(g, taxable, 0)
   const relatives = closes ? f.holders.reduce((sum, h) => sum + unitsValue(f, h.units), 0) : 0
   return { gross, basis, gain, tax, closes, relatives }
 }

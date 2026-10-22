@@ -27,6 +27,8 @@ import {
   type SectorId,
 } from '../src/game/invest/engine'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
+import { capitalGainsRate, capitalGainsTax } from '../src/game/nation/rates'
+import { flowTotal } from './ledger-kit'
 import { makeTestGame } from './helpers'
 
 function adult(countryId = 'us', money = 1_000_000, seed = 7): GameState {
@@ -291,7 +293,7 @@ describe('trading', () => {
     sane(g)
   })
 
-  it('taxes realized gains at the income tax rate, after carried-forward losses', () => {
+  it("taxes realized gains at the nation's capital gains rate, after carried-forward losses", () => {
     const g = adult('us', 200_000)
     g.flags.taxableIncome = 80_000
     const q = quote(g, 'stock', 0)
@@ -302,17 +304,24 @@ describe('trading', () => {
     a.value = Math.round((a.details.units as number) * (a.details.price as number))
     g.flags.investLossCarry = 5_000
     const before = g.character.money
+    const basis = a.details.basis as number
     sellHolding(g, a.id, 'all')
-    const tax = g.flags.taxesPaid as number
+    // R2-L13 (F38): the tax is the capital gains rate on the gain after the old losses, withheld at the sale and booked to the
+    // government as tax.capgains. It no longer comes through taxable income or the income tax's credit.
+    const tax = flowTotal(g, 'tax.capgains', 'gov')
     expect(tax).toBeGreaterThan(0)
-    // Roughly 50K gain, 5K offset by old losses, taxed at a US marginal rate.
+    // Roughly 50K gain, 5K offset by old losses, taxed at a US rate.
     expect(tax).toBeGreaterThan(45_000 * 0.15)
     expect(tax).toBeLessThan(45_000 * 0.5)
+    const net = -flowTotal(g, 'trade.sell', 'pool')
+    expect(tax).toBe(Math.round((net - basis - 5_000) * capitalGainsRate(g)))
     expect(g.flags.investLossCarry).toBe(0)
+    expect(g.flags.taxesPaid ?? 0).toBe(0)
     const fee = Math.round(a.value * 0.0012)
-    expect(g.character.money - before).toBeGreaterThan(a.value - fee * 3 - tax)
+    expect(net).toBeGreaterThan(a.value - fee * 3)
+    expect(g.character.money - before).toBe(net - tax)
     const n = g.queue.filter((m) => m.kind === 'notice' && m.title === 'Order Filled').pop()
-    expect(n && n.kind === 'notice' ? n.text : '').toMatch(/Profit: .* tax/)
+    expect(n && n.kind === 'notice' ? n.text : '').toMatch(/Profit: .* capital gains tax/)
   })
 
   it('rejects bad orders', () => {
@@ -609,7 +618,10 @@ describe('the yearly market', () => {
     yearlyInvestments(g)
 
     const expected = Math.round(priorValue * (1 + acquired.ended.premium))
-    expect(g.character.money).toBe(expected)
+    // R2-L13 (F38): a gain pays the capital gains tax at the settlement, so the cash is the proceeds less that tax. The proceeds
+    // themselves, read from the ledger's sale row, are the bounded settlement and nothing more.
+    expect(-flowTotal(g, 'trade.sell', 'pool')).toBe(expected)
+    expect(g.character.money).toBe(expected - capitalGainsTax(g, expected, priorValue))
     expect(g.character.money).toBeLessThan(1e15)
     expect(investmentHoldings(g)).toHaveLength(0)
 

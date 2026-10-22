@@ -2,7 +2,6 @@
   "v": 2,
   "files": {
     "src/game/cash.ts": { ".cash =": 1, ".money =": 4 },
-    "src/game/core.ts": { ".money =": 3 },
-    "src/game/investments.ts": { "earnIncome": 3, "addMoney": 3, "spend": 1 }
+    "src/game/core.ts": { ".money =": 3 }
   }
 }

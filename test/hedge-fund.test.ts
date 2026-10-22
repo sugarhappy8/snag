@@ -22,6 +22,7 @@ import { createPerson } from '../src/game/people'
 import type { GameState, NoticeModal, Person } from '../src/game/types'
 import { COUNTRIES } from '../src/game/world'
 import { kin, rich } from './hedge-kit'
+import { flowTotal } from './ledger-kit'
 import { newLeader } from './politics-kit'
 
 function deepFreeze<T>(v: T): T {
@@ -236,9 +237,11 @@ describe('putting in and taking out', () => {
     const after = fundOf(g, 'person')!
     expect(g.character.money - cash).toBeGreaterThanOrEqual(q.gross - q.tax - 1)
     expect(g.character.money - cash).toBeLessThanOrEqual(q.gross - q.tax + 1)
-    expect(((g.flags.taxableIncome as number) ?? 0) - income).toBe(q.gain)
-    expect(((g.flags.taxesPaid as number) ?? 0) - taxes).toBeGreaterThanOrEqual(q.tax - 1)
-    expect(((g.flags.taxesPaid as number) ?? 0) - taxes).toBeLessThanOrEqual(q.tax + 1)
+    // R2-L13 (F38): the gain pays the nation's capital gains rate at the take out, booked to the government as tax.capgains. It is
+    // no longer income (taxableIncome) and it earns no credit against the income tax (taxesPaid).
+    expect(((g.flags.taxableIncome as number) ?? 0) - income).toBe(0)
+    expect(((g.flags.taxesPaid as number) ?? 0) - taxes).toBe(0)
+    expect(flowTotal(g, 'tax.capgains', 'gov')).toBe(q.tax)
     expect(after.f.cost).toBeCloseTo(500_000, 0)
     expect(after.f.mine).toBeCloseTo(500_000, 0)
     expect(after.f.nav).toBeCloseTo(600_000, 0)

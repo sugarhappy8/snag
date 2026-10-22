@@ -193,6 +193,9 @@ const MIGRATED: readonly string[] = [
   'src/game/business/state.ts',
   'src/game/business/supply-policy.ts',
   'src/game/business/venues.ts',
+  // R2-L13: the markets
+  'src/game/investments.ts',
+  'src/game/nation/rates.ts',
 ]
 
 /** The comment that says a raw `.cash` or `.money` write is not a purse. */

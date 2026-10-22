@@ -1,7 +1,7 @@
 // Leaving a business: selling it, listing it on a stock exchange, selling shares, going bankrupt.
 import { firmCash } from '../cash'
 import { addMoney, addStat, count, endJob, formatMoney, log, moneyWith, notice, remember } from '../core'
-import { exchangeFor, marketOf } from '../data/markets'
+import { exchangeFor } from '../data/markets'
 import { recordMissedPayment } from '../finance'
 import { bell } from '../rng'
 import { saleImpact } from '../invest/liquidity'
@@ -21,7 +21,7 @@ import { controlsFor } from './board-state'
 import { clampFounders, ownerVotes, planFactor, votesAfterIpo } from './share-classes'
 import { FLOAT_DEFAULT, ipoPlan, retailDepth, retailVerdict, shareCountOf, shareCountText, type IpoPlan } from './share-structure'
 import { listingMood } from '../history/market-events'
-import { personalTax } from '../nation/effects'
+import { capitalGainsTax } from '../nation/rates'
 
 /**
  * IPO threshold: last year's net profit. Set where a successful mid-size company gets to (about
@@ -37,18 +37,8 @@ export const IPO_PROFIT = 25_000_000
  */
 export const IPO_COLLAPSE = 0.5
 
-/** Capital gains tax rate on selling a business or shares where the owner lives. */
-export function capitalGainsRate(g: GameState): number {
-  const m = marketOf(g.character.countryId)
-  const change = personalTax(g, 'capitalGains') / 100
-  return change ? clampN(m.corporateTax * 0.8 + change, 0, 0.6) : clampN(m.corporateTax * 0.8, 0, 0.3)
-}
-
-/** Tax owed on proceeds above the owner's cost basis (scaled to the share sold). */
-export function capitalGainsTax(g: GameState, proceeds: number, basis: number): number {
-  const gain = proceeds - Math.max(0, basis)
-  return gain > 0 ? Math.round(gain * capitalGainsRate(g)) : 0
-}
+// The capital gains rate and tax live in nation/rates (a leaf, so investments.ts can read them without joining the import cycles).
+export { capitalGainsRate, capitalGainsTax } from '../nation/rates'
 
 function removeBusiness(g: GameState, a: Asset): void {
   g.assets = g.assets.filter((x) => x.id !== a.id)
