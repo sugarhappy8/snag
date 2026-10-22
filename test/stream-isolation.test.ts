@@ -259,12 +259,15 @@ describe('stream isolation: one extra draw on a named stream moves only the slic
 
 describe('stream isolation: the before, one extra rand(g) moves everything downstream', () => {
   it(
-    'an extra rand(g) after year 5 moves rng, character and text in each life, and at least four slices in all',
+    'an extra rand(g) after year 4 moves rng, character and text in each life, and at least four slices in all',
     () => {
       const extra = play(
         () => null,
         (_l, g, years) => {
-          if (years === 5) rand(g)
+          // Year 4, not 5 (R3-Q9): a later conditional roll can take one draw in the base life and none in the tapped one (the
+          // company event roll of business/events.ts), and the stream is then in step again. The wealth ask families moved the
+          // founder's life so that this happened from year 5, at every checkpoint; from year 4 both lives keep the property.
+          if (years === 4) rand(g)
         },
       )
       const { byLife, all } = movedIn(base().run, extra.run)

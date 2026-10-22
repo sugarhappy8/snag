@@ -90,7 +90,7 @@ const PERSONAL: readonly string[] = [
   'lux.lots', 'lux.showN', 'luxury.bought', 'luxury.secretary', 'luxury.society', 'luxury.societyBanned',
   'luxury.societyRejected', 'luxury.staff', 'martialArts', 'mcs.mastered', 'memoryBest', 'midlifeCrisis',
   'missedPayments', 'missedThisYear', 'mobGrudge', 'nation.me', 'nepo.favors', 'out', 'overdosed', 'parentsStatus',
-  'partTimeShifts', 'petBan', 'pregnancy', 'previousGeneration', 'prisonLife', 'professions', 'puberty',
+  'partTimeShifts', 'pendingAsks', 'petBan', 'pregnancy', 'previousGeneration', 'prisonLife', 'professions', 'puberty',
   'readDictionary', 'recordedGrave', 'recordedRibbon', 'recoveredAddictions', 'rehabSuccess', 'relapseAge',
   'royalPrivateHoldings', 'royalty', 'screenTime', 'selectiveExamTaken', 'sexualityRealized', 'sharedProjects',
   'skill.voice', 'special.actor.bollywood', 'special.actor.booed', 'special.actor.comforted',
@@ -104,7 +104,7 @@ const PERSONAL: readonly string[] = [
   'talentHintsUsed', 'talentNoticeAge', 'talentsRevealed', 'taxableIncome', 'taxesPaid', 'textMem', 'timeMachine',
   'trainRobbed', 'triedSpicyDiet', 'valedictorian', 'visitedWinnipeg', 'walkHeartAttack', 'wealth.bound.door',
   'wealth.bound.strangers', 'wealth.cd', 'wealth.donated', 'wealth.pending', 'will.escrow', 'will.pot',
-  'will.pressY', 'will.state', 'workshop',
+  'will.pressY', 'will.state', 'workshop', 'yearBook',
 ]
 
 // Keys built from a template or a helper. Each prefix here is a `flags[`prefix${x}`]` site in src/, bar heavy.,

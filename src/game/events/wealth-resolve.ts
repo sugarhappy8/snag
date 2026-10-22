@@ -8,7 +8,7 @@ import type { Reason } from '../kernel/reasons'
 import { touch } from '../love'
 import { chance, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
-import { BOUNDARY_LINES } from '../text/pools'
+import { BOUNDARY_LINES, GAVE_LINES, LENT_LINES, REFUSED_LINES } from '../text/pools'
 import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
@@ -250,8 +250,7 @@ export function giveFor(g: GameState, a: Ask, amount: number, kind: GiveKind): v
   addStat(g, 'happiness', def.need || (p && isKid(p)) ? randInt(g, 1, 3) : randInt(g, 0, 2))
   const extra = def.onGive ? def.onGive(g, a, p, amt, full) : ''
   const mine = p ? myOf(p) : myName(a)
-  const verb = a.buy ? `bought ${mine} ${what}` : `gave ${mine} ${money(amt)} for ${what}`
-  log(g, `I ${verb}${a.buy ? ` (${money(amt)})` : ''}.`, 'good')
+  log(g, a.buy ? `I bought ${mine} ${what} (${money(amt)}).` : fillSlots(pickLine(g, GAVE_LINES), { who: mine, money: money(amt), what }), 'good')
   const reaction = p ? (rel < 0 ? (share < 0.25 ? `${p.firstName} looked at the amount, then at you, then back at the amount.` : reactionLine(g, p, false)) : reactionLine(g, p, full)) : ''
   const you = a.buy ? `You bought ${whoOf(a, p)} ${what} for ${money(amt)}.` : `You gave ${whoOf(a, p)} ${money(amt)}${kind === 'less' && amt < a.amt ? ` (not the ${money(a.amt)} they asked for)` : ''}.`
   notice(g, a.title, [you, reaction, extra].filter(Boolean).join(' '), { emoji: a.emoji, tone: 'good' })
@@ -273,7 +272,7 @@ function lend(g: GameState, a: Ask): void {
   recordAsk(g, p, a.what, 'lend', a.amt)
   bumpRelationship(p, gratitude(p, (def.thanks ?? 8) * 0.6))
   count(g, 'wealthLoans')
-  log(g, `I lent ${myOf(p)} ${money(a.amt)} for ${a.what}.`)
+  log(g, fillSlots(pickLine(g, LENT_LINES), { who: myOf(p), money: money(a.amt), what: a.what }))
   const promise = pickLine(g, ['by the end of the year', 'as soon as things pick up', 'with interest, probably', '"soon"'])
   notice(g, a.title, `You lent ${p.firstName} ${money(a.amt)}. ${p.gender === 'male' ? 'He' : 'She'} promised to pay you back ${promise}. You'll find it under Relationships if you ever want to ask for it.`, { emoji: '\u{1F91D}' })
 }
@@ -311,7 +310,7 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
       bumpRelationship(p, randInt(g, 1, 3))
       if (isDescendant(p)) addEntitlement(p, -4)
       parts.push(`You told ${p.firstName} no. ${p.gender === 'male' ? 'He' : 'She'} sulked for a day, then admitted you had a point. Secretly, ${p.gender === 'male' ? 'he' : 'she'} respects it.`)
-      log(g, `I said no when ${myOf(p)} asked me for ${askedFor(a)}.`)
+      log(g, fillSlots(pickLine(g, REFUSED_LINES), { who: myOf(p), what: askedFor(a) }))
     } else {
       bumpRelationship(p, -refusalCost(g, a, def, p))
       if (isDescendant(p)) addEntitlement(p, -3)
@@ -321,7 +320,7 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
           ? pickSite(g, [`${p.firstName} called it "abuse" and slammed every door in the house.`, `${p.firstName} told everyone you're "basically broke," which is not how that works.`], 0x286ac511)
           : pickSite(g, [`${p.firstName} said "fine." It was not fine.`, `${p.firstName} pointed out how much you have. Several times.`, `Dinner was very quiet.`], 0x91ba553b),
       )
-      log(g, `I said no when ${myOf(p)} asked me for ${askedFor(a)}.`, 'bad')
+      log(g, fillSlots(pickLine(g, REFUSED_LINES), { who: myOf(p), what: askedFor(a) }), 'bad')
     }
   } else {
     parts.push(pickLine(g, ['You said no.', 'You politely declined.', 'You passed.']))

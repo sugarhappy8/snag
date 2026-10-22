@@ -13,6 +13,7 @@ import { useSyncExternalStore } from 'react'
 import { ageUp } from '../game/aging'
 import { bindMoneyContext, moneyContextOf, netWorth, notice } from '../game/core'
 import { FLAGS } from '../game/flags'
+import { closeYear } from '../game/hubs/year-close'
 import { emptyInbox, inboxUnread, markSeen, routeMinorNotices } from '../game/inbox'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
 import { lifeSpark } from '../game/life-series'
@@ -488,8 +489,10 @@ export function ageUpAction(): void {
   clearReturnPoint()
   // The Time Machine keeps the new year as it starts (once its popups are done).
   expectSnapshot(g.lifeId, g.character.age + 1)
+  // The year close (R3, E.D2) is the store flow only: headless ageUp never calls it.
+  const close = FLAGS.yearCard && quietModeOn(state.settings)
   try {
-    act(ageUp)
+    if (!(close && ageUpAndClose())) act(ageUp)
   } catch (err) {
     // A bug in a yearly hook must not trap the player on this birthday with a dead button. act()
     // never commits a draft that threw, so the last good year stays; the error is still logged
@@ -498,6 +501,28 @@ export function ageUpAction(): void {
     act((draft) => {
       notice(draft, 'Something Went Wrong', "This year couldn't be played out, so nothing changed and your life is saved as it was. Tap + Age to try again; doing something else first can help.", { emoji: '\u{26A0}\u{FE0F}', tone: 'bad' })
     })
+  }
+}
+
+/**
+ * ageUp and the year close in one act() (R3, E.D2). True when the year was committed. closeYear is built not to throw; if it does, the
+ * draft is dropped (act never commits one that threw) and this returns false, so the caller plays the year the old way: a broken close
+ * never costs the player the birthday. A failure of ageUp itself, or of anything after the mutator, is not caught here.
+ */
+function ageUpAndClose(): boolean {
+  let closing = false
+  try {
+    act((g) => {
+      ageUp(g)
+      closing = true
+      closeYear(g)
+      closing = false
+    })
+    return true
+  } catch (err) {
+    if (!closing) throw err
+    console.error('Closing the year failed:', err)
+    return false
   }
 }
 

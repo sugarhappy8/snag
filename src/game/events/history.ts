@@ -15,6 +15,7 @@ import { hasTech, techOdds } from '../history/timeline'
 import { notePerson } from '../people'
 import { chance, randInt } from '../rng'
 import { pickLine } from '../text/pick'
+import { AIR_RAID_LINES } from '../text/pools'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import { employerRef, isRealBrandName } from '../shops/everyday-brands'
@@ -810,7 +811,7 @@ const RAID = defineScript('history.raid', (g, choice) => {
   if (roll(g, safe)) {
     addStat(g, 'happiness', -2)
     notice(g, 'All Clear', choice === 'bed' ? 'You stayed in bed and listened to the rumble overhead. By morning it was over, and somehow your street was untouched.' : 'You waited it out until the all-clear sounded and climbed out, shaken but unhurt.', { emoji: '\u{1F54A}\u{FE0F}' })
-    log(g, 'I survived an air raid.')
+    log(g, pickLine(g, AIR_RAID_LINES))
     return
   }
   addStat(g, 'happiness', -6)

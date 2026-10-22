@@ -24,6 +24,7 @@ import { ASK_SCRIPT, askJson, presentAsk, readAsk } from '../src/game/events/wea
 import { createNewLife } from '../src/game/life'
 import { applyFallback } from '../src/game/offline'
 import { createPerson } from '../src/game/people'
+import { AVOIDING_LINES } from '../src/game/text/pools'
 import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState, MenuAction, MenuGroup, MenuNode, ModalItem, Person } from '../src/game/types'
@@ -411,7 +412,8 @@ describe('answering', () => {
   })
 
   it('a debtor who dodges you says so at most once in five years, and it still costs the bond', () => {
-    const avoid = /has been avoiding me ever since I lent/
+    // The line has six wordings since R3-Q13 (AVOIDING_LINES): any of them is the dodge.
+    const avoid = new RegExp(`^(${AVOIDING_LINES.map((l) => l.split(/\{who\}/).map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.+')).join('|')})$`)
     let firstSeen = 0
     for (let seed = 1; seed <= 10; seed++) {
       const g = richGame(seed, 10_000_000)

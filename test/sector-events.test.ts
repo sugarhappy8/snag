@@ -353,6 +353,8 @@ describe('hints and bounds', () => {
     for (let i = 0; i < 1000; i++) {
       g.year += 1
       g.queue = []
+      // A new year empties the year's actions, as ageUp does (aging.ts): the company-choice ledger of the pace rule (pace.biz) is one of them.
+      g.yearActions = {}
       const fiscal = g.year - 1
       if (maybeSectorEvent(g, a, b, fiscal, false) || maybeBusinessEvent(g, a, b, fiscal, false)) fired++
     }

@@ -24,7 +24,9 @@ import { personName } from './PersonSheet'
 import { cleanHint, TalentHint } from './TalentHint'
 import { canSlide } from './menuModel'
 import { SliderInputCard } from './SliderCard'
+import { focusWithoutScroll } from './focusWithoutScroll'
 import { digestRows, digestTitle, digestTone, planHead } from './noticeModel'
+import { YearCardPopup } from './YearCard'
 import '../styles/notices.css'
 
 const TONE_EMOJI: Partial<Record<Tone, string>> = {
@@ -42,14 +44,8 @@ function isTyping(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT' || target.isContentEditable
 }
 
-/**
- * A ref callback that focuses its element without scrolling to it. React's autoFocus calls focus() with no options, so
- * a card taller than the screen would open scrolled down to the button. The function is one stable reference, so React
- * calls it when the button mounts and not again on a re-render, which would pull focus back from wherever it went.
- */
-export function focusWithoutScroll(el: HTMLElement | null): void {
-  el?.focus({ preventScroll: true })
-}
+// Moved to its own file (R3-Q6) so the year card can share it; still exported from here for the callers that import it.
+export { focusWithoutScroll }
 
 export function ModalHost() {
   const head = useApp((s) => s.game?.queue[0] ?? null)
@@ -72,6 +68,9 @@ export function ModalHost() {
   // A run of plain notices at the head shares one card (G.11 step 1, behind FLAGS.noticeDigest). Every other plan,
   // the lone notice, a choice, an input, a minigame, falls through to the code below, which is today's.
   const plan = game ? planHead(game.queue, FLAGS.noticeDigest) : null
+  // The year card (R3-Q6) is a notice that carries a card; it stands alone, ahead of the digest check, and is drawn
+  // whatever the digest setting says. A card that can't be read never gets this plan: it is a plain notice below.
+  if (plan?.kind === 'yearCard') return <YearCardPopup key={plan.modal.id} modal={plan.modal} />
   if (plan?.kind === 'digest') return <DigestCard key={plan.items.map((m) => m.id).join('+')} items={plan.items} />
 
   // Nothing to draw for a task: it's replaced by whatever it produces in the same moment.

@@ -68,6 +68,8 @@ export const STATE_TABLE = {
       'The {index} lost {move} while my money stayed put.',
     ],
     band: bandBy(0.2, 0.35),
+    // Two index days in a decade, never four: the fourth would reuse the words of the first within 10 years (R3-Q13).
+    gap: 6,
   },
   'index.boom': {
     variants: [
@@ -78,6 +80,7 @@ export const STATE_TABLE = {
       'The {index} surged {move} while my money sat still.',
     ],
     band: bandBy(0.2, 0.35),
+    gap: 6,
   },
   // What a star's endorsement deals paid in the year (special/sports-core.ts yearlySponsors).
   'endorse.income': {

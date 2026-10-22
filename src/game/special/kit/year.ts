@@ -2,7 +2,7 @@
 // audit sink. `settleYear` writes its marker before any roll or payment, so a replayed hook changes
 // nothing. A career moves money only through `c.earn` and `c.pay`, and says things only through
 // `careerSay`, `careerLog` and `offerChoice`, so the budget and the audit see all of it.
-import { earnIncome, log, notice, scriptChoice, spend } from '../../core'
+import { earnIncome, log, notice, scriptChoice, spend, useYearAction, yearActionsUsed } from '../../core'
 import type { BudgetLine } from '../../nation/data'
 import { policyOf } from '../../nation/state'
 import type { ChoiceOption, GameState, Json, Tone } from '../../types'
@@ -42,6 +42,12 @@ export const ACTION_BUDGET: Budget = Object.freeze({ choices: 3, notices: 6 })
 
 /** Career choices that may wait in the queue at once, across careers. */
 const PENDING_MAX = 2
+/**
+ * The year slot (R3-Q10, pace): unrequested career choices a year across all careers, in g.yearActions under this key (emptied at each
+ * age-up). Only the yearly settle is held to it: an action or a script the player started asks for its popup and always gets it.
+ */
+const SLOT = 'pace.kit'
+const SLOT_MAX = 1
 const MONEY_MAX = 1e13
 const LABEL_MAX = 60
 const TEXT_MAX = 400
@@ -52,6 +58,8 @@ export interface CareerCtx<S extends CareerBase = CareerBase> {
   readonly s: S
   readonly year: number
   readonly budget: Budget
+  /** True in the yearly settle (the career speaks unasked), false in an action or a script (the player asked). Only a yearly context needs the year slot. */
+  readonly yearly: boolean
   /** The peer ranking `settleYear` took before `run`; null in action and script contexts. */
   readonly field: Standing | null
   /** earnIncome(), rounded. 0 for an empty source, a non-finite amount or under 1. Audited. */
@@ -63,7 +71,7 @@ export interface CareerCtx<S extends CareerBase = CareerBase> {
 interface Ledger { earned: number; paid: number; moves: number }
 const ledgers = new WeakMap<object, Ledger>()
 
-function makeCtx<S extends CareerBase>(g: GameState, career: string, s: S, budget: Budget, field: Standing | null): CareerCtx<S> {
+function makeCtx<S extends CareerBase>(g: GameState, career: string, s: S, budget: Budget, field: Standing | null, yearly = false): CareerCtx<S> {
   const ledger: Ledger = { earned: 0, paid: 0, moves: 0 }
   const c: CareerCtx<S> = {
     g,
@@ -71,6 +79,7 @@ function makeCtx<S extends CareerBase>(g: GameState, career: string, s: S, budge
     s,
     year: g.year,
     budget,
+    yearly,
     field,
     earn(source, amount) {
       const label = txt(source, LABEL_MAX)
@@ -174,9 +183,12 @@ export function pendingCareerChoices(g: GameState): number {
   return n
 }
 
-/** True while the context has choice budget left and fewer than 2 career choices wait in the queue. */
+/**
+ * True while the context has choice budget left and fewer than 2 career choices wait in the queue, and, in the yearly settle, while no
+ * career spoke yet this year (the year slot). A read: offerChoice takes the slot.
+ */
 export function choiceRoom(c: CareerCtx): boolean {
-  return c.budget.choices >= 1 && pendingCareerChoices(c.g) < PENDING_MAX
+  return c.budget.choices >= 1 && pendingCareerChoices(c.g) < PENDING_MAX && (!c.yearly || yearActionsUsed(c.g, SLOT) < SLOT_MAX)
 }
 
 /** Queue a career choice within the budget and the pending cap; stamps the owner and the year on its data. */
@@ -186,6 +198,7 @@ export function offerChoice(c: CareerCtx, script: string, title: string, text: s
   careerAudit({ t: 'text', career: c.career, role: 'title', text: title })
   careerAudit({ t: 'text', career: c.career, role: 'scene', text })
   scriptChoice(c.g, script, title, text, choices, { emoji, data: { ...data, owner: ownerKey(c.g), year: c.g.year } })
+  if (c.yearly) useYearAction(c.g, SLOT, SLOT_MAX)
   return true
 }
 
@@ -245,7 +258,7 @@ export function settleYear<S extends CareerBase>(o: SettleOpts<S>): (g: GameStat
     const s = o.store.mut(g)
     if (!claimSettle(s, g)) return
     const before = g.character.money
-    const c = makeCtx(g, o.career, s, { ...YEARLY_BUDGET }, rank(g, s))
+    const c = makeCtx(g, o.career, s, { ...YEARLY_BUDGET }, rank(g, s), true)
     const note = o.run(c, live)
     const held = o.active(g)
     if (held) o.crises?.offer(c)

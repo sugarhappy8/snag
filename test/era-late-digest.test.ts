@@ -13,8 +13,8 @@ describe('late-era culture lines', () => {
     for (let y = 1980; y <= PRESENT_YEAR; y++) {
       const line = CULTURE_LATE[y]
       expect(line, `year ${y}`).toBeTruthy()
-      expect(line.length, `year ${y} too short`).toBeGreaterThan(120)
-      expect(line.length, `year ${y} too long`).toBeLessThan(420)
+      expect(line.length, `year ${y} too short`).toBeGreaterThan(60)
+      expect(line.length, `year ${y} too long`).toBeLessThanOrEqual(110)
       expect(cultureOf(y)).toBe(line)
       expect(digestLine(y)).toContain(line)
     }

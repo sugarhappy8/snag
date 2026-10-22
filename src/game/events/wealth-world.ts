@@ -5,7 +5,7 @@
 import { addHidden, addStat, attractedTo, count, currentPartner, log, notice, preferredGender, remember, removePerson, spend, useYearAction } from '../core'
 import { pick, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
-import { ADMIRER_LINES, SCAM_LINES } from '../text/pools'
+import { ADMIRER_LINES, DONATED_LINES, SCAM_LINES } from '../text/pools'
 import { fillSlots } from '../text/state'
 import { randomFirstName } from '../world'
 import { eraPick, eraPickPlain, landline } from './era'
@@ -60,7 +60,7 @@ export function donate(g: GameState, amount: number, cause: string): boolean {
   addHidden(g, 'karma', karma)
   if (fame > 0) addHidden(g, 'fame', fame)
   addStat(g, 'happiness', randInt(g, 2, 4))
-  log(g, `I donated ${money(amt)} to ${cause}.`, 'good')
+  log(g, fillSlots(pickLine(g, DONATED_LINES), { money: money(amt), charity: cause }), 'good')
   return true
 }
 

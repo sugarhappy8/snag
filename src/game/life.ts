@@ -37,7 +37,7 @@ import { fillLocal, hasSnow, localeOf, localSchoolName, localTerm, localUniversi
 import { isIndustryLegal } from './data/markets'
 import { schoolSystem } from './education'
 import { contractCondition } from './health'
-import { isNewsLine, logNews } from './history/events'
+import { logNews } from './history/events'
 import { eraOccupation, familyWeights, homemakerShare, realWealthFactor, sameSexAdoptionShare, siblingWeights } from './history/events-people'
 import { WARS, type WarDef } from './history/events-wars'
 import { hasTech, HISTORY_START, isHistorical, PRESENT_YEAR, techOdds } from './history/timeline'
@@ -2010,8 +2010,8 @@ function grandparenthood(g: GameState): void {
 export function yearlyMilestones(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  // The yearly world-news line doesn't count as something happening to me.
-  const quiet = currentLogYear(g).entries.every((e) => isNewsLine(e.text))
+  // The yearly world-news line doesn't count as something happening to me: the one line written by `history` with weight 0 (logNews).
+  const quiet = currentLogYear(g).entries.every((e) => e.s === 'history' && e.w === 0)
 
   if (c.age === 1 && quiet) log(g, pickLine(g, FIRST_STEPS))
   else if (c.age === 2 && quiet) log(g, pickLine(g, TODDLER))

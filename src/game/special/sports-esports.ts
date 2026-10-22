@@ -6,6 +6,8 @@
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
+import { RESIGN_LINES } from '../text/pools'
+import { fillSlots } from '../text/state'
 import { defineScript } from '../scripts'
 import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
 import { hasMainCharacter, hasTalent, talentHint, talentMult } from '../talents'
@@ -744,7 +746,7 @@ const renewScript = defineScript('sports.es.renew', (g, choice, data) => {
   if (choice === 'retire') return retireEs(g)
   d.contractYears = randInt(g, 1, 2)
   job.salary = o.salary
-  log(g, `I re-signed with ${d.team}.`)
+  log(g, fillSlots(pickLine(g, RESIGN_LINES), { who: d.team }))
 })
 
 export function yearlyEsports(g: GameState): void {

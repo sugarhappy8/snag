@@ -12,6 +12,7 @@ import { hasTech } from './history/timeline'
 import { bookMint, type AcctRef } from './kernel/ledger'
 import { chance, pick, randInt, uid } from './rng'
 import { pickLine, pickSite } from './text/pick'
+import { HOMELESS_LINES } from './text/pools'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
 import { getCountry, randomFirstName } from './world'
 import { businessGone } from './assetHooks'
@@ -523,9 +524,11 @@ export function relocateAfterLosingHome(g: GameState, excludeAssetId?: string): 
 
 const TAX_LINES = [
   (m: string) => `I paid ${m} in taxes.`,
-  (m: string) => `I paid ${m} in taxes.`,
   (m: string) => `The tax man took ${m} of my income.`,
   (m: string) => `I handed ${m} over to the government in taxes.`,
+  (m: string) => `My taxes took ${m} out of my year.`,
+  (m: string) => `The tax bill came to ${m} this year.`,
+  (m: string) => `I sent ${m} to the tax office.`,
 ]
 
 const LIVING_LINES = [
@@ -669,7 +672,7 @@ export function yearlyFinance(g: GameState): void {
       g.flags.homelessLineAge = c.age
       log(
         g,
-        freshPick(g, 'homeless', ['I spent another year sleeping on park benches.', 'I lived on the streets this year.', 'I spent the year couch-surfing and sleeping in my car... without a car.', 'I was homeless all year.', 'I knew every shelter in town by name.', 'I spent the year carrying everything I owned in two bags.']),
+        pickLine(g, HOMELESS_LINES),
         'bad',
       )
     }

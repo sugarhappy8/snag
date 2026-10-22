@@ -28,7 +28,7 @@ import type { BizState } from './business/state'
 import { clampN, money, num, pct, rec } from './business/util'
 import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
 import { pickLine } from './text/pick'
-import { PROMO_LINES, PROMOTED } from './text/pools'
+import { HOME_BOUGHT, HOME_BOUGHT_LINES, PROMO_LINES, PROMOTED } from './text/pools'
 import { npcCompany } from './npc-company-state'
 import { inheritFamilyTalent, npcHasMainCharacter } from './talents'
 import { ageCeiling } from './mastery'
@@ -111,7 +111,7 @@ function milestone(g: GameState, p: Person, l: NpcLife, text: string): void {
   l.history = [...l.history, `${g.year}: ${text}`].slice(-24)
   if ((p.livesWithPlayer || p.relationship >= 55) && (g.yearActions['npc.news'] ?? 0) < 3) {
     g.yearActions['npc.news'] = (g.yearActions['npc.news'] ?? 0) + 1
-    log(g, `${p.firstName}: ${text === PROMOTED ? pickLine(g, PROMO_LINES) : text}`)
+    log(g, `${p.firstName}: ${text === PROMOTED ? pickLine(g, PROMO_LINES) : text === HOME_BOUGHT ? pickLine(g, HOME_BOUGHT_LINES) : text}`)
   }
 }
 function storeCompany(p: Person, a: Asset): void { p.data.npcCompany = a as unknown as Json }
@@ -361,7 +361,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
     if (!p.livesWithPlayer && l.housing === 0 && p.money > income * 3 && l.debt < income && p.age >= 25) {
       const price = income * 6, deposit = price * .4
       personCash(g, p, -deposit, 'property.buy'); l.debt += price - deposit; l.housing = price; l.housingQuality = 60
-      milestone(g, p, l, 'bought a home with savings and a mortgage; repayments now compete with other spending')
+      milestone(g, p, l, HOME_BOUGHT)
     }
     l.ambition = clampN(l.ambition + (l.income > income * 1.5 ? .3 : p.occupation === 'Unemployed' ? -.5 : 0), 5, 98)
     if (l.debt > income * 8 && l.investments + l.housing < l.debt && roll.chance(.12)) {

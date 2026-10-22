@@ -233,8 +233,11 @@ describe('offline events play out locally instead of being skipped', () => {
   it('turns snow days into flood days, sandstorms and strikes where it never snows', () => {
     expect(setup('id', 'kid.snowDay', 9).s?.title).toBe('Flood Day')
     expect(setup('sa', 'kid.snowDay', 9).s?.title).toBe('Sandstorm Day')
+    // Where it snows the day stays a snow day: the title is the event's own and the choices are the snow ones. (The opening text may
+    // be one of the scene variants of events/variants.ts, which do not name the weather, so the text is not the proof.)
     const de = setup('de', 'kid.snowDay', 9).s
-    expect(de?.text).toMatch(/snow day/)
+    expect(de?.title).toBeUndefined()
+    expect(de?.choices.map((c) => c.id)).toEqual(['snowman', 'fight', 'sled', 'games'])
   })
 
   it('swaps the lemonade stand, the prom and the pep rally for local versions', () => {
