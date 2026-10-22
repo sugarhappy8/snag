@@ -27,6 +27,7 @@ import { PRISON_EVENTS } from './events/prison'
 import { SCHOOL_EVENTS } from './events/school'
 import { SOS_EVENTS } from './events/sos'
 import { TEEN_EVENTS } from './events/teen'
+import { withVariants } from './events/variants'
 import { WORK_EVENTS } from './events/work'
 import { chance, randInt } from './rng'
 import { defineScript } from './scripts'
@@ -35,8 +36,8 @@ import type { ChoiceModal, GameState, Json, ModalItem, Person } from './types'
 
 export type { EventDef } from './events/helpers'
 
-/** Every offline random event, in one list. */
-export const EVENT_LIBRARY: EventDef[] = [
+/** Every offline random event, in one list. The 60 that fire most also open with extra scenes (events/variants.ts). */
+export const EVENT_LIBRARY: EventDef[] = withVariants([
   ...BABY_EVENTS,
   ...KID_EVENTS,
   ...SCHOOL_EVENTS,
@@ -50,7 +51,7 @@ export const EVENT_LIBRARY: EventDef[] = [
   ...PRISON_EVENTS,
   // What an ordinary year felt like in each era (events/era-life.ts).
   ...ERA_LIFE_EVENTS,
-]
+])
 
 const EVENTS_BY_ID: Record<string, EventDef> = {}
 for (const ev of EVENT_LIBRARY) if (!EVENTS_BY_ID[ev.id]) EVENTS_BY_ID[ev.id] = ev
