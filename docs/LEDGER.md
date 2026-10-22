@@ -215,8 +215,13 @@ one after another:
 LEDGER_STRICT=1/4 /Users/saeed/projects/anotherlife/wt/bin/vt22 test/world-acceptance.test.ts -t "strict drift"
 ```
 
-then `2/4`, `3/4` and `4/4` (`LEDGER_STRICT=1` plays all forty). On a failure it prints the seed and the first drift (year, age,
-amount), which is how a surviving raw writer is found: fix it with the recipe above, or list it below.
+then `2/4`, `3/4` and `4/4` (`LEDGER_STRICT=1` plays all forty; `LEDGER_STRICT_LIVES=n` keeps only the first `n`). On a failure it
+prints the seed and the first drift (year, age, amount), which is how a surviving raw writer is found: fix it with the recipe above,
+or list it below.
+
+The nightly deep tier plays the same four slices every night, one job each (`ledger-strict` in `.github/workflows/nightly.yml`,
+described in `docs/CI.md`), and a drift fails the night through the hard rule `ledger.drift.sum`. Pull requests do not run it, so
+run it by hand after a change that adds or moves a writer of cash.
 
 Last run (the R2-L18 acceptance, `vt22`, Node 22): all forty lives (seeds 101 to 140) in four slices of ten, 127, 166, 108 and 103
 seconds, drift 0 in every one. The first run found two lives with a dollar of drift (seeds 119 and 133, at an exact half dollar of

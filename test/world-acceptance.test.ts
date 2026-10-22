@@ -3,10 +3,13 @@
 // state byte for byte (RF5, the world half), an heir keeps every shard (RF3), every dollar the player holds is booked (strict drift,
 // opt in) and the two docs name what the code has (docs/LEDGER.md, docs/WORLD.md).
 //
-// The strict drift run is opt in and long (forty lives of a hundred years, about 9 minutes on one worker). LEDGER_STRICT=1 plays all
+// The strict drift run is opt in and long (forty lives of a hundred years, about 15 minutes on one worker). LEDGER_STRICT=1 plays all
 // forty; LEDGER_STRICT=i/n plays slice i of n, so in four slices, one after another:
 //   LEDGER_STRICT=1/4 /Users/saeed/projects/anotherlife/wt/bin/vt22 test/world-acceptance.test.ts -t "strict drift"
-// and then 2/4, 3/4 and 4/4. It does not use the CI seed-slice kit (SLICE): CI never runs it, so the file is not a sliced file.
+// and then 2/4, 3/4 and 4/4. LEDGER_STRICT_LIVES=n (default and most: all forty) keeps only the first n lives before the slicing.
+// The nightly deep tier plays it, one job per slice (the `ledger-strict` job of .github/workflows/nightly.yml, docs/CI.md), and the
+// slice writes its totals as nightly metrics. It does not use the CI seed-slice kit (SLICE): the pull request shards never play it,
+// so the file is not a sliced file, and every assertion of the run is per life, so no job has to merge anything.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -28,6 +31,7 @@ import '../src/game/world/shards'
 import { readWorld, shardNames } from '../src/game/world/state'
 import { syncWorld } from '../src/game/world/sync'
 import { LEDGER_SEEDS, runLedgerLife } from './ledger-probe'
+import { writeMetrics } from './nightly-metrics'
 import { playLife } from './play-kit'
 import { probeLife } from './probe-life'
 
@@ -280,15 +284,26 @@ describe('the heir of a 40-year life with three companies keeps the world (RF3)'
 // 7. Strict drift (opt in)
 
 const STRICT = process.env.LEDGER_STRICT ?? ''
+const STRICT_LIVES = process.env.LEDGER_STRICT_LIVES ?? ''
 
-/** The seeds this run plays: all forty for `1`, the contiguous share `i` of `n` for `i/n` (1-based), none for anything else. */
-function strictLives(raw: string = STRICT): number[] {
-  if (raw === '1') return [...LEDGER_SEEDS]
+/** How many of the forty lives a run keeps: LEDGER_STRICT_LIVES when it is a whole number from 1 to 40, else all forty (a bad value never plays fewer). */
+function strictCount(raw: string = STRICT_LIVES): number {
+  const n = /^[1-9]\d{0,5}$/.test(raw) ? Number(raw) : LEDGER_SEEDS.length
+  return Math.min(n, LEDGER_SEEDS.length)
+}
+
+/**
+ * The seeds this run plays: all of them for `1`, the contiguous share `i` of `n` for `i/n` (1-based), none for anything else. The
+ * seeds are the first `lives` of the forty (all forty by default), so a short nightly run gives every slice a life or two.
+ */
+function strictLives(raw: string = STRICT, lives: number = strictCount()): number[] {
+  const seeds = LEDGER_SEEDS.slice(0, lives)
+  if (raw === '1') return [...seeds]
   const m = /^([1-9]\d?)\/([1-9]\d?)$/.exec(raw)
   const i = m ? Number(m[1]) - 1 : -1
   const n = m ? Number(m[2]) : 0
   if (!m || i >= n) return []
-  return LEDGER_SEEDS.slice(Math.floor((i * LEDGER_SEEDS.length) / n), Math.floor(((i + 1) * LEDGER_SEEDS.length) / n))
+  return seeds.slice(Math.floor((i * seeds.length) / n), Math.floor(((i + 1) * seeds.length) / n))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -359,11 +374,28 @@ describe('the strict run chooses its lives', () => {
     expect(strictLives('1/20')).toEqual(LEDGER_SEEDS.slice(0, 2))
     for (const bad of ['', '0', 'yes', '0/4', '5/4', '1/0', '1/100', '1/4/2', ' 1/4']) expect(strictLives(bad), bad).toEqual([])
   })
+
+  it('keeps only the first LEDGER_STRICT_LIVES lives before it slices, as the smoke night asks (4 lives in 4 slices)', () => {
+    expect(strictLives('1', 4)).toEqual(LEDGER_SEEDS.slice(0, 4))
+    expect(['1/4', '2/4', '3/4', '4/4'].map((q) => strictLives(q, 4))).toEqual([[LEDGER_SEEDS[0]], [LEDGER_SEEDS[1]], [LEDGER_SEEDS[2]], [LEDGER_SEEDS[3]]])
+    // 10 lives in 4 slices is 2, 3, 2, 3, and every life is played once.
+    expect(['1/4', '2/4', '3/4', '4/4'].map((q) => strictLives(q, 10).length)).toEqual([2, 3, 2, 3])
+    expect(['1/4', '2/4', '3/4', '4/4'].flatMap((q) => strictLives(q, 10))).toEqual(LEDGER_SEEDS.slice(0, 10))
+  })
+
+  it('reads LEDGER_STRICT_LIVES as a whole number from 1 to 40, and plays all forty for anything else or for more', () => {
+    expect(strictCount('4')).toBe(4)
+    expect(strictCount('40')).toBe(40)
+    expect(strictCount('41')).toBe(40)
+    for (const bad of ['', '0', '-3', '2.5', '4 ', 'many', '1e1']) expect(strictCount(bad), bad).toBe(40)
+    expect(strictLives('1/4', strictCount('')).length).toBe(10)
+  })
 })
 
 describe.skipIf(STRICT === '' || STRICT === '0')('strict drift: every change of the player\'s cash is booked (LEDGER_STRICT)', () => {
   const mine = strictLives()
   const played: number[] = []
+  const totals = { lives: 0, years: 0, bookings: 0, drift: 0 }
 
   it('has lives to play: LEDGER_STRICT is 1 or i/n', () => {
     expect(mine.length, `LEDGER_STRICT=${STRICT}`).toBeGreaterThan(0)
@@ -375,6 +407,13 @@ describe.skipIf(STRICT === '' || STRICT === '0')('strict drift: every change of 
     const where = row.ledger.firstDrift
     const first = where ? `first in ${where.year} at age ${where.age}, ${where.delta} dollars` : 'none'
     console.info(`ledger strict: seed ${seed} ${row.years} years, ${row.ledger.bookings} bookings, drift ${row.ledger.drift}, first drift ${first}`)
+    // The totals of the slice so far go to the nightly diff (a no-op unless NIGHTLY_METRICS_DIR is set) before the checks, so a
+    // drift reaches the hard rule ledger.drift.sum even though this test then fails; each life replaces the file with the new totals.
+    totals.lives += 1
+    totals.years += row.years
+    totals.bookings += row.ledger.bookings
+    totals.drift += row.ledger.drift
+    writeMetrics('ledger-strict', { 'ledger.lives.sum': totals.lives, 'ledger.years.sum': totals.years, 'ledger.bookings.sum': totals.bookings, 'ledger.drift.sum': totals.drift })
     expect(row.failures, `seed ${seed}`).toEqual([])
     expect(row.ledger.drift, `seed ${seed}: drift ${row.ledger.drift}, first drift ${first}`).toBe(0)
   }, 300_000)

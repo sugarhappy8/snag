@@ -21,6 +21,9 @@ export function nightlySizes(scale) {
       // 4 shards of 6 founders with 3 to 12 companies, a hundred times the money, 20 years.
       ceiling: { shards: 4, lives: 6, years: 20, scale: 100 },
       anachronism: { lives: 400, slices: 8 },
+      // The strict ledger drift check (test/world-acceptance.test.ts, LEDGER_STRICT): all 40 lives of the ledger probe, a hundred years
+      // each. 879 s on one worker locally, so 4 slices of 10 lives keep every job to a few minutes, far under its 20 minute limit.
+      ledgerStrict: { lives: 40, slices: 4 },
       oldSaves: { years: 20, reseeds: 8 },
     }
   }
@@ -31,6 +34,7 @@ export function nightlySizes(scale) {
       balance: { shards: 4, lives: 2, years: 2 },
       ceiling: { shards: 4, lives: 2, years: 2, scale: 100 },
       anachronism: { lives: 16, slices: 8 },
+      ledgerStrict: { lives: 4, slices: 4 },
       oldSaves: { years: 3, reseeds: 2 },
     }
   }
@@ -72,6 +76,7 @@ export function sizeEnv(scale, shard) {
     ['CEILING_SCALE', String(s.ceiling.scale)],
     ['ANACHRONISM_LIVES', String(s.anachronism.lives)],
     ['ANACHRONISM_SLICES', String(s.anachronism.slices)],
+    ['LEDGER_STRICT_LIVES', String(s.ledgerStrict.lives)],
     ['OLD_SAVES_YEARS', String(s.oldSaves.years)],
     ['OLD_SAVES_RESEEDS', String(s.oldSaves.reseeds)],
   ]
@@ -199,6 +204,7 @@ export const RULES = [
   { match: 'text.repeatedShare', kind: 'cap', limit: 0.0415, hard: true, why: 'R2 acceptance: the repeated-line share is at most half of the 0.0831 R1 measured (R2-P10)' },
   { match: 'oldsaves.failures.sum', kind: 'cap', limit: 0, hard: true, why: 'an old save that cannot be migrated and played is a lost game' },
   { match: 'anachronism.findings.sum', kind: 'cap', limit: 0, hard: true, why: 'a line that names a thing before it existed is a bug' },
+  { match: 'ledger.drift.sum', kind: 'cap', limit: 0, hard: true, why: 'a change of the cash the player holds that nothing booked is a raw writer the books cannot see' },
   { match: 'balance.*.p50', kind: 'rel', limit: 0.25, hard: false, why: 'a drift of a quarter in a median is worth a look' },
   { match: '*', kind: 'rel', limit: 0.5, hard: false, why: 'a move of half in any metric is worth a look' },
 ]

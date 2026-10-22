@@ -63,8 +63,8 @@ repeats less, faster taps and smaller saves. Saves from v4.1.1 and older load an
 - **Golden digests and the nightly deep tier** (`docs/CI.md`). The fast tier plays three seeded lives
   and compares one digest per slice of the state with a committed file, so a change that moves a draw
   names the slice. A Nightly workflow plays 40 fuzzed lives of 160 years, the balance and 100x ceiling
-  probes, the anachronism lint, every old save for 20 years, the repeat probe and the deep golden
-  plan. It is scheduled on the default branch.
+  probes, the anachronism lint, the strict ledger drift check over 40 lives, every old save for 20
+  years, the repeat probe and the deep golden plan. It is scheduled on the default branch.
 
 ## Seeds
 

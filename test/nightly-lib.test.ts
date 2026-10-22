@@ -39,7 +39,7 @@ describe('nightlySizes', () => {
   const full = nightlySizes('full')
   const smoke = nightlySizes('smoke')
 
-  it('full is the roadmap list: 40 fuzz seeds by 160 years, 200 balance lives, 100x ceilings, 400 anachronism lives, old saves for 20 years', () => {
+  it('full is the roadmap list: 40 fuzz seeds by 160 years, 200 balance lives, 100x ceilings, 400 anachronism lives, the 40 strict ledger lives, old saves for 20 years', () => {
     expect(full.fuzz.shards * full.fuzz.seedsPerShard).toBe(40)
     expect(full.fuzz.shards).toBe(8)
     expect(full.fuzz.years).toBe(160)
@@ -49,6 +49,8 @@ describe('nightlySizes', () => {
     expect(full.ceiling.shards * full.ceiling.lives).toBe(24)
     expect(full.ceiling.years).toBe(20)
     expect(full.anachronism).toEqual({ lives: 400, slices: 8 })
+    // The strict ledger drift run (test/world-acceptance.test.ts): all 40 lives of the ledger probe, 4 slices of 10 (879 s on one worker).
+    expect(full.ledgerStrict).toEqual({ lives: 40, slices: 4 })
     // The repeat probe plays its fixed 13 lives (the gate is stated over them): it has no size to set.
     expect(full).not.toHaveProperty('text')
     expect(smoke).not.toHaveProperty('text')
@@ -66,6 +68,7 @@ describe('nightlySizes', () => {
       ['ceiling.lives', smoke.ceiling.lives, full.ceiling.lives],
       ['ceiling.years', smoke.ceiling.years, full.ceiling.years],
       ['anachronism.lives', smoke.anachronism.lives, full.anachronism.lives],
+      ['ledgerStrict.lives', smoke.ledgerStrict.lives, full.ledgerStrict.lives],
       ['oldSaves.years', smoke.oldSaves.years, full.oldSaves.years],
       ['oldSaves.reseeds', smoke.oldSaves.reseeds, full.oldSaves.reseeds],
     ]
@@ -77,6 +80,9 @@ describe('nightlySizes', () => {
     expect(smoke.balance.shards).toBe(full.balance.shards)
     expect(smoke.ceiling.shards).toBe(full.ceiling.shards)
     expect(smoke.anachronism.slices).toBe(full.anachronism.slices)
+    expect(smoke.ledgerStrict.slices).toBe(full.ledgerStrict.slices)
+    // A slice with no life to play fails ("has lives to play"), so even a smoke night gives every slice at least one.
+    expect(smoke.ledgerStrict.lives).toBeGreaterThanOrEqual(smoke.ledgerStrict.slices)
     expect(smoke.ceiling.scale).toBe(full.ceiling.scale)
   })
 
@@ -103,6 +109,7 @@ describe('sizeEnv and parseShard', () => {
     expect(env.FUZZ_BUDGET).toBe('600')
     expect(env.CEILING_SCALE).toBe('100')
     expect(env.ANACHRONISM_LIVES).toBe('400')
+    expect(env.LEDGER_STRICT_LIVES).toBe('40')
     expect(env).not.toHaveProperty('TEXT_PROBE_LIVES')
     expect(env.OLD_SAVES_YEARS).toBe('20')
     expect(env.OLD_SAVES_RESEEDS).toBe('8')
@@ -123,7 +130,7 @@ describe('sizeEnv and parseShard', () => {
   })
 
   it('every name the workflow reads is printed, for both scales', () => {
-    const names = ['FUZZ_START', 'FUZZ_SEEDS', 'FUZZ_YEARS', 'FUZZ_BUDGET', 'BALANCE_START', 'BALANCE_COUNT', 'BALANCE_YEARS', 'CEILING_START', 'CEILING_COUNT', 'CEILING_YEARS', 'CEILING_SCALE', 'ANACHRONISM_LIVES', 'ANACHRONISM_SLICES', 'OLD_SAVES_YEARS', 'OLD_SAVES_RESEEDS']
+    const names = ['FUZZ_START', 'FUZZ_SEEDS', 'FUZZ_YEARS', 'FUZZ_BUDGET', 'BALANCE_START', 'BALANCE_COUNT', 'BALANCE_YEARS', 'CEILING_START', 'CEILING_COUNT', 'CEILING_YEARS', 'CEILING_SCALE', 'ANACHRONISM_LIVES', 'ANACHRONISM_SLICES', 'LEDGER_STRICT_LIVES', 'OLD_SAVES_YEARS', 'OLD_SAVES_RESEEDS']
     for (const scale of ['full', 'smoke'] as const) {
       const env = asMap(sizeEnv(scale, { i: 1, n: 8 }))
       for (const name of names) expect(env[name], `${scale} ${name}`).toMatch(/^\d+$/)
@@ -244,6 +251,7 @@ describe('diffMetrics', () => {
       ['text.repeatedShare', 0.0415, 0.0416],
       ['oldsaves.failures.sum', 0, 1],
       ['anachronism.findings.sum', 0, 1],
+      ['ledger.drift.sum', 0, 1],
     ]
     for (const [name, limit, over] of cases) {
       expect(byName(diffMetrics({ [name]: limit }, { [name]: limit }), name).verdict, `${name} at ${limit}`).toBe('ok')
@@ -324,6 +332,7 @@ describe('RULES', () => {
       'text.repeatedShare',
       'oldsaves.failures.sum',
       'anachronism.findings.sum',
+      'ledger.drift.sum',
       'balance.*.p50',
       '*',
     ])
