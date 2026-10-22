@@ -766,7 +766,7 @@ describe('ceilings', () => {
       if (q.effort.crew > 4) bad.push(`crew ${q.effort.crew}`)
       if (q.effort.tools > 1) bad.push(`tools ${q.effort.tools}`)
       if (q.spend > L.K_MAX * t.cost) bad.push(`spend ${q.spend}`)
-      if ((line(q, 'know') ?? 0) > L.KNOW_ODDS_MAX + 6) bad.push(`know ${line(q, 'know')}`)
+      if ((line(q, 'know') ?? 0) > L.KNOW_ODDS_MAX) bad.push(`know ${line(q, 'know')}`)
       if ((line(q, 'crew') ?? 0) > L.CREW_PTS_MAX + 6) bad.push(`crew line ${line(q, 'crew')}`)
       for (const r of Object.values(q.risk)) if (r > L.RISK_MAX) bad.push(`risk ${r}`)
     }

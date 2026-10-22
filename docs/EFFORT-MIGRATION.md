@@ -107,15 +107,26 @@ commit and a row in `moved-tests.md`, and the owner has agreed to the balance ch
   failed result says what went wrong and what it taught (the Workshop tells its cause as the story it always had). Public research
   and rival pressure are printed with the frontier's own words.
 
-## What the sweep found and did not change
+## What the sweep found, and what the engine fix changed
 
-Know-how is worth at most 15 odds points at the plan in force at ambition 50, and every system holds to that (the 200-year probe
-checks it each year). Under the boldest plan (ambition 100, pushing) the engine pulls the odds toward even, where a step of the odds
-curve is worth more points, so the same know-how is worth a few more: 19.96 for a product project (76% base, clamp .05 to .95), 17.2
-for a deep tech program and 16.3 for a capability track, and the curve itself allows up to 20 at a clamp of .15 to .92, 27 at .05 to
-.95 and 32 at .02 to .98 for the longest shot. That is the engine's curve (`effort/factors.ts` `deviate`), not a system's own term, and
-the sweep bounds each system by the curve and no more. If the owner wants the 15 to hold under every plan, the change is in `deviate`
-(price know-how against the odds before the bold pull), and it moves pinned numbers of the core.
+The first sweep measured know-how worth more than 15 odds points under the boldest plan (ambition 100, pushing): 19.96 for a product
+project (76% base, clamp .05 to .95), 17.2 for a deep tech program and 16.3 for a capability track, and up to 20, 27 and 32 for the
+longest shots. Those figures were true of the engine as that track first saw it, where know-how was a shift in logit space that grew
+when a bold plan pulled the odds toward even. R3-E9 had already added know-how, rival pressure and public research in odds points
+after the logit terms (`deviate`, `effort/factors.ts`); the sweep's figures reproduce to the digit on the curve before that change and
+not on the release head, where every system is worth exactly 15 under every plan (measured 15.000000000000002 in all seven, the last
+digit being the subtraction of two odds). The
+engine fix that followed makes that a rule of the engine and not a result of its curve, in one place and held by tests:
+
+- `deviate` cuts the know-how term at `KNOW_ODDS_MAX` where it enters the odds, whatever a caller hands in, so no plan, clamp, budget,
+  crew or tired owner can make it worth more (`test/effort-know-cap.test.ts`, a grid of 189,000 inputs, with and without know-how).
+- The line the player reads could still say more: `attribute` put what the other terms do together (rounding, the way logit shifts
+  compound, a clamp) on the largest line, which for a long shot with a crew was know-how, so a term that adds 15 read "know-how +41".
+  A capped term (know-how 15, public research 18, rival pressure 8) takes no share of that now: its line stays inside its cap and on
+  its own side of 0, and what the cap cuts goes to the largest line that has no cap. The lines still add up to the odds.
+- The sweep holds every system to it, in every year of the 200-year probe: the worth under the plan in force and under the boldest at
+  most 15, the line at most 15 under four plans, and the system's own wrapper at most 15 (`bounded` in
+  `test/effort-mig-acceptance.test.ts`).
 
 ## How a later system joins
 

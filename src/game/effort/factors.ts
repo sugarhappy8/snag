@@ -5,15 +5,30 @@
 //   *Pts         the odds points each deviation is worth, written once: tools, crew, know-how, a hard field, a tired maker
 //   deviate      the deviations applied in logit space, so a term nudges the odds without ever pushing them past 0 or 1; the three
 //                that carry a stated cap (know-how 15, public research 18, rival pressure 8) are added on top in odds points, so each
-//                is worth exactly its points in the final odds however the other terms moved them (the R3-E9 probe)
-//   attribute    the labelled lines: each term's own effect, rounded, with the rounding and the interactions put on the largest line
+//                is worth exactly its points in the final odds however the other terms moved them (the R3-E9 probe), and know-how is
+//                cut to its 15 here, where it enters the odds, whatever a caller hands in
+//   attribute    the labelled lines: each term's own effect, rounded, with the rounding and the interactions put on the largest line;
+//                a capped term adds exactly its points and takes no share of what the others do together, so its line never reads
+//                past its cap (what is over goes to the largest line without one)
 //   speedOf      how fast the work goes: crew, tools, ambition, fatigue and know-how, multiplied
 //   risksOf      what a bold plan risks (reported, never rolled)
 //
 // At the neutral inputs (budget 1, ambition 50, steady, fatigue 0, no know-how, no tools, no crew) every deviation is exactly 0, the
 // sum of the logit shifts is exactly 0, and the odds are the money odds untouched: an old formula routed through here gives the old
 // answer bit for bit. The module-level consts below are literals (rule (d) of the layer ratchet); the limits are read inside functions.
-import { CREW_PTS_MAX, EASY_FIELD_LABEL, HARD_PTS, OVERTIME_PAY, RISK_MAX, TERM_LABEL, TIRED_PTS, TOOLS_PTS } from './limits'
+import {
+  CREW_PTS_MAX,
+  EASY_FIELD_LABEL,
+  HARD_PTS,
+  KNOW_ODDS_MAX,
+  OVERTIME_PAY,
+  RISK_MAX,
+  RIVAL_PTS,
+  SPILL_TERM_MAX,
+  TERM_LABEL,
+  TIRED_PTS,
+  TOOLS_PTS,
+} from './limits'
 import { cutNum, hasOwn, isRecord } from './num'
 import type { Posture, Reason, Task, TermKey } from './types'
 
@@ -113,7 +128,8 @@ export function deviate(pk: number, lo: number, hi: number, pts: Readonly<Record
   let flat = 0
   for (const key of DEV_ORDER) {
     if (isFlat(key)) {
-      const v = pts[key]
+      // Know-how is worth at most KNOW_ODDS_MAX points, a sign either way, whatever the caller asks: this is where it enters the odds.
+      const v = key === 'know' ? cutNum(pts[key], -KNOW_ODDS_MAX, KNOW_ODDS_MAX, 0) : pts[key]
       flat += v
       pieces.push({ key, pts: v === 0 ? 0 : (Math.min(1, Math.max(0, pk + v / 100)) - pk) * 100 })
       continue
@@ -135,18 +151,44 @@ function labelOf(key: TermKey, pts: number): string {
   return key === 'hard' && pts > 0 ? EASY_FIELD_LABEL : TERM_LABEL[key]
 }
 
+/** The most odds points a line of a capped term may read, or Infinity for a term that has no cap of its own: know-how, rival pressure and public research add exactly their points. */
+function lineCap(key: TermKey): number {
+  return key === 'know' ? KNOW_ODDS_MAX : key === 'rival' ? RIVAL_PTS : key === 'spill' ? SPILL_TERM_MAX : Infinity
+}
+
 /**
  * The labelled lines of the odds. Each piece is a term's own effect in points; each is rounded, then the lines are made to add up to
  * `round(p * 100) - round(base * 100)` exactly by putting what is left over (rounding, terms that interact, a clamp) on the line
  * whose own effect is the largest (the first, on a tie). A line that comes to 0 is left out. Pieces keep their order.
+ *
+ * Know-how, rival pressure and public research are added to the odds in points (`deviate`), so they take no part in what the other
+ * terms do together and what is left over is never theirs to carry: a line of theirs stays inside its cap (15, 8 and 18 points) and
+ * on its own side of 0, and what the cap cuts goes to the largest line that has no cap, the first on a tie. (With no such line the
+ * first has to carry it, since the lines must add up.) Where the largest line is not capped, or the left-over fits, nothing changes.
  */
 export function attribute(base: number, p: number, pieces: readonly Piece[]): Reason[] {
   const lines = pieces.map((x) => roundPts(x.pts))
   const rest = Math.round(p * 100) - Math.round(base * 100) - lines.reduce((a, b) => a + b, 0)
   if (rest !== 0 && pieces.length > 0) {
-    let at = 0
-    for (let i = 1; i < pieces.length; i++) if (Math.abs(pieces[i]!.pts) > Math.abs(pieces[at]!.pts)) at = i
+    const largest = (from: readonly number[]): number => {
+      let at = from[0]!
+      for (const i of from) if (Math.abs(pieces[i]!.pts) > Math.abs(pieces[at]!.pts)) at = i
+      return at
+    }
+    const all = pieces.map((_, i) => i)
+    const at = largest(all)
     lines[at] = lines[at]! + rest
+    const cap = lineCap(pieces[at]!.key)
+    if (cap !== Infinity) {
+      // A capped line reads from 0 to its cap, on the side of its own term (know-how cannot lose points, rival pressure cannot gain).
+      const kept = pieces[at]!.pts < 0 ? Math.max(-cap, Math.min(0, lines[at]!)) : Math.min(cap, Math.max(0, lines[at]!))
+      const free = all.filter((i) => lineCap(pieces[i]!.key) === Infinity)
+      if (kept !== lines[at] && free.length > 0) {
+        const to = largest(free)
+        lines[to] = lines[to]! + (lines[at]! - kept)
+        lines[at] = kept
+      }
+    }
   }
   const out: Reason[] = []
   pieces.forEach((x, i) => {

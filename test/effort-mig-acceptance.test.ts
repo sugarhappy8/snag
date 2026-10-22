@@ -542,16 +542,17 @@ const rigOf = (f: Founder, system: SystemId): Rig => rigs(f).find((r) => r.syste
 /**
  * What know-how is worth to a run, in odds points: the same input with the know-how the company holds and with none. At the plan in force
  * with the owner at ambition 50 steady (`neutral`, the figure of the R3 decision: at most 15) and with the owner at ambition 100 pushing
- * (`bold`: a bold plan pulls the odds toward even, where a step of the odds curve is worth more points, so the same know-how is worth a few more).
+ * (`bold`: at most 15 as well, since R3-E9 added know-how to the odds in points and the R3 fix to the engine cut it where it enters them;
+ * the first sweep measured 19.96, 17.2 and 16.3 for product, deep tech and the capability tracks while it was still a logit shift).
  */
 interface Worth {
   neutral: number
   bold: number
 }
 /**
- * The most 15 points of know-how can be worth under the boldest plan (ambition 100, pushing), on the engine's own odds curve: the bold pull
- * moves the odds toward even, where a step of the curve is worth more points. A run's own quote may not pass it (no system adds a know-how
- * multiplier of its own); that it passes 15 at all is the engine's, measured and reported by this sweep (see EFFORT-MIGRATION.md).
+ * The most 15 points of know-how can be worth under the boldest plan (ambition 100, pushing), on the engine's own odds curve. It is 15: the
+ * bold pull moves the logit of the odds and know-how is added after it, in points. A run's own quote may not pass it (no system adds a
+ * know-how multiplier of its own), and `bounded` holds every run to 15 itself, so this figure is the looser, older check.
  */
 function boldCeiling(task: Task): number {
   const bold = boldOf(100, 'push')
@@ -601,6 +602,23 @@ function bounded(g: GameState, rig: Rig, label: string): Worth {
   expect(worth.neutral, `${label}: know-how is worth at most ${R3.knowPoints} points`).toBeLessThanOrEqual(R3.knowPoints + 1e-9)
   expect(worth.neutral, label).toBeGreaterThanOrEqual(-1e-9)
   expect(worth.bold, `${label}: know-how to an owner who gives everything`).toBeLessThanOrEqual(boldCeiling(task) + 1)
+  // The owner's rule is 15 under every plan, not 15 and a few more for the boldest: in the odds (the quote with and without the know-how
+  // the company holds), in the line the player reads (0 to 15, never a share of what the other terms do together) and in what the system's
+  // own wrapper answers (no system adds a know-how term of its own).
+  expect(worth.bold, `${label}: know-how to an owner who gives everything is worth at most ${R3.knowPoints} points`).toBeLessThanOrEqual(R3.knowPoints + 1e-9)
+  expect(worth.bold, label).toBeGreaterThanOrEqual(-1e-9)
+  for (const plan of [{}, { ambition: 100, posture: 'push' as const }, { ambition: 50, posture: 'steady' as const, fatigue: 0 }, { ambition: 0, posture: 'lean' as const, fatigue: 60 }]) {
+    const know = quote(g, task, { ...maxOf(rig.input()), ...plan }).reasons.find((x) => x.key === 'know')?.pts ?? 0
+    expect(know, `${label}: the know-how line at ${JSON.stringify(plan)}`).toBeGreaterThanOrEqual(0)
+    expect(know, `${label}: the know-how line at ${JSON.stringify(plan)}`).toBeLessThanOrEqual(R3.knowPoints)
+  }
+  const held = knowHowOf(rig.map(), rig.field)
+  if (held > 0 && lim.clamp !== null) {
+    rig.know(0)
+    const without = rig.own().odds
+    rig.know(held)
+    expect((own.odds - without) * 100, `${label}: know-how in the system's own wrapper`).toBeLessThanOrEqual(R3.knowPoints + 1e-9)
+  }
   return worth
 }
 // ---------------------------------------------------------------------------------------------------------------------
@@ -736,6 +754,7 @@ describe('200 years of direct steps at maximum inputs, one founder with every re
     expect(worst.neutral).toBeGreaterThan(5)
     expect(worst.neutral).toBeLessThanOrEqual(R3.knowPoints + 1e-9)
     expect(worst.bold).toBeGreaterThan(worst.neutral - 1e-9)
+    expect(worst.bold, 'the most know-how was worth to any of the seven in 200 years of an owner who gives everything').toBeLessThanOrEqual(R3.knowPoints + 1e-9)
     const end = books(f)
     expect(end.ok, end.problems.join('; ')).toBe(true)
     expect(end).toEqual(start)
@@ -752,6 +771,7 @@ describe('200 years of direct steps at maximum inputs, one founder with every re
     expect(worth.neutral).toBeGreaterThan(10)
     expect(worth.neutral).toBeLessThanOrEqual(R3.knowPoints + 1e-9)
     expect(worth.bold).toBeLessThanOrEqual(boldCeiling(rig.task()) + 1)
+    expect(worth.bold).toBeLessThanOrEqual(R3.knowPoints + 1e-9)
   })
 })
 
