@@ -169,6 +169,8 @@ export interface Story {
   title: string
   text: string
   tone: Tone
+  /** How many notices a merged story stands for (planNotices merged); absent for a story of one notice. */
+  parts?: number
 }
 
 /** A notice in play: made by a yearly hook, no support line, not a year card. */
@@ -199,6 +201,35 @@ export function storyOf(m: NoticeModal): Story {
 /** A story as one line of at most YEAR_LIMITS.story characters: "title: text", or the title alone when the text is empty. */
 export function storyLine(st: Story): string {
   return clipText(st.text ? `${st.title}: ${st.text}` : st.title, YEAR_LIMITS.story)
+}
+
+/** A text as one plain run: no pictograph (an emoji marks a line of a list, not a headline), white space collapsed. */
+function plainRun(text: string): string {
+  return text.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]+/gu, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** A title as a plain label: no exclamation mark at the end of a word (the voice has no exclamation-mark labels). */
+function plainLabel(title: string): string {
+  return plainRun(title.replace(/!+(?=[\s,.]|$)/g, ''))
+}
+
+/** The text of a story without its own "2027: " in front when 2027 is the year of the card, which the card says under its headline. */
+function withoutYear(text: string, year: number): string {
+  return text.replace(new RegExp(`^${year}\\s*:\\s*`), '')
+}
+
+/**
+ * The headline of a card, the one place it is composed: one plain line of at most YEAR_LIMITS.head characters. It is the story
+ * itself. The title of the popup that carried it is not part of it ("Milestones!: ..." read as a label), neither is a year in
+ * front of the text that is the year of the card, and neither is an emoji. A story with no text says its title, without an
+ * exclamation mark. A merged story (planNotices merged) has no popup title: its title is the story ("Kindness, 3 times"), and its
+ * total follows as a second sentence. `year` is the year of the card (g.year).
+ */
+export function headlineOf(st: Story, year: number): string {
+  const label = plainLabel(st.title)
+  if (st.parts !== undefined && st.parts > 1) return clipText(st.text ? `${label}. ${plainRun(st.text)}.` : label, YEAR_LIMITS.head)
+  const body = withoutYear(plainRun(st.text), year).trim()
+  return clipText(body !== '' ? body : label, YEAR_LIMITS.head)
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +275,7 @@ function joinStories(parts: readonly Story[], explicit: ReadonlyMap<string, numb
     title,
     text,
     tone: parts.some((p) => p.tone === 'bad') ? 'bad' : first.tone,
+    parts: n,
   }
 }
 
@@ -373,7 +405,8 @@ function stripLead(text: string): string {
 /**
  * The year in one card. `kept` are the stories of the notices that stay popups (storyOf), `folded` the merged stories of the ones
  * that fold (planNotices(...).merged), `log` this year's lines. The head is the top story by weight and then by the money it is
- * about; with no story, the top log line by weight; with none, the culture line of the year; with none, a plain line. `stories` are
+ * about, told by headlineOf (the story itself, with no popup title and no year in front); with no story, the top log line by weight;
+ * with none, the culture line of the year; with none, a plain line. `stories` are
  * the next 3, `money` the ledger line (left out when the life series has no row), `people` up to 3 more stories of the people group,
  * `world` the news line of the year. Head, stories, money, people and world are at most YEAR_LIMITS.lines lines together (people go
  * first, then stories). Everything else, every story and log line that is left, is counted in its group, in display order, with
@@ -391,7 +424,7 @@ export function buildCard(g: GameState, kept: readonly Story[], folded: readonly
   let head = ''
   let headEntry: LogEntry | undefined
   if (ranked.length > 0) {
-    head = storyLine(ranked[0]!)
+    head = headlineOf(ranked[0]!, g.year)
     taken.add(0)
   } else {
     headEntry = topLine(entries)
@@ -431,7 +464,7 @@ export function buildCard(g: GameState, kept: readonly Story[], folded: readonly
     if (!taken.has(i)) items.push({ k: st.group, w: st.w, mag: Math.abs(st.a), line: storyLine(st), pos: items.length })
   })
   const told = new Set<string>()
-  for (const st of ranked) for (const t of [storyLine(st), st.text]) if (t) told.add(norm(clipText(t, L.group)))
+  for (const st of ranked) for (const t of [storyLine(st), st.text, headlineOf(st, g.year)]) if (t) told.add(norm(clipText(t, L.group)))
   for (const e of entries) {
     if (e === headEntry || e === news || isFoldLine(e)) continue
     const line = clipText(textOf(e.text), L.group)
