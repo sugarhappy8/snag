@@ -10,6 +10,7 @@
 // minus the friend's cut, and a paper trail the regulator may or may not follow.
 import { addMoney, count, formatMoney, log, moneyWith, notice, scriptChoice, scriptInput, shortMoney, useYearAction, yearActionsUsed } from '../core'
 import { coinDef, companyDef, cryptoYear, eraIdentity, exchangeByKey, exchangeInfo, exchangeYear, syntheticIndexMove, type ExInfo, type SecurityDef } from '../invest/engine'
+import { coinVolOf, stockVolOf, swingRead } from '../invest/contract'
 import { gutLikes, listPicks, marketInstinct } from '../invest/instinct'
 import { orderFlowFactor, shockFactor } from '../invest/shocks'
 import { seeded, type SRng } from '../assets'
@@ -111,7 +112,7 @@ export function listedTargets(g: GameState): BetTarget[] {
       symbol: def.symbol,
       emoji: def.sector === 'penny' ? '\u{1F39F}\u{FE0F}' : era.emoji,
       price: Math.max(0.01, s.price * shockFactor(g, def.id, g.year)),
-      vol: stockVol(inf, def),
+      vol: stockVolOf(inf, def),
       sector: def.sector === 'penny' ? 'Penny stock' : era.label,
       real: !!def.real,
     }
@@ -132,7 +133,7 @@ export function coinTargets(g: GameState): BetTarget[] {
       symbol: def.symbol,
       emoji: def.stable ? '\u{1F4B5}' : '\u{1FA99}',
       price: Math.max(0.000001, c.price * shockFactor(g, def.id, g.year)),
-      vol: def.stable ? 0 : Math.min(2, Math.sqrt((def.beta * 0.5) ** 2 + def.idio ** 2)),
+      vol: coinVolOf(def),
       sector: def.stable ? 'Stablecoin' : 'Cryptocurrency',
     }
   })
@@ -155,11 +156,6 @@ export function findTarget(g: GameState, secId: string): BetTarget | undefined {
 
 function exDrift(inf: ExInfo): number {
   return clampNum(inf.ex.drift, -0.05, 0.3)
-}
-
-function stockVol(inf: ExInfo, def: SecurityDef): number {
-  const v = clampNum(inf.ex.volatility, 0.05, 0.8)
-  return Math.sqrt((def.beta * v * 0.85) ** 2 + def.idio ** 2)
 }
 
 function srngNormal(r: SRng): number {
@@ -226,7 +222,7 @@ function stockSamples(inf: ExInfo, def: SecurityDef): number[] {
 /** How far the stock must move before an out-of-the-money option pays (half a year's swing). */
 export function stockStrike(inf: ExInfo, def: SecurityDef, strike: 'atm' | 'otm'): number {
   if (strike === 'atm') return 0
-  return Math.round(clampNum(stockVol(inf, def) * 0.5, 0.05, 0.4) * 1000) / 1000
+  return Math.round(clampNum(stockVolOf(inf, def) * 0.5, 0.05, 0.4) * 1000) / 1000
 }
 
 /** How sure the market is, a year ahead, that a real company is about to merge or fail (credit spreads and deal talk give it away). */
@@ -651,14 +647,17 @@ function betLabel(b: StockBet): string {
   return `${what} on ${b.symbol}, ${formatMoney(b.premium)}${b.via === 'crony' ? ` via ${b.crony}` : ''}`
 }
 
-function targetAction(t: BetTarget): MenuAction {
+function targetAction(g: GameState, t: BetTarget): MenuAction {
   const coin = t.asset === 'coin'
+  // How much it swings (R3-G9): a word and a chip in Realistic mode, today's "swings ~18% a year" in Exact. A stablecoin has nothing to say.
+  const swing = t.vol > 0 ? swingRead(g, t.secId, t.vol) : null
   return {
     type: 'action',
     id: `computer.stockbets.${t.secId}`,
     label: `${t.name} (${t.symbol})`,
     emoji: t.emoji,
-    subtitle: `${priceLabel(t.price)} · ${t.sector}${t.vol > 0 ? ` · swings ~${absPct(t.vol, 0)} a year` : ''}`,
+    subtitle: `${priceLabel(t.price)} · ${t.sector}${swing ? ` · ${swing.text}` : ''}`,
+    ...(swing?.conf !== undefined ? { conf: swing.conf, ...(swing.asOf !== undefined ? { asOf: swing.asOf } : {}) } : {}),
     hint: (g) => gutHint(g, t.secId),
     disabledReason: (g) => tradeBlock(g) ?? (coin && cryptoBanned(g.character.countryId) ? 'Crypto trading is banned here.' : null),
     run: (g) => {
@@ -717,11 +716,11 @@ export function stockBetsMenu(): MenuGroup {
       const nodes: MenuNode[] = [
         { type: 'info', id: 'computer.stockbets.open', emoji: '\u{1F9FE}', text: st.bets.length ? `Open bets:\n${st.bets.map(betLabel).join('\n')}` : 'No open bets.' },
         { type: 'heading', id: 'computer.stockbets.h.stocks', label: `Stocks on the ${info(g).ex.code}` },
-        ...listedTargets(g).map(targetAction),
+        ...listedTargets(g).map((t) => targetAction(g, t)),
       ]
       if (coinsHere(g)) {
         nodes.push({ type: 'heading', id: 'computer.stockbets.h.coins', label: 'Coins' })
-        nodes.push(...coinTargets(g).map(targetAction))
+        nodes.push(...coinTargets(g).map((t) => targetAction(g, t)))
       }
       return nodes
     },
