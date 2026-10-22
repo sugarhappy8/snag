@@ -553,6 +553,16 @@ function studioBench(): Bench {
 /** An idea of each difficulty (the first in the catalog): only `d` reaches the odds. */
 const IDEA_OF = new Map<number, IdeaDef>(LEVELS.map((d) => [d, IDEAS.find((x) => x.d === d)!]))
 
+/**
+ * The Workshop's default actor: ambition exactly 50. Willpower and discipline of 55 give that to a life with no ambitious talent;
+ * the Inventor talent (a genius) adds 4 of its own, so a genius is set to 50 and 50. Today's workshop code never reads the hidden
+ * traits, so this changes no recorded number; it makes the grid and the lifecycle read the migrated code at the default actor.
+ */
+function defaultActor(g: GameState, genius: boolean): void {
+  g.character.hidden.willpower = genius ? 50 : 55
+  g.character.hidden.discipline = genius ? 50 : 55
+}
+
 function workshopBench(): Bench {
   const g = makeTestGame(11, { age: 30, money: 5_000_000, talents: [], countryId: 'us' })
   g.year = 2026
@@ -560,6 +570,7 @@ function workshopBench(): Bench {
   return {
     at(input) {
       g.character.talents = input.genius ? ['Inventor'] : []
+      defaultActor(g, input.genius === true)
       g.character.stats.smarts = (input.smarts as number | undefined) ?? 70
       const ws: Workshop = { ...readWorkshop(g), skill: input.skill as number }
       return { g, ws, ideaDef: IDEA_OF.get((input.difficulty as number | undefined) ?? 1) }
@@ -848,6 +859,7 @@ function workshopLife(life: Life): Lifecycle {
   const g = makeTestGame(life[0], { age: 30, money: 5_000_000, talents: [], countryId: 'us' })
   g.year = life[1]
   g.lifeId = `ws-life-${life[0]}`
+  defaultActor(g, false)
   const ws = mutWorkshop(g)
   // Three ideas of three categories, built once each the safe way, then two brainstorms.
   const picks: IdeaDef[] = []

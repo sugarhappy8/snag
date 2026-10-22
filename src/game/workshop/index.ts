@@ -4,7 +4,7 @@ export { ALL_IDEAS, CATEGORIES, HISTORY, IDEAS, catalogIdea, type Category, type
 export { readWorkshop, mutWorkshop, inventions, findInvention, candidates, isGenius } from './notebook'
 export { readInv, migrateLegacy, legacyPatents, needsMigration } from './migrate'
 export { legacyInventionCapital, legacyInventionStock } from './legacy-capital'
-export { brainstorm, buildOdds, resolveBuild, startBuild } from './build'
+export { brainstorm, buildOdds, buildWhy, resolveBuild, startBuild } from './build'
 export { acceptOffer, filePatent, giveAway, license, makeInCompany, pitch, runCrowd, sellStream, shopRights } from './launch'
 export { yearlyWorkshop, settleInventions } from './yearly'
 export { workshopMenu, inventionNodes, inventionSubtitle } from './menu'

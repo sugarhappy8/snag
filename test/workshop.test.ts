@@ -2,6 +2,7 @@
 // talent hints and menu purity.
 import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
+import { neutralAmbition } from './effort-parity-kit'
 import { counter, netWorth } from '../src/game/core'
 import { anachronismsIn } from '../src/game/events/era'
 import { brandById } from '../src/game/data/brands'
@@ -210,6 +211,10 @@ describe('building prototypes', () => {
     expect(buildCost(kid, catalogIdea('flying-car')!, 'safe')).toBeGreaterThan(100_000)
     expect(resolveBuild(kid, idea('pizza-scissors'), 'safe')).not.toBeNull()
     const normal = inventor(), genius = inventor({ genius: true })
+    // Both at ambition 50 (R3-M8): the engine's boldness term reads ambition, and the Inventor talent adds 4 of its own.
+    neutralAmbition(normal)
+    genius.character.hidden.willpower = 50
+    genius.character.hidden.discipline = 50
     const def = catalogIdea('robot-mower')!
     const n = buildOdds(normal, readWorkshop(normal), def, 0, 'safe'), x = buildOdds(genius, readWorkshop(genius), def, 0, 'safe')
     expect(x.low - n.low).toBeCloseTo(20)
