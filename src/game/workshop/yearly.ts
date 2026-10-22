@@ -16,6 +16,7 @@ import { catalogIdea, isHistory, type Category } from './catalog'
 import { yearlyWorkshopEvent } from './events'
 import { needsMigration } from './migrate'
 import { curveAt, curveOver, familyOf, invCurve, raceYear, saturation } from './market'
+import { settleHelper } from './bench'
 import { addIdea, addRep, blurbOf, drawIdea, dropIdea, inventions, isGenius, logIdea, mutWorkshop, recordFirst, storeInv, worldFirsts, type Owned } from './notebook'
 import { NOTEBOOK_MAX, rec, text, type Workshop } from './state'
 
@@ -225,6 +226,7 @@ export function yearlyWorkshop(g: GameState): void {
   settleInventions(g, ws)
   if (ws.last >= g.year) return
   ws.last = g.year
+  settleHelper(g, ws)
   // Saves from before the timeline-wide record: this life's firsts join it.
   const firsts = worldFirsts(g)
   for (const m of ws.made) if (m.first && !firsts.has(m.id)) recordFirst(g, m.id)

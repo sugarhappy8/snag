@@ -7,6 +7,8 @@
   { "id": "olympic-bonus", "file": "src/game/special/sports-olympics.ts", "token": "realWealthFactor", "cap": "a medal bonus follows the real wealth of the year and the country (R0-7)" },
   { "id": "adaptation-fee", "file": "src/game/special/author-career.ts", "token": "adaptationFeeCap", "cap": "an adaptation fee stops at 150 times the typical income (R0-8)" },
   { "id": "adaptation-royalty", "file": "src/game/special/author-career.ts", "token": "adaptationYearCap", "cap": "adaptation royalties stop at 15 times the typical income a year (R0-8)" },
+  { "id": "workshop-overtime", "file": "src/game/workshop/build.ts", "token": "MAX_OVERTIME_BUILDS", "cap": "a year's builds stop at the pool's limit plus two overtime builds, whatever the weeks, money or skill (R3-M9)" },
+  { "id": "workshop-tools", "file": "src/game/workshop/effort.ts", "token": "WORKSHOP_TOOLS_MAX", "cap": "lab access adds at most 5 quality points to a build and an assistant at most 3, and blow-ups never fall below 78 percent of their chance (R3-M9)" },
   { "id": "studio-tail", "file": "src/game/business/gamestudio.ts", "token": "TAIL_SWING", "cap": "a hit's next-year sales rise at most a quarter (v4.0.1 trillion fix)" },
   { "id": "studio-title-copies", "file": "src/game/special/gamedev-core.ts", "token": "TITLE_SHARE", "cap": "one title sells to at most 8 percent of the era's gamers (v4.0.1)" },
   { "id": "studio-publisher-copies", "file": "src/game/special/gamedev-core.ts", "token": "PUBLISHER_SHARE", "cap": "one owner's studios sell to at most 10 percent of the era's gamers a year (v4.0.1)" },

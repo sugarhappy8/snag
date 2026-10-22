@@ -2,6 +2,7 @@
 // the invention assets, which ideas can strike now (era, technology, history race) and the
 // companies that can make a given invention.
 import { count, log } from '../core'
+import { DEEP_TECH_IDS } from '../data/markets'
 import { anachronistic } from '../events/era'
 import { hasTech } from '../history/timeline'
 import { pick, rand } from '../rng'
@@ -15,7 +16,7 @@ import { businessAssets, readBiz } from '../business/state'
 import { ALL_IDEAS, CATEGORIES, isHistory, type Category, type IdeaDef } from './catalog'
 import { inventionValue, raceOpen } from './market'
 import { legacyProfile, migrateLegacy, readInv, workshopFromLegacy } from './migrate'
-import { FLAG, NOTEBOOK_MAX, SEEN_MAX, emptyWorkshop, invDef, normalizeWorkshop, ownsWorkshop, saveInv, type Inv, type MadeEntry, type NoteIdea, type Workshop } from './state'
+import { FLAG, NOTEBOOK_MAX, SEEN_MAX, emptyWorkshop, invDef, normalizeWorkshop, ownsWorkshop, rec, saveInv, type Inv, type MadeEntry, type NoteIdea, type Workshop } from './state'
 
 export const MIN_AGE = 8
 
@@ -76,6 +77,61 @@ export function storeInv(g: GameState, a: Asset, inv: Inv, rep = readWorkshop(g)
   saveInv(a, inv)
   a.value = inventionValue(g, inv, invDef(inv), rep)
   a.upkeep = 0
+}
+
+// ---------------------------------------------------------------------------
+// What the bench gives a build besides the maker (R3-M9). effort.ts turns lab access and an assistant into bounded terms of a build's odds
+// (at most 5 and 3 points of quality, blow-ups cut to 85% and 92%); these readers say who has them. They are here, with the other reads of
+// the companies a player owns, so the Workshop reaches into the business domain through the edges it already has.
+
+/** Lab access of a student, and of a lab owner (0 to 1). */
+const SCHOOL_TOOLS = 0.4
+const LAB_TOOLS = 0.6
+
+export type ToolsFrom = 'none' | 'school' | 'lab'
+
+/** Whether a company's stored lab holds a scientist or a program under way (read raw: the lab record is the business domain's own). */
+function labInUse(raw: unknown): boolean {
+  const lab = rec(raw)
+  const team = Array.isArray(lab.team) ? lab.team : []
+  const programs = Array.isArray(lab.programs) ? lab.programs : []
+  return team.some((y) => typeof y === 'number' && Number.isFinite(y)) || programs.some((p) => typeof rec(p).id === 'string')
+}
+
+/** Whether the player controls a company with a research lab (scientists or a program) or a deep-tech lab (the industry itself). Pure. */
+function ownsLab(g: GameState): boolean {
+  for (const a of businessAssets(g)) {
+    if (!ownerControls(g, a)) continue
+    const b = readBiz(g, a)
+    if ((DEEP_TECH_IDS as readonly string[]).includes(b.industry) || labInUse(b.lab)) return true
+  }
+  return false
+}
+
+/** Lab access and where it comes from: the larger of a student's and a lab owner's, never the sum. Pure. */
+export function toolsFrom(g: GameState): { tools: number; from: ToolsFrom } {
+  const level = g.character.education.current?.level
+  const school = level === 'university' || level === 'graduate' ? SCHOOL_TOOLS : 0
+  if (school < LAB_TOOLS && ownsLab(g)) return { tools: LAB_TOOLS, from: 'lab' }
+  return school > 0 ? { tools: school, from: 'school' } : { tools: 0, from: 'none' }
+}
+
+/** Lab access, 0 to 1: 0.4 enrolled at university or graduate level, 0.6 for the owner of a company with a research or deep-tech lab. Pure. */
+export function workshopTools(g: GameState): number {
+  return toolsFrom(g).tools
+}
+
+/** The most bench hands. In R3 the hired assistant is the only one. */
+export const HELPERS_MAX = 2
+
+/** The bench hands: 1 with a hired assistant, else 0, at most HELPERS_MAX. Pure. */
+export function workshopHelpers(g: GameState): number {
+  return Math.min(HELPERS_MAX, readWorkshop(g).helper ? 1 : 0)
+}
+
+/** The assistant's skill as a share of the best, 0 to 1 (0 with none): what a build reads of them. Pure. */
+export function helperShare(ws: Pick<Workshop, 'helper'>): number {
+  return ws.helper ? Math.max(0, Math.min(1, ws.helper.skill / 100)) : 0
 }
 
 // ---------------------------------------------------------------------------
