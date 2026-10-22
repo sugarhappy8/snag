@@ -30,7 +30,7 @@ import { timelineFamily } from './timeMachine'
 import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
 import { exchangeClosedReason, exchangeState, goldBan, investingBlocked, marketNote } from './history/markets'
-import { brokerEraMult, reitSince } from './invest/era'
+import { brokerEraMult, cryptoSince, reitSince } from './invest/era'
 import { allFundProviderNames } from './invest/funds'
 import {
   bankCrisisChance,
@@ -242,6 +242,11 @@ function goldBlock(g: GameState): string | null {
   return ban ? ban.note : investingBlocked(g.character.countryId, g.year)
 }
 
+/** True when coins trade where the character lives this year (invest/era.ts cryptoSince): no crypto menu, notices or gut feelings before then. */
+function cryptoOpen(g: GameState): boolean {
+  return g.year >= cryptoSince(g.character.countryId)
+}
+
 /** Why a listed property trust can't be bought this year (null when it can). */
 function reitBlock(g: GameState, info: ExInfo): string | null {
   const since = reitSince(info.home)
@@ -255,7 +260,7 @@ function reitBlock(g: GameState, info: ExInfo): string | null {
 /** Next year's gut feeling, for an adult who can trade here (null without the talent). */
 export function investInstinct(g: GameState): Instinct | null {
   if (g.character.age < 18 || inPrison(g)) return null
-  return marketInstinct(g, !CRYPTO_BANNED.has(g.character.countryId))
+  return marketInstinct(g, !CRYPTO_BANNED.has(g.character.countryId) && cryptoOpen(g))
 }
 
 /** The purple hint on one security the gut likes ('' or null when it doesn't). */
@@ -2063,8 +2068,8 @@ const cryptoMenu: MenuGroup = {
   label: 'Crypto',
   emoji: '🪙',
   subtitle: (g) => (CRYPTO_BANNED.has(g.character.countryId) ? `Banned in ${theCountry(g.character.countryId)}` : 'Coins that trade worldwide, 24/7'),
-  // Crypto doesn't exist before 2009 (unless you somehow still hold some).
-  visible: (g) => listedCoins(cryptoYear(fam(g), anchor(g), g.year)).length > 0 || investmentHoldings(g).some((a) => typeOf(a) === 'crypto'),
+  // Crypto doesn't exist before 2009, or in your country before it arrives there (unless you somehow still hold some).
+  visible: (g) => (cryptoOpen(g) && listedCoins(cryptoYear(fam(g), anchor(g), g.year)).length > 0) || investmentHoldings(g).some((a) => typeOf(a) === 'crypto'),
   hint: (g) => gutGroupHint(g, ['crypto']),
   header: (g) => {
     const cy = cryptoYear(fam(g), anchor(g), g.year)
@@ -2170,11 +2175,11 @@ function newsLines(g: GameState): string[] {
       else if (s.event === 'surge') lines.push(`🚀 ${nameOf(s.slot, s.gen)} soared on a blockbuster product launch.`)
     }
     const cy = cryptoYear(f, an, y)
-    if (listedCoins(cy).length || cy.coins.some((c) => c.ended)) {
+    if (cryptoOpen(g) && (listedCoins(cy).length || cy.coins.some((c) => c.ended))) {
       if (cy.coins.some((c) => c.event === 'ipo' && c.slot === 0 && !c.unlisted && isHistoryYear(y))) lines.push('🪙 A mysterious programmer launches a new internet currency. Almost nobody notices.')
       else lines.push(cy.winter ? `🥶 Crypto winter: the crypto market fell ${absPct(cy.ret)}.` : cy.mania ? `🤑 Crypto mania: the crypto market rose ${absPct(cy.ret)}.` : `🪙 Crypto market ${pct(cy.ret, 0)} this year.`)
     }
-    for (const c of cy.coins) {
+    for (const c of cryptoOpen(g) ? cy.coins : []) {
       if (c.ended) {
         const old = c.ended.id.match(/c(\d+)g(\d+)$/)
         const prev = old ? coinDef(Number(old[1]), Number(old[2])) : null
@@ -2296,9 +2301,10 @@ export const investmentsMenu: MenuGroup = {
   label: 'Investments',
   emoji: '\u{1F4C8}',
   subtitle: (g) => {
-    if (g.character.age < 18) return 'Stocks, bonds, funds and crypto'
+    const kinds = cryptoOpen(g) ? 'Stocks, bonds, funds and crypto' : 'Stocks, bonds and funds'
+    if (g.character.age < 18) return kinds
     const s = portfolioStats(g)
-    if (s.value <= 0 && investmentHoldings(g).length === 0) return 'Stocks, bonds, funds and crypto'
+    if (s.value <= 0 && investmentHoldings(g).length === 0) return kinds
     return `Portfolio ${shortMoney(s.value)}${s.year !== null ? ` · ${change(s.year)} this year` : ''}`
   },
   visible: (g) => !inPrison(g),
@@ -2608,7 +2614,7 @@ function marketNews(g: GameState, held: Asset[]): News | null {
     return { priority: up ? 50 : 60, title: 'Financial News', text, emoji: '📰', tone: up ? 'good' : 'bad', log: up ? `The ${idx} had a great year (${pct(m.pct, 0)}).` : `The ${idx} had a terrible year (${pct(m.pct, 0)}).` }
   }
   const crypto = held.filter((a) => typeOf(a) === 'crypto')
-  if (crypto.length) {
+  if (crypto.length && cryptoOpen(g)) {
     const cy = cryptoYear(fam(g), anchor(g), g.year)
     if (cy.winter) return { priority: 62, title: 'Crypto Winter', text: `The crypto market fell ${absPct(cy.ret)} this year. ${isHistoryYear(g.year) && g.year < 2020 ? 'Early believers say they are "just holding" and have stopped checking the price.' : 'Laser-eyed profile pictures are being quietly changed back.'}`, emoji: '🥶', tone: 'bad', log: 'A crypto winter hammered my coins.' }
     if (cy.mania) {
