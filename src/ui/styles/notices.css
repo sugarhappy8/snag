@@ -210,6 +210,57 @@
   padding-top: 0;
 }
 
+/* Life log groups (R3-Q7): inside a busy year, the routine lines and the overflow fold into one closed row per category
+   (LifeLog.tsx, logModel.ts). The row is a native details, so the keyboard opens it with no script; its count is text
+   ("3 lines"), and the chevron is a shape, not a colour. Tokens only, so it follows light and dark mode. */
+
+.lifelog-fold {
+  margin: 2px 0 0;
+}
+
+.lifelog-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--target);
+  padding: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+
+.lifelog-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lifelog-fold > summary::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.lifelog-fold[open] > summary::after {
+  transform: rotate(225deg);
+}
+
+.lifelog-fold-count {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lifelog-entry.lifelog-folded {
+  padding-left: 10px;
+  border-left: 3px solid var(--hairline);
+}
+
 /* Inbox sheet (R1-T6): where routine notices wait while Quiet Mode is on (InboxSheet.tsx). Tokens only, so it follows
    light and dark mode. A new row is marked by the border and by the word "New", as a badge and for screen readers, not
    by colour alone. */

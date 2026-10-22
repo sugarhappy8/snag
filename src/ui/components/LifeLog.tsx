@@ -1,8 +1,10 @@
 // The life feed: "Age: N years" headers followed by first-person lines, newest at the
 // bottom, auto-scrolling as the story grows. The last few years are open; older ones fold to one
-// row each (tap to open), which keeps a long life's DOM small.
+// row each (tap to open), which keeps a long life's DOM small. Inside a busy year the routine
+// lines and the overflow fold into one closed row per category (logModel.ts).
 import { memo, useCallback, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import type { LogYear, Tone } from '../../game/types'
+import { foldCount, viewYearLog } from './logModel'
 import '../styles/notices.css'
 
 export interface LifeLogProps {
@@ -108,11 +110,41 @@ const YearBlock = memo(
 )
 
 function entryLines(year: LogYear, freshFrom: number): ReactElement[] {
-  return year.entries.map((e, i) => (
-    <p key={e.id} className={`lifelog-entry ${toneClass(e.tone)}${i >= freshFrom ? ' is-new' : ''}`}>
-      {e.text}
-    </p>
-  ))
+  const { shown, collapsed } = viewYearLog(year.entries)
+  if (collapsed.length === 0) {
+    return year.entries.map((e, i) => (
+      <p key={e.id} className={`lifelog-entry ${toneClass(e.tone)}${i >= freshFrom ? ' is-new' : ''}`}>
+        {e.text}
+      </p>
+    ))
+  }
+  // A line is new by its place in the whole year, so a fold before it doesn't move the animation.
+  const inView = new Set<unknown>(shown)
+  const rows: ReactElement[] = []
+  year.entries.forEach((e, i) => {
+    if (!inView.has(e)) return
+    rows.push(
+      <p key={e.id} className={`lifelog-entry ${toneClass(e.tone)}${i >= freshFrom ? ' is-new' : ''}`}>
+        {e.text}
+      </p>,
+    )
+  })
+  // The rows start closed and are never given `open`, so a line arriving later doesn't close one the player opened.
+  for (const g of collapsed) {
+    rows.push(
+      <details key={`fold-${g.k}`} className="lifelog-fold">
+        <summary>
+          <span className="lifelog-fold-label">{g.label}</span> <span className="lifelog-fold-count">{foldCount(g.n)}</span>
+        </summary>
+        {g.lines.map((e) => (
+          <p key={e.id} className={`lifelog-entry lifelog-folded ${toneClass(e.tone)}`}>
+            {e.text}
+          </p>
+        ))}
+      </details>,
+    )
+  }
+  return rows
 }
 
 export interface YearListProps {
