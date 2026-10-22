@@ -82,4 +82,4 @@ export { postureNodes } from './menu'
 export { effortModule, yearlyEffort } from './module'
 
 // What the player reads.
-export { causeLine, oddsLine, payoffLine, whyLines, whyNodes } from './why'
+export { causeLine, hintOdds, oddsChip, oddsLine, payoffLine, researchOdds, whyLines, whyNodes } from './why'

@@ -84,6 +84,8 @@ import { economicReportMenu } from './economic-report'
 import { booksMenu } from './books-menu'
 import { complexityShare, productIdeas } from './products'
 import { bestRdBudget, bestRdIdea, ordinaryProjects, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
+import { revealPolicyOf } from '../effort/hooks'
+import { hintOdds, oddsChip, researchOdds } from '../effort/why'
 import { rdOddsLine } from './rd-effort'
 import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOf, heavyOffers, heavyQuote, heavyWhyLine, startHeavy } from './heavy-rd'
 import type { Breakthrough } from './heavy-data'
@@ -513,7 +515,7 @@ function ideaAction(a: Asset, b0: BizState, idea: string, ctxKey: string, field:
       const cur = live(gg, a)
       if (!hinting(gg, cur)) return null
       const best = bestBudgetFor(gg, cur, idea)
-      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${Math.round(best.odds * 100)}% odds, quality ~${best.quality}, worth about ${money(best.value)} on average)` : 'Not worth it now: no budget would earn back its cost while leaving the company a cash cushion')
+      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${hintOdds(gg, best.odds)} odds, quality ~${best.quality}, worth about ${money(best.value)} on average)` : 'Not worth it now: no budget would earn back its cost while leaving the company a cash cushion')
     },
     subtitle: `Costs ~${shortMoney(range.normal)} to develop · ${trendWord(demandTrend(info.family, ctxKey, field.year))} · ${rivalsWord(f.offer, f.quality)}`,
     disabled: (_g, bb) => (bb.cash < range.min ? `Needs at least ${money(range.min)} of company cash (${money(range.min - Math.max(0, bb.cash))} short).` : null),
@@ -580,17 +582,19 @@ function heavyAction(a: Asset, x: Breakthrough): MenuAction {
     const b = readBiz(g, cur)
     const q = heavyQuote(g, b, x.name, cur)
     const years = q.years
-    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(q.p * 100), lead: heavyLead({ year: g.year + years, years }), wave: heavyStartsWave(b.industry, x, g.year + years) }
+    return { cost: heavyCost(g, b) ?? 0, years, odds: q.p, lead: heavyLead({ year: g.year + years, years }), wave: heavyStartsWave(b.industry, x, g.year + years) }
   }
   return act(a, `heavy.${x.name}`, x.name, '\u{1F52C}', {
     subtitle: (g) => {
       const q = quote(g)
-      return `${money(q.cost)} · ${q.years} years · ${q.odds}% odds · rivals could follow about ${q.lead}`
+      return `${money(q.cost)} · ${q.years} years · ${oddsChip(g, q.odds)} · rivals could follow about ${q.lead}`
     },
     confirm: (g) => {
       const q = quote(g)
       const cur = live(g, a)
-      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone. ${heavyWhyLine(g, readBiz(g, cur), x.name, cur)}.${q.wave ? ` ${INSIDER_WARNING}` : ''}`
+      // The odds line that follows says the chance the way the policy lets the player read it, so Realistic does not say it twice.
+      const chance = revealPolicyOf(g).exact ? ` and has about ${researchOdds(g, q.odds)} odds of working` : ''
+      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years${chance}. If it flops, the money is gone. ${heavyWhyLine(g, readBiz(g, cur), x.name, cur)}.${q.wave ? ` ${INSIDER_WARNING}` : ''}`
     },
     disabled: (g, bb) => heavyBlock(g, bb, x.name, a.id),
     run: (gg, cur, bb) => {
@@ -645,7 +649,7 @@ function productsMenu(a: Asset): MenuGroup {
       const trim = linesToRetire(g, b)
       if (trim > 0) return talentHint(g, 'Business', `Retire your ${trim === 1 ? 'weakest line' : `${trim} weakest lines`}: they cost more to run than they sell`)
       const best = cachedHint(g, cur, 'rdIdea', () => bestRdIdea(g, b, productIdeas(g, b, IDEAS_SHOWN), Math.max(0, b.cash - rdReserve(b))))
-      return talentHint(g, 'Business', best ? `Develop ${best.idea}: about ${money(best.budget)} is the best budget (${Math.round(best.quote.odds * 100)}% odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: no new line would earn back its cost, or the company needs its cash cushion')
+      return talentHint(g, 'Business', best ? `Develop ${best.idea}: about ${money(best.budget)} is the best budget (${hintOdds(g, best.quote.odds)} odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: no new line would earn back its cost, or the company needs its cash cushion')
     },
     header: (g) => {
       const b = readBiz(g, a)
@@ -693,7 +697,7 @@ function productsMenu(a: Asset): MenuGroup {
         for (const p of dev.slice(0, TOP_LINES)) {
           const left = Math.max(0, p.years - p.progress)
           const quality = typeof p.quality === 'number' ? ` · quality ~${Math.round(p.quality)}` : ''
-          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${Math.round(p.odds * 100)}% odds${quality} · ${money(p.budget)} budget${p.heavy === true ? ' · Heavy R&D' : ''}` })
+          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${oddsChip(g, p.odds)}${quality} · ${money(p.budget)} budget${p.heavy === true ? ' · Heavy R&D' : ''}` })
         }
         if (dev.length > TOP_LINES) nodes.push({ type: 'info', id: `biz.devMore.${a.id}`, emoji: '\u{1F52C}', text: `…and ${plural(dev.length - TOP_LINES, 'more project')}.` })
       }

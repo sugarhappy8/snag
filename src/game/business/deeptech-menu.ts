@@ -6,7 +6,7 @@ import { chartInfo, lineSpec, scorecardSpec } from '../charts'
 import type { ChartSpec } from '../charts/spec'
 import { addStat, formatCents, formatMoney, log, notice, remember, scriptChoice, useYearAction } from '../core'
 import { revealPolicyOf } from '../effort/hooks'
-import { oddsLine } from '../effort/why'
+import { oddsChip, oddsLine } from '../effort/why'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
@@ -138,7 +138,7 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
   return dtAct(a, `rd.${def.id}`, def.label(t0), def.emoji, {
     subtitle: (g) => {
       const { b, t } = view(g, a)
-      return `${def.years} yr${def.years === 1 ? '' : 's'} · ${money(programCost(b, t, def))}/yr · ${Math.round(def.odds(t) * 100)}% base odds · ${def.blurb}`
+      return `${def.years} yr${def.years === 1 ? '' : 's'} · ${money(programCost(b, t, def))}/yr · ${oddsChip(g, def.odds(t), 'base odds')} · ${def.blurb}`
     },
     disabled: (_g, b, t) => programBlock(b, t, def),
     hint: (g) => {
@@ -179,7 +179,7 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
         const short = yearly > funds ? ` · more than the ${money(funds)} in the R&D account and cash covers` : ''
         // What moved the odds off the plan's own (the budget, the lab's know-how in the trade, the world's research), when anything did.
         const why = terms.quote.reasons.length > 0 ? ` · ${oddsLine(terms.quote, revealPolicyOf(g))}` : ''
-        return `${money(yearly)} a year for ${yrs(n)} at a ${pace.label.toLowerCase()} pace (${money(yearly * n)} in all) · ${Math.round(terms.odds * 100)}% base odds${why}${short}`
+        return `${money(yearly)} a year for ${yrs(n)} at a ${pace.label.toLowerCase()} pace (${money(yearly * n)} in all) · ${oddsChip(g, terms.odds, 'base odds')}${why}${short}`
       },
     },
     run: (g, cur, b, t, input) => {
@@ -223,7 +223,7 @@ function labMenu(a: Asset): MenuGroup {
       for (const p of t.programs) {
         nodes.push(
           dtAct(a, `cancel.${p.key}`, p.name, p.emoji, {
-            subtitle: `${programLine(p)} · tap to cancel`,
+            subtitle: `${programLine(p, g)} · tap to cancel`,
             confirm: (gg) => {
               const owed = grantsOwed(gg, b, t, p).reduce((sum, x) => sum + x.amount, 0)
               return `Cancel ${p.name}? The ${money(p.spent)} spent so far is gone.${owed > 0 ? ` Grant money it hasn't spent yet (${money(owed)}) goes back to the agency.` : ''}`
@@ -474,7 +474,7 @@ function fundingMenu(a: Asset): MenuGroup {
             subtitle: (gg) => {
               const v = view(gg, a)
               const amt = grantAmount(v.b, v.t, gr)
-              return `${amt > 0 ? `about ${money(amt)}` : gr.capex ? 'for capital projects' : 'for running R&D'} · ${Math.round(grantOdds(gg, a, v.b, v.t, gr) * 100)}% odds · ${gr.blurb}`
+              return `${amt > 0 ? `about ${money(amt)}` : gr.capex ? 'for capital projects' : 'for running R&D'} · ${oddsChip(gg, grantOdds(gg, a, v.b, v.t, gr))} · ${gr.blurb}`
             },
             disabled: (gg, bb, tt) => grantBlock(gg, a, bb, tt, gr),
             hint: (gg) => (best && best.id === gr.id ? talentHint(gg, 'Business', 'Apply here first: the best odds-weighted money on offer.') : null),
@@ -749,7 +749,7 @@ function drugMenu(a: Asset, d0: Drug): MenuGroup {
       if (!d.failed && d.phase < 4 && !d.partner) {
         nodes.push(
           dtAct(a, `trial.${d.id}`, `Start ${trialName(d, b.countryId).replace(`${d.name}: `, '')}`, d.phase >= 3 ? '\u{1F4DC}' : '\u{1F9EA}', {
-            subtitle: `${money(trialCost(b, d))}/yr · ${Math.round(trialOdds(d) * 100)}% odds`,
+            subtitle: (gg) => `${money(trialCost(b, d))}/yr · ${oddsChip(gg, trialOdds(d))}`,
             disabled: (_gg, bb, tt) => {
               const dd = tt.drugs.find((x) => x.id === d.id)
               return dd ? trialBlock(bb, tt, dd) : 'Gone.'
