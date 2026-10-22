@@ -37,7 +37,7 @@ import { KNOW_ODDS_MAX } from '../src/game/effort/limits'
 import { ambitionOf, readYou, writeYou } from '../src/game/effort/persona'
 import { isField } from '../src/game/effort/task'
 import { rand } from '../src/game/rng'
-import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
+import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { expectLifecycle, expectParity, setCompany, TOL, tradeFixture, type Input, type Point } from './effort-parity-kit'
 import { ceoSlack } from './ceo-edge-kit'
 import { deepFreeze } from './fuzz-kit'
@@ -501,13 +501,29 @@ describe('who is working', () => {
     expect(opsOdds(f.g, copy, 2, 'cost')).not.toBe(opsOdds(f.g, f.b, 2, 'cost'))
   })
 
-  it('a lean owner takes a year longer at a one-year program, and opsYears is the default actor’s number', () => {
+  it('a lean owner takes the same year at a one-year program (a slowdown of a quarter of a year or less adds none), and opsYears is the default actor’s number', () => {
     const f = owned()
     expect(opsYears(f.b, 1)).toBe(1)
     expect(opsQuote(f.g, f.b, 1, 'cost', f.a).years).toBe(1)
+    const calm = opsQuote(f.g, f.b, 1, 'cost', f.a).yearsExact
     const you = readYou(f.g)
     writeYou(f.g, { ...you, posture: 'lean', effective: 'lean' })
-    expect(opsQuote(f.g, f.b, 1, 'cost', f.a).years).toBe(2)
+    const lean = opsQuote(f.g, f.b, 1, 'cost', f.a)
+    expect(lean.yearsExact).toBeGreaterThan(calm + 0.05)
+    expect(lean.yearsExact - calm).toBeLessThan(0.25)
+    expect(lean.years).toBe(1)
+    expect(opsYears(f.b, 1)).toBe(1)
+  })
+
+  it('a lean owner who is worn out takes a year longer at a one-year program, and the start and the screen say the same', () => {
+    const f = owned()
+    expect(opsQuote(f.g, f.b, 1, 'cost', f.a).years).toBe(1)
+    const you = readYou(f.g)
+    writeYou(f.g, { ...you, posture: 'lean', effective: 'lean' })
+    f.g.flags.household = { owner: `${f.g.generation}:${f.g.character.id}`, fatigue: 80 } as Json
+    const slow = opsQuote(f.g, f.b, 1, 'cost', f.a)
+    expect(slow.yearsExact - 1).toBeGreaterThan(0.25)
+    expect(slow.years).toBe(2)
     expect(opsYears(f.b, 1)).toBe(1)
     // The start stores what the quote says, and the screen says the same.
     f.b.cash = Math.max(f.b.cash, 100_000_000)

@@ -128,6 +128,14 @@ engine fix that followed makes that a rule of the engine and not a result of its
   most 15, the line at most 15 under four plans, and the system's own wrapper at most 15 (`bounded` in
   `test/effort-mig-acceptance.test.ts`).
 
+The years had a cliff of their own: `ceil(baseYears / (sqrt(k) * speed))` made ambition 47.5 (a speed of 0.9925) a two-year project of
+a restaurant's one-year idea. The years now round up from what the default actor takes at the same budget while the owner is at most
+`YEARS_GRACE` (a quarter of a year) slower, and from the exact figure less the grace after it (`yearsOf`, `effort/factors.ts`;
+`test/effort-years.test.ts`). At the default actor nothing moves (the parity grid holds the years exactly), a faster actor rounds as
+before, and `yearsExact` stays the true figure for the systems that run on it (deep tech, the studio). One pinned number off the
+default moved: a lean owner at a one-year Operations program no longer takes a second year unless tired as well
+(`test/effort-ops.test.ts`; `moved-tests.md`).
+
 ## How a later system joins
 
 1. Add the system id to `SYSTEMS` and a grid to `GRIDS` in `test/effort-parity-kit.ts`, from the real kits, with the life as a tuple.

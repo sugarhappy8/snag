@@ -11,6 +11,7 @@
 //                a capped term adds exactly its points and takes no share of what the others do together, so its line never reads
 //                past its cap (what is over goes to the largest line without one)
 //   speedOf      how fast the work goes: crew, tools, ambition, fatigue and know-how, multiplied
+//   yearsOf      the whole years it takes: round up from the default actor's years, so a slowdown of a quarter of a year or less adds none
 //   risksOf      what a bold plan risks (reported, never rolled)
 //
 // At the neutral inputs (budget 1, ambition 50, steady, fatigue 0, no know-how, no tools, no crew) every deviation is exactly 0, the
@@ -28,6 +29,7 @@ import {
   TERM_LABEL,
   TIRED_PTS,
   TOOLS_PTS,
+  YEARS_GRACE,
 } from './limits'
 import { cutNum, hasOwn, isRecord } from './num'
 import type { Posture, Reason, Task, TermKey } from './types'
@@ -228,6 +230,19 @@ export function totalFte(people: unknown): number {
  */
 export function speedOf(crew: number, tools: number, rho: number, phi: number, knowYears: number, know: number): number {
   return crew * (1 + 0.3 * tools) * rho * phi * (1 + (knowYears * know) / 100)
+}
+
+/**
+ * The whole years a piece of work takes. `normal` is what the default actor needs at this budget (`baseYears / k^yearsExp`, the number
+ * v5.0.0 rounded up), `exact` what this actor needs at its own pace. An actor that is no slower rounds up from `exact`, as always (with
+ * a 1e-9 tolerance, so float noise at a whole number is not a year). A slower one rounds up from `normal` while the slowdown is at most
+ * YEARS_GRACE (a quarter of a year), and from `exact - YEARS_GRACE` after, so the figure it rounds is continuous in the slowdown, never
+ * under `normal` and never over `exact`: a hair's breadth of slowness is not a second year. Cut to `minYears..maxYears`.
+ */
+export function yearsOf(normal: number, exact: number, minYears: number, maxYears: number): number {
+  const slower = exact - normal
+  const counted = slower > 0 ? (slower <= YEARS_GRACE ? normal : exact - YEARS_GRACE) : exact
+  return Math.min(maxYears, Math.max(minYears, Math.ceil(counted - 1e-9)))
 }
 
 /**

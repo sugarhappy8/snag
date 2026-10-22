@@ -52,6 +52,12 @@ export const FATIGUE_KNEE = 35
 export const FATIGUE_SLOPE = 0.004
 /** At this fatigue the body gives out: a burnout. */
 export const BURNOUT_F = 85
+/**
+ * A slowdown of this many years or less does not add a year to a piece of work: the years round up from what the default actor takes at
+ * the same budget, never from a hair's breadth over it (ambition 47.5 is not a second year for a one-year project). Past it the years
+ * round up from the exact figure less this much.
+ */
+export const YEARS_GRACE = 0.25
 /** The most full-time people one task can use. */
 export const FTE_CAP_MAX = 40
 /** The most any one risk of a bold plan is reported at. */

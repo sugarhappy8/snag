@@ -30,7 +30,7 @@ How research, practice and study work since R3 (v5.1.0): one engine that turns w
 | tired | tired | `-TIRED_PTS * (1 - phi)` | about 10, since `phi` is never under 0.74 |
 
    Crew, tools, hard, bold and tired are shifts in logit space that add up, so none can push the odds past the clamp. Know-how, rival pressure and public research are then added in odds points, so each is worth exactly its capped points in the final odds whatever the others did: 100 know-how moves the odds by at most 15 points under every plan, a bold one and a tired one included (`deviate` cuts the know-how term at `KNOW_ODDS_MAX` where it enters the odds, and `test/effort-know-cap.test.ts` holds it over a grid of 189,000 inputs). The result is cut to `oddsLo..oddsHi`.
-4. **Years** are `baseYears / (k^yearsExp * speed)`, with `speed = crew * (1 + 0.3 * tools) * rho * phi * (1 + knowYears * know / 100)`, rounded up and cut to `minYears..maxYears`. Only the studio engine sets `knowYears` (0.15), because it has no odds: everywhere else know-how buys odds only.
+4. **Years** are `baseYears / (k^yearsExp * speed)`, with `speed = crew * (1 + 0.3 * tools) * rho * phi * (1 + knowYears * know / 100)`, rounded up and cut to `minYears..maxYears`. A hair's breadth of slowness is not a year: the years round up from what the default actor takes at the same budget (`normal = baseYears / k^yearsExp`, exactly what v5.0.0 booked) while the actor is at most `YEARS_GRACE` (a quarter of a year) slower, and from the exact figure less that grace after it. So ambition 47.5 gives a one-year project one year, the figure rounded is continuous in the slowdown, the years are never under the default actor's and never over the plain round-up, and a faster actor rounds up from its exact figure as before (`yearsOf`; `yearsExact` is always the true figure). Only the studio engine sets `knowYears` (0.15), because it has no odds: everywhere else know-how buys odds only.
 5. **Quality** is a budget curve plus know-how, cut to `lo..hi` and bent under the task's ceiling by `softCeil`: `up * (1 - k^-exp)` from k = 1, `down * log2(k)` below it. The quality never passes `ceiling`, and a `room` of 0 is a hard clamp, which is how the product task keeps its old `clamp(x, 5, 97)`.
 6. **The lines** (`reasons`) are the caller's own terms first (`baseTerms`: team, a steady CEO), then funding and the engine's terms in the order crew, tools, know, hard, rival, spill, bold, tired. The engine's lines add up to `round(p * 100) - round(base * 100)` (what rounding and interactions leave goes to the largest line; know-how, rival pressure and public research add exactly their points and take no share of it, so their lines stay inside 15, 8 and 18 and on their own side of 0, and what the cap cuts goes to the largest line that has no cap), and a line of 0 is left out. The labels are `TERM_LABEL`.
 
@@ -103,6 +103,7 @@ Every number that bounds the engine is in `src/game/effort/limits.ts`, and every
 | `FATIGUE_KNEE` | 35 | Fatigue under this costs no speed. |
 | `FATIGUE_SLOPE` | 0.004 | The share of speed each point of fatigue above the knee costs. |
 | `BURNOUT_F` | 85 | Fatigue at which the body gives out. |
+| `YEARS_GRACE` | 0.25 | A slowdown of this many years or less adds no year to a piece of work. |
 | `FTE_CAP_MAX` | 40 | The most full-time people one task can use. |
 | `RISK_MAX` | 0.08 | The most any one risk of a bold plan is reported at. |
 | `SHIFT_MAX` | 12 | The most results move ambition, either way. |
@@ -149,6 +150,7 @@ A module-level `const` that reads an import is flagged by rule (d) of `test/laye
 | `test/effort-pure.test.ts` | No draw in a read, a frozen state survives every read, no `rand`, `chance`, `.rng`, `Math.random` or `Date` token in the folder. |
 | `test/effort-conservation.test.ts` | The books and the cash are identical around 500 calls and a played life; the folder imports no `cash`, `ledger`, `spend` or `book`. |
 | `test/effort-know-cap.test.ts` | Know-how is worth at most 15 odds points under every plan (a grid of 189,000 inputs, a bold plan and a tired owner included), and its line never reads past 15 (nor rival pressure past -8, public research past 18) while the lines still add up. |
+| `test/effort-years.test.ts` | The default actor's years are the rd.ts years; a slowdown under a quarter of a year adds none (ambition 47.5), one over it adds one; never under the default's, never over the plain round-up, falling as ambition rises. |
 | `test/effort-longrun.test.ts` | 200 years at maximum inputs: `k` at most 4, know-how at most 100, quality at most the ceiling, 15 banked points, `rho` at most 1.25; a hostile `effort.you` in an old save. |
 | `test/effort-ceilings.ts` | Eight rows of `test/ceiling-list.json`, each scaled by 1 and 100. |
 | `test/effort-api.test.ts` | The barrel, and this note. |

@@ -15,7 +15,8 @@
 //      a bold plan, tiredness): the shifts of tools, crew, a hard field, a bold plan and tiredness add up in logit space so none can
 //      push the odds past the clamp, and know-how, rivals and public research are then added in odds points, so each is worth exactly
 //      its capped points (15, -8, 18) in the final odds whatever the other terms did
-//   4. years: `baseYears / (k^yearsExp * speed)` with speed = crew * tools * ambition's pace * fatigue's pace * know-how's pace
+//   4. years: `baseYears / (k^yearsExp * speed)` with speed = crew * tools * ambition's pace * fatigue's pace * know-how's pace, rounded
+//      up from the default actor's years while the actor is at most a quarter of a year slower (a hair's breadth is not a year)
 //   5. quality: a budget curve plus know-how, bent under the task's ceiling
 //   6. the lines: the caller's own terms (team, a steady CEO), then funding and the engine's terms, adding up to the odds
 //
@@ -36,6 +37,7 @@ import {
   tiredPtsOf,
   toolsPts,
   totalFte,
+  yearsOf,
 } from './factors'
 import { BURNOUT_F, K_MAX, K_MIN, KNOW_MAX, RHO_MAX } from './limits'
 import { cutNum, isRecord } from './num'
@@ -105,8 +107,9 @@ export function quote(g: GameState, task: Task, input: EffortInput): Quote {
 
   // Years: the sqrt of the budget (the rd.ts shape) read bit for bit when the exponent is a half.
   const kPow = task.yearsExp === 0.5 ? Math.sqrt(k) : Math.pow(k, task.yearsExp)
+  const yearsNormal = task.baseYears / kPow
   const yearsExact = task.baseYears / (kPow * speed)
-  const years = Math.min(task.maxYears, Math.max(task.minYears, Math.ceil(yearsExact - 1e-9)))
+  const years = yearsOf(yearsNormal, yearsExact, task.minYears, task.maxYears)
 
   // Quality: a budget curve plus know-how, cut to the curve's bounds, then bent under its ceiling.
   let quality: number | null = null
