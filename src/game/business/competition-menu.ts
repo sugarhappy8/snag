@@ -14,8 +14,9 @@ import { marketViewOf, shareLine, shareText } from './competition'
 import { acquireRival, acquisitionQuote, lobby, type AcquisitionQuote, lobbyCost, lobbyOdds, offensiveValue, OFFENSIVE_CUT, priceOffensive, raidCost, raidValue, talentRaid } from './competition-moves'
 import { manageBlock } from './gate'
 import { industryDef } from './industries'
-import { cached, hinting, live, mAct, priced } from './market-menu-kit'
-import { bestCampaign, bestEntry, campaignsMenu, defendAction, defendQuote, expandMenu, historyMenu, leaderboardMenu, licensesMenu, overviewMenu, regionsMenu, rivalsMenu, scenariosMenu, segmentsMenu, supplyAction, supplyQuote } from './market-menu'
+import { fogOn } from './market-fog'
+import { cached, hinting, live, lookFor, mAct, priced } from './market-menu-kit'
+import { bestCampaign, bestEntry, campaignsMenu, defendAction, defendQuote, expandMenu, historyMenu, leaderboardMenu, hubKeys, licensesMenu, overviewMenu, regionsMenu, rivalsMenu, scenariosMenu, segmentsMenu, supplyAction, supplyQuote } from './market-menu'
 import { hasSupplyChain, MODE_LABEL } from './market-reach'
 import { placeName, placeFlag } from './market-places'
 import { concentrationOf } from './market-view'
@@ -297,6 +298,8 @@ export function marketMenu(a: Asset): MenuGroup {
         campaignsMenu(cur),
         protectMenu(cur),
         scenariosMenu(cur),
+        // The rivals' strengths and the forecasts are estimates: the screen ends with one way to pay for a sharper read of the main ones.
+        ...(fogOn() ? lookFor(g, cur, 'hub', hubKeys(g, cur)) : []),
       ]
     },
   }

@@ -15,13 +15,20 @@
 //   antitrustRead                            the yearly chance regulators open a case: a word, a percent only with a talent or a read
 //   marketTruth / scenarioScope / antitrustTruth   the keys' truths, for a Look closer read
 //
+// R3-G3 (H.4) makes those keys buyable: this file registers who owns the riv and mkt families (what a key is called, what it really is,
+// how big a thing it reads), and the key sets the screens hand to Look closer:
+//
+//   rivalListKeys / rivalDetailKeys          the rivals list asks about its top five, one rival about quality, technology and the lines shown
+//   countryKeys / localKeys                  a market the player does not know asks about the demand and the shares its rows show
+//   forecastScale                            what a what-if forecast is measured against (the scn kind in market-menu.ts uses it too)
+//
 // Keys. `riv:<scope>:quality`, `riv:<scope>:tech` and `riv:<scope>:<family>:line`. The scope is a short hash of (industry, market,
 // rival id), because one rival id stands for different numbers in different markets (a restaurant chain is stronger at home than
 // abroad, and a fictional challenger `f41` is a different company in each market). So a report bought for a rival in one market
 // never sharpens the same name in another. The family is a slug of its name (unique inside an industry, pinned by the test).
 // Nothing here reads g.rng or writes the state: a read is a hashed draw (knowledge/normal.ts).
 import { hashKey } from '../kernel/streams'
-import { isExact, know, type Estimate } from '../knowledge/contract'
+import { isExact, know, registerKeyKind, type Estimate } from '../knowledge/contract'
 import type { Asset, GameState } from '../types'
 import { marketViewOf, shareText, type RivalView } from './competition'
 import { marketKey } from './competition-core'
@@ -29,6 +36,8 @@ import { shieldsOf } from './lab-state'
 import { rivalLines } from './product-market'
 import { countryDetail, localField } from './market-view'
 import { businessAssets, readBiz, type BizState } from './state'
+import { industryDef, isIndustry } from './industries'
+import { placeName } from './market-places'
 import { money, stars } from './util'
 
 export type Conf = 0 | 1 | 2 | 3
@@ -126,24 +135,76 @@ export function weakest(parts: readonly Fogged[]): Pick<Fogged, 'conf' | 'asOf'>
   return { ...(conf !== undefined ? { conf } : {}), ...(asOf !== undefined ? { asOf } : {}) }
 }
 
-/**
- * The true number behind a riv: key, found through the companies the player owns (null when none of them still meets that rival
- * in that market, or the key is not one of ours). A purchased report is paid for by key, and this is how the key finds its truth.
- */
-export function rivalTruth(g: GameState, key: string): number | null {
+/** The product lines a profile row shows (the rest are counted in "+N more"), and so the lines a Look closer read asks about. */
+export const LINES_SHOWN = 4
+/** How many rivals the rivals list reads at once (the top of the list by share). */
+export const LOOK_RIVALS = 5
+
+/** What a riv: key names: a rival of one of the player's markets, and which of its numbers. */
+interface RivalHit {
+  b: BizState
+  r: RivalView
+  what: RivalField | { slug: string }
+}
+
+/** The rival a riv: key names, found through the companies the player owns (null when none still meets it, or the key is not one of ours). */
+function rivalHit(g: GameState, key: string): RivalHit | null {
   const p = key.split(':')
   if (p[0] !== 'riv' || (p.length !== 3 && p.length !== 4)) return null
   for (const a of businessAssets(g)) {
     const b = readBiz(g, a)
     for (const r of marketViewOf(g, b).rivals) {
       if (rivalScope(b, r.id) !== p[1]) continue
-      if (p.length === 3) return p[2] === 'quality' ? r.quality : p[2] === 'tech' ? r.tech : null
-      if (p[3] !== 'line') return null
-      return rivalLinesOf(g, b, r).find((l) => familySlug(l.family) === p[2])?.quality ?? null
+      if (p.length === 3) return p[2] === 'quality' || p[2] === 'tech' ? { b, r, what: p[2] } : null
+      return p[3] === 'line' ? { b, r, what: { slug: p[2]! } } : null
     }
   }
   return null
 }
+
+/**
+ * The true number behind a riv: key, found through the companies the player owns (null when none of them still meets that rival
+ * in that market, or the key is not one of ours). A purchased report is paid for by key, and this is how the key finds its truth.
+ */
+export function rivalTruth(g: GameState, key: string): number | null {
+  const h = rivalHit(g, key)
+  if (!h) return null
+  if (typeof h.what === 'string') return h.r[h.what]
+  const slug = h.what.slug
+  return rivalLinesOf(g, h.b, h.r).find((l) => familySlug(l.family) === slug)?.quality ?? null
+}
+
+/** What a riv: key is called on the Briefing: 'Acme quality', 'Acme technology', 'Acme Street Lighting quality'. */
+function rivalLabel(g: GameState, key: string): string {
+  const h = rivalHit(g, key)
+  if (!h) return key
+  if (h.what === 'quality') return `${h.r.name} quality`
+  if (h.what === 'tech') return `${h.r.name} technology`
+  const slug = h.what.slug
+  const line = rivalLinesOf(g, h.b, h.r).find((l) => familySlug(l.family) === slug)
+  return `${h.r.name} ${line ? line.family : 'product'} quality`
+}
+
+/** The keys a rivals list reads: the quality of the first `n` rivals (the list is by share, so the biggest players). */
+export function rivalListKeys(b: Market, rivals: readonly Pick<RivalView, 'id'>[], n: number = LOOK_RIVALS): string[] {
+  return rivals.slice(0, n).map((r) => rivalKey(b, r.id, 'quality'))
+}
+
+/** The keys one rival's profile reads: quality, technology and the quality of each product line it shows. */
+export function rivalDetailKeys(g: GameState, b: BizState, r: Pick<RivalView, 'id' | 'tier' | 'quality'>): string[] {
+  return [rivalKey(b, r.id, 'quality'), rivalKey(b, r.id, 'tech'), ...rivalLinesOf(g, b, r).slice(0, LINES_SHOWN).map((l) => lineKey(b, r.id, l.family))]
+}
+
+registerKeyKind({
+  kind: 'riv',
+  label: rivalLabel,
+  truth: rivalTruth,
+  // A rival of a world market is met everywhere (the world); of a national one, in a country.
+  scope: (g, key) => {
+    const h = rivalHit(g, key)
+    return h ? { tier: marketViewOf(g, h.b).scope === 'world' ? 3 : 2, country: h.b.countryId } : { tier: 2 }
+  },
+})
 
 // ---------------------------------------------------------------------------------------------------------------------
 // R3-G2: markets, forecasts and the antitrust odds
@@ -193,17 +254,25 @@ export function shareBand(g: GameState, fog: Pick<MarketFog, 'industry'>, countr
   return fogged(know(g, marketShareKey(fog.industry, countryId, who), truth), shareText(truth))
 }
 
-/**
- * The true number behind an mkt: key, found through the companies the player owns in that industry (null when there is none, or
- * the key is not one of ours). A report bought for a market is paid for by key, and this is how the key finds its truth.
- */
-export function marketTruth(g: GameState, key: string): number | null {
+/** What an mkt: key names: a market of one of the player's industries, and the thing read in it (a size, or a share: the leader's, or a named player's). */
+interface MarketHit {
+  industry: string
+  country: string
+  field: 'size' | 'share'
+  truth: number | null
+  /** The player the share is for (null for a size and for the leader read without a name). */
+  name: string | null
+}
+
+/** The market an mkt: key names, found through the companies the player owns in that industry (null when there is none, or the key is not one of ours). */
+function marketHit(g: GameState, key: string): MarketHit | null {
   const p = key.split(':')
   if (p[0] !== 'mkt' || p.length !== 4) return null
   const [industry, where, field] = [p[1]!, p[2]!, p[3]!]
   const [country, who] = where.split('.') as [string, string | undefined]
   if (field !== 'size' && field !== 'share') return null
   if (field === 'size' && who !== undefined) return null
+  const hit = (truth: number | null, name: string | null = null): MarketHit => ({ industry, country, field, truth, name })
   for (const a of businessAssets(g)) {
     const b = readBiz(g, a)
     if (b.industry !== industry) continue
@@ -211,17 +280,58 @@ export function marketTruth(g: GameState, key: string): number | null {
     if (v.scope === 'world') {
       const d = countryDetail(g, b, v, country)
       if (!d) continue
-      if (field === 'size') return d.row.demand
-      if (who === undefined) return d.row.leader?.share ?? null
-      return d.champions.find((c) => part(c.name) === who)?.share ?? null
+      if (field === 'size') return hit(d.row.demand)
+      const lead = d.row.leader
+      if (who === undefined) return hit(lead?.share ?? null, lead?.name ?? null)
+      // A named player is a local champion or the country's leader (a foreign company can lead a market it is not from).
+      const named = [...(lead ? [lead] : []), ...d.champions].find((c) => part(c.name) === who)
+      return hit(named?.share ?? null, named?.name ?? null)
     }
     const f = localField(g, b, v, country)
-    if (field === 'size') return f.demand
-    if (who === undefined) return f.top[0]?.share ?? null
-    return f.top.find((t) => part(t.name) === who)?.share ?? null
+    if (field === 'size') return hit(f.demand)
+    const named = who === undefined ? f.top[0] : f.top.find((t) => part(t.name) === who)
+    return hit(named?.share ?? null, named?.name ?? null)
   }
   return null
 }
+
+/**
+ * The true number behind an mkt: key, found through the companies the player owns in that industry (null when there is none, or
+ * the key is not one of ours). A report bought for a market is paid for by key, and this is how the key finds its truth.
+ */
+export function marketTruth(g: GameState, key: string): number | null {
+  return marketHit(g, key)?.truth ?? null
+}
+
+/** What an mkt: key is called on the Briefing: 'Software demand in Japan', 'Acme share in Japan', 'Leader share in Japan'. */
+function marketLabel(g: GameState, key: string): string {
+  const p = key.split(':')
+  if (p[0] !== 'mkt' || p.length !== 4) return key
+  const where = placeName(p[2]!.split('.')[0]!)
+  const trade = isIndustry(p[1]) ? industryDef(p[1]).label : p[1]!
+  if (p[3] === 'size') return `${trade} demand in ${where}`
+  const h = marketHit(g, key)
+  return `${h?.name ?? 'Leader'} share in ${where}`
+}
+
+/** The keys a market the player does not know asks about: its demand, its leader's share and its champions' shares, as the rows show them. */
+export function countryKeys(industry: string, countryId: string, leader: { name: string } | null, champions: readonly { name: string }[]): string[] {
+  const named = [...(leader ? [leader] : []), ...champions].map((c) => marketShareKey(industry, countryId, c.name))
+  return [...new Set([marketSizeKey(industry, countryId), ...named])]
+}
+
+/** The keys a national market the player does not know asks about: its demand and the shares of the names it shows. */
+export function localKeys(industry: string, countryId: string, top: readonly { name: string }[]): string[] {
+  return [...new Set([marketSizeKey(industry, countryId), ...top.map((t) => marketShareKey(industry, countryId, t.name))])]
+}
+
+registerKeyKind({
+  kind: 'mkt',
+  label: marketLabel,
+  truth: marketTruth,
+  // One country's market: a country read, priced by that country's wealth.
+  scope: (_g, key) => ({ tier: 2, country: key.split(':')[2]?.split('.')[0] }),
+})
 
 /** The part of a key that names one company of the player: forecasts and odds are about that company, not about "offense". */
 export const scenarioScope = (a: Pick<Asset, 'id'>): string => part(a.id)
@@ -231,10 +341,14 @@ export const scenarioKey = (scope: string, scenarioId: string): string => `scn:$
 /** A forecast is read against the larger of its own size and this share of last year's sales, so a small move never reads as a rounding error of a big firm. */
 export const FORECAST_FLOOR = 0.1
 
+/** What a forecast is measured against: its own size, or the floor share of last year's sales when that is larger. */
+export function forecastScale(b: Pick<BizState, 'last'>, truth: number): number {
+  return Math.max(Math.abs(truth), Math.max(0, b.last?.revenue ?? 0) * FORECAST_FLOOR)
+}
+
 /** The estimate of what a what-if move should earn (a signed amount of money). */
 export function forecastRead(g: GameState, b: Pick<BizState, 'last'>, scope: string, scenarioId: string, truth: number): Estimate {
-  const revenue = Math.max(0, b.last?.revenue ?? 0)
-  return know(g, scenarioKey(scope, scenarioId), truth, { scale: Math.max(Math.abs(truth), revenue * FORECAST_FLOOR) })
+  return know(g, scenarioKey(scope, scenarioId), truth, { scale: forecastScale(b, truth) })
 }
 
 const signed = (v: number): string => `${v >= 0 ? '+' : '-'}${money(Math.abs(v))}`

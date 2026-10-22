@@ -7,6 +7,7 @@
 import { chartInfo, marketLadderSpec, marketSizeSpec, shareSpec } from '../charts'
 import type { ChartSpec } from '../charts/spec'
 import { eraOf } from '../history/timeline'
+import { registerKeyKind } from '../knowledge/contract'
 import { talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
 import { marketStateOf, PRICE_POWER, SCALE_SAVING } from './competition-core'
@@ -14,8 +15,8 @@ import { mergerLimit, TIERS, type Regime } from './competition-data'
 import { marketOwner, marketViewOf, shareText, type MarketView, type RivalView } from './competition'
 import { acquireRival, acquisitionGains, acquisitionQuote, offensiveValue, OFFENSIVE_EDGE, raidValue } from './competition-moves'
 import { industryDef } from './industries'
-import { antitrustRead, demandRead, exactProfit, fogOn, profitRead, rivalLine, rivalLinesOf, rivalStars, scenarioScope, shareBand, unknownMarket, weakest, type Conf, type Fogged, type MarketFog } from './market-fog'
-import { cached, hinting, live, mAct } from './market-menu-kit'
+import { antitrustRead, countryKeys, demandRead, exactProfit, fogOn, forecastScale, LINES_SHOWN, localKeys, LOOK_RIVALS, profitRead, rivalDetailKeys, rivalLine, rivalLinesOf, rivalListKeys, rivalStars, scenarioKey, scenarioScope, shareBand, unknownMarket, weakest, type Conf, type Fogged, type MarketFog } from './market-fog'
+import { cached, hinting, live, lookFor, mAct } from './market-menu-kit'
 import { continentOf } from './market-regional'
 import { demandWeights, hasSupplyChain, MODE_LABEL, MODE_TERM } from './market-reach'
 import { placeFlag, placeName } from './market-places'
@@ -237,6 +238,8 @@ export function countryRows(a: Asset, d: CountryDetail, fog?: MarketFog): MenuNo
   rows.push(info(k('trade'), d.barriers.bloc ? `Trade: no tariffs between you and ${placeName(id)} (same bloc)` : `Trade: ${pct(d.barriers.tariff)} tariff on goods${d.barriers.effective < d.barriers.tariff * 0.5 ? ' (little of this business is physical goods)' : ''} · other barriers ${d.barriers.other < 0.25 ? 'light' : d.barriers.other < 0.5 ? 'moderate' : 'heavy'} · ${d.barriers.label}`, '\u{1F6C3}'))
   rows.push(info(k('fx'), d.fx.shared ? `Currency: the same currency as your home market (${d.fx.code})` : d.fx.label === 'none' ? 'Currency: your home currency' : `Currency exposure: ${d.fx.label} (${d.fx.code}; about ${pct(d.fx.swing)} a year of swings recently)`, '\u{1F4B1}'))
   rows.push(info(k('reg'), `Regulators: ${d.regime.name} · ${strictWord(d.regime)}${d.regime.breakUp ? ' · can break companies up' : ''} · merger limit about ${pct(d.mergerLimit)} combined share · cases start above about 35% local share${d.caseChance > 0 ? ` (yours: about ${pct(d.caseChance)} a year)` : ''}`, '\u{1F3DB}\u{FE0F}'))
+  // A market the player does not know ends with a way to look closer (the home market and any market of the player's industry has nothing to).
+  if (fog) rows.push(...lookFor(fog.g, a, `country.${id}`, countryKeys(fog.industry, id, lead, d.champions)))
   return rows
 }
 
@@ -260,6 +263,7 @@ export function localRows(a: Asset, f: LocalField, v: MarketView, fog?: MarketFo
   })
   rows.push(info(k('tail'), `Independents hold about ${pct(f.fringe)} of customers, in thousands of small shops.`, '\u{1F465}'))
   rows.push(info(k('reg'), `Regulators: ${f.regime.name} · ${strictWord(f.regime)}${f.regime.breakUp ? ' · can break companies up' : ''} · merger limit about ${pct(mergerLimit(f.regime))}`, '\u{1F3DB}\u{FE0F}'))
+  if (fog) rows.push(...lookFor(fog.g, a, `local.${f.id}`, localKeys(fog.industry, f.id, f.top)))
   void v
   return rows
 }
@@ -410,6 +414,8 @@ export function rivalsMenu(a: Asset): MenuGroup {
         children: (gg) => rivalRows(gg, a, r.id),
       }))
       if (v.rivals.length > top.length) nodes.push(info(`biz.mkt.rivals.more.${a.id}`, `…and ${v.rivals.length - top.length} smaller named players.`, '\u{1F465}'))
+      // The strengths of the biggest players are estimates: one row to pay for a sharper read of them.
+      if (fogOn()) nodes.push(...lookFor(g, a, 'rivals', rivalListKeys(readBiz(g, live(g, a)), v.rivals)))
       return nodes
     },
   }
@@ -422,8 +428,8 @@ export function rivalsMenu(a: Asset): MenuGroup {
 function productsLine(g: GameState, b: BizState, r: RivalView): Fogged {
   const lines = rivalLinesOf(g, b, r)
   if (!lines.length) return { text: 'Sells: its basic range (no product lines of note yet)' }
-  const shown = lines.slice(0, 4).map((l) => ({ family: l.family, read: rivalLine(g, b, r.id, l.family, l.quality) }))
-  const text = `Sells: ${shown.map((x) => `${x.family} (${x.read.text})`).join(' \u{00B7} ')}${lines.length > 4 ? ` \u{00B7} +${lines.length - 4} more` : ''}`
+  const shown = lines.slice(0, LINES_SHOWN).map((l) => ({ family: l.family, read: rivalLine(g, b, r.id, l.family, l.quality) }))
+  const text = `Sells: ${shown.map((x) => `${x.family} (${x.read.text})`).join(' \u{00B7} ')}${lines.length > LINES_SHOWN ? ` \u{00B7} +${lines.length - LINES_SHOWN} more` : ''}`
   return { text, ...weakest(shown.map((x) => x.read)) }
 }
 
@@ -477,6 +483,8 @@ function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
       }),
     )
   }
+  // Its strengths and product lines are estimates: one row to pay for a sharper read of them.
+  if (fogOn()) nodes.push(...lookFor(g, a, `rival.${rivalId}`, rivalDetailKeys(g, b, r)))
   return nodes
 }
 
@@ -801,6 +809,56 @@ export function scenarioTruth(g: GameState, key: string): number | null {
   return null
 }
 
+/** How many forecasts the scenarios screen reads at once (the first ones on the list). */
+export const LOOK_SCENARIOS = 3
+/** How many keys the hub (the Market & Competition screen itself) reads at once: the rivals first, then the forecasts. */
+export const LOOK_HUB = 6
+
+/** The keys the scenarios screen reads: the profit forecast of the first moves on the list that carry one. */
+export function scenarioKeys(g: GameState, a: Asset): string[] {
+  return scenarioRows(g, a)
+    .filter((r) => r.value !== null && !r.block)
+    .slice(0, LOOK_SCENARIOS)
+    .map((r) => scenarioKey(scenarioScope(a), r.id))
+}
+
+/** The keys the screen that holds all the sections reads: the rivals' qualities and the first forecasts, the first six. */
+export function hubKeys(g: GameState, a: Asset): string[] {
+  const b = readBiz(g, live(g, a))
+  return [...rivalListKeys(b, marketViewOf(g, b).rivals, LOOK_RIVALS), ...scenarioKeys(g, a)].slice(0, LOOK_HUB)
+}
+
+/** The move a scn: key names, found through the companies the player owns (null when none matches, or the move is not on offer). */
+function scenarioHit(g: GameState, key: string): { a: Asset; row: ScenarioRow } | null {
+  const p = key.split(':')
+  if (p[0] !== 'scn' || p.length !== 4 || p[3] !== 'value') return null
+  for (const a of businessAssets(g)) {
+    if (scenarioScope(a) !== p[1]) continue
+    const row = scenarioRows(g, a).find((r) => r.id === p[2])
+    return row ? { a, row } : null
+  }
+  return null
+}
+
+registerKeyKind({
+  kind: 'scn',
+  label: (g, key) => {
+    const h = scenarioHit(g, key)
+    return h ? `${h.row.label} profit` : key
+  },
+  truth: scenarioTruth,
+  // A move is about one company: a business.
+  scope: (g, key) => {
+    const h = scenarioHit(g, key)
+    return h ? { tier: 1, country: readBiz(g, live(g, h.a)).countryId } : { tier: 1 }
+  },
+  // The same ruler the screen reads a forecast with, so a bought reading and the passive one agree on how wide a band is.
+  scale: (g, key) => {
+    const h = scenarioHit(g, key)
+    return h && h.row.value !== null ? forecastScale(readBiz(g, live(g, h.a)), h.row.value) : null
+  },
+})
+
 export function scenariosMenu(a: Asset): MenuGroup {
   return {
     type: 'menu',
@@ -810,10 +868,13 @@ export function scenariosMenu(a: Asset): MenuGroup {
     subtitle: 'What each move should do to your share and profit',
     header: () => 'Rough estimates from the same model that books your year: the most share each move could add, and about how much it should make you after its costs. If you already sell all you can make, extra customers add nothing.',
     children: (g) => {
-      return scenarioRows(g, a).map((r) => {
+      const rows: MenuNode[] = scenarioRows(g, a).map((r) => {
         const s = scenarioRead(r, g, a)
         return info(`biz.mkt.sc.${a.id}.${r.id}`, s.text, r.emoji, s.conf, s.asOf)
       })
+      // The forecasts are estimates: one row to pay for a sharper read of the first few.
+      if (fogOn()) rows.push(...lookFor(g, a, 'scenarios', scenarioKeys(g, a)))
+      return rows
     },
   }
 }

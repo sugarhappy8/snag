@@ -16,7 +16,7 @@ import { collectMenu } from '../src/game/kernel/registry'
 import { MODULES } from '../src/game/modules'
 import { intelBriefingMenu, learn, lookCloser, readKnow } from '../src/game/knowledge/contract'
 import { buyIntel } from '../src/game/knowledge/intel'
-import { registerKeyKind } from '../src/game/knowledge/kinds'
+import { overrideKeyKind } from '../src/game/knowledge/kinds'
 import { DIAL_MAX } from '../src/game/knowledge/rows'
 import { setDial } from '../src/game/knowledge/standing'
 import { assetsMenu } from '../src/game/menus'
@@ -28,7 +28,7 @@ import { flowTotal } from './ledger-kit'
 
 const TRUTH = new Map<string, number>()
 for (const kind of ['mkt', 'riv', 'cand']) {
-  registerKeyKind({
+  overrideKeyKind({
     kind,
     label: (_g, key) => `Number ${key.split(':')[1]}`,
     truth: (_g, key) => TRUTH.get(key) ?? null,
