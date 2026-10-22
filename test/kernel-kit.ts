@@ -6,7 +6,7 @@
 //   agingNames()      the ids of the aging seam of ageUp, `yearly.` taken off, in run order (R2-K9; the old YEARLY_HOOKS names).
 //   withAging(edit,fn) runs fn with the aging list edited: edit gets the entries in run order and returns the list to run (R2-K9;
 //                     what a splice of YEARLY_HOOKS did). The list is not sorted again, so an entry goes where the edit puts it.
-//   isSelfRegistered(id) true for the id of a built-in that registers itself when its own file loads (special.ts, R2-K10), so it is
+//   isSelfRegistered(id) true for the id of a built-in that registers itself when its own file loads (special.ts R2-K10, manage.ts R2-K12), so it is
 //                     in the registry beside MODULES once anything has loaded that file; a test of "the registry holds MODULES"
 //                     leaves those ids out.
 //
@@ -120,6 +120,7 @@ export function withAging<T>(edit: (entries: readonly Ordered<YearlyEntry>[]) =>
  */
 export const SELF_REGISTERED: readonly string[] = [
   'special.', // src/game/special.ts (R2-K10): special.military, special.actor, ...
+  'business.manage', // src/game/business/manage.ts (R2-K12): the five sections of businessView, one module
 ]
 
 /** True for a module id that a built-in file registered by itself, which `modules/index.ts` does not list. */
