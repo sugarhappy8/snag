@@ -150,11 +150,13 @@ save): each still loads, three years play, the world ends under 40,000 nodes wit
 
 Since R3 (v5.1.0) `g.world.frontier` keeps how far the world's research is ahead of the calendar path. History up to 2026 is fixed,
 so only the future is emergent: a push dated 2026 or earlier changes nothing. The code is `world/frontier.ts` (the shard, its one
-writer and its reader), `world/frontier-fields.ts` (the fields) and the ceilings in `world/caps.ts` (`FRONTIER_CAPS`).
+writer and its reader), `world/frontier-fields.ts` (the fields), `world/frontier-step.ts` (the year), `world/frontier-terms.ts` (the
+odds terms and the words) and the ceilings in `world/caps.ts` (`FRONTIER_CAPS`).
 
 - A field is one of 20: the 12 future-facing wave kinds (`ai`, `chips`, `drug`, `space`, `ev`, `automation`, `quantum`, `security`,
   `fusion`, `neuro`, `drones`, `carbon`) and the 8 AI capabilities (`ai.language` to `ai.science`). The 8 `ai.*` fields are spill
-  only: they give public research and rival pressure, to themselves and to `ai`, and never a lead. The table has room for 32.
+  only: they give public research and rival pressure, to themselves and to `ai`, and never a lead. The table has room for 32 fields
+  (medicine, software, weapons and finance wait for later releases and are rows of the same table).
 - A field keeps `fold` plus its rows (the lead, in whole centi-years), `pub` (public research other researchers can use, in tenths
   of an odds point), `ly` (the year of the newest push), `yg` (what it gained in that year) and the newest rows `{ y, w, m, d, o }`:
   year, who (`you` or `rival`), market, centi-years added, origin hash.
@@ -176,18 +178,65 @@ writer and its reader), `world/frontier-fields.ts` (the fields) and the ceilings
 | Rule | Value |
 |---|---|
 | Lead from one disclosure | `size x 2.0` years (you) or `x 1.5` (a rival), times a luck of 0.8 to 1.2 |
-| Most a field gains in a year, in all | 2 years |
+| Most a field gains in a year, in all | at most 2 years a year (`FRONTIER_CAPS.yearYears`) |
 | Most a field holds | 12 years (`FRONTIER_CAPS.leadYears`) |
-| Spill from one disclosure | `1 + 5 size` points (1 to 6) times the shield: open 1, patent 0.5 (the default), secret refused |
-| Public research held | 18 points |
-| Rows | 6 for a market, 4 markets for a field; an older row folds into `fold`, so the lead is never lost |
-| State | at most 3,600 nodes for all 20 fields at their caps; a life with a few pushes is under 150 |
+| Spill from one disclosure | `1 + 5 size` points (1 to 6), so at most 6 points a disclosure (`FRONTIER_CAPS.spillPerDisclosure`), times the shield: open 1, patent 0.5 (the default), secret refused |
+| Public research held | 18 points (`FRONTIER_CAPS.spillPoints`), fading 10% a year |
+| Rows | 6 rows a market and 4 markets a field (24 rows); an older row folds into `fold`, so the lead is never lost |
+| Fields | 20 today, 32 fields at most (`FRONTIER_CAPS.fields`) |
+| State | at most 3,600 nodes for all 20 fields at their caps, 14% of the world's budget; a life with a few pushes is under 150 |
 
-- Bounded and hostile-proof: `normalizeFrontier` keeps only the known fields, whole numbers inside their ranges and valid rows (one
-  for a year and an origin, oldest year first), applies the caps of 6 rows, 4 markets, 2 years a year and 12 years, forces the
-  lead of an AI capability to 0, drops an empty field, and returns a valid shard as itself. `frontierProblems` names every way a stored
-  shard is wrong, and `worldProblems` prints each as a "frontier: ..." line. `worldBudget` counts the rows against the caps.
+### Who writes
+
+Every push goes through `applyDisclosure`, and no wave writer was edited to make one.
+
+- A wave. `announceWave` (`business/tech-waves.ts`) is the one function every wave goes through (heavy, deep tech, workshop, race and
+  effort). When it stores a NEW wave it calls `pushFromWave` (`business/frontier-waves.ts`): the field of the wave's kind, the wave's
+  size, the wave id as the origin, a `rival` row for a rival wave and a `you` row for the rest. So there is one row for one wave, which
+  is one wave for one origin. A repeat (the stored wave comes back), a refusal (the third wave of a year from the player's side, the
+  65th stored) and a history kind (`cloud`, `smartphone`) push nothing. A wave dated 2026 or earlier pushes nothing either.
+- A rival landing. `landRivalWaves` (the `techWaves` hook) announces a rival wave through `announceWave`, so it pushes a `rival` row in
+  the field of its kind, in the company's market. Its seeded draw (`rivalWave`) is not touched, so the landings are the ones v5.0.0 had.
+- Disclosed research. The port `business.discloseResearch` (`announceResearch`, wave source `effort`) is what the research domains of
+  later releases call. A size of 0.2 or more makes a wave, and the wave's push is the disclosure's (an `ai.<capability>` field
+  narrows it, spill only). A smaller size, or a wave the rules refused, pushes by itself (`pushResearch`, origin `effort:<origin>`).
+  A disclosure never counts twice.
+- The year. `stepFrontier` fades public research and lets a rival follow, as above.
+
+The waves have their own caps: one wave per origin (the wave id), at most 2 waves a year from the player's side (`MAX_PER_YEAR`, a
+rival's do not count) and 64 stored.
+
+### Who reads
+
+All reads are pure: no write, no `g.rng`, the same number for the same source in the same year.
+
+- The Workshop future race. `raceYear` (`workshop/market.ts`) is the deadline a rival gets there, rolled per family 10 to 40 years
+  after the idea opens, less `raceShift`: the whole years of the lead of the idea's field, but never below `from + 10`, never above the
+  old deadline and never before the year of the latest push. The 9 future ideas that write a wave have a field (`FUTURE_FIELD`); the 4
+  novelties and every history idea are untouched. The idea screen says how many years the race was pulled in.
+- The odds terms. `frontierTerms(g, field)` gives `spill` (the `public research` term, 0 to 18 odds points: the field's own pool and,
+  for an AI capability, the `ai` pool), `rival` (the `rival pressure` term, 2 points for each rival row of the last 3 years, at most 8)
+  and `lead`. Both terms are 0 with no shard, so the odds a research system had before R3 are the odds it has at default. The
+  reasons carry the names in `FRONTIER_REASONS`. Effort migration passes the terms to `quote` and the fog layer wraps `frontierWords`
+  and `fieldLine` ("on schedule" to "far ahead of schedule").
+- Not read. The AI market (`capBest`, the board and `benchHard`) keeps its calendar drift in R3: 48 uses keyed by family, so the lead of
+  `ai` is stored and unread. `heavyArrival`, `hasTech` and `techAdoption` are calendar pure and stay so.
+
+### Bounded, hostile-proof and proven
+
+- `normalizeFrontier` keeps only the known fields, whole numbers inside their ranges and valid rows (one for a year and an origin,
+  oldest year first), applies the caps of 6 rows a market, 4 markets and 12 years of lead, forces the lead of an AI capability to 0,
+  drops an empty field, and returns a valid shard as itself. The 2 years a year is the writer's cap: it cuts every push to the room the
+  year has left, and `yg` remembers what the field gained, so folding rows away never gives the room back. `frontierProblems` names
+  every way a stored shard is wrong, and `worldProblems` prints each as a "frontier: ..." line. `worldBudget` counts the rows against
+  the caps.
 - Load order: the shard registers itself when `world/frontier.ts` loads, and `world/shards.ts` imports it, like `facts`.
+- The ceilings: `frontier-caps` and `waves-per-year` in `test/ceiling-list.json`, each with a probe row in `test/ceiling-kit.ts` that
+  presses the inputs 100 times.
+- The acceptance, `test/frontier-acceptance.test.ts`: the 200-year probe (2027 to 2226, five deep-tech companies, 20 disclosures of
+  size 1 by both sides and 5 port calls a year) holds every cap above and the state at 3,600 nodes, books no money and leaves `g.rng`
+  and `g.nextId` alone; a rerun, a clone and a JSON reload give equal JSON; an heir keeps the shard; every old fixture, a life to 2026
+  and a modern life with no company have no `frontier` key; twelve hostile shards load into the oldest fixture and stay bounded.
 
 ## How to add a shard
 
