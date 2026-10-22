@@ -16,7 +16,8 @@ interface GuardRule {
 // Mirrors the words the anachronism lint (test/anachronism.test.ts) looks for.
 const RULES: readonly GuardRule[] = [
   { re: /\bsmart ?phones?\b|\bapps?\b|\bselfies?\b|\bemojis?\b/i, tech: 'smartphone' },
-  { re: /\bgroup ?chats?\b|\bDMs?\b|\bslid into\b|\bscreen ?time\b|\bdoom-?scroll|\bdelivery apps?\b|\bfood delivery\b/i, tech: 'smartphone' },
+  // A singular DM right after a number is the Deutsche Mark ('It cost you 138 DM.'), not a direct message; a plural DMs always is.
+  { re: /\bgroup ?chats?\b|\bDMs\b|(?<!\d ?)\bDM\b|\bslid into\b|\bscreen ?time\b|\bdoom-?scroll|\bdelivery apps?\b|\bfood delivery\b/i, tech: 'smartphone' },
   { re: /\btext(ed|ing|s)?\b(?! ?books?)(?!ual)/i, tech: 'mobilePhone', year: 1995 },
   { re: /\bcell ?phones?\b|\bmobile ?phones?\b|\bmobiles\b|\bcellular\b|\bringtone/i, tech: 'mobilePhone' },
   { re: /\b(my|your|his|her|their|our)( new| old| cracked| own)? phones?\b(?! (bill|book|line|number|call))/i, tech: 'mobilePhone' },

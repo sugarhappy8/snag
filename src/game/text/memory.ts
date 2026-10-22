@@ -248,6 +248,27 @@ export function familyStats(g: GameState, fam: string): { last: number | null; c
   return { last, count10 }
 }
 
+/**
+ * Pure. The same answer as familyStats(g, fam).last, for a hot path (R3-Q8 pace asks it for every event it weighs): it reads the one
+ * record instead of sanitizing the whole memory, so a year's pick costs a few reads, not a few hundred. An own key, a valid key, a
+ * record that is exactly the codec and a year not after g.year, as familyStats; a family map over its cap is the one case that
+ * needs the full clean (it keeps the newest 120 keys), so it asks familyStats.
+ */
+export function familyLast(g: GameState, fam: string): number | null {
+  const raw = g.flags.textMem
+  if (!isPlain(raw) || raw.v !== 1 || !isPlain(raw.f) || !isMemKey(fam)) return null
+  const f = raw.f
+  let keys = 0
+  for (const _ in f) if (++keys > TEXT_MEM_LIMITS.families) return familyStats(g, fam).last
+  const rec = Object.hasOwn(f, fam) ? f[fam] : undefined
+  if (typeof rec !== 'string' || rec.length > MAX_FAMILY_RECORD) return null
+  const years = parseFamily(rec)
+  if (years === null) return null
+  let last: number | null = null
+  for (const y of years) if (y <= g.year) last = y
+  return last
+}
+
 /** The named ring, oldest first, or null when it was never written. A copy. */
 export function ringRead(g: GameState, name: string): string[] | null {
   const r = readTextMem(g).r
