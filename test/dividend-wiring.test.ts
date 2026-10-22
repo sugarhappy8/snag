@@ -4,7 +4,7 @@
 // own-listing-kit; a year is run the way own-listing-story.test.ts runs one.
 import { describe, expect, it } from 'vitest'
 import '../src/game/business'
-import { YEARLY_HOOKS } from '../src/game/aging'
+import '../src/game/aging'
 import { smartManagerTurn } from '../src/game/business/board-ceo'
 import { boardOf, boardView } from '../src/game/business/board-state'
 import { payoutCash, reserveDollars } from '../src/game/business/board-vote'
@@ -25,6 +25,7 @@ import { runScript } from '../src/game/scripts'
 import type { Asset, GameState, NoticeModal } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { founder, listedGroup, privateCompany } from './own-listing-kit'
+import { agingNames } from './kernel-kit'
 
 const CASH: DividendPolicy = { mode: 'cash', pct: 0.5, keep: 3 }
 const PROFIT: DividendPolicy = { mode: 'profit', pct: 0.5, keep: 3 }
@@ -271,7 +272,7 @@ describe('the yearly dividend at year end', () => {
   })
 
   it('taxes arrive in the same age-up', () => {
-    const names = YEARLY_HOOKS.map(([n]) => n)
+    const names = agingNames()
     expect(names.indexOf('business')).toBeGreaterThanOrEqual(0)
     expect(names.indexOf('business')).toBeLessThan(names.indexOf('finance'))
   })

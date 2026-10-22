@@ -1,4 +1,4 @@
-// The world step (R2-L17, K.6 b): the one yearly hook of the world, last in YEARLY_HOOKS (src/game/aging.ts).
+// The world step (R2-L17, K.6 b): the one yearly hook of the world, last of the yearly registry, phase settle (src/game/modules/yearly-aging.ts).
 //
 // It runs after every module that books money or changes a record, so it reads the year's closing state: it indexes the people, firms
 // and homes, builds the holdings from them (syncWorld), and lets go of the rows that have sat idle for five years, folding their cash

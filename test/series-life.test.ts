@@ -2,7 +2,7 @@
 // ageUp, held in g.flags.lifeSeries, read back through a bounded reader. A life's series never reaches the heir; a
 // graveyard entry keeps a 40-point trail of it (spark).
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { netWorth } from '../src/game/core'
 import { killCharacter } from '../src/game/death'
 import { continueAsChild } from '../src/game/life'
@@ -20,6 +20,8 @@ import type { GameState, Json } from '../src/game/types'
 import { deepFreeze } from './charts-kit'
 import { adult } from './market-kit'
 import { memoryLocalStorage } from './save-kit'
+import { withAging } from './kernel-kit'
+import type { YearlyEntry } from '../src/game/kernel/registry'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -247,13 +249,8 @@ describe('ageUp writes the row', () => {
 
   it('5: a death inside the hooks still writes the row of the year', () => {
     const g = life()
-    const hook: [string, (x: GameState) => void] = ['test-kill', (x) => killCharacter(x, 'Test')]
-    YEARLY_HOOKS.push(hook)
-    try {
-      ageUp(g)
-    } finally {
-      YEARLY_HOOKS.pop()
-    }
+    const hook: YearlyEntry = { seam: 'aging', phase: 'news', order: 10, run: (x) => killCharacter(x, 'Test') }
+    withAging((es) => [...es, hook], () => ageUp(g))
     expect(g.character.alive).toBe(false)
     const rows = readLifeSeries(g)
     expect(rows).toHaveLength(1)
@@ -262,13 +259,8 @@ describe('ageUp writes the row', () => {
 
   it('5: a death found by checkDeath after the hooks still writes the row of the year', () => {
     const g = life()
-    const hook: [string, (x: GameState) => void] = ['test-fail', (x) => { x.character.stats.health = 0 }]
-    YEARLY_HOOKS.push(hook)
-    try {
-      ageUp(g)
-    } finally {
-      YEARLY_HOOKS.pop()
-    }
+    const hook: YearlyEntry = { seam: 'aging', phase: 'news', order: 10, run: (x) => { x.character.stats.health = 0 } }
+    withAging((es) => [...es, hook], () => ageUp(g))
     expect(g.character.alive).toBe(false)
     const rows = readLifeSeries(g)
     expect(rows).toHaveLength(1)

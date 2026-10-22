@@ -7,7 +7,7 @@ import { economyOf } from './economy'
 import { chance, randInt } from './rng'
 import { ownerKey, peek, stableRoll } from './special/common'
 import { bizOf, businessAssets, readBiz } from './business/state'
-import { refreshValue, valuationOf } from './business/economy'
+import { revalueCompany } from './business/contract'
 import { isFinanceFirm } from './business/finance-firm-state'
 import type { GameState, Json, MenuGroup, MenuNode } from './types'
 
@@ -131,7 +131,7 @@ export function launderUnderworld(g: GameState, assetId: string): boolean {
   } else {
     const b = bizOf(g, a), recovered = Math.floor(amount * .65)
     firmCash(g, b, recovered, 'crime.take', a.id); b.yearIncome += recovered
-    b.valuation = valuationOf(b); refreshValue(a, b)
+    revalueCompany(a, b)
     record(p, `${g.year}: risky conversion placed ${formatMoney(recovered)} in ${a.name}; remainder lost.`); save(g, p)
     notice(g, 'Criminal Funds Converted', `${formatMoney(recovered)} reached ${a.name}'s corporate treasury. The remaining 35% was lost. This is taxable company income, not personal cash; ordinary corporate withdrawals still apply. Exposure increased.`, { emoji: '⚠️' })
   }

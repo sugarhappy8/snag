@@ -4,7 +4,7 @@
 //
 // No pinned seed: the lives are a tuple (the first of the conservation probe's forty is the same life, R2-L5).
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { ageUp } from '../src/game/aging'
 import { checkLedger, LEDGER_CAPS, peekLedger } from '../src/game/kernel/ledger'
 import { REASONS } from '../src/game/kernel/reasons'
 import type { GameState } from '../src/game/types'
@@ -19,6 +19,7 @@ import { deepFreeze } from './fuzz-kit'
 import { makeTestGame } from './helpers'
 import { playLife } from './play-kit'
 import { probeLife } from './probe-life'
+import { agingNames, withAging } from './kernel-kit'
 
 /** The probe life: seed and birth year. The same life as the first of the conservation probe's forty (LEDGER_SEEDS[4]). */
 const LIFE = [105, 1975] as const
@@ -38,8 +39,8 @@ function stamped(): GameState {
 }
 
 describe('the world step', () => {
-  it('is the last of YEARLY_HOOKS, named world', () => {
-    const names = YEARLY_HOOKS.map(([name]) => name)
+  it('is the last of the aging entries, named yearly.world', () => {
+    const names = agingNames()
     expect(names[names.length - 1]).toBe('world')
     expect(names.filter((n) => n === 'world')).toHaveLength(1)
     // It reads the year's closing records, so every module that books money comes before it.
@@ -89,18 +90,21 @@ describe('the world step', () => {
 
     const h = makeTestGame(8, { age: 40, money: 50_000 })
     h.queue = []
-    const at = YEARLY_HOOKS.length - 1
-    YEARLY_HOOKS.splice(at, 0, [
-      'test: death before the world step',
-      (gg) => {
-        gg.character.alive = false
-      },
-    ])
-    try {
-      ageUp(h)
-    } finally {
-      YEARLY_HOOKS.splice(at, 1)
-    }
+    withAging(
+      (es) => [
+        ...es.slice(0, -1),
+        {
+          seam: 'aging',
+          phase: 'settle',
+          order: 5,
+          run: (gg) => {
+            gg.character.alive = false
+          },
+        },
+        es[es.length - 1]!,
+      ],
+      () => ageUp(h),
+    )
     expect(h.character.alive).toBe(false)
     expect(readWorld(h).y).toBeUndefined()
   })

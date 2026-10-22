@@ -11,6 +11,7 @@ import { randInt } from '../rng'
 import { getCountry, randomCity, type Country } from '../world'
 import type { Asset, GameState, ImmigrationStatus, Person } from '../types'
 import { isAbroad, money, niceRound, pushFlagString, stableRng } from './common'
+import { relocatePlayer } from './contract'
 import {
   blocAccess,
   citizenshipsOf,
@@ -300,6 +301,9 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
   else addStat(g, 'happiness', randInt(g, 3, 8))
   notice(g, text.title, [text.opener, ...lines].join('\n\n'), { emoji: text.emoji ?? country.flag, tone: how === 'deported' ? 'bad' : 'event' })
 }
+
+// The nation's exile calls the move through this port (activities/contract.ts), so it imports neither this file nor the careers.
+relocatePlayer.use(relocate)
 
 function capital(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s

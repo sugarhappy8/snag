@@ -2,7 +2,6 @@
   "v": 1,
   "components": [
     [
-      "src/game/activities/pastimes.ts",
       "src/game/business/bank-actions.ts",
       "src/game/business/bank-events.ts",
       "src/game/business/bank-menu.ts",
@@ -61,85 +60,17 @@
       "src/game/business/supply-policy.ts",
       "src/game/business/supply-resilience.ts",
       "src/game/business/tech-waves.ts",
-      "src/game/business/wave-insider.ts",
-      "src/game/computer.ts",
-      "src/game/computer/dev-common.ts",
-      "src/game/computer/dev-freelance.ts",
-      "src/game/computer/dev-kinds.ts",
-      "src/game/computer/dev-learn.ts",
-      "src/game/computer/dev-projects.ts",
-      "src/game/computer/dev-state.ts",
-      "src/game/computer/dev-venture.ts",
-      "src/game/computer/dev.ts",
-      "src/game/computer/money-common.ts",
-      "src/game/computer/money-crypto.ts",
-      "src/game/computer/money-options.ts",
-      "src/game/computer/money-scams.ts",
-      "src/game/computer/money-stocks.ts",
-      "src/game/computer/money.ts",
-      "src/game/computer/online.ts",
-      "src/game/crime.ts",
-      "src/game/effects.ts",
-      "src/game/events/era-late-kit.ts",
-      "src/game/events/helpers.ts",
-      "src/game/special/gamedev-career.ts",
-      "src/game/special/gamedev-core.ts",
-      "src/game/special/gamedev-make.ts",
-      "src/game/special/gamedev-state.ts",
-      "src/game/underworld.ts"
+      "src/game/business/wave-insider.ts"
     ],
     [
-      "src/game/activities/immigration-move.ts",
-      "src/game/activities/immigration-routes.ts",
-      "src/game/business.ts",
-      "src/game/business/conglomerate-menu.ts",
-      "src/game/business/conglomerate.ts",
-      "src/game/business/hedge-company.ts",
-      "src/game/business/hedge-fund.ts",
-      "src/game/business/hedge-menu.ts",
-      "src/game/business/hedge-model.ts",
-      "src/game/business/manage.ts",
-      "src/game/business/yearly.ts",
-      "src/game/careers.ts",
-      "src/game/nation/consequences.ts",
-      "src/game/nation/graft.ts",
-      "src/game/nation/menu.ts",
-      "src/game/nation/regime.ts",
-      "src/game/nation/yearly.ts",
-      "src/game/special.ts",
-      "src/game/special/gamedev.ts",
-      "src/game/special/kit/careers.ts",
       "src/game/special/model-agency.ts",
       "src/game/special/model-board.ts",
       "src/game/special/model-core.ts",
       "src/game/special/model-data.ts",
       "src/game/special/model-events.ts",
       "src/game/special/model-exit.ts",
-      "src/game/special/model-sim.ts",
       "src/game/special/model-state.ts",
-      "src/game/special/model.ts",
-      "src/game/special/politics.ts"
-    ],
-    [
-      "src/game/assets.ts",
-      "src/game/business/ai-bench.ts",
-      "src/game/business/competition-core.ts",
-      "src/game/business/competition-data.ts",
-      "src/game/business/competition-roster.ts",
-      "src/game/business/deeptech-data.ts",
-      "src/game/business/economic-actors.ts",
-      "src/game/business/market-reach.ts",
-      "src/game/business/market-trade.ts",
-      "src/game/economy/index.ts",
-      "src/game/economy/model.ts",
-      "src/game/economy/simulation.ts",
-      "src/game/economy/supply.ts",
-      "src/game/economy/trade.ts",
-      "src/game/finance.ts",
-      "src/game/landlord.ts",
-      "src/game/nation/effects.ts",
-      "src/game/nation/trade-policy.ts",
-      "src/game/shops/fleet-operations.ts"
+      "src/game/special/model.ts"
     ],
     [
       "src/game/special/actor-events.ts",
@@ -157,6 +88,24 @@
       "src/game/special/astronaut-flight.ts",
       "src/game/special/astronaut-world.ts",
       "src/game/special/astronaut.ts"
+    ],
+    [
+      "src/game/business/conglomerate-menu.ts",
+      "src/game/business/conglomerate.ts",
+      "src/game/business/manage.ts",
+      "src/game/business/yearly.ts"
+    ],
+    [
+      "src/game/assets.ts",
+      "src/game/landlord.ts"
+    ],
+    [
+      "src/game/computer/money-options.ts",
+      "src/game/computer/money-stocks.ts"
+    ],
+    [
+      "src/game/crime.ts",
+      "src/game/underworld.ts"
     ]
   ]
 }

@@ -1,7 +1,7 @@
 // Shared helpers for the legit side of the home computer: who may use it, screen time,
 // paying for things (kids get their parents to chip in), and taxed earnings.
 import { personCash } from '../cash'
-import { canUseComputer, computerLocked, ownsComputer } from '../computer'
+import { canUseComputer, computerLocked, ownsComputer } from './access'
 import { addMoney, addStat, clamp, earnIncome, formatMoney, log, notice, parents, spend } from '../core'
 import { taxAdditionalIncome } from '../finance'
 import type { Reason } from '../kernel/reasons'

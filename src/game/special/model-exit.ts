@@ -2,18 +2,19 @@
 // proteges a desk signs, the unlocks that announce each path once, and Retire with its career summary. Every cash
 // move goes through c.earn and c.pay; nothing here becomes an Asset. The label path calls the existing founding flow
 // (business/founding.ts is read, never edited), and the photographer path hires through careers.ts. Imports from
-// model.ts, careers.ts and business/ are used inside function bodies only: model.ts imports this file, and
-// careers.ts imports special.ts, which imports the model sim.
+// model.ts and business/ are used inside function bodies only: model.ts imports this file. The ordinary job market (the photographer's
+// company, pay shape, entry rules and hiring) comes through the workplace.ordinaryJobs port, bound by careers.ts, because careers.ts
+// imports special.ts, which imports the model sim.
 import { seeded } from '../assets'
 import { priceLevel } from '../activities/common'
 import { foundingProblem, startFounding } from '../business/founding'
-import { companyName, eraPayShape, hireForJob, jobRequirementProblem } from '../careers'
 import { remember, useYearAction, yearActionsUsed } from '../core'
-import { getJobDef } from '../data/jobs'
+import { getJobDef, type Industry } from '../data/jobs'
 import { economyOf } from '../economy/model'
 import { nameFitsYear } from '../history/events-people'
 import { chance } from '../rng'
 import type { GameState, MenuAction, MenuInfo, MenuNode } from '../types'
+import { ordinaryJobs, type OrdinaryJobs } from '../workplace/contract'
 import { getCountry, namePoolOf } from '../world'
 import { blocked, fameOf, leave, money, short } from './common'
 import { honest } from './kit/crisis'
@@ -105,7 +106,8 @@ export function exitBlock(g: GameState, s: ModelState, exit: Exit): string | nul
       if (s.book < 50) return 'Photography studios want a book of 50 or more.'
       if (age < 22) return 'Studios hire photographers at 22 and over.'
       const def = getJobDef('photographer')
-      return def ? jobRequirementProblem(g, def) : "Nobody is hiring photographers right now."
+      const jobs = ordinaryJobs()
+      return def && jobs ? jobs.jobRequirementProblem(g, def) : "Nobody is hiring photographers right now."
     }
     case 'label': {
       if (fameOf(g) < 30) return 'A label needs fame of 30 or more.'
@@ -156,7 +158,7 @@ export function unlockExits(c: CareerCtx<ModelState>): void {
 // Taking an exit
 
 /** The pay of a photographer's first rung where you live: the rung's pay scaled the way a listing scales it. */
-function photographerPay(g: GameState, year: number, ladderPay: number, industry: Parameters<typeof eraPayShape>[1]): number {
+function photographerPay(g: GameState, year: number, ladderPay: number, industry: Industry, eraPayShape: OrdinaryJobs['eraPayShape']): number {
   const wealth = Math.max(0.25, fin(getCountry(g.character.countryId).wealth, 1))
   return Math.max(100, Math.round((ladderPay * wealth * eraPayShape(year, industry) * fin(economyOf(g).wages, 1)) / 100) * 100)
 }
@@ -175,12 +177,13 @@ export function takeExit(c: CareerCtx<ModelState>, exit: Exit): void {
   }
   if (exit === 'photographer') {
     const def = getJobDef('photographer')
+    const jobs = ordinaryJobs()
     const rung = def?.ladder.find((r) => r.title === 'Photographer') ?? def?.ladder[def.ladder.length - 1]
-    if (!def || !rung) return
+    if (!def || !rung || !jobs) return
     const r = seeded(`${g.lifeId}|exit|photographer|${year}`)
-    const company = companyName(g, def.industry, () => r.next())
+    const company = jobs.companyName(g, def.industry, () => r.next())
     for (const a of s.agencies) if (a.to === 0) a.to = year
-    hireForJob(g, { defId: def.id, title: rung.title, company, salary: photographerPay(g, year, rung.salary, def.industry), category: def.category })
+    jobs.hireForJob(g, { defId: def.id, title: rung.title, company, salary: photographerPay(g, year, rung.salary, def.industry, jobs.eraPayShape), category: def.category })
     s.exit = 'photographer'
     careerLog(c, `I left modeling to shoot for ${company}.`, 'good')
     careerSay(c, 'Behind the Camera', `You left the runway and took a job as a photographer at ${company}.`, EXIT_EMOJI.photographer, 'good')

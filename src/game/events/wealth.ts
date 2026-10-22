@@ -4,7 +4,7 @@
 // wealthTier), arrive a few times a year at most (small ones bundled into one popup), and how you
 // answer shapes relationships, karma and how spoiled your kids turn out.
 //
-// The yearly hook (aging.ts YEARLY_HOOKS, after finance) also pays the allowances you set, collects
+// The yearly hook (the yearly registry, modules/yearly-aging.ts, after finance) also pays the allowances you set, collects
 // loan repayments (or notices who's avoiding you), settles the businesses and tips you funded, and
 // lets gifted cars meet their fate. Ordinary families see none of it: tier 0 has no requests, and
 // the rest only runs for allowances, loans or investments the player set up themselves.

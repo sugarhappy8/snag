@@ -7,7 +7,7 @@
 //
 // Every reader validates and fills defaults, so old saves (and hand-edited ones) keep working.
 // Also here: local-economy helpers (what things cost and pay where the player lives).
-import { localPay } from '../business/economy'
+import { localPay } from '../data/local-pay'
 import { formatMoney, shortMoney } from '../core'
 import { localMarket, marketOf } from '../data/markets'
 import type { Asset, GameState, Json } from '../types'
