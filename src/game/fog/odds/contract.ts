@@ -6,5 +6,21 @@
 //
 // Importing it also binds the reveal policy the research lines read (effort/hooks.ts), so any screen that shows odds has the
 // rule in force.
-export { RESEARCH_ODDS, exactOddsText, hasOddsRead, oddsKey, oddsLean, oddsPolicy, oddsRead, oddsShown, oddsView, oddsWord } from './odds'
-export type { OddsView, OddsWord } from './odds'
+export {
+  RESEARCH_ODDS,
+  chanceRead,
+  evidenceRead,
+  evidenceWord,
+  exactOddsText,
+  hasOddsRead,
+  oddsKey,
+  oddsLean,
+  oddsLook,
+  oddsPolicy,
+  oddsRead,
+  oddsShown,
+  oddsView,
+  oddsWord,
+  registerOddsOwner,
+} from './odds'
+export type { EvidenceWord, OddsOwner, OddsView, OddsWord } from './odds'

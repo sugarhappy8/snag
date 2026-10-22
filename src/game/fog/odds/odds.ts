@@ -12,13 +12,19 @@
 // factors") follow the same rule: the player's own terms always show, the field, the rivals and the public pool only with the
 // talent or a stored read of research odds, and the chance is a word or "about N%".
 //
+// R3-G8 adds the hazards: the odds a screen cannot know (a coup, a charge, a scheme's risk, a bank's borrower pulling through) read
+// through the same helper. The owner of a screen says what the number is and how to find its truth (registerOddsOwner), so the
+// `odds` key kind, which Look closer and the Intelligence Briefing ask, has one registration here and many owners; a read bought
+// at the Look closer row of a screen is a read of that screen's keys. A chance that moves with a slider (how greedy a scheme is)
+// keeps one key and one reading: the reading's error is carried to the chance the slider asks about (`base`).
+//
 // Pure: nothing here draws a random number, writes the game or reads a year after g.year. The noise is a hash of (life, key,
 // year) inside know(), so the same call twice in a year is the same text.
 import { bindRevealPolicy, EXACT_POLICY, type RevealPolicy } from '../../effort/hooks'
 import type { TermKey } from '../../effort/types'
-import { isExact, know, readKnow } from '../../knowledge/contract'
+import { isExact, know, lookCloser, readKnow, registerKeyKind } from '../../knowledge/contract'
 import { HINT_EMOJI, hasTalent } from '../../talents'
-import type { GameState } from '../../types'
+import type { GameState, MenuGroup } from '../../types'
 
 export type OddsWord = 'almost no chance' | 'a long shot' | 'unlikely' | 'even money' | 'likely' | 'very likely' | 'almost certain'
 
@@ -96,21 +102,37 @@ export interface OddsView {
 /**
  * The odds of `key` whose true chance is `p`, as the player may read them. `domain` is the talent that shows the percent
  * ('Business' for a board). An odds key the knowledge rules cannot fog still prints only a word, never the number.
+ *
+ * `base` is for a chance that moves with a slider while its key stays one: the true chance at the key's own setting (the one a
+ * purchase reads). The reading is made there, and its error (what the player believes less what is true) is carried to `p`, so a
+ * reading bought once stays the same mistake all along the slider and more greed never reads as less risk.
  */
-export function oddsView(g: GameState, key: string, p: number, domain: string = 'Business'): OddsView {
+export function oddsView(g: GameState, key: string, p: number, domain: string = 'Business', base?: number): OddsView {
   if (isExact()) return { text: exactOddsText(p), mid: unit(p), percent: true, exact: true }
   const truth = unit(p)
   const pc = Math.round(truth * 100)
   if (pc >= 99 || pc <= 1) return { text: exactOddsText(truth), mid: truth, percent: false, exact: false }
-  const est = know(g, key, truth)
+  const anchor = base === undefined ? truth : unit(base)
+  const est = know(g, key, anchor)
   if (est.exact) return { text: oddsWord(truth), mid: truth, percent: false, exact: false }
+  const mid = base === undefined ? est.mid : unit(truth + (est.mid - anchor))
   const percent = hasTalent(g, domain) || hasOddsRead(g, key)
-  return { text: percent ? percentText(est.mid) : oddsWord(est.mid), mid: est.mid, percent, exact: false }
+  return { text: percent ? percentText(mid) : oddsWord(mid), mid, percent, exact: false }
 }
 
 /** The text of oddsView: what a hint or a caption prints for these odds. */
-export function oddsRead(g: GameState, key: string, p: number, domain: string = 'Business'): string {
-  return oddsView(g, key, p, domain).text
+export function oddsRead(g: GameState, key: string, p: number, domain: string = 'Business', base?: number): string {
+  return oddsView(g, key, p, domain, base).text
+}
+
+/**
+ * A chance for a row that prints a bare percent today (R3-G8): Exact mode gives that percent, `digits` decimals as the row always
+ * had, character for character; Realistic gives oddsRead (a word, or "about N%" with the talent or a read). The caller picks the
+ * sentence around it with isExact(), because "25% chance they notice" and "chance they notice: unlikely" are not the same words.
+ */
+export function chanceRead(g: GameState, key: string, p: number, domain: string = 'Business', opts: { digits?: number; base?: number } = {}): string {
+  if (isExact()) return `${(p * 100).toFixed(opts.digits ?? 0)}%`
+  return oddsRead(g, key, p, domain, opts.base)
 }
 
 /** True when the reading the player has is on the "yes" side of even money (the truth in Exact mode): "will likely say yes". */
@@ -128,6 +150,124 @@ export function oddsShown(g: GameState, key: string, p: number | (() => number),
   if (!talent && (isExact() || !hasOddsRead(g, key))) return null
   const text = oddsRead(g, key, typeof p === 'function' ? p() : p, domain)
   return talent ? `${HINT_EMOJI} ${text}` : text
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// How much evidence there is (R3-G8)
+
+export type EvidenceWord = 'thin' | 'some' | 'solid' | 'heavy'
+
+/** [upper bound (exclusive), word], rising. The last word catches the rest. */
+const EVIDENCE_LADDER: ReadonlyArray<readonly [number, EvidenceWord]> = [
+  [0.2, 'thin'],
+  [0.45, 'some'],
+  [0.7, 'solid'],
+]
+
+/** How damning a file is, as a word: 0 to 1 becomes thin, some, solid or heavy. */
+export function evidenceWord(e: number): EvidenceWord {
+  const v = unit(e)
+  for (const [cut, word] of EVIDENCE_LADDER) if (v < cut) return word
+  return 'heavy'
+}
+
+/**
+ * The evidence of a case file (or what a scheme leaves behind), 0 to 1, as the player may read it. Exact mode gives today's percent;
+ * Realistic gives the word, or "about N%" (nearest 5, from an honest estimate, so it can be wrong) with the talent or after a read of
+ * this key. It is not a chance, so it has its own words, but it is read the way a chance is: same rule row, same key family.
+ */
+export function evidenceRead(g: GameState, key: string, e: number, domain: string = 'Business', base?: number): string {
+  const truth = unit(e)
+  if (isExact()) return `${(truth * 100).toFixed(0)}%`
+  const anchor = base === undefined ? truth : unit(base)
+  const est = know(g, key, anchor)
+  if (est.exact) return evidenceWord(truth)
+  const mid = base === undefined ? est.mid : unit(truth + (est.mid - anchor))
+  if (!(hasTalent(g, domain) || hasOddsRead(g, key))) return evidenceWord(mid)
+  return `about ${Math.min(95, Math.max(5, Math.round(mid * 20) * 5))}%`
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Owners of odds keys (R3-G8)
+
+/** One kind of hidden chance: what it is called and what its true value is today. */
+export interface OddsOwner {
+  /** The words the Briefing prints for the key (a menu cuts it to 60 characters). */
+  label(g: GameState, id: string): string
+  /** The true chance now, 0 to 1, or null when there is nothing to read (the case closed, the office was lost). Never draws, never writes. */
+  truth(g: GameState, id: string): number | null
+  /** How big the thing read is (1 a business, 2 a country, 3 the world): it prices a source. Default 1. */
+  tier?: 1 | 2 | 3
+}
+
+const owners = new Map<string, OddsOwner>()
+const OWNER_HOOKS = ['label', 'truth', 'tier'] as const
+
+function fingerprint(o: OddsOwner): string {
+  return OWNER_HOOKS.map((h) => String(o[h])).join('\u0001')
+}
+
+/**
+ * Register the owner of the odds keys `odds:<id>:<kind>:p`. Registering the same code twice is fine (a reloaded module); another
+ * owner for a taken kind throws, so two screens can never claim one kind.
+ */
+export function registerOddsOwner(kind: string, owner: OddsOwner): void {
+  if (!/^[A-Za-z0-9._~-]{1,20}$/.test(kind)) throw new Error(`registerOddsOwner: ${String(kind)} cannot be a kind of odds key`)
+  if (typeof owner !== 'object' || owner === null || typeof owner.label !== 'function' || typeof owner.truth !== 'function') {
+    throw new Error(`registerOddsOwner: ${kind} needs a label and a truth`)
+  }
+  const held = owners.get(kind)
+  if (held === undefined) {
+    owners.set(kind, owner)
+    return
+  }
+  if (held === owner || fingerprint(held) === fingerprint(owner)) return
+  throw new Error(`registerOddsOwner: ${kind} is already registered with a different owner`)
+}
+
+/** The owner and the id of a well-formed odds key `odds:<id>:<kind>:p`, or null (no such owner, or a key of another shape). */
+function ownerOf(key: string): { owner: OddsOwner; id: string } | null {
+  const parts = typeof key === 'string' ? key.split(':') : []
+  if (parts.length !== 4 || parts[0] !== 'odds' || parts[3] !== 'p') return null
+  const owner = owners.get(parts[2]!)
+  return owner ? { owner, id: parts[1]! } : null
+}
+
+/** An owner's hook; one that throws or answers badly is one with no answer. */
+function ask<T>(f: () => T): T | null {
+  try {
+    return f()
+  } catch {
+    return null
+  }
+}
+
+// The one `odds` key kind. Research odds (`odds:rd:<id>:p`) and a board's votes have no owner here, so they have no truth to buy yet.
+registerKeyKind({
+  kind: 'odds',
+  label(g, key) {
+    const hit = ownerOf(key)
+    const text = hit ? ask(() => hit.owner.label(g, hit.id)) : null
+    return typeof text === 'string' && text.trim() !== '' ? text : key
+  },
+  truth(g, key) {
+    const hit = ownerOf(key)
+    const v = hit ? ask(() => hit.owner.truth(g, hit.id)) : null
+    return typeof v === 'number' && Number.isFinite(v) ? unit(v) : null
+  },
+  scope(_g, key) {
+    const hit = ownerOf(key)
+    return { tier: hit?.owner.tier ?? 1 }
+  },
+})
+
+/**
+ * The Look closer group of a screen of hazards, with the screen's own name for it ("Commission a risk briefing"), or null: in Exact
+ * mode, when no key has an owner that can read it, or when every source is blocked (lookCloser says which).
+ */
+export function oddsLook(g: GameState, spec: { id: string; keys: readonly string[]; label: string }): MenuGroup | null {
+  const group = lookCloser(g, { id: spec.id, keys: spec.keys })
+  return group === null ? null : { ...group, label: spec.label }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
