@@ -1,6 +1,7 @@
 // R3-H2 (H.1): the one door to the knowledge domain (rule c of the layer ratchet: another domain, a menu of the Fog track or the
 // UI imports this file and nothing else of the folder). It grows with the track: H2 puts the estimate core and the mode helpers
-// here, H3 the record (what the player researched, in flags.know); the sources and the Look closer rows follow with H4 and H5.
+// here, H3 the record (what the player researched, in flags.know), H4 the sources (what a reading costs, how to buy or take one, how
+// an owner registers a key kind); the Look closer rows and the Briefing hub follow with H5.
 //
 // A screen calls it like this:
 //   const est = know(g, `mkt:${industry}:${country}:size`, trueSize)
@@ -12,3 +13,8 @@ export { infoMode, isExact, setInfoOverride, withInfoMode } from './mode'
 export type { InfoMode } from './mode'
 export { KNOW_FLAG, KNOW_LIMITS, forget, learn, readKnow, storedEstimates, widen } from './record'
 export type { KnowRec } from './record'
+export { buyIntel, ingestSignal, offersFor, takeReading } from './intel'
+export type { Offer } from './intel'
+export { registerKeyKind } from './kinds'
+export type { KeyKind } from './kinds'
+export type { Scope, SourceId } from './sources'

@@ -114,7 +114,7 @@ function usableRow(g: GameState, row: StoredRow | null | undefined, log: boolean
 }
 
 /** The width of one unit of sd, in the unit of the truth; null when the truth cannot be read on this unit's scale. */
-function spanOf(unit: Unit, truth: number, scale: number | undefined): number | null {
+export function spanOf(unit: Unit, truth: number, scale: number | undefined): number | null {
   switch (unit) {
     case 'money':
     case 'count':
@@ -129,6 +129,19 @@ function spanOf(unit: Unit, truth: number, scale: number | undefined): number | 
       return s > 0 ? s : null
     }
   }
+}
+
+/**
+ * A reading of `truth`: the truth plus one unit-variance draw `z` of relative sd `sd`, on the scale of the unit (a ratio on a log
+ * unit, `span` hundredths on a bounded or signed one), kept inside the range of a bounded unit. The one place a noisy read is made:
+ * the passive read here and every purchased source (intel.ts) use it, so they cannot drift apart. `span` is spanOf(unit, ...).
+ */
+export function applyNoise(unit: Unit, truth: number, sd: number, z: number, span: number): number {
+  const noise = sd * z
+  if (isLog(unit)) return truth * Math.exp(noise)
+  const lo = unit === 'score' || unit === 'odds' ? 0 : Number.NEGATIVE_INFINITY
+  const hi = unit === 'score' ? 100 : unit === 'odds' ? 1 : Number.POSITIVE_INFINITY
+  return clamp(clamp(truth, lo, hi) + span * noise, lo, hi)
 }
 
 /**
@@ -162,9 +175,7 @@ export function estimate(g: GameState, key: string, truth: number, opts: Estimat
     src = row.src
     if (g.year - row.y >= 2) asOf = row.y
   } else {
-    const noise = sd * zOf(g, key, g.year, 'passive')
-    const t = bounded ? clamp(truth, bounded[0], bounded[1]) : truth
-    mid = log ? t * Math.exp(noise) : t + span * noise
+    mid = applyNoise(unit, truth, sd, zOf(g, key, g.year, 'passive'), span)
   }
 
   // A bounded scale keeps the reading inside its range; the band follows the kept reading and is clipped to the range.

@@ -24,6 +24,9 @@ export interface ParsedKey {
 const KIND = /^[a-z][a-z0-9]{0,11}$/
 const PART = /^[A-Za-z0-9._~-]{1,40}$/
 
+/** Whether `kind` can start a key: a lower case word of 12 characters at most, with no colon. */
+export const isKindName = (kind: unknown): kind is string => typeof kind === 'string' && KIND.test(kind)
+
 /** The parts of a key, or null when it is not `<kind>:<id>[:<id>]:<field>` of 64 characters at most. */
 export function parseKey(key: string): ParsedKey | null {
   if (typeof key !== 'string' || key.length > KEY_MAX) return null
