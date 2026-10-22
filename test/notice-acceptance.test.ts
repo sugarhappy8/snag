@@ -801,13 +801,14 @@ describe('(f) a seeded 25-year life through ageUp', () => {
     const popups = years.flatMap((y) => y.popups)
     expect(popups.some((p) => p.kind === 'notice' && p.weight === 'minor')).toBe(true)
     // The text memory is the flavor ring and the pools of the converted sites (R2-A3: before the codemod nothing but flavor used
-    // the kit, so this said "the ring and nothing else"). No pool is named, so no family is noted (pickSite never notes one).
+    // the kit, so this said "the ring and nothing else"). A site that names its pool notes a family (pickSite never names one);
+    // R2-P10 named one, the promotion line of an NPC's year (defineLines('npc.promotion') in text/pools.ts), so it is the only family.
     const mem = g.flags.textMem as unknown as TextMem
     expect(mem).toBeDefined()
     expect(textMemProblems(mem)).toEqual([])
     expect(Object.keys(mem.p).length).toBeGreaterThan(0)
     expect(Object.keys(mem.p).length).toBeLessThanOrEqual(TEXT_MEM_LIMITS.pools)
-    expect(mem.f).toEqual({})
+    expect(mem.f).toEqual({ 'npc.promotion': '2019,2025' })
     expect(Object.keys(mem.r)).toEqual(['flavor'])
     expect(mem.r.flavor.length).toBeGreaterThan(0)
     expect(JSON.stringify(g.flags)).not.toContain('flavorRecent')
