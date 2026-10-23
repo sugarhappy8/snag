@@ -34,6 +34,8 @@ export interface ModalHandle {
 
 interface Layer {
   readonly container: unknown
+  /** A dialog opened on `inner`: stop isolating any element that holds it, since the top dialog has to stay usable. */
+  yieldTo(inner: unknown): void
 }
 
 const stack: Layer[] = []
@@ -49,11 +51,34 @@ export function isModalOpen(): boolean {
  * back on close when it can take it.
  */
 export function openModal<E>(env: ModalEnv<E>, container: E, opener: E | null): ModalHandle {
-  const layer: Layer = { container }
+  let targets = isolationTargets(container, env.root, env.tree)
+  const release = (t: E): void => {
+    const key = t as unknown as object
+    const n = (inertCounts.get(key) ?? 1) - 1
+    if (n > 0) {
+      inertCounts.set(key, n)
+    } else {
+      inertCounts.delete(key)
+      env.setInert(t, false)
+    }
+  }
+  const layer: Layer = {
+    container,
+    yieldTo(inner) {
+      // Two dialogs that mount in one commit (a list sheet and the person sheet on top of it) are both in the page when the
+      // first one opens, so the second one sits among the first one's targets. Inert there, it could never take a click.
+      const keep: E[] = []
+      for (const t of targets) {
+        if (env.contains(t, inner as E)) release(t)
+        else keep.push(t)
+      }
+      targets = keep
+    },
+  }
+  for (const lower of stack) lower.yieldTo(container)
   stack.push(layer)
   let closed = false
 
-  const targets = isolationTargets(container, env.root, env.tree)
   for (const t of targets) {
     const key = t as unknown as object
     const n = inertCounts.get(key) ?? 0
@@ -103,16 +128,7 @@ export function openModal<E>(env: ModalEnv<E>, container: E, opener: E | null): 
       const restore = a === null || env.isBody(a) || inContainer(a)
 
       // Lift inert first: an inert element cannot take focus, and the opener is usually behind it.
-      for (const t of targets) {
-        const key = t as unknown as object
-        const n = (inertCounts.get(key) ?? 1) - 1
-        if (n > 0) {
-          inertCounts.set(key, n)
-        } else {
-          inertCounts.delete(key)
-          env.setInert(t, false)
-        }
-      }
+      for (const t of targets) release(t)
 
       if (!restore) return
       const next = stack[stack.length - 1]
