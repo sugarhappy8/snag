@@ -591,29 +591,20 @@ function changedALot(g: GameState, key: string, amount: number): boolean {
   return true
 }
 
-/** What inflation must take from the player's cash in a year (engine dollars) before the year says so. */
+/** What inflation must take from the player's cash in a year (engine dollars) before the life says so. */
 const INFLATION_TOLD = 10_000
 
 /**
- * Say what inflation took from the cash the player held this year. The bank shrinks by the year's inflation (billions, for a rich
- * life), which shows as a plain loss in today's prices or in dollars, and nothing else says why. Like a tax bill it is told the first
- * time and when it changes a lot, not every year. The id is fixed, so no uid is drawn and no other life moves; the phrasing is a text
- * draw (pickSite), not a draw of the life's own stream. `eroded` is the loss, 0 or more.
+ * Say, once in a life, what inflation took from the cash the player held. The bank shrinks by the year's inflation (billions, for a
+ * rich life), which shows as a plain loss in today's prices or in dollars, and nothing else says why. The journal never tells the same
+ * thing twice (quiet-acceptance), so the one line also says it happens every year. The id is fixed, so no uid is drawn and no other
+ * life moves. `eroded` is the loss, 0 or more.
  */
 export function sayInflationLoss(g: GameState, eroded: number): void {
-  if (!(eroded >= INFLATION_TOLD) || !changedALot(g, 'lastInflationLogged', eroded)) return
-  const m = formatMoney(eroded)
-  const text = pickSite(
-    g,
-    [
-      `Inflation ate ${m} of what my cash can buy.`,
-      `Prices rose, and my idle cash lost ${m} of its buying power.`,
-      `Inflation quietly took ${m} out of what my bank balance is worth.`,
-      `${m} of my cash melted away to inflation.`,
-    ],
-    0x4b1d7e29,
-  )
-  withLogSource('finance', () => log(g, text, 'neutral', `infl-${g.year}`, { a: eroded, w: 1 }))
+  if (!(eroded >= INFLATION_TOLD) || g.flags.inflationTold === true) return
+  g.flags.inflationTold = true
+  const line = `Inflation ate ${formatMoney(eroded)} of what my cash can buy. Cash in the bank earns nothing, so it happens every year.`
+  withLogSource('finance', () => log(g, line, 'neutral', `infl-${g.year}`, { a: eroded, w: 1 }))
 }
 
 /** Pick a line that wasn't used the last few times (so the journal doesn't repeat itself). */
