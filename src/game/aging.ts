@@ -8,12 +8,15 @@
 import { yearlyEntries } from './kernel/registry'
 import './modules'
 import { erodeCash } from './cash'
-import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi, sourceOf, withQueueSource } from './core'
+import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi, sourceOf, withLogSource, withQueueSource } from './core'
 import { economyOf, ensureEconomy, yearlyEconomy } from './economy'
 import { settleIncomeTax } from './finance'
 import { checkDeath } from './health'
 import { writeLifeRow } from './life-series'
 import type { GameState } from './types'
+
+/** What inflation must take from the player's cash in a year (engine dollars) before the year says so. */
+const INFLATION_TOLD = 10_000
 
 export function canAgeUp(g: GameState): boolean {
   return g.character.alive && g.queue.length === 0
@@ -42,7 +45,12 @@ export function ageUp(g: GameState): void {
   // The economic year boundary precedes every income-producing hook, including history.
   // New-year earnings must not be eroded as though held since the previous birthday.
   yearlyEconomy(g)
-  erodeCash(g, economyOf(g).inflation)
+  const eroded = -erodeCash(g, economyOf(g).inflation)
+  // Shown in today's prices or in dollars the bank visibly shrinks by the year's inflation (billions, for a rich life), so a loss
+  // worth a line says what took it. The id is fixed so no uid is drawn: the line moves no other life.
+  if (eroded >= INFLATION_TOLD) {
+    withLogSource('finance', () => log(g, `Inflation ate ${formatMoney(eroded)} of what my cash can buy.`, 'neutral', `infl-${g.year}`, { a: eroded, w: 1 }))
+  }
 
   // The life series keeps one row for each age lived, the year of death included (src/game/life-series.ts).
   // Each hook runs under its name, so the lines and popups it makes carry it as `s` (core.ts withLogSource, R3 E.D1).
