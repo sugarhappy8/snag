@@ -31,6 +31,16 @@ older load and continue.
   the loss, what the position would be worth, that splitting the order does not help, and the size
   that loses under 10%. An ordinary order asks nothing, and neither does a fund, a bond, savings or
   gold. Sell All already asked.
+- **No Bitcoin in 1992.** The "Tip Off a Crony" and market-announcement screens of a politician
+  listed every coin in any year, so a 1992 president could bet on Bitcoin. They now list coins only
+  when crypto exists and is allowed, like the computer's bet screen.
+- **The tax bill is told less often.** The journal mentions the income tax when the bill changes by a
+  quarter or more. A life with a big bank balance has a bill that moves every year (its interest is
+  income), so the line came up nearly every year. It now waits five years after the last one, unless
+  the bill has doubled since, and its wording avoids the last few used.
+- **A friend's firm is news every sixth year.** The journal said "X reinvested $Y in a new operating
+  location" every third year for as long as a friend's or relative's firm grew. It now says it every
+  sixth year, in one of three ways. The person's own history keeps every expansion.
 
 ## Under the hood
 
@@ -51,10 +61,26 @@ older load and continue.
   amount on. Every older `confirm` ignores the argument.
 - `modal.ts` `openModal`: a dialog that opens inside what a lower dialog made inert wins, and the
   lower one releases its hold, so everything is released exactly once in either close order.
-- `npc-lives.ts`: the line a friend's or relative's growing firm writes every third year ("X
-  reinvested $Y in a new operating location") now reads one of eight ways in your log. The person's
-  own history keeps the plain line. Interest sent one seeded life down a path with a cafe that
-  repeated it 11 times, which the repeated-lines gate rightly refused.
+- `npc-lives.ts`: the expansion line of a growing firm goes to the player's journal when
+  `g.year % 6 === 0`, in one of three phrasings (`pickSite`, drawn every time so the text stream does
+  not move); `milestone` takes `''` for "not in the journal" and the person's history keeps every
+  plain line. Interest sent one seeded life down a path with a cafe that repeated it 11 times, which
+  the repeated-lines gate rightly refused.
+- `finance.ts` `yearlyFinance`: a tax line waits `TAX_LINE_GAP` (5) years after the last one unless the
+  bill is at least twice the last one told; the phrasing comes from `freshPick`. `taxLineAge` and
+  `lastTaxLogged` are personal flags.
+- `computer/money-stocks.ts` exports `coinsHere`, and `special/politics.ts` uses it for the coin rows
+  and the "or a coin" header. `special/military.ts` remembers the last three deployment places
+  (`special.mil.recentPlaces`), and `health.ts` `freshLine` takes how many picks to avoid (the
+  undiagnosed-illness line avoids four). The boundary line pool is nine lines, a shuffle-bag.
+- Tests: `korean-cash` and `release-182` stub `bankCashRate` and `payBankInterest` to zero, since they
+  hold the cash arithmetic and the closing tax to the cent; `bank-interest.test.ts` holds the interest
+  and its tax. The restaurant case of the fog fuzzer moved from seed 11 to seed 12: interest sent
+  seed 11 to a company whose market tree has about twenty times the screens, and its five years took
+  over 300 s (seeds 12 to 23 all play them in 3 to 12 s).
+- Bundle: the initial bundle is within about 25 bytes of its +60,000 budget over the v5.0.0 baseline.
+  The baseline (`scripts/bundle-baseline.json`) needs re-capturing by the lead before the next release
+  adds anything.
 
 ## Seeds
 
