@@ -5,7 +5,7 @@
 // Also home to the small money helpers the assets / gambling code shares: loan maths,
 // a credit score, marginal tax on extra income and "where do I live now" logic.
 import { moveCash, personPurse, playerPurse, writeoff } from './cash'
-import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember } from './core'
+import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember, withLogSource } from './core'
 import { hasMarketData, marketOf } from './data/markets'
 import { historicalInflation, historicalMortgageRate, inHistory, investingBlocked } from './history/markets'
 import { hasTech } from './history/timeline'
@@ -589,6 +589,31 @@ function changedALot(g: GameState, key: string, amount: number): boolean {
   if (last > 0 && Math.abs(amount - last) < last * 0.25) return false
   g.flags[key] = amount
   return true
+}
+
+/** What inflation must take from the player's cash in a year (engine dollars) before the year says so. */
+const INFLATION_TOLD = 10_000
+
+/**
+ * Say what inflation took from the cash the player held this year. The bank shrinks by the year's inflation (billions, for a rich
+ * life), which shows as a plain loss in today's prices or in dollars, and nothing else says why. Like a tax bill it is told the first
+ * time and when it changes a lot, not every year. The id is fixed, so no uid is drawn and no other life moves; the phrasing is a text
+ * draw (pickSite), not a draw of the life's own stream. `eroded` is the loss, 0 or more.
+ */
+export function sayInflationLoss(g: GameState, eroded: number): void {
+  if (!(eroded >= INFLATION_TOLD) || !changedALot(g, 'lastInflationLogged', eroded)) return
+  const m = formatMoney(eroded)
+  const text = pickSite(
+    g,
+    [
+      `Inflation ate ${m} of what my cash can buy.`,
+      `Prices rose, and my idle cash lost ${m} of its buying power.`,
+      `Inflation quietly took ${m} out of what my bank balance is worth.`,
+      `${m} of my cash melted away to inflation.`,
+    ],
+    0x4b1d7e29,
+  )
+  withLogSource('finance', () => log(g, text, 'neutral', `infl-${g.year}`, { a: eroded, w: 1 }))
 }
 
 /** Pick a line that wasn't used the last few times (so the journal doesn't repeat itself). */
