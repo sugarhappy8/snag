@@ -1,14 +1,21 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ageUp } from '../src/game/aging'
 import { bindMoneyContext, setMoneyDisplay, showMoney } from '../src/game/core'
 import { currencyChangeAt, currencyInflation, currencyOf, unitsPerDollar } from '../src/game/data/currencies'
 import { withYearly } from '../src/game/kernel/registry'
 import { makeTestGame } from './helpers'
 
+// These tests hold the cash arithmetic (erodeCash and the currency changes) to the cent, so the bank pays nothing in them. Cash in the bank
+// does earn interest since v5.2.0; test/bank-interest.test.ts holds that, and the year it adds on top of this arithmetic.
+vi.mock('../src/game/investments', async (orig) => {
+  const real = await orig<typeof import('../src/game/investments')>()
+  return { ...real, bankCashRate: () => 0, payBankInterest: () => 0 }
+})
+
 afterEach(() => { setMoneyDisplay({ mode: 'usd', nominal: false }); bindMoneyContext(null) })
 
 describe('cash during South Korea’s early won years', () => {
-  it('does not create income in an untouched 13-year-old’s bank account', () => {
+  it('does not create income from inflation or a currency change in an untouched 13-year-old’s bank account', () => {
     const g = makeTestGame(1, { age: 12, countryId: 'kr', money: 2000 / unitsPerDollar('kr', 1962) })
     g.year = 1962
     bindMoneyContext(g)
