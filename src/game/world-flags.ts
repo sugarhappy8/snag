@@ -86,7 +86,7 @@ const PERSONAL: readonly string[] = [
   'imm', 'inbox', 'inDenial', 'inflationLoss', 'inflationTold', 'instruments', 'inventionImpact', 'investLossCarry', 'investmentsSettledYear',
   'jobListingSeed', 'jobsRejected', 'know', 'knownAddictions', 'lastAdmissionsQ', 'lastBirthAge', 'lastCodedAge',
   'lastGrades', 'lastInterviewQ', 'latentTalent', 'lawsuit.grievances', 'license.flightHours', 'lifeSeries',
-  'livingLineAge', 'loanMisses', 'lowHealthWarned', 'lowHealthWarnedAge', 'lux.b', 'lux.fam.at', 'lux.heat',
+  'lastTaxLogged', 'livingLineAge', 'loanMisses', 'lowHealthWarned', 'lowHealthWarnedAge', 'lux.b', 'lux.fam.at', 'lux.heat',
   'lux.lots', 'lux.showN', 'luxury.bought', 'luxury.secretary', 'luxury.society', 'luxury.societyBanned',
   'luxury.societyRejected', 'luxury.staff', 'martialArts', 'mcs.mastered', 'memoryBest', 'midlifeCrisis',
   'missedPayments', 'missedThisYear', 'mobGrudge', 'nation.me', 'nepo.favors', 'out', 'overdosed', 'parentsStatus',
