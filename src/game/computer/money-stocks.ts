@@ -689,7 +689,7 @@ function targetAction(g: GameState, t: BetTarget): MenuAction {
 }
 
 /** Coins can be shorted here this year (crypto exists and isn't banned). */
-function coinsHere(g: GameState): boolean {
+export function coinsHere(g: GameState): boolean {
   return !cryptoBanned(g.character.countryId) && eraOpen(g, CRYPTO_GATE)
 }
 

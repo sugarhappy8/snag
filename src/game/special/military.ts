@@ -454,8 +454,12 @@ function offerDeployment(g: GameState, job: Job, war: WarDef | null = null): voi
   const last = g.flags['special.mil.lastPlace']
   // In a real war, soldiers go to that war's fronts.
   const fronts = war && !sea ? warFronts(war, g.character.countryId).filter((x) => x !== last) : []
-  const place = pick(g, fronts.length ? fronts : (sea ? SEA_PLACES : LAND_PLACES).filter((x) => x !== last))
+  // The places away from the last three deployments, so a soldier of many years is not "at a remote mountain pass" every time the log says where.
+  const raw = g.flags['special.mil.recentPlaces']
+  const recent = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string').slice(-3) : typeof last === 'string' ? [last] : []
+  const place = pick(g, fronts.length ? fronts : (sea ? SEA_PLACES : LAND_PLACES).filter((x) => x !== last && !recent.includes(x)))
   g.flags['special.mil.lastPlace'] = place
+  g.flags['special.mil.recentPlaces'] = [...recent, place].slice(-3)
   scriptChoice(
     g,
     deployScript,

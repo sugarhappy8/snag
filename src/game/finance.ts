@@ -531,6 +531,9 @@ const TAX_LINES = [
   (m: string) => `I sent ${m} to the tax office.`,
 ]
 
+/** The years between two lines about the income tax. */
+const TAX_LINE_GAP = 5
+
 const LIVING_LINES = [
   (m: string) => `I spent ${m} on groceries, bills and everyday living.`,
   (m: string) => `Living expenses cost me ${m} this year.`,
@@ -646,8 +649,13 @@ export function yearlyFinance(g: GameState): void {
   const tax = settleIncomeTax(g)
   if (tax > 0) {
     // The journal is for the story, not a bank statement: mention taxes the first time and
-    // when the bill changes a lot, not every single year.
-    if (tax >= 50 && changedALot(g, 'lastTaxLogged', tax)) log(g, pick(g, TAX_LINES)(formatMoney(tax)))
+    // when the bill changes a lot, not every single year. A life with a big bank balance has a bill that moves every year (its interest
+    // is income), so a line also waits TAX_LINE_GAP years after the last one.
+    const lastLine = num(g.flags.taxLineAge, -99)
+    if (tax >= 50 && (c.age - lastLine >= TAX_LINE_GAP || lastLine > c.age) && changedALot(g, 'lastTaxLogged', tax)) {
+      g.flags.taxLineAge = c.age
+      log(g, freshPick(g, 'tax', TAX_LINES)(formatMoney(tax)))
+    }
   }
 
   // 2. Rent. Landlords don't hold apartments for inmates.

@@ -427,7 +427,7 @@ function announceCondition(g: GameState, cond: Condition): void {
     return
   }
   if (cond.severity < 15 || g.character.age < 4) {
-    log(g, freshLine(g, 'underWeather', ["I've been feeling a bit under the weather.", "I haven't been feeling like myself lately.", "Something's been off with my health.", "I've been dragging myself through the days.", "My body has been sending me strongly worded complaints."]), 'bad')
+    log(g, freshLine(g, 'underWeather', ["I've been feeling a bit under the weather.", "I haven't been feeling like myself lately.", "Something's been off with my health.", "I've been dragging myself through the days.", "My body has been sending me strongly worded complaints.", "I've been feeling off and can't say why.", "I haven't felt quite right for a while.", "My energy has been running low lately.", "I've been out of sorts and a little worn down."]), 'bad')
     return
   }
   // Before the internet, people looked their symptoms up in a book (or asked Grandma).
