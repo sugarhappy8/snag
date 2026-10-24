@@ -1615,11 +1615,51 @@ function buyAction(g: GameState, q: Quote, held: boolean): MenuAction {
       max: Math.max(min, cash),
       defaultValue: () => String(start),
     },
+    confirm: (gg, input) => bigBuyWarning(gg, q, Number(input)),
     stayOpen: true,
     run: (gg, input) => {
       buySecurity(gg, q.secId, Number(input))
     },
   }
+}
+
+/** An order that loses this share of itself to price impact asks first (the Order Filled notice speaks up at 10%, after the fact). */
+const BIG_IMPACT = 0.25
+
+/**
+ * The question to ask before a buy of `amount` that would lose a quarter or more of itself to price impact: the loss, what the
+ * position would be valued at, that splitting does not help, and the size that loses under 10%. null for an order that does not,
+ * for a product with no order book, and for an amount that is not a number.
+ */
+function bigBuyWarning(g: GameState, q: Quote, amount: number): string | null {
+  if (!Number.isFinite(amount) || amount <= 0) return null
+  const depth = tradingDepth(g, q.type, q.details)
+  if (!depth) return null
+  const plan = feePlan(g, q.type)
+  const invested = amount - feeFor(plan, amount)
+  if (!(invested > 0)) return null
+  const order = buyImpact(invested, depth)
+  const lost = 1 - order.value / invested
+  if (lost < BIG_IMPACT) return null
+  const limit = buyImpactLimit(depth)
+  const size = limit > 0 ? ` Orders up to about ${shortMoney(orderFor(plan, limit))} lose under 10%.` : ''
+  return `Buying ${formatMoney(amount)} of ${q.name} is far more than its market can take. About ${lost >= 0.9995 ? 'all' : absPct(lost, 0)} of it would be lost to price impact, so the position would be valued at about ${formatMoney(order.value)}. Splitting the order does not avoid it.${size} Buy anyway?`
+}
+
+/**
+ * The question to ask before selling `gross` of a holding when the market depth would cut a quarter or more off the proceeds: the
+ * loss, what would land in the bank and that the quote falls for the rest. null for a sale that does not, and for a product with
+ * no order book.
+ */
+function bigSaleWarning(g: GameState, assetId: string, gross: number): string | null {
+  const cur = g.assets.find((x) => x.id === assetId)
+  if (!cur || !Number.isFinite(gross) || gross <= 0) return null
+  const sold = Math.min(holdingValue(cur), Math.round(gross))
+  if (!(sold > 0)) return null
+  const est = estimateTax(g, cur, sold)
+  if (est.impact / sold < BIG_IMPACT) return null
+  const net = Math.max(0, sold - est.impact - est.fee - est.penalty)
+  return `Selling ${formatMoney(sold)} of your ${cur.name} is more than its market can take. Price impact would cut about ${formatMoney(est.impact)} (${absPct(est.impact / sold, 0)}) off the proceeds, so about ${formatMoney(net)} would land in your bank before tax, and the quote falls for what you keep. Splitting the sale does not avoid it. Sell anyway?`
 }
 
 function sellActions(g: GameState, a: Asset): MenuNode[] {
@@ -1637,6 +1677,7 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
       visible: () => value > 1,
       disabledReason: (gg) => sellBlock(gg, a),
       input: { kind: 'number', money: true, label: `How much of it? It's worth ${formatMoney(value)}.`, placeholder: String(Math.round(value / 2)), min, max: Math.max(min, value), defaultValue: () => String(Math.max(min, Math.round(value / 2))) },
+      confirm: (gg, input) => bigSaleWarning(gg, a.id, Number(input)),
       stayOpen: true,
       run: (gg, input) => {
         sellHolding(gg, a.id, Number(input))

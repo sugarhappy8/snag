@@ -838,8 +838,8 @@ interface MenuBase {
 
 export interface MenuAction extends MenuBase {
   type: 'action'
-  /** If set and returns text, ask the player to confirm first. */
-  confirm?: (g: GameState) => string | null
+  /** If set and returns text, ask the player to confirm first. `input` is what the player typed, for an action that asks for an amount. */
+  confirm?: (g: GameState, input?: string) => string | null
   /** Ask for a value before running. */
   input?: MenuInput
   /** Mutates the state. Push notices / modals to report results. */
