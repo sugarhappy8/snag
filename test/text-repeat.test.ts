@@ -232,7 +232,7 @@ const FAMILIES: readonly Family[] = [
   },
   {
     name: 'boundaries',
-    re: /^(i set money boundaries with |i told .+ i was done talking about money\.|i said no to .+ and meant it\.|i drew a line with .+ about money\.|money was off the table with .+ for a while\.)/,
+    re: /^(i set money boundaries with |i told .+ i was done talking about money\.|i said no to .+ and meant it\.|i drew a line with .+ about money\.|money was off the table with .+ for a while\.|i told .+ that money wasn.t up for discussion\.|i let .+ know my wallet was closed\.|i made it clear to .+ that i wouldn.t talk money\.|i stood my ground with .+ about money\.|i kept money out of my talks with |i turned down .+ and didn.t budge\.|i put a stop to the money talk with )/,
     maxExtra: 6,
     pools: [BOUNDARY_LINES],
     was: 'I set money boundaries with my sister Marit.',
@@ -548,12 +548,12 @@ describe('R2-P10 sites, played directly', () => {
 
   it('boundaries set with several people read in different words: every frame inside the first cycle, never the same one twice running', () => {
     const g = withRelatives()
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < BOUNDARY_LINES.length; i++) {
       g.year += 1
       setBoundaries(g, i % 3)
     }
     const said = lines(g).filter((t) => family('boundaries').re.test(normalize(t)))
-    expect(said, said.join(' | ')).toHaveLength(7)
+    expect(said, said.join(' | ')).toHaveLength(BOUNDARY_LINES.length)
     const frames = framesOf(said, BOUNDARY_LINES)
     expect(frames.every((f) => f >= 0), said.join(' | ')).toBe(true)
     expect(new Set(frames.slice(0, BOUNDARY_LINES.length)).size, said.join(' | ')).toBe(BOUNDARY_LINES.length)
