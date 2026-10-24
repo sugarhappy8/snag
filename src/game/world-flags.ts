@@ -101,7 +101,7 @@ const PERSONAL: readonly string[] = [
   'special.military.discharge', 'special.model.scoutDeclines', 'special.music.diamond', 'special.music.hoedown',
   'special.music.tour75', 'special.sports.fight.card', 'special.underworld', 'sterile', 'studioCopies',
   'surgery.counts', 'surgery.suedSurgeons', 'surrendered', 'talentAge', 'talentHintAge', 'talentHints',
-  'talentHintsUsed', 'talentNoticeAge', 'talentsRevealed', 'taxableIncome', 'taxesPaid', 'textMem', 'timeMachine',
+  'talentHintsUsed', 'talentNoticeAge', 'talentsRevealed', 'taxLineAge', 'taxableIncome', 'taxesPaid', 'textMem', 'timeMachine',
   'trainRobbed', 'triedSpicyDiet', 'valedictorian', 'visitedWinnipeg', 'walkHeartAttack', 'wealth.bound.door',
   'wealth.bound.strangers', 'wealth.cd', 'wealth.donated', 'wealth.pending', 'will.escrow', 'will.pot',
   'will.pressY', 'will.state', 'workshop', 'yearBook',
