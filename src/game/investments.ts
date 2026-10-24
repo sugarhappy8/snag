@@ -784,9 +784,12 @@ export function liveDepositRate(g: GameState, country: string, product: 'savings
   return bound(base + delta * (product === 'savings' ? .7 : .9), 0, isHistoryYear(g.year) ? 10 : .4)
 }
 
-/** What the bank pays on the cash in the player's account: a third of the savings rate (a current account pays less than a savings one). */
+/** The share of the savings rate the bank pays on the cash in the player's account (a current account pays less than a savings one). */
+const BANK_CASH_SHARE = 1 / 3
+
+/** What the bank pays on the cash in the player's account: BANK_CASH_SHARE of the savings rate. */
 export function bankCashRate(g: GameState): number {
-  const r = liveDepositRate(g, g.character.countryId, 'savings') / 3
+  const r = liveDepositRate(g, g.character.countryId, 'savings') * BANK_CASH_SHARE
   return Number.isFinite(r) && r > 0 ? r : 0
 }
 
