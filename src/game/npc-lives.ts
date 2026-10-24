@@ -224,11 +224,7 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialApp
         `${a.name} reinvested ${spent} in a new operating location`,
         `${a.name} opened another location, ${spent} of the profits put back in`,
         `${a.name} put ${spent} into a new branch`,
-        `${a.name} grew again with ${spent} for one more site`,
         `${a.name} spent ${spent} opening a new outlet`,
-        `${a.name} took on a new site for ${spent}`,
-        `${a.name} ploughed ${spent} into yet another location`,
-        `${a.name} added a location, a ${spent} bet on growth`,
       ],
       0x6a3f1d85,
     )

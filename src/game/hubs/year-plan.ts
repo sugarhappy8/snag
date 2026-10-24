@@ -362,9 +362,7 @@ export function moneyFacts(g: GameState): YearMoney | null {
 /** This year's inflation loss from the flag finance.ts keeps ([year, amount]); undefined for another year, a bad value or no loss. */
 function inflationOf(g: GameState): number | undefined {
   const raw = g.flags.inflationLoss
-  if (!Array.isArray(raw) || raw.length !== 2) return undefined
-  const [year, amount] = raw
-  return year === g.year && typeof amount === 'number' && Number.isFinite(amount) && amount > 0 ? amount : undefined
+  return Array.isArray(raw) && raw[0] === g.year && typeof raw[1] === 'number' && raw[1] > 0 && Number.isFinite(raw[1]) ? raw[1] : undefined
 }
 
 /** The log aim in characters (scripts/voice/rules.mjs AIMS.log): the line drops what it can to stay under it. */
