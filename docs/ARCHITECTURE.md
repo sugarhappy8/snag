@@ -212,6 +212,10 @@ for the assessment, causal model, tests and remaining scope.
 The economic boundary runs before the ordinary yearly hooks. Opening cash and nominal debts
 use the same inflation; new-year income is not retroactively eroded. Historical denominations
 remain authoritative. Future display contexts carry the simulated nominal price scale.
+Cash in the bank behaves like a nominal deposit: `erodeCash` divides it by (1 + inflation) and `payBankInterest` (`investments.ts`) adds
+`bankCashRate / (1 + inflation)` of what was held, so it ends the year at (1 + rate) / (1 + inflation). The rate is a third of the savings rate,
+the interest is paid by the banks pool and taxed as income, and it draws no random number. `finance.ts` `sayInflationLoss` tells the player
+once per life and keeps each year's loss for the year card's money line.
 
 Economy reads are pure and cached by immutable state root. Writers replace that root. Annual
 uncertainty uses stable family/year hashes, never menu reads or iteration order. World state

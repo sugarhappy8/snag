@@ -784,6 +784,29 @@ export function liveDepositRate(g: GameState, country: string, product: 'savings
   return bound(base + delta * (product === 'savings' ? .7 : .9), 0, isHistoryYear(g.year) ? 10 : .4)
 }
 
+/** The share of the savings rate the bank pays on the cash in the player's account (a current account pays less than a savings one). */
+const BANK_CASH_SHARE = 1 / 3
+
+/** What the bank pays on the cash in the player's account: BANK_CASH_SHARE of the savings rate. */
+export function bankCashRate(g: GameState): number {
+  const r = liveDepositRate(g, g.character.countryId, 'savings') * BANK_CASH_SHARE
+  return Number.isFinite(r) && r > 0 ? r : 0
+}
+
+/**
+ * Pay the interest on the cash the player held through the year (`held`: the balance before inflation took its share), as a nominal
+ * deposit pays it. Added at rate / (1 + inflation), next to erodeCash dividing the balance by (1 + inflation), the account ends the year at
+ * (1 + rate) / (1 + inflation) of what it began, the way a savings account does (moveHolding). Paid by the banks and taxed as income.
+ * Returns what was paid: 0 for an empty or overdrawn account, or a number that is not one.
+ */
+export function payBankInterest(g: GameState, held: number, inflation: number): number {
+  if (!Number.isFinite(held) || held <= 0 || !Number.isFinite(inflation) || inflation <= -1) return 0
+  const paid = Math.min(1e15, Math.round((held * bankCashRate(g)) / (1 + inflation)))
+  if (!(paid > 0)) return 0
+  earnIncome(g, paid, { reason: 'invest.income', with: 'pool:banks' })
+  return paid
+}
+
 function listing(g: GameState): Listing {
   const cid = g.character.countryId
   const y = g.year
