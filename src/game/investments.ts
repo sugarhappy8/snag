@@ -1205,7 +1205,9 @@ interface SaleResult {
 /** Gameplay liquidity, not a claim about a real exchange's current order book. */
 function tradingDepth(g: GameState, type: InvestType, details: Record<string, Json>): number | null {
   if (type !== 'stock' && type !== 'penny' && type !== 'crypto') return null
-  const cap = type === 'crypto' ? coinMarketCap(Math.round(num(details.slot, -1)), g.year) : null
+  // A coin's size beyond the record is its raw quote times its supply (the quote an order has not moved), so a big coin is deep.
+  const slot = Math.round(num(details.slot, -1))
+  const cap = type === 'crypto' ? coinMarketCap(slot, g.year, cryptoYear(fam(g), anchor(g), g.year).coins[slot]?.price) : null
   const base = type === 'penny' ? 5_000_000 : type === 'crypto' ? Math.max(50_000, (cap ?? 1_000_000_000) * .05) : 500_000_000
   return base * shockFactor(g, str(details.secId), g.year)
 }

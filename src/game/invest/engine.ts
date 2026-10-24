@@ -19,6 +19,7 @@ import { seeded, type SRng } from '../assets'
 import { DEEP_TECH_IDS, exchangeFor, marketOf, type Industry, type MarketProfile, type StockExchange } from '../data/markets'
 import {
   bankingCrisis,
+  coinSupply,
   exchangeState,
   historicalCoin,
   historicalCryptoReturn,
@@ -1442,10 +1443,16 @@ export function listedCoins(cy: CryptoYear): SecYear[] {
   return cy.coins.filter((c) => !c.unlisted)
 }
 
-/** How much of a coin the market could absorb in a historical year (null = no limit). */
-export function coinMarketCap(slot: number, year: number): number | null {
+/**
+ * How big a coin's market is: its real size in a year of history, and after the record ends (the present and every year to come)
+ * its price times the supply the record ended with, when the caller passes the price (the raw quote, before any order moved it).
+ * null without one (no limit: what a coin has "room" for this year reads that as unlimited), and for a slot with no supply on record.
+ */
+export function coinMarketCap(slot: number, year: number, price?: number): number | null {
   const h = inHistory(year) ? historicalCoin(slot, year) : null
-  return h ? h.marketCap : null
+  if (h) return h.marketCap
+  const supply = coinSupply(slot, year)
+  return price !== undefined && price > 0 && supply > 0 ? price * supply : null
 }
 
 // ---------------------------------------------------------------------------
