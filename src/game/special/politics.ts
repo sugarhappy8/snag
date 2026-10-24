@@ -17,8 +17,8 @@ import { registerInsiderLedger, type InsiderCaseInput, type InsiderPositions } f
 // "Abuse of power" below).
 import { realFollowers } from '../followers'
 import { hasTech } from '../history/timeline'
-import { anchor, cryptoBanned, enforcement, fam, local, readState as readMoney, regulator } from '../computer/money-common'
-import { caseProfit, coinTargets, findTarget, freezeBets, maxBet, minBet, openBetsOn, placeBet, priceLabel, stockTargets, tagBets, type BetTarget } from '../computer/money-stocks'
+import { anchor, enforcement, fam, local, readState as readMoney, regulator } from '../computer/money-common'
+import { caseProfit, coinsHere, coinTargets, findTarget, freezeBets, maxBet, minBet, openBetsOn, placeBet, priceLabel, stockTargets, tagBets, type BetTarget } from '../computer/money-stocks'
 import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, spend, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
@@ -2149,7 +2149,7 @@ defineScript(CRONY_SIZE_SCRIPT, (g, value, data) => {
 function targetRows(g: GameState, idPrefix: string, run: (g: GameState, t: BetTarget) => void, coins: boolean): MenuNode[] {
   const nodes: MenuNode[] = [{ type: 'heading', id: `${idPrefix}.h.stocks`, label: `Companies on the ${exchangeInfo(g.character.countryId).ex.code}` }]
   for (const t of stockTargets(g)) nodes.push(targetAction(t, idPrefix, run))
-  if (coins && !cryptoBanned(g.character.countryId)) {
+  if (coins && coinsHere(g)) {
     nodes.push({ type: 'heading', id: `${idPrefix}.h.coins`, label: 'Coins' })
     for (const t of coinTargets(g)) nodes.push(targetAction(t, idPrefix, run))
   }
@@ -2179,7 +2179,7 @@ function announceMenu(): MenuGroup {
     header: (g) => {
       const rank = officeRank(politicianJob(g))
       const reach = rank >= 3 ? 'The whole country hangs on your words.' : rank === 2 ? 'Markets listen, a bit.' : 'Markets mostly ignore mayors, but not entirely.'
-      return `Pick a company${rank >= 2 && !cryptoBanned(g.character.countryId) ? ' or a coin' : ''}, then say something about it. ${reach} Bet on it first and it's insider trading.`
+      return `Pick a company${rank >= 2 && coinsHere(g) ? ' or a coin' : ''}, then say something about it. ${reach} Bet on it first and it's insider trading.`
     },
     children: (g) => {
       const rank = officeRank(politicianJob(g))
