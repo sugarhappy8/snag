@@ -83,7 +83,7 @@ const PERSONAL: readonly string[] = [
   'grandkidsSeen', 'greek', 'guardianId', 'hadGrandchild', 'healthInsurance', 'hero', 'heroicDeath',
   'history.covidVaccinated', 'history.done', 'history.polioVaccinated', 'history.raidYear', 'homelessLineAge',
   'homelessSince', 'household', 'identity.birthGender', 'identity.gender', 'identity.surgery', 'illegalImmigrant',
-  'imm', 'inbox', 'inDenial', 'inflationTold', 'instruments', 'inventionImpact', 'investLossCarry', 'investmentsSettledYear',
+  'imm', 'inbox', 'inDenial', 'inflationLoss', 'inflationTold', 'instruments', 'inventionImpact', 'investLossCarry', 'investmentsSettledYear',
   'jobListingSeed', 'jobsRejected', 'know', 'knownAddictions', 'lastAdmissionsQ', 'lastBirthAge', 'lastCodedAge',
   'lastGrades', 'lastInterviewQ', 'latentTalent', 'lawsuit.grievances', 'license.flightHours', 'lifeSeries',
   'livingLineAge', 'loanMisses', 'lowHealthWarned', 'lowHealthWarnedAge', 'lux.b', 'lux.fam.at', 'lux.heat',

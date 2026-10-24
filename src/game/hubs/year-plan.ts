@@ -342,6 +342,8 @@ export interface YearMoney {
   netWorth: number
   delta: number
   income: number
+  /** What inflation took from the cash held this year, when it was worth a line (finance.ts sayInflationLoss); absent otherwise. */
+  inflation?: number
 }
 
 /**
@@ -353,7 +355,16 @@ export function moneyFacts(g: GameState): YearMoney | null {
   const last = rows[rows.length - 1]
   if (!last) return null
   const before = rows[rows.length - 2]
-  return { cash: acctBalance(g, playerAcct(g)), netWorth: last[2], delta: before ? last[2] - before[2] : 0, income: last[5] }
+  const inflation = inflationOf(g)
+  return { cash: acctBalance(g, playerAcct(g)), netWorth: last[2], delta: before ? last[2] - before[2] : 0, income: last[5], ...(inflation === undefined ? {} : { inflation }) }
+}
+
+/** This year's inflation loss from the flag finance.ts keeps ([year, amount]); undefined for another year, a bad value or no loss. */
+function inflationOf(g: GameState): number | undefined {
+  const raw = g.flags.inflationLoss
+  if (!Array.isArray(raw) || raw.length !== 2) return undefined
+  const [year, amount] = raw
+  return year === g.year && typeof amount === 'number' && Number.isFinite(amount) && amount > 0 ? amount : undefined
 }
 
 /** The log aim in characters (scripts/voice/rules.mjs AIMS.log): the line drops what it can to stay under it. */
@@ -361,13 +372,20 @@ const MONEY_AIM = 60
 
 /**
  * "Net worth $X (up $Y). Income $Z. Cash $C." in at most 90 characters. A huge figure (a spelled-out quintillion) drops the income,
- * then the move, then both, so the line fits; the net worth and the cash always stay.
+ * then the move, then both, so the line fits; the net worth and the cash always stay. With the year's inflation loss it ends
+ * "Inflation took $L." and may run to the 90, since it carries one more fact; the loss is kept ahead of the income and the move, and
+ * a line the loss cannot fit in is the line it would have been without it.
  */
 export function moneyLine(f: YearMoney): string {
   const move = f.delta > 0 ? ` (up ${shortMoney(f.delta)})` : f.delta < 0 ? ` (down ${shortMoney(-f.delta)})` : ''
   const worth = (m: string): string => `Net worth ${shortMoney(f.netWorth)}${m}.`
   const income = ` Income ${shortMoney(f.income)}.`
   const cash = ` Cash ${shortMoney(f.cash)}.`
+  if (typeof f.inflation === 'number' && Number.isFinite(f.inflation) && f.inflation > 0) {
+    const lost = ` Inflation took ${shortMoney(f.inflation)}.`
+    const told = [worth(move) + income + cash + lost, worth(move) + cash + lost, worth('') + income + cash + lost, worth('') + cash + lost].find((t) => t.length <= YEAR_LIMITS.head)
+    if (told !== undefined) return told
+  }
   const tries = [worth(move) + income + cash, worth(move) + cash, worth('') + income + cash, worth('') + cash]
   return tries.find((t) => t.length <= MONEY_AIM) ?? tries.find((t) => t.length <= YEAR_LIMITS.head) ?? clipText(tries[3]!, YEAR_LIMITS.head)
 }

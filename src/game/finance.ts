@@ -595,12 +595,15 @@ function changedALot(g: GameState, key: string, amount: number): boolean {
 const INFLATION_TOLD = 10_000
 
 /**
- * Say, once in a life, what inflation took from the cash the player held. The bank shrinks by the year's inflation (billions, for a
+ * Say, once in a life, what inflation took from the cash the player held (and keep each year's loss for the year card). The bank shrinks by the year's inflation (billions, for a
  * rich life), which shows as a plain loss in today's prices or in dollars, and nothing else says why. The journal never tells the same
  * thing twice (quiet-acceptance), so the one line also says it happens every year. The id is fixed, so no uid is drawn and no other
  * life moves. `eroded` is the loss, 0 or more.
  */
 export function sayInflationLoss(g: GameState, eroded: number): void {
+  // The year card's money line says the loss every year it is worth a line (hubs/year-plan.ts moneyFacts): this year's, as [year, amount].
+  if (eroded >= INFLATION_TOLD) g.flags.inflationLoss = [g.year, Math.round(eroded)]
+  else if (g.flags.inflationLoss !== undefined) delete g.flags.inflationLoss
   if (!(eroded >= INFLATION_TOLD) || g.flags.inflationTold === true) return
   g.flags.inflationTold = true
   const line = `Inflation ate ${formatMoney(eroded)} of what my cash can buy. Cash in the bank earns nothing, so it happens every year.`
