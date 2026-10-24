@@ -41,7 +41,7 @@
     "5": {"rng":"d6a65005999ecea0","character":"6ccaca6b9e545898","people":"c7520379ba4b9da6","assets":"7461179b0794bbb6","world":"4dc5b5f55da4d44e","economy":"37c64fbf7dca75ac","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"ba99653af3d980a5","text":"ff5178f76f2f6c58"},
     "10": {"rng":"69a5834e399a6d83","character":"cf3e374cafb55b93","people":"88b352f4df377ea7","assets":"7461179b0794bbb6","world":"9917cf6bd0bc443a","economy":"65593592f6893123","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"f91a69ddc91ce872","text":"213644ffd1b91688"},
     "20": {"rng":"16017a2c6298fdb3","character":"083c1998463633c9","people":"b75e7b012fbf86dc","assets":"eb1a106d2887df6c","world":"591e21ac5368756f","economy":"a9fce2329814959f","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"b9d50e810b3506ec","text":"4e49abdafd4eea3b"},
-    "end": {"rng":"d371363c919e0a7f","character":"11f4cbf30263daae","people":"f287a78e066d3d13","assets":"7461179b0794bbb6","world":"cbae725eac53bc07","economy":"93f447c00ac1d9b3","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"f3008e60b65d9105","text":"491e5bf578c0f5fa"}
+    "end": {"rng":"a8171a352c312002","character":"1682169ddcab9864","people":"f287a78e066d3d13","assets":"7461179b0794bbb6","world":"cbae725eac53bc07","economy":"93f447c00ac1d9b3","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"f3008e60b65d9105","text":"7fb16fd5e6090704"}
    },
    "founder-1975": {
     "5": {"rng":"79040e9391f2e43e","character":"9e62a679d33cb33a","people":"2dc2683869ada5a9","assets":"e18b4540d174ac0d","world":"333d56581bdf0345","economy":"9a1e3449b1184bb8","flagsWorld":"ab64eaa34a4ad7d2","flagsPersonal":"b8ccd84f9ad659f2","text":"cb77a650b6a91daf"},
@@ -59,9 +59,9 @@
    "birth-1990": {
     "10": {"rng":"69a5834e399a6d83","character":"cf3e374cafb55b93","people":"88b352f4df377ea7","assets":"7461179b0794bbb6","world":"9917cf6bd0bc443a","economy":"65593592f6893123","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"f91a69ddc91ce872","text":"213644ffd1b91688"},
     "20": {"rng":"16017a2c6298fdb3","character":"083c1998463633c9","people":"b75e7b012fbf86dc","assets":"eb1a106d2887df6c","world":"591e21ac5368756f","economy":"a9fce2329814959f","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"b9d50e810b3506ec","text":"4e49abdafd4eea3b"},
-    "40": {"rng":"f55131dbf5742796","character":"a69c1c6b86f71df8","people":"c4661a43ece55290","assets":"7461179b0794bbb6","world":"8756cb91c00cfb1e","economy":"2d0688451b331d9c","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"684342255d9dd248","text":"3493f988ccfcaf51"},
-    "60": {"rng":"6426bbb936ca4b80","character":"99c3288a77adace1","people":"c5b14da050823e9d","assets":"7461179b0794bbb6","world":"2b2a036869bd8f79","economy":"907162abeaa7d1fc","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"dcffc4d834c37f47","text":"9b7a74fa2f048c09"},
-    "end": {"rng":"96c63b2d56445854","character":"92384c8a6bc193a7","people":"f326fc6c4b976991","assets":"7461179b0794bbb6","world":"b004f98e4ab4d4a5","economy":"58d953c9091c871a","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"52e18ccb6124cebe","text":"29b2f2623f42f0d1"}
+    "40": {"rng":"c816b295a3a19c60","character":"4858dad4b10f8a83","people":"86a0832197d60ff4","assets":"7461179b0794bbb6","world":"4f4313cd92863652","economy":"2d0688451b331d9c","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"684342255d9dd248","text":"a30c9e206e5ef27d"},
+    "60": {"rng":"2d9dcd2f8c513752","character":"c393a78b1413eac0","people":"5371db87661fda4e","assets":"7461179b0794bbb6","world":"ab6a54f1af8e9294","economy":"907162abeaa7d1fc","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"dcffc4d834c37f47","text":"2259a068d9adc0e3"},
+    "end": {"rng":"31971029c0d17040","character":"88714f762457e933","people":"f326fc6c4b976991","assets":"7461179b0794bbb6","world":"4c53d3cb429822a0","economy":"58d953c9091c871a","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"33066511cb5678f8","text":"221d3937c4f485a4"}
    },
    "birth-2005": {
     "10": {"rng":"c6defb306db79fcf","character":"c3f0103c18e82b57","people":"5f42372f42dbb0ca","assets":"d39f7b927612d49b","world":"908ebff597230b1e","economy":"9058c321df2c11fc","flagsWorld":"4a8f053e0e65d405","flagsPersonal":"654689c91e11a24c","text":"16154354f7b7f351"},
@@ -145,6 +145,7 @@
   {"at":"5e65c6a","plan":"all","reason":"The year's inflation loss is kept in a personal flag for the year card, so flagsPersonal moves in rich lives","moved":["flagsPersonal"]},
   {"at":"6e3cf10","plan":"all","reason":"Cash in the bank earns a third of the savings rate, so the money of every life with cash moves","moved":["rng","character","people","assets","world","economy","flagsWorld","flagsPersonal","text"]},
   {"at":"058c0ea","plan":"all","reason":"Income tax line at most every fifth year; three busy lines get more phrasings (the lives move again after interest on bank cash)","moved":["rng","character","people","assets","world","economy","flagsWorld","flagsPersonal","text"]},
-  {"at":"3f62360","plan":"all","reason":"A doubled tax bill is told at once; the phrasing sets are fitted to the bundle budget","moved":["rng","character","people","assets","world","economy","flagsWorld","flagsPersonal","text"]}
+  {"at":"3f62360","plan":"all","reason":"A doubled tax bill is told at once; the phrasing sets are fitted to the bundle budget","moved":["rng","character","people","assets","world","economy","flagsWorld","flagsPersonal","text"]},
+  {"at":"81d4eac","plan":"all","reason":"A friend's firm expansion reaches the player's journal every sixth year","moved":["rng","character","people","world","flagsPersonal","text"]}
  ]
 }
