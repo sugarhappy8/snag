@@ -642,6 +642,16 @@ export function historicalCoin(slot: number, year: number): CoinYearHistory | nu
   return { gen, listed: true, price: nominal / pl, ipo: g.launch === y, collapsed: collapsedNow >= 0 ? collapsedNow : undefined, marketCap: (nominal * supply) / pl }
 }
 
+/**
+ * A coin slot's circulating supply at the end of `year`, in coins. After the last real year it stays where the record left it, so
+ * a coin's size beyond history can be its price times this. 0 for a slot with no record.
+ */
+export function coinSupply(slot: number, year: number): number {
+  const h = COIN_HISTORY[slot]
+  if (!h) return 0
+  return (stepAt(h.supplyM, Math.min(Math.round(year), LAST)) ?? 0) * 1e6
+}
+
 /** The crypto market's real move in `year` (the first coin's), or null before crypto or outside history. */
 export function historicalCryptoReturn(year: number): number | null {
   if (!inHistory(year) || year <= CRYPTO_FROM) return null
