@@ -232,7 +232,7 @@ const FAMILIES: readonly Family[] = [
   },
   {
     name: 'boundaries',
-    re: /^(i set money boundaries with |i told .+ i was done talking about money\.|i said no to .+ and meant it\.|i drew a line with .+ about money\.|money was off the table with .+ for a while\.|i told .+ that money wasn.t up for discussion\.|i let .+ know my wallet was closed\.|i made it clear to .+ that i wouldn.t talk money\.|i stood my ground with .+ about money\.|i kept money out of my talks with |i turned down .+ and didn.t budge\.|i put a stop to the money talk with )/,
+    re: /^(i set money boundaries with |i told .+ i was done talking about money\.|i said no to .+ and meant it\.|i drew a line with .+ about money\.|money was off the table with .+ for a while\.|i told .+ that money wasn.t up for discussion\.|i made it clear to .+ that i wouldn.t talk money\.|i stood my ground with .+ about money\.|i turned down .+ and didn.t budge\.)/,
     maxExtra: 6,
     pools: [BOUNDARY_LINES],
     was: 'I set money boundaries with my sister Marit.',
