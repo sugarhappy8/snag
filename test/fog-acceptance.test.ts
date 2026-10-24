@@ -355,7 +355,9 @@ describe('(e) three industries played in Realistic by the engine fuzzer', () => 
   beforeAll(() => setInfoOverride('realistic'))
   afterAll(() => setInfoOverride('exact'))
 
-  for (const [industry, seed] of [['restaurant', 11], ['semiconductor', 5], ['bank', 3]] as const) {
+  // The restaurant's seed was 11 until interest on bank cash (v5.2.0) moved every life: seed 11 now founds a company with a market tree of
+  // about twenty times the screens, and its five years took over 300 s. Seed 12 plays the five years in about 6 s (seeds 12 to 23 all do, in 3 to 12 s).
+  for (const [industry, seed] of [['restaurant', 12], ['semiconductor', 5], ['bank', 3]] as const) {
     it(`${industry}: five years, every company screen walked each year, no failure`, async () => {
       const log = new FailureLog()
       const stats = await fuzzBusiness(industry, seed, log, 5)
