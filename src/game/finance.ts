@@ -650,9 +650,10 @@ export function yearlyFinance(g: GameState): void {
   if (tax > 0) {
     // The journal is for the story, not a bank statement: mention taxes the first time and
     // when the bill changes a lot, not every single year. A life with a big bank balance has a bill that moves every year (its interest
-    // is income), so a line also waits TAX_LINE_GAP years after the last one.
+    // is income), so a line also waits TAX_LINE_GAP years after the last one, unless the bill has doubled since.
     const lastLine = num(g.flags.taxLineAge, -99)
-    if (tax >= 50 && (c.age - lastLine >= TAX_LINE_GAP || lastLine > c.age) && changedALot(g, 'lastTaxLogged', tax)) {
+    const waited = c.age - lastLine >= TAX_LINE_GAP || lastLine > c.age || tax >= 2 * num(g.flags.lastTaxLogged)
+    if (tax >= 50 && waited && changedALot(g, 'lastTaxLogged', tax)) {
       g.flags.taxLineAge = c.age
       log(g, freshPick(g, 'tax', TAX_LINES)(formatMoney(tax)))
     }
