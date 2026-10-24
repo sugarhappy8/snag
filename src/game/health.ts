@@ -282,15 +282,15 @@ function fill(text: string, vars: Record<string, string>): string {
 
 /**
  * Pick a line for something that recurs year after year, never the same one twice in a row.
- * Remembers the last index in g.flags under `line.<key>`.
+ * Remembers the last index in g.flags under `line.<key>`, and avoids the last `remember` picks (3 unless a site says more).
  */
-function freshLine(g: GameState, key: string, lines: string[]): string {
+function freshLine(g: GameState, key: string, lines: string[], remember = 3): string {
   const flag = `line.${key}`
   // Remember the last few picks (not just the last one) so the same line doesn't come back
   // two or three years later.
   const raw = g.flags[flag]
   const recent = Array.isArray(raw) ? raw.filter((x): x is number => typeof x === 'number') : typeof raw === 'number' ? [raw] : []
-  const keep = Math.max(0, Math.min(lines.length - 1, 3))
+  const keep = Math.max(0, Math.min(lines.length - 1, remember))
   const options = lines.map((_, i) => i).filter((i) => !recent.slice(-keep).includes(i))
   const i = pick(g, options.length ? options : lines.map((_, j) => j))
   g.flags[flag] = [...recent, i].slice(-Math.max(1, keep))
@@ -427,7 +427,7 @@ function announceCondition(g: GameState, cond: Condition): void {
     return
   }
   if (cond.severity < 15 || g.character.age < 4) {
-    log(g, freshLine(g, 'underWeather', ["I've been feeling a bit under the weather.", "I haven't been feeling like myself lately.", "Something's been off with my health.", "I've been dragging myself through the days.", "My body has been sending me strongly worded complaints."]), 'bad')
+    log(g, freshLine(g, 'underWeather', ["I've been feeling a bit under the weather.", "I haven't been feeling like myself lately.", "Something's been off with my health.", "I've been dragging myself through the days.", "My body has been sending me strongly worded complaints."], 4), 'bad')
     return
   }
   // Before the internet, people looked their symptoms up in a book (or asked Grandma).

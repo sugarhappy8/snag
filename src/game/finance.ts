@@ -5,7 +5,7 @@
 // Also home to the small money helpers the assets / gambling code shares: loan maths,
 // a credit score, marginal tax on extra income and "where do I live now" logic.
 import { moveCash, personPurse, playerPurse, writeoff } from './cash'
-import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember } from './core'
+import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember, withLogSource } from './core'
 import { hasMarketData, marketOf } from './data/markets'
 import { historicalInflation, historicalMortgageRate, inHistory, investingBlocked } from './history/markets'
 import { hasTech } from './history/timeline'
@@ -531,6 +531,9 @@ const TAX_LINES = [
   (m: string) => `I sent ${m} to the tax office.`,
 ]
 
+/** The years between two lines about the income tax. */
+const TAX_LINE_GAP = 5
+
 const LIVING_LINES = [
   (m: string) => `I spent ${m} on groceries, bills and everyday living.`,
   (m: string) => `Living expenses cost me ${m} this year.`,
@@ -591,6 +594,26 @@ function changedALot(g: GameState, key: string, amount: number): boolean {
   return true
 }
 
+/** What inflation must take from the player's cash in a year (engine dollars) before the life says so. */
+const INFLATION_TOLD = 10_000
+
+/**
+ * Say, once in a life, what inflation took from the cash the player held (and keep each year's loss for the year card). The bank shrinks by the year's inflation (billions, for a
+ * rich life), which shows as a plain loss in today's prices or in dollars, and nothing else says why. The journal never tells the same
+ * thing twice (quiet-acceptance), so the one line also says what the bank pays and that it happens every year. The id is fixed, so no uid is drawn and no other
+ * life moves. `eroded` is the loss, 0 or more.
+ */
+export function sayInflationLoss(g: GameState, eroded: number, bankRate = 0): void {
+  // The year card's money line says the loss every year it is worth a line (hubs/year-plan.ts moneyFacts): this year's, as [year, amount].
+  if (eroded >= INFLATION_TOLD) g.flags.inflationLoss = [g.year, Math.round(eroded)]
+  else if (g.flags.inflationLoss !== undefined) delete g.flags.inflationLoss
+  if (!(eroded >= INFLATION_TOLD) || g.flags.inflationTold === true) return
+  g.flags.inflationTold = true
+  const pays = bankRate > 0 ? `the bank pays only ${(bankRate * 100).toFixed(1)}% on it` : 'the bank pays nothing on it'
+  const line = `Inflation ate ${formatMoney(eroded)} of what my cash can buy, and ${pays}. It happens every year.`
+  withLogSource('finance', () => log(g, line, 'neutral', `infl-${g.year}`, { a: eroded, w: 1 }))
+}
+
 /** Pick a line that wasn't used the last few times (so the journal doesn't repeat itself). */
 function freshPick<T>(g: GameState, key: string, lines: readonly T[]): T {
   const flag = `line.fin.${key}`
@@ -626,8 +649,14 @@ export function yearlyFinance(g: GameState): void {
   const tax = settleIncomeTax(g)
   if (tax > 0) {
     // The journal is for the story, not a bank statement: mention taxes the first time and
-    // when the bill changes a lot, not every single year.
-    if (tax >= 50 && changedALot(g, 'lastTaxLogged', tax)) log(g, pick(g, TAX_LINES)(formatMoney(tax)))
+    // when the bill changes a lot, not every single year. A life with a big bank balance has a bill that moves every year (its interest
+    // is income), so a line also waits TAX_LINE_GAP years after the last one, unless the bill has doubled since.
+    const lastLine = num(g.flags.taxLineAge, -99)
+    const waited = c.age - lastLine >= TAX_LINE_GAP || lastLine > c.age || tax >= 2 * num(g.flags.lastTaxLogged)
+    if (tax >= 50 && waited && changedALot(g, 'lastTaxLogged', tax)) {
+      g.flags.taxLineAge = c.age
+      log(g, freshPick(g, 'tax', TAX_LINES)(formatMoney(tax)))
+    }
   }
 
   // 2. Rent. Landlords don't hold apartments for inmates.

@@ -784,6 +784,29 @@ export function liveDepositRate(g: GameState, country: string, product: 'savings
   return bound(base + delta * (product === 'savings' ? .7 : .9), 0, isHistoryYear(g.year) ? 10 : .4)
 }
 
+/** The share of the savings rate the bank pays on the cash in the player's account (a current account pays less than a savings one). */
+const BANK_CASH_SHARE = 1 / 3
+
+/** What the bank pays on the cash in the player's account: BANK_CASH_SHARE of the savings rate. */
+export function bankCashRate(g: GameState): number {
+  const r = liveDepositRate(g, g.character.countryId, 'savings') * BANK_CASH_SHARE
+  return Number.isFinite(r) && r > 0 ? r : 0
+}
+
+/**
+ * Pay the interest on the cash the player held through the year (`held`: the balance before inflation took its share), as a nominal
+ * deposit pays it. Added at rate / (1 + inflation), next to erodeCash dividing the balance by (1 + inflation), the account ends the year at
+ * (1 + rate) / (1 + inflation) of what it began, the way a savings account does (moveHolding). Paid by the banks and taxed as income.
+ * Returns what was paid: 0 for an empty or overdrawn account, or a number that is not one.
+ */
+export function payBankInterest(g: GameState, held: number, inflation: number): number {
+  if (!Number.isFinite(held) || held <= 0 || !Number.isFinite(inflation) || inflation <= -1) return 0
+  const paid = Math.min(1e15, Math.round((held * bankCashRate(g)) / (1 + inflation)))
+  if (!(paid > 0)) return 0
+  earnIncome(g, paid, { reason: 'invest.income', with: 'pool:banks' })
+  return paid
+}
+
 function listing(g: GameState): Listing {
   const cid = g.character.countryId
   const y = g.year
@@ -1205,7 +1228,9 @@ interface SaleResult {
 /** Gameplay liquidity, not a claim about a real exchange's current order book. */
 function tradingDepth(g: GameState, type: InvestType, details: Record<string, Json>): number | null {
   if (type !== 'stock' && type !== 'penny' && type !== 'crypto') return null
-  const cap = type === 'crypto' ? coinMarketCap(Math.round(num(details.slot, -1)), g.year) : null
+  // A coin's size beyond the record is its raw quote times its supply (the quote an order has not moved), so a big coin is deep.
+  const slot = Math.round(num(details.slot, -1))
+  const cap = type === 'crypto' ? coinMarketCap(slot, g.year, cryptoYear(fam(g), anchor(g), g.year).coins[slot]?.price) : null
   const base = type === 'penny' ? 5_000_000 : type === 'crypto' ? Math.max(50_000, (cap ?? 1_000_000_000) * .05) : 500_000_000
   return base * shockFactor(g, str(details.secId), g.year)
 }
@@ -1613,11 +1638,51 @@ function buyAction(g: GameState, q: Quote, held: boolean): MenuAction {
       max: Math.max(min, cash),
       defaultValue: () => String(start),
     },
+    confirm: (gg, input) => bigBuyWarning(gg, q, Number(input)),
     stayOpen: true,
     run: (gg, input) => {
       buySecurity(gg, q.secId, Number(input))
     },
   }
+}
+
+/** An order that loses this share of itself to price impact asks first (the Order Filled notice speaks up at 10%, after the fact). */
+const BIG_IMPACT = 0.25
+
+/**
+ * The question to ask before a buy of `amount` that would lose a quarter or more of itself to price impact: the loss, what the
+ * position would be valued at, that splitting does not help, and the size that loses under 10%. null for an order that does not,
+ * for a product with no order book, and for an amount that is not a number.
+ */
+function bigBuyWarning(g: GameState, q: Quote, amount: number): string | null {
+  if (!Number.isFinite(amount) || amount <= 0) return null
+  const depth = tradingDepth(g, q.type, q.details)
+  if (!depth) return null
+  const plan = feePlan(g, q.type)
+  const invested = amount - feeFor(plan, amount)
+  if (!(invested > 0)) return null
+  const order = buyImpact(invested, depth)
+  const lost = 1 - order.value / invested
+  if (lost < BIG_IMPACT) return null
+  const limit = buyImpactLimit(depth)
+  const size = limit > 0 ? ` Orders up to about ${shortMoney(orderFor(plan, limit))} lose under 10%.` : ''
+  return `Buying ${formatMoney(amount)} of ${q.name} is more than its market can take. About ${lost >= 0.9995 ? 'all' : absPct(lost, 0)} of it would be lost to price impact, so it would be worth about ${formatMoney(order.value)}. Splitting the order does not avoid it.${size} Buy anyway?`
+}
+
+/**
+ * The question to ask before selling `gross` of a holding when the market depth would cut a quarter or more off the proceeds: the
+ * loss, what would land in the bank and that the quote falls for the rest. null for a sale that does not, and for a product with
+ * no order book.
+ */
+function bigSaleWarning(g: GameState, assetId: string, gross: number): string | null {
+  const cur = g.assets.find((x) => x.id === assetId)
+  if (!cur || !Number.isFinite(gross) || gross <= 0) return null
+  const sold = Math.min(holdingValue(cur), Math.round(gross))
+  if (!(sold > 0)) return null
+  const est = estimateTax(g, cur, sold)
+  if (est.impact / sold < BIG_IMPACT) return null
+  const net = Math.max(0, sold - est.impact - est.fee - est.penalty)
+  return `Selling ${formatMoney(sold)} of your ${cur.name} is more than its market can take. Price impact would cut about ${formatMoney(est.impact)} (${absPct(est.impact / sold, 0)}) off the proceeds, leaving about ${formatMoney(net)} before tax, and the price falls for what you keep. Splitting the sale does not avoid it. Sell anyway?`
 }
 
 function sellActions(g: GameState, a: Asset): MenuNode[] {
@@ -1635,6 +1700,7 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
       visible: () => value > 1,
       disabledReason: (gg) => sellBlock(gg, a),
       input: { kind: 'number', money: true, label: `How much of it? It's worth ${formatMoney(value)}.`, placeholder: String(Math.round(value / 2)), min, max: Math.max(min, value), defaultValue: () => String(Math.max(min, Math.round(value / 2))) },
+      confirm: (gg, input) => bigSaleWarning(gg, a.id, Number(input)),
       stayOpen: true,
       run: (gg, input) => {
         sellHolding(gg, a.id, Number(input))

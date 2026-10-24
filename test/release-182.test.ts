@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { makeTestGame } from './helpers'
 import { ageUp } from '../src/game/aging'
 import { economyOf } from '../src/game/economy'
@@ -20,6 +20,13 @@ import { buySecurity, investmentListing, liquidatePortfolio, sellHolding } from 
 import { addMarketShock, indexShockFactor, shockFactor } from '../src/game/invest/shocks'
 import type { GameState, MenuNode } from '../src/game/types'
 import { withAging } from './kernel-kit'
+
+// The year-boundary tax test holds the closing settlement to the cent, so the bank pays nothing in this file. Cash in the bank does earn
+// interest since v5.2.0 (the next year's taxable income); test/bank-interest.test.ts holds that.
+vi.mock('../src/game/investments', async (orig) => {
+  const real = await orig<typeof import('../src/game/investments')>()
+  return { ...real, bankCashRate: () => 0, payBankInterest: () => 0 }
+})
 
 function company() {
   const g = makeTestGame(45, { age: 35, money: 1e9, countryId: 'us' })

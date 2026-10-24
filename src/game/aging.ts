@@ -10,7 +10,8 @@ import './modules'
 import { erodeCash } from './cash'
 import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi, sourceOf, withQueueSource } from './core'
 import { economyOf, ensureEconomy, yearlyEconomy } from './economy'
-import { settleIncomeTax } from './finance'
+import { sayInflationLoss, settleIncomeTax } from './finance'
+import { bankCashRate, payBankInterest } from './investments'
 import { checkDeath } from './health'
 import { writeLifeRow } from './life-series'
 import type { GameState } from './types'
@@ -42,7 +43,13 @@ export function ageUp(g: GameState): void {
   // The economic year boundary precedes every income-producing hook, including history.
   // New-year earnings must not be eroded as though held since the previous birthday.
   yearlyEconomy(g)
-  erodeCash(g, economyOf(g).inflation)
+  // The cash held through the year loses the year's inflation and earns the bank's interest (a nominal deposit's (1 + rate) / (1 + inflation)).
+  // Shown in today's prices or in dollars the bank visibly shrinks (billions, for a rich life): finance.ts says so.
+  const held = c.money
+  const inflation = economyOf(g).inflation
+  const eroded = -erodeCash(g, inflation)
+  payBankInterest(g, held, inflation)
+  sayInflationLoss(g, eroded, bankCashRate(g))
 
   // The life series keeps one row for each age lived, the year of death included (src/game/life-series.ts).
   // Each hook runs under its name, so the lines and popups it makes carry it as `s` (core.ts withLogSource, R3 E.D1).

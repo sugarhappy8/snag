@@ -228,6 +228,23 @@ describe('market shocks', () => {
     expect(settleMove(g, pos)).toBeLessThan(plain - 0.01)
   })
 
+  it('offers no coin to announce on or tip a crony about before crypto existed', () => {
+    const rows = (g: GameState, menu: string) => {
+      const m = findNode(g, specialJobNodes(g), menu) as MenuGroup
+      return m.children(g).filter((n) => n.type === 'action').map((n) => n.id)
+    }
+    const early = official('ph', 'leader')
+    early.year = 1992
+    for (const menu of ['pol.abuse.announce', 'pol.abuse.crony']) {
+      expect(rows(early, menu).some((id) => id.includes('.crypto#')), menu).toBe(false)
+      expect(findNode(early, specialJobNodes(early), `${menu}.h.coins`), menu).toBeUndefined()
+    }
+    const now = official('ph', 'leader')
+    for (const menu of ['pol.abuse.announce', 'pol.abuse.crony']) {
+      expect(rows(now, menu).some((id) => id.includes('.crypto#')), menu).toBe(true)
+    }
+  })
+
   it('a coin ban by a big economy crashes the coin everywhere it trades', () => {
     const g = official('us', 'leader')
     const coin = coinTargets(g).find((c) => c.name !== '' && c.sector === 'Cryptocurrency')!

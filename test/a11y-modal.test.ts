@@ -340,6 +340,45 @@ describe('openModal: stacked modals', () => {
     expect(isModalOpen()).toBe(false)
   })
 
+  // Relationships reopened on a person (the "Back to" chip) mounts the list sheet and the person sheet in one commit, so the
+  // second dialog is already in the page when the first one opens and lands among the first one's targets.
+  it('keeps a dialog live that was already in the page when the one below it opened', () => {
+    const w = makeWorld()
+    const a = w.addSheet()
+    const b = w.addPopup()
+    const hA = open(w, a.box, null)
+    expect(w.inertNames()).toEqual(['bar', 'content', 'popupBackdrop'])
+    const hB = open(w, b.box, null)
+    // The top dialog is the one the player can use; the one below it is isolated, along with the page.
+    expect(isInert(b.box)).toBe(false)
+    expect(isInert(b.kids[0]!)).toBe(false)
+    expect(w.active()).toBe(b.box)
+    expect(w.inertNames()).toEqual(['bar', 'content', 'sheetBackdrop'])
+
+    hB.close()
+    expect(w.inertNames()).toEqual(['bar', 'content'])
+    expect(isInert(a.box)).toBe(false)
+    hA.close()
+    expect(w.inertNames()).toEqual([])
+    expect(isModalOpen()).toBe(false)
+  })
+
+  it('frees the page exactly once when the lower of two same-commit dialogs closes first', () => {
+    const w = makeWorld()
+    const a = w.addSheet()
+    const b = w.addPopup()
+    const hA = open(w, a.box, null)
+    const hB = open(w, b.box, null)
+    hA.close()
+    expect(w.inertNames()).toEqual(['bar', 'content', 'sheetBackdrop'])
+    expect(isInert(b.box)).toBe(false)
+    hB.close()
+    expect(w.inertNames()).toEqual([])
+    expect(w.count('inert:content:false')).toBe(1)
+    expect(w.count('inert:bar:false')).toBe(1)
+    expect(isModalOpen()).toBe(false)
+  })
+
   it('keeps counts per element, so a later modal after a full release isolates again', () => {
     const w = makeWorld()
     const a = w.addSheet()

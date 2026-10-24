@@ -41,6 +41,10 @@ export const BOUNDARY_LINES = defineLines('wealth.boundary', [
   'I said no to {who} and meant it.',
   'I drew a line with {who} about money.',
   'Money was off the table with {who} for a while.',
+  "I told {who} that money wasn't up for discussion.",
+  "I made it clear to {who} that I wouldn't talk money.",
+  'I stood my ground with {who} about money.',
+  "I turned down {who} and didn't budge.",
 ])
 
 /** The log line for money sent to a stranger's "opportunity". R2-P10 (E.T3 d): one template read the same on every loss. */

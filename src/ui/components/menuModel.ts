@@ -142,10 +142,10 @@ export function groupHeader(group: MenuGroup, g: GameState): string | null {
   }
 }
 
-export function confirmText(action: MenuAction, g: GameState): string | null {
+export function confirmText(action: MenuAction, g: GameState, input?: string): string | null {
   if (!action.confirm) return null
   try {
-    return action.confirm(g) || null
+    return action.confirm(g, input) || null
   } catch (err) {
     report(`confirm(${action.id})`, err)
     return null

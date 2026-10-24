@@ -27,7 +27,7 @@ import { isIndustryLegal, type Industry } from './data/markets'
 import type { BizState } from './business/state'
 import { clampN, money, num, pct, rec } from './business/util'
 import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
-import { pickLine } from './text/pick'
+import { pickLine, pickSite } from './text/pick'
 import { HOME_BOUGHT, HOME_BOUGHT_LINES, PROMO_LINES, PROMOTED } from './text/pools'
 import { npcCompany } from './npc-company-state'
 import { inheritFamilyTalent, npcHasMainCharacter } from './talents'
@@ -107,11 +107,12 @@ export function initializeNpc(g: GameState, p: Person): NpcLife {
   return life
 }
 export { PROMO_LINES }
-function milestone(g: GameState, p: Person, l: NpcLife, text: string): void {
+/** `say`, when given, is what the player's log says instead of `text` (the person's own history keeps `text`): a line that comes round every few years varies; '' keeps it out of the player's log. */
+function milestone(g: GameState, p: Person, l: NpcLife, text: string, say?: string): void {
   l.history = [...l.history, `${g.year}: ${text}`].slice(-24)
-  if ((p.livesWithPlayer || p.relationship >= 55) && (g.yearActions['npc.news'] ?? 0) < 3) {
+  if (say !== '' && (p.livesWithPlayer || p.relationship >= 55) && (g.yearActions['npc.news'] ?? 0) < 3) {
     g.yearActions['npc.news'] = (g.yearActions['npc.news'] ?? 0) + 1
-    log(g, `${p.firstName}: ${text === PROMOTED ? pickLine(g, PROMO_LINES) : text === HOME_BOUGHT ? pickLine(g, HOME_BOUGHT_LINES) : text}`)
+    log(g, `${p.firstName}: ${say ?? (text === PROMOTED ? pickLine(g, PROMO_LINES) : text === HOME_BOUGHT ? pickLine(g, HOME_BOUGHT_LINES) : text)}`)
   }
 }
 function storeCompany(p: Person, a: Asset): void { p.data.npcCompany = a as unknown as Json }
@@ -214,7 +215,21 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialApp
   if (stake) earnIncome(g, payout * playerShare, 'dividend')
   evolve(g, b, result.stmt, fiscal); stampWave(g, b, fiscal); recordYear(b, result.stmt, { lean: true }); b.history = b.history.slice(-12)
   const expansion = g.year % 3 === 0 ? expandNpcCompany(g, b, l, a.id) : 0
-  if (expansion) milestone(g, p, l, `${a.name} reinvested ${money(expansion)} in a new operating location`)
+  if (expansion) {
+    const spent = money(expansion)
+    // It comes round every third year for as long as the firm grows: the log says it every sixth year and a different way each time (the person's history keeps every plain line).
+    // The phrasing is drawn every time, so the text stream is the same either way.
+    const say = pickSite(
+      g,
+      [
+        `${a.name} reinvested ${spent} in a new operating location`,
+        `${a.name} opened another location, ${spent} of the profits put back in`,
+        `${a.name} put ${spent} into a new branch`,
+      ],
+      0x6a3f1d85,
+    )
+    milestone(g, p, l, `${a.name} reinvested ${spent} in a new operating location`, g.year % 6 === 0 ? say : '')
+  }
   b.valuation = valuationOf(b); refreshValue(a, b)
   if (stake) stake.value = Math.round(b.valuation * playerShare)
   recordEconomicActivity(g, `npc:${a.id}:${fiscal}`, b.countryId, b.industry, { jobs: b.employees - employmentBefore, investment: expansion, failure: 0, ...result.bank })
