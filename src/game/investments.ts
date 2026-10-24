@@ -1641,7 +1641,7 @@ function bigBuyWarning(g: GameState, q: Quote, amount: number): string | null {
   if (lost < BIG_IMPACT) return null
   const limit = buyImpactLimit(depth)
   const size = limit > 0 ? ` Orders up to about ${shortMoney(orderFor(plan, limit))} lose under 10%.` : ''
-  return `Buying ${formatMoney(amount)} of ${q.name} is far more than its market can take. About ${lost >= 0.9995 ? 'all' : absPct(lost, 0)} of it would be lost to price impact, so the position would be valued at about ${formatMoney(order.value)}. Splitting the order does not avoid it.${size} Buy anyway?`
+  return `Buying ${formatMoney(amount)} of ${q.name} is more than its market can take. About ${lost >= 0.9995 ? 'all' : absPct(lost, 0)} of it would be lost to price impact, so it would be worth about ${formatMoney(order.value)}. Splitting the order does not avoid it.${size} Buy anyway?`
 }
 
 /**
@@ -1657,7 +1657,7 @@ function bigSaleWarning(g: GameState, assetId: string, gross: number): string | 
   const est = estimateTax(g, cur, sold)
   if (est.impact / sold < BIG_IMPACT) return null
   const net = Math.max(0, sold - est.impact - est.fee - est.penalty)
-  return `Selling ${formatMoney(sold)} of your ${cur.name} is more than its market can take. Price impact would cut about ${formatMoney(est.impact)} (${absPct(est.impact / sold, 0)}) off the proceeds, so about ${formatMoney(net)} would land in your bank before tax, and the quote falls for what you keep. Splitting the sale does not avoid it. Sell anyway?`
+  return `Selling ${formatMoney(sold)} of your ${cur.name} is more than its market can take. Price impact would cut about ${formatMoney(est.impact)} (${absPct(est.impact / sold, 0)}) off the proceeds, leaving about ${formatMoney(net)} before tax, and the price falls for what you keep. Splitting the sale does not avoid it. Sell anyway?`
 }
 
 function sellActions(g: GameState, a: Asset): MenuNode[] {
