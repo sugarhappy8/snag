@@ -212,7 +212,7 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
   const afterInput = (action: MenuAction, input: string | undefined) => {
     const g = getApp().game
     if (!g) return
-    const text = confirmText(action, g)
+    const text = confirmText(action, g, input)
     if (text) setPending({ stage: 'confirm', action, input, text })
     else execute(action, input)
   }
