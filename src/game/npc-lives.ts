@@ -27,6 +27,8 @@ import { isIndustryLegal, type Industry } from './data/markets'
 import type { BizState } from './business/state'
 import { clampN, money, num, pct, rec } from './business/util'
 import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
+import { personKey } from './kernel/person-ref'
+import { metRecord } from './world/met'
 import { isClose, peopleFog, readPerson } from './people-fog'
 import { pickLine, pickSite } from './text/pick'
 import { HOME_BOUGHT, HOME_BOUGHT_LINES, PROMO_LINES, PROMOTED } from './text/pools'
@@ -90,11 +92,23 @@ export function refreshRoyalCareers(g: GameState, newBirth = false): void {
   }
 }
 
+/**
+ * Where a person's ambition starts, 5..98. The roll is the old one, for everyone who has no Met record: 35 plus 40 times a draw, 20 more
+ * for `ambitious` and 25 less for `lazy`. A person with a Met record starts from the record's ambition axis instead; that axis already
+ * counts their words (the record's words come from its axes), so no bonus is added. The draw is taken either way, so every person reads
+ * their seed in the same order.
+ */
+function startingAmbition(p: Person, drawn: number, axis: number | null): number {
+  if (axis !== null) return clampN(axis, 5, 98)
+  return clampN(35 + drawn * 40 + (p.traits.includes('ambitious') ? 20 : 0) - (p.traits.includes('lazy') ? 25 : 0), 5, 98)
+}
+
 export function initializeNpc(g: GameState, p: Person): NpcLife {
   inheritFamilyTalent(g, p)
   const existing = npcLife(p)
   if (existing) return existing
-  const roll = seeded(`npc-life|${p.id}|${g.lifeId.replace(/-g\d+$/, '')}`)
+  const roll = seeded(`npc-life|${personKey(p)}|${g.lifeId.replace(/-g\d+$/, '')}`)
+  const met = metRecord(g, personKey(p))
   const local = typeof p.data.countryId === 'string' ? p.data.countryId : g.character.countryId
   let field: NpcField = /Finance|Bank|Account|Invest/.test(p.occupation) ? 'Finance' : /Doctor|Nurse|Dentist/.test(p.occupation) ? 'Medicine' : /Engineer|Mechanic/.test(p.occupation) ? 'Engineering' : /Law/.test(p.occupation) ? 'Law' : /Software/.test(p.occupation) ? 'Computer Science' : roll.pick(['Engineering','Finance','Mathematics','Law','Marketing','Business'])
   if (field === 'Computer Science' && g.year < 1965) field = 'Mathematics'
@@ -102,7 +116,7 @@ export function initializeNpc(g: GameState, p: Person): NpcLife {
   const life: NpcLife = { v: 1, lastYear: g.year - 1, country: local, city: getCountry(local).cities[0], field, education: p.age >= 23 && professional ? 1 : 0,
     study: p.occupation === 'University Student' ? Math.min(3, Math.max(0, p.age - 18)) : 0,
     skill: clampN(p.stats.smarts * .3 + Math.max(0, p.age - 18) * .5, 10, 85), experience: Math.max(0, p.age - (professional ? 22 : 18)), income: 0,
-    debt: 0, investments: 0, housing: 0, ambition: clampN(35 + roll.next() * 40 + (p.traits.includes('ambitious') ? 20 : 0) - (p.traits.includes('lazy') ? 25 : 0), 5, 98), employer: '', history: [], achievements: [], housingQuality: 50 }
+    debt: 0, investments: 0, housing: 0, ambition: startingAmbition(p, roll.next(), met ? met.a[0] : null), employer: '', history: [], achievements: [], housingQuality: 50 }
   if (life.education) life.achievements.push(`Bachelor's in ${field}`)
   saveNpcLife(p, life)
   return life
@@ -248,7 +262,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
   l.lastYear = g.year
   const local = getCountry(l.country), e = economyOf(g, l.country), income = typicalIncome(g, l.country)
   const learning = educationAccess(e)
-  const roll = seeded(`npc-decision|${g.lifeId.replace(/-g\d+$/, '')}|${p.id}|${g.year}`)
+  const roll = seeded(`npc-decision|${g.lifeId.replace(/-g\d+$/, '')}|${personKey(p)}|${g.year}`)
   const gifted = npcHasMainCharacter(p)
   const managedJob = managedEmployment(g, p)
   let appointment = syncRoyalAppointment(g, p, l)
@@ -334,7 +348,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
   }
   if (gifted && !managedJob && !appointment && p.age >= 21 && p.age <= 70 && l.ambition >= 65 && !/Student/.test(p.occupation) && !npcCompany(p, g.year)) {
     // Ambition drives frequency and willingness to challenge the family, not talent inheritance.
-    const ventureRoll = seeded(`npc-venture|${g.lifeId.replace(/-g\d+$/, '')}|${p.id}|${g.year}`)
+    const ventureRoll = seeded(`npc-venture|${g.lifeId.replace(/-g\d+$/, '')}|${personKey(p)}|${g.year}`)
     if (ventureRoll.chance((l.ambition - 55) / 100)) {
       saveNpcLife(p, l)
       const rivals = g.assets.filter(a => a.kind === 'business').map(a => ({ a, b: a.details as unknown as BizState }))

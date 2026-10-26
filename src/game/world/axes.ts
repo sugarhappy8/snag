@@ -9,8 +9,10 @@
 //   STAFF_AXES / axesFromStaff     the same for the 13 staff traits of business/flavor.ts. Ambition is STAFF_DRIVE (effort/persona.ts), read
 //                                  when the function runs, never copied into a table here.
 //   VOICES / voiceOf               six narrator voices, each a prototype in axis space; the nearest prototype speaks.
-//   TRAIT_SETS                     the four trait sets of events/will-core.ts, lifted word for word so a reader can use them and the axes
-//                                  together (R4-S10 hands will-core these sets).
+//   TRAIT_SETS                     the four trait sets that events/will-core.ts reads (forgiving, petulant, gossips, discreet), lifted word
+//                                  for word; will-core reads them from here since R4-S10.
+//   DRIVE_TRAITS / INTEGRITY_TRAITS  the drive table of business/nepo-model.ts and the integrity deltas of business/nepo-succession.ts,
+//                                  moved here verbatim (same keys, same values, same order) by R4-S10; both readers read them from here.
 //
 // These tables are design data and freeze at the first recording (cross-check 3.3, X57): Met records store axis tuples built from
 // them, and R5's composer picks a voice with voiceOf. AXIS_IDS and VOICES are frozen. A changed value afterwards needs a RECORD_REASON,
@@ -235,8 +237,8 @@ export function voiceOf(a: Axes): VoiceId {
 
 /**
  * The four sets of events/will-core.ts (the "Personality" block), word for word: who shrugs anger off, who carries it, who talks, who
- * keeps quiet. Written out here so R4-S10 can have will-core read them from this file; test/world-axes.test.ts holds them equal to the
- * readers until then and to the literals after.
+ * keeps quiet. will-core reads them from here inside its functions (a module-level copy would be an eager read of an import, which the
+ * layers test refuses); test/world-axes.test.ts holds them equal to the literals of v5.2.0 and to what the readers answer.
  */
 export const TRAIT_SETS: {
   readonly forgiving: ReadonlySet<string>
@@ -248,4 +250,41 @@ export const TRAIT_SETS: {
   petulant: new Set(['hot-headed', 'jealous', 'arrogant', 'dramatic', 'grumpy', 'manipulative', 'rebellious', 'spoiled', 'stingy']),
   gossips: new Set(['jealous', 'manipulative', 'sneaky', 'dramatic', 'outgoing']),
   discreet: new Set(['loyal', 'honest', 'calm', 'shy', 'serious']),
+})
+
+// --- Drive and integrity --------------------------------------------------------------------------------------------------------------
+
+/**
+ * How a word moves a relative's drive (business/nepo-model.ts driveOf): added to 35 plus 40 times a stable roll. Moved here word for word
+ * from nepo-model.ts, in the same order, by R4-S10; every key is a word of TRAITS. driveOf reads it as `DRIVE_TRAITS[t] ?? 0`.
+ */
+export const DRIVE_TRAITS: Readonly<Record<string, number>> = Object.freeze({
+  ambitious: 12,
+  serious: 6,
+  sporty: 4,
+  nerdy: 4,
+  loyal: 3,
+  honest: 2,
+  optimistic: 3,
+  calm: 2,
+  lazy: -22,
+  rebellious: -4,
+  arrogant: -3,
+  anxious: -3,
+  dramatic: -2,
+})
+
+/**
+ * How a word moves how straight a relative plays (business/nepo-succession.ts integrityFor): added to 62 plus 20 times a stable roll,
+ * in this order. Moved here word for word from the inline object of integrityFor by R4-S10; every key is a word of TRAITS.
+ */
+export const INTEGRITY_TRAITS: Readonly<Record<string, number>> = Object.freeze({
+  honest: 15,
+  loyal: 6,
+  kind: 3,
+  caring: 3,
+  sneaky: -20,
+  manipulative: -15,
+  arrogant: -8,
+  jealous: -4,
 })
