@@ -57,7 +57,13 @@ function row(unit: Unit | null, sd0: number, drift: number, talents: readonly st
  *
  * Markets, rivals, candidates, odds, forecasts and hint values read with the Business talent; securities, funds and valuations
  * with Investing; casting and peers with Acting or Modeling. `eco` and `pol` list no talent (only Main Character sharpens them),
- * and ppl, war, story and show are reserved for R4 to R9 with their numbers already set.
+ * and war, story and show are still reserved for later releases with their numbers already set.
+ *
+ * R4-U2 (X44) gives people their rows: what is seen every day reads tighter than what is inferred (a face .12, health .22, a mood
+ * .28, a mind .32), a private number reads wide (cash .50, net worth .55) and an NPC's craft .30. `ppl.*` (.45 / .20) stays for the
+ * rest: traits, the fifteen personality stats and ambition. `stf.skill` is a hired skill at .20 and not tighter, so that an interview
+ * reading carried to the sheet (sd .18, estimate.ts keeps a stored row only when its sd is the lower one) stays the sharper one in
+ * the year of the hire.
  */
 export const RULES: Readonly<Record<string, Rule>> = Object.freeze({
   'mkt.size': row('money', 0.25, 0.06, BUSINESS),
@@ -82,7 +88,15 @@ export const RULES: Readonly<Record<string, Rule>> = Object.freeze({
   'peer.*': row('score', 0.25, 0.15, STAGE),
   'eco.*': row('pct', 0.05, 0.02, NONE),
   'pol.*': row('score', 0.25, 0.25, NONE),
+  'ppl.looks': row('score', 0.12, 0.02, NONE),
+  'ppl.health': row('score', 0.22, 0.15, NONE),
+  'ppl.happiness': row('score', 0.28, 0.3, NONE),
+  'ppl.smarts': row('score', 0.32, 0.03, NONE),
+  'ppl.cash': row('money', 0.5, 0.25, NONE),
+  'ppl.skill': row('score', 0.3, 0.08, NONE),
+  'ppl.worth': row('money', 0.55, 0.2, NONE),
   'ppl.*': row('score', 0.45, 0.2, NONE),
+  'stf.skill': row('score', 0.2, 0.05, BUSINESS),
   'war.*': row('score', 0.3, 0.25, NONE),
   'story.*': row('score', 0.3, 0.25, NONE),
   'show.*': row('score', 0.3, 0.25, NONE),
