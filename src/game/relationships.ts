@@ -75,12 +75,14 @@ import {
   yourRel,
 } from './love'
 import { createPerson, notePerson, randomOccupation } from './people'
+import { adoptChild, adoptSpouse } from './kin'
 import { chance, pick, rand, randFloat, randInt, uid, weightedPick } from './rng'
 import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import { npcMortality } from './world/mortality'
 import { remember as rememberEdge } from './world/edge-write'
+import { socialOn } from './world/social'
 import { locale, localeOf } from './data/locales'
 import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, texting, venueExists } from './events/era'
 import type { TechId } from './history/timeline'
@@ -1329,15 +1331,16 @@ function familyLifeCycle(g: GameState): void {
       p.data.spouseName = spouseName
       log(g, `${cap(myRel(p))} married ${spouseName}.`, 'event')
       notePerson(p, `Married ${spouseName} at age ${p.age}.`)
+      if (socialOn(g)) adoptSpouse(g, p, { gender: spouseGender })
     }
     // NPC babies
     if (p.data.married === true && p.age <= 44 && pNum(p, 'kids') < 4 && chance(g, 0.08)) {
       p.data.kids = pNum(p, 'kids') + 1
       const gender: Gender = chance(g, 0.5) ? 'male' : 'female'
       const babyName = randomFirstName(g, c.countryId, gender)
+      const spouseLast = pStrData(p, 'spouseName').split(' ').slice(1).join(' ')
+      const surname = p.gender === 'male' ? p.lastName : spouseLast || p.lastName
       if (KIDS.includes(p.relation)) {
-        const spouseLast = pStrData(p, 'spouseName').split(' ').slice(1).join(' ')
-        const surname = p.gender === 'male' ? p.lastName : spouseLast || p.lastName
         const gk = createPerson(g, {
           relation: 'grandchild',
           age: 0,
@@ -1361,6 +1364,8 @@ function familyLifeCycle(g: GameState): void {
         const auntie = c.gender === 'male' ? 'an uncle' : 'an aunt'
         log(g, `${cap(myRel(p))} had a baby ${gender === 'male' ? 'boy' : 'girl'} named ${babyName}. I'm ${auntie} to a new ${gender === 'male' ? 'nephew' : 'niece'}!`, 'good')
       }
+      // A child or a stepchild gets a real grandchild Person above; every other anchor's baby is a Met record on a stamped life (R4-L4).
+      if (socialOn(g) && !KIDS.includes(p.relation)) adoptChild(g, p, { first: babyName, last: surname, gender })
     }
   }
   newSiblings(g)

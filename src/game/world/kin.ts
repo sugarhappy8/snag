@@ -27,25 +27,32 @@
 // line ageTo draws for a record. g.people is read to its first 5,000 entries (the scan of the Met shard), so a hostile list costs a
 // bounded amount; the game keeps a few hundred.
 //
-// What kinProblems names (the invariant "one spouse, mutual" of the design, 14.1 row 10; the edge half is L4's):
+// What kinProblems names (the invariant "one spouse, mutual" of the design, 14.1 row 10; L4 added the edge half):
 //   - a link to a sid that is neither a Person of g.people nor a Met record (a tombstone is not a record);
 //   - more than 6 kids, a spouseSid or a kid that is no sid, kidSids that is no list;
 //   - a link to the anchor itself, a sid linked as the spouse and as a kid, a link on the player's own spouse (relation 'spouse');
 //   - a sid on a child, a stepchild or a grandchild (heirUnsafe);
 //   - a spouse sid linked by two living anchors;
 //   - a Met record with the spouse or heir flag (fl bit 2 or 4) that no living anchor, and no anchor dead for under KIN_CAPS.deadYears,
-//     links. Life's yearly sweep clears such a flag in the year it appears, so after any year one is a fault and not a lag.
+//     links. Life's yearly sweep clears such a flag in the year it appears, so after any year one is a fault and not a lag;
+//   - on a stamped life (the social stamp, X6), a spouse link whose `pair` edge, or a child link whose `kin` edge, is missing in either
+//     direction (anchor > relative, relative > anchor), or is there without its kind (R4-L4 writes both edges with the link and removes
+//     them with it). An anchor dead for KIN_CAPS.deadYears years is let go, so it holds no edge either.
 // An anchor dead for KIN_CAPS.deadYears years or more (data.diedYear) is let go: its links need not resolve and hold no record, because
 // the sweep has cleared the flags and the record may be evicted. A dead anchor with no death year is not known to be old, so it holds.
 //
-// Layer 2. It imports the kernel's person key, the sid grammar, the Met reader, the life path and the types; nothing above layer 2.
+// Layer 2. It imports the kernel's person key, the sid grammar, the Met reader, the edge reader, the stamp, the life path and the types;
+// nothing above layer 2.
 // `dynasty-ownership.ts` (business) may import it for the stake heirs without a domain pair.
-import { heirUnsafe, personKey } from '../kernel/person-ref'
+import type { EntityRef } from '../kernel/ids'
+import { heirUnsafe, personEntity, personKey } from '../kernel/person-ref'
 import type { Gender, GameState, Person } from '../types'
 import { MET_CAPS } from './caps'
+import { readEdge, type LinkKind } from './edges'
 import { ageTo, type KinBase } from './life-path'
 import { isTomb, metRecord, readMet, type MetRecord } from './met'
 import { isSid, parseSid } from './sid'
+import { socialOn } from './social'
 
 /**
  * The ceilings of the kin links, stated once: 6 kids an anchor, 160 kin records in the Met shard (L4 refuses a 161st), 7 heirs (the
@@ -349,6 +356,7 @@ export function kinProblems(g: Pick<GameState, 'people' | 'world' | 'year'>): st
     else more = true
   }
   const year = typeof g.year === 'number' && Number.isFinite(g.year) ? g.year : 0
+  const stamped = socialOn(g)
   const list = peopleOf(g)
   const scanned = Math.min(list.length, peopleScan())
   const anchors: Anchor[] = []
@@ -396,6 +404,21 @@ export function kinProblems(g: Pick<GameState, 'people' | 'world' | 'year'>): st
     const holds = alive || deadFor(bag, year) < KIN_CAPS.deadYears
     if (alive && links.spouse !== null && links.spouse !== self) spouses.set(links.spouse, (spouses.get(links.spouse) ?? 0) + 1)
     anchors.push({ id, keys: keys.filter((k) => k !== self), holds })
+
+    // The edge half: each link of an anchor that keeps its links has its edge both ways, marked with its kind.
+    const entity = personEntity(p)
+    if (stamped && holds && entity !== 'pool:other') {
+      const check = (member: string, role: string, kind: LinkKind): void => {
+        if (member === self) return
+        const far = `person:${member}` as EntityRef
+        for (const way of ['out', 'back'] as const) {
+          const e = way === 'out' ? readEdge(g, entity, far) : readEdge(g, far, entity)
+          if (e === null || e.k !== kind) add(`person ${id} ${role} ${shown(member)} has no ${kind} edge ${way}`)
+        }
+      }
+      if (links.spouse !== null) check(links.spouse, 'spouse', 'pair')
+      for (const kid of links.kids) check(kid, 'child', 'kin')
+    }
   }
 
   // Every link of an anchor that keeps its links is a Person or a record, and so is held.

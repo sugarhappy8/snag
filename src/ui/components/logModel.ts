@@ -27,6 +27,7 @@ export const GROUP_OF_SOURCE: Readonly<Record<string, GroupKey>> = {
   nepo: 'people',
   willFeuds: 'people',
   'world.edges': 'people',
+  'life.kin': 'people',
   health: 'body',
   education: 'work',
   professions: 'work',
