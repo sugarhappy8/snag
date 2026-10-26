@@ -1,0 +1,89 @@
+# Moved tests and re-records, R4 (v5.3.0)
+
+One row for every pinned number, assertion or recorded fixture that a task changed on purpose: the file, the test, what it said before, what it says now, and why the new rule makes the old value wrong. A mechanical edit that keeps the meaning of a test (a reset helper, an import, the E5 codemod's added `g` argument) gets no row. Created by R4-P5 (cross-check X3); the "Expected" list below is section 8 of `00-crosscheck.md` and is not rows yet. Each track appends under its own heading, so the rows land in different hunks.
+
+## The re-record protocol (cross-check X2)
+
+1. A task that moves a fixture re-records it on its own task branch, with the reason in the commit and a row here. That recording is provisional.
+2. Nobody merges a fixture by hand. At each merge into `release/v5.3.0` the integrator takes the release side of `test/fixtures/kernel-parity.json`, `golden-digests.json`, `r2-parity.json`, every `social-parity-*.json`, `heir-parity` and the `life-pins` rows, runs `node scripts/golden.mjs check --plan all` to read which slices moved, confirms they are the ones the track may move, and re-records from the merged tree under Node 22 (`/Users/saeed/projects/anotherlife/wt/bin/vt22`, Node 22.23.3) with the reason `merge of <task>`.
+3. Allowed moves before E16: Registry none; UI none; Edges the `kernel-parity.json` aging list (+`world.edges` at E7, +`society.acts` at E10a); Life the aging list (+`life.kin` at L4, +`life.estates` at L5, +`life.debts` at L7). The aging list grows from 39 to 44 entries only by those ids; the `lives`, `menus` and `views` parts must not move before E16. `golden-digests.json`, `r2-parity.json`, every `social-parity-*.json` and the heir-parity rows move only at E16. `test/kernel-aging.test.ts` is never edited.
+4. Floats are cut to 9 significant digits; every recording runs under Node 22. A digest moved on purpose takes a `RECORD_REASON` (20 to 200 characters, one line, at least four words, no long dash).
+5. A pin is never re-recorded to make a change pass. A moved row that is not expected below means the task is wrong, not the fixture.
+
+## Expected (cross-check section 8)
+
+
+The rule of the roadmap stands: a seeded test that moves is explained, never silently re-baselined. A moved row below is expected; a moved row that is NOT below means the task is wrong, not the fixture. P5 copies this table into `moved-tests.md`.
+
+**Moves on purpose**
+
+| Test or fixture | Task | Why |
+|---|---|---|
+| `test/world-budget.test.ts:116` (`WORLD_BUDGET` pin, title at :3 and :115) and its maximal-world builder (:257-296) | P2 (pin), S4 and E6b (builder gains `met` and `edges` at their caps) | the cap and budget are raised on purpose (X47) |
+| `test/world-state.test.ts:197-221` (the `toBe(40_000)` pin, the shard sizes of the tie, three-shard and fits-exactly cases), `test/world-repair.test.ts:66-70` (`junk(300_000)` plus `junk(200_000)` against `> WORLD_NODE_CAP * 10`), `docs/WORLD.md:102-104,143-147` (40,000 and the 25,000 and 450,000 budget) | P2 | the cap is raised on purpose (X47): the pin takes the new constant, the sizes are scaled from it, the junk is sized from it (`WORLD_NODE_CAP * 6` plus `* 4`), new cases for the protected classes; `world-acceptance.test.ts` is checked and its hostile builders scaled only if one was sized against 40,000 (review) |
+| `test/save-world-adapter.test.ts:26` (sorted shard list) | S4 (`met`), E6b (`edges`, `social`) | adding the shards is the point of the tasks |
+| `test/save-budget.test.ts:443-456` (the guard "has no shard shaped like an entity record, so none belongs in an entity chunk yet": a plain object of 8 or more plain objects with ascending keys fails it) | S5 (E6b gets the same skip, no edit) | `met` and `edges` are exactly that shape and are declared entity slices; the guard skips a shard the slice table declares as `entities`, so it stays green on the stamped heavy life of the rehearsal and the flip (verification pass; no earlier row named it) |
+| `test/flags.test.ts:88-98` (nine keys) | P3 | eleven keys |
+| `test/hub-entry.test.ts` HUBS rows | S4, E6b, E7, E10a, L4, L5, L7, U2 | one row per module that registers at load; no `EXPECTED_PORTS` row (X23) |
+| `test/fixtures/kernel-parity.json`, `aging` list only | E7 (+`world.edges`), E10a (+`society.acts`), L4 (+`life.kin`), L5 (+`life.estates`), L7 (+`life.debts`); re-recorded by the integrator at each merge (X2) | 39 entries become 44, only by those new ids (`life.kin` life/37, `life.estates` life/55: `test/kernel-aging.test.ts` is not edited and constrains those orders, X2); `lives`, `menus`, `views` must not move |
+| `test/pace.test.ts:22`, `ask-families.test.ts:81-82`, `biz-pace.test.ts:57-62`, `kit-pace.test.ts:63-67`, `notice-acceptance.test.ts:83,300` | E9 | `PACE.maxFamilies` 60 to 80 (`pace.test.ts:22` pins the whole object), `TEXT_MEM_LIMITS.families` 120 to 160 (`notice-acceptance.test.ts:83,300`, which the Edges plan missed, C15; and `text-memory.test.ts:46`, the exact limits object, plus `:436-448`, the 120-family full memory held at 700 nodes, which the cross-check missed: six files in all, review). Verification pass: the node figure is measured, 685 at 120 families and 725 at 160, so the ceiling of `text-memory.test.ts:447` and the constant `TEXT_MEM_NODES` at `notice-acceptance.test.ts:86` (read at :165, :393-396 and :471) both go from 700 to 740, and `docs/QUIET.md` must read `80 families` (`quiet-integration.test.ts:463`). Of the six files, `ask-families`, `biz-pace` and `kit-pace` compare against `PACE.maxFamilies` and stay green; only their titles say 60 |
+| `test/knowledge-estimate.test.ts:542-569`, `test/knowledge-unwired.test.ts:32-36` (the exposure guard) and `:38-42` (its docs case), `docs/KNOWLEDGE.md:64,123,128,169-173` | U2 | eight rule rows; the exposure guard is an allow-list of two files, `people-fog.ts` and `business/leader-fog.ts` (U6 runs the test and adds the path only if U2 did not) |
+| `test/nav-cockpit.test.ts:370-385` | U8 | the "no tiles" case runs under `withFlags({ peopleProfile: false })` |
+| `docs/NAVIGATION.md` (a doc, not a test: the tiles and the sentence "Relationships and Activities stay thin until the full People and World cockpits arrive", :92) | U8 | `test/nav-release.test.ts:306` stays green only if the doc keeps its ten required words and its length (section 2) |
+| `docs/ARCHITECTURE.md` (a doc: a short "Society (society/*.ts)" section) | E9 | the first `society/` files; no test pins the section |
+| `src/game/npc-lives.ts:478,481,482` (three U+2014 to hyphens, Exact text too) and the count in `voice-guards.test.ts` (limit 24 stays; the UI plan measured 23 em-dashes in strings and 3 of them here, so 20 after; not re-run) | U5 | "Exact is today" and "no U+2014" meet there; no test pins the characters |
+| `test/layers-baseline.json` (`society->life`) | E10a | one `UPDATE_LAYER_BASELINE=rebase`, edges approved by the lead (X26) |
+| `test/quiet-integration.test.ts:70-79`, `test/text-lines.test.ts:95,251`, `test/notice-weight-table.test.ts`, `test/stream-tap.ts`, `test/stream-isolation.test.ts` | E7, E10a, E10b, E11, E12, L2, L4, L5, L7, L10 | rows, pools, titles, stream tags |
+| `test/ceiling-list.json`, `ceiling-kit.ts`, `ceiling-probe.test.ts:60` | S11, E15, L12, U11 | 20 new rows (section 7) |
+| `scripts/bundle-baseline.json` | P1 | rebuilt and re-captured at a45d3a1 (v5.2.0); `allowGrowthBytes` stays 60,000 and `test/bundle-budget.test.ts:364-372` is untouched (a raise needs the owner's OK and edits that pin in the same commit, X48) |
+| `test/lazy-zones.test.ts` (a `people-profile` zone) | U4 | the profile chunk's fence and gate |
+| `docs/KERNEL.md` | S1 (`person-ref.ts` line), E5 (`relations.ts` line) | `kernel-acceptance.test.ts` requires one entry per kernel file |
+| `docs/SAVE.md` "One fixture per release" and `test/save-v3-schema.test.ts` header and cases | P6 | one line each for `save-v5.3.0-heavy.json.gz` |
+| `scripts/test-timings.json` | P4 (refresh), P6 | new files |
+| `.github/workflows/ci.yml`, `docs/CI.md`, `test/ci-shard.test.ts:473-475` (the three `toContain` pins) | P4 | 8 shards; the pins move with the workflow in the same commit (C41) |
+| **At E16 only (the flip):** `test/fixtures/golden-digests.json` (slices `world` for the shards `social`, `edges`, `met`; `character` for `yearActions['fam.act']`; `people` for kin links, `data.sid` and materialized kin; `rng` for `nextId` and the uids of the new log lines; `text` for lines and family memory), `r2-parity.json`, every `social-parity-*.json` (the `stamped` option becomes the default), the heir-parity rows, `life-pins` rows that run through `createNewLife` | E16 | every new life is stamped; the 104 test files that call `createNewLife` now run stamped; a life that stays free of kin events moves only in `world` and `character` |
+
+**Does not move (and why a reader might think it does)**
+
+| Test | Why it stays |
+|---|---|
+| `test/nepo-year.test.ts:393-397` ("the sibling keeps the company as a holding, not as cash (R0-13)") | the roadmap says this pin changes on purpose in R4; it already changed in R0-13 (read now). L8 adds only the two cases that stayed cash |
+| `test/sibling-firm.test.ts` (mortgaged firm and sibling under 21 stay cash; owns-a-firm and family-co-owners unchanged) | they pin the unstamped path, which lives as long as old saves do. L8's stamped twins are new tests |
+| `test/wealth.test.ts:446` and `test/will-feud.test.ts:756` | owner-stamped readers are unchanged; the hand-over re-stamps a claim (C11). Edges E4 said they move; they do not |
+| `test/seed-pins-baseline.json` | no new `seed: <digits>` line (X30) |
+| `golden-digests.json`, `r2-parity.json` before E16 | no module, hook or written key reaches an unstamped life (every task declares it; E1 to E4, L1, S1, U1 are test-only; S1 to S10, U2 to U8 add no state to a played life) |
+| `test/quiet-acceptance.test.ts`, `text-kit.test.ts`, `text-repeat.test.ts` before E16 | lives do not diverge until the stamp is on; E16 reruns them |
+| `test/kernel-aging.test.ts` | it is never edited; it pins life/45 (its own `ext.k9between`), the first two aging entries and `effort.you` after `household`, so the plans choose orders that keep it green (X2) |
+| `test/bundle-budget.test.ts:364-372` | `allowGrowthBytes` stays 60,000; the pin moves only if the owner approves a raise (X48) |
+| `test/world-acceptance.test.ts` | its hostile worlds assert `< WORLD_NODE_CAP` (:166), which the new cap keeps true; P2 re-reads the builders (review) |
+| `test/layers-baseline.json` for P7 and E10b | P7 adds a layer-2 leaf (no upward import, no domain pair) and E10b only imports `cash.ts` and the leaf, so `git diff test/layers-baseline.json` is empty after both; only E10a rebases (X26, X54) |
+| `test/nav-release.test.ts` | not edited; U8 keeps `docs/NAVIGATION.md` covering its required words (section 2) |
+| `test/career-pay-scale.test.ts`, `test/ceiling-kit.ts` and the other users of `typicalIncome` and `US_TYPICAL_INCOME` | the P7 re-export keeps every import path and every value (X54) |
+
+
+## registry-persona
+
+| Test | Task | Was | Now | Why | Commit |
+|---|---|---|---|---|---|
+
+## edges-acts
+
+| Test | Task | Was | Now | Why | Commit |
+|---|---|---|---|---|---|
+
+## life-heirs
+
+| Test | Task | Was | Now | Why | Commit |
+|---|---|---|---|---|---|
+
+## people-ui-fog
+
+| Test | Task | Was | Now | Why | Commit |
+|---|---|---|---|---|---|
+
+## platform
+
+| Test | Task | Was | Now | Why | Commit |
+|---|---|---|---|---|---|
+| `scripts/bundle-baseline.json` | R4-P1 | `initialGzBytes` 2,909,121, measured at v5.0.0 (85e147b) | 2,969,098, measured at v5.2.0 (a45d3a1); `allowGrowthBytes` stays 60,000 | the baseline is captured once per release from the base release (X48); 4.13 gzip bytes per net source line measured | eda4dc0 |
+| `test/ci-shard.test.ts` (the CI workflow keeps the name CI and the sharded matrix) | R4-P4 | `shard: [1, 2, 3, 4]`, `SLICE: ${{ matrix.shard }}/4`, `ci-shard.mjs ${{ matrix.shard }} 4` | the same three pins at 8 | CI moves to 8 shards with the workflow in the same commit (X49, C41) | 329024f |
