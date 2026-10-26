@@ -82,6 +82,8 @@ import { locale, localeOf } from './data/locales'
 import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, texting, venueExists } from './events/era'
 import type { TechId } from './history/timeline'
 import { cashShare, moneyStatus, wealthNodes } from './events/wealth-menu'
+import { lookCloser } from './knowledge/contract'
+import { lookKeysOf, peopleFog, readPerson, usesProfile } from './people-fog'
 import { holdsFamilyJob, nepoPersonNodes } from './business/nepo'
 import { willPersonNodes } from './events/will-amends'
 import { isEstranged, keptAwayBy } from './events/will-core'
@@ -3693,6 +3695,9 @@ function statusInfo(g: GameState, p: Person): MenuInfo | null {
   return { type: 'info', id, emoji: '\u{2139}\u{FE0F}', text: parts.join(' · ') }
 }
 
+/** The words the profile lets the player read of one number of a person (R4-U5): a range or a word, never the figure. */
+const fogWords = (x: GameState, who: Person, field: string, truth: number): string => readPerson(x, who, field, truth)?.words ?? 'not clear yet'
+
 /** The interaction list for one person on the Relationships screen. */
 export function personActions(g: GameState, person: Person): MenuNode[] {
   const c = g.character
@@ -3714,10 +3719,16 @@ export function personActions(g: GameState, person: Person): MenuNode[] {
   const away = isEstranged(g, p) || !!keptAwayBy(g, p)
   if (!away) for (const def of defsFor(g, p)) nodes.push(build(def, p.id))
   // Money Matters: allowance, loans, big gifts and what they've asked you for (events/wealth-menu.ts).
-  if (!away) nodes.push(...wealthNodes(g, p))
+  if (!away) nodes.push(...wealthNodes(g, p, peopleFog() ? fogWords : undefined))
   // Their job at your company (business/nepo.ts) and which of your luxury things they may use (shops/luxury-family.ts).
   if (!away) nodes.push(...nepoPersonNodes(g, p), ...familyUseNodes(g, p))
   // Their feelings about your will and the ways to make up (events/will-amends.ts).
   nodes.push(...willPersonNodes(g, p))
+  // Look closer (R4-U5): pay a private investigator for a sharper read of their smarts, health, mood, cash and craft. Only where the
+  // profile exists (a flag-off Realistic life gets none, so a dark peopleProfile hides it), for the living and never a pet.
+  if (usesProfile(p)) {
+    const look = lookCloser(g, { id: 'person', keys: lookKeysOf(g, p) })
+    if (look) nodes.push(look)
+  }
   return nodes
 }
