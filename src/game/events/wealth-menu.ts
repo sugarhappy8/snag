@@ -129,14 +129,22 @@ function historyLine(t: WealthTies): string {
     .join('\n')
 }
 
-function infoText(g: GameState, p: Person): string {
+/**
+ * A reader for the numbers of a person that the profile fogs (R4-U5): `(g, p, field, truth)` answers the words the player may read,
+ * a range or a word. The screen that builds the menu hands it in; this file does not import people-fog.ts (events->life is a counted
+ * pair of the layer ratchet). Without one the text is today's.
+ */
+export type PersonWords = (g: GameState, p: Person, field: string, truth: number) => string
+
+function infoText(g: GameState, p: Person, words?: PersonWords): string {
   const t = readTies(g, p)
   const lines: string[] = []
   const summary = moneySummary(g, p)
   if (summary) lines.push(summary)
   if (isDescendant(p)) {
     const how = upbringing(g, p)
-    lines.push(`Upbringing: ${upbringingLabel(how)}${entitlement(p) > 0 ? ` · Entitlement ${entitlement(p)}%` : ''}`)
+    const spoiled = entitlement(p)
+    lines.push(`Upbringing: ${upbringingLabel(how)}${spoiled > 0 ? ` · Entitlement ${words ? words(g, p, 'entitlement', spoiled) : `${spoiled}%`}` : ''}`)
   }
   if (t.car) lines.push(`Drives the ${t.car.label.replace(/^an? /, '')} you bought ${pr(p).him}`)
   if (t.bound > g.year) lines.push(`Money talk is off the table until ${t.bound}`)
@@ -163,7 +171,7 @@ function prisonBlock(g: GameState): string | null {
 }
 
 /** The Money group for a person's sheet (empty when it doesn't apply). */
-export function wealthNodes(g: GameState, person: Person): MenuNode[] {
+export function wealthNodes(g: GameState, person: Person, words?: PersonWords): MenuNode[] {
   if (!hasMoneyMenu(g, person)) return []
   const pid = person.id
   const live = (x: GameState) => getPerson(x, pid)
@@ -187,15 +195,15 @@ export function wealthNodes(g: GameState, person: Person): MenuNode[] {
     children: (x) => {
       const p = live(x)
       if (!p) return []
-      return moneyChildren(x, p)
+      return moneyChildren(x, p, words)
     },
   }
   return [group]
 }
 
-function moneyChildren(g: GameState, p: Person): MenuNode[] {
+function moneyChildren(g: GameState, p: Person, words?: PersonWords): MenuNode[] {
   const pid = p.id
-  const nodes: MenuNode[] = [{ type: 'info', id: 'wealth.info', emoji: '\u{1F4CB}', text: (x) => (getPerson(x, pid) ? infoText(x, getPerson(x, pid)!) : '') }]
+  const nodes: MenuNode[] = [{ type: 'info', id: 'wealth.info', emoji: '\u{1F4CB}', text: (x) => (getPerson(x, pid) ? infoText(x, getPerson(x, pid)!, words) : '') }]
   if (allowanceOk(p)) nodes.push(allowanceAction(g, p))
   const t = readTies(g, p)
   if (t.owes > 0) nodes.push(repayAction(p), forgiveAction(p))

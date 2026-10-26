@@ -27,6 +27,7 @@ import { isIndustryLegal, type Industry } from './data/markets'
 import type { BizState } from './business/state'
 import { clampN, money, num, pct, rec } from './business/util'
 import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
+import { isClose, peopleFog, readPerson } from './people-fog'
 import { pickLine, pickSite } from './text/pick'
 import { HOME_BOUGHT, HOME_BOUGHT_LINES, PROMO_LINES, PROMOTED } from './text/pools'
 import { npcCompany } from './npc-company-state'
@@ -472,14 +473,40 @@ export function investInNpc(g: GameState, personId: string, amount: number, acqu
   }
   return true
 }
+
+/** One number of an NPC as the player reads it: the text that goes in the row, the middle of the estimate and the chip it earns. */
+interface Seen { text: string; mid: number | null; conf?: 0 | 1 | 2 | 3; asOf?: number }
+
+/** The chip of a row that shows several reads: the weakest confidence and the oldest reading. Nothing when no read was an estimate. */
+function chipOf(reads: readonly Seen[]): { conf?: 0 | 1 | 2 | 3; asOf?: number } {
+  const confs = reads.flatMap((r) => (r.conf === undefined ? [] : [r.conf]))
+  if (confs.length === 0) return {}
+  const years = reads.flatMap((r) => (r.asOf === undefined ? [] : [r.asOf]))
+  return { conf: Math.min(...confs) as 0 | 1 | 2 | 3, ...(years.length > 0 ? { asOf: Math.min(...years) } : {}) }
+}
+
 export function npcLifeNodes(g: GameState, p: Person): MenuNode[] {
   const l = npcLife(p)
   if (p.relation === 'pet') return []
-  if (!l) return npcHasMainCharacter(p) ? [{ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', text: 'Main Character Syndrome — inherited from family. Every talent; masters skills through first use as they grow up.' }] : []
-  const close = p.relationship >= 35 || p.livesWithPlayer
+  if (!l) return npcHasMainCharacter(p) ? [{ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', text: 'Main Character Syndrome - inherited from family. Every talent; masters skills through first use as they grow up.' }] : []
+  const close = isClose(p)
   const company = npcCompany(p, g.year)
-  const nodes: MenuNode[] = [{ type: 'info', id: `npc.life.${p.id}`, emoji: '📖', text: `Life & Career — ${p.occupation}${l.employer ? ` at ${l.employer}` : ''}. Lives in ${l.city || getCountry(l.country).cities[0]}, ${getCountry(l.country).name}. ${l.achievements.join('; ') || (l.study > 0 ? `Studying ${l.field}` : 'No known higher qualification')}. ${close ? `Experience ${l.experience} years · professional skill ${Math.round(l.skill)}/100 · net worth incl. property & companies about ${money(npcWorth(p, g.year, g))}. Ambition ${Math.round(l.ambition)}/100.` : 'Private finances are not known to you.'}\n${close ? l.history.slice(-6).join('\n') : ''}` }]
-  if (npcHasMainCharacter(p)) nodes.push({ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', text: `Main Character Syndrome — every talent; masters skills through first use.${close ? ` Ambition ${Math.round(l.ambition)}/100: ${l.ambition >= 80 ? 'may build a competing family business' : l.ambition >= 65 ? 'wants an independent business' : 'prefers a career or a quieter life'}.${typeof p.data.rivalOf === 'string' && company ? ` ${company.a.name} competes in your industry.` : ''}` : ''}` })
+  // With the profile (R4-U5) skill, ambition and net worth read as the estimate the player earns, and the row carries its chip; in Exact
+  // and with the flag off they are today's figures. A key the contract refuses reads as not clear yet and never as the number.
+  const fog = peopleFog()
+  const seen = (field: string, truth: number, today: string): Seen => {
+    if (!fog) return { text: today, mid: truth }
+    const e = readPerson(g, p, field, truth)
+    return e ? { text: e.words, mid: e.mid, conf: e.conf, ...(e.asOf !== undefined ? { asOf: e.asOf } : {}) } : { text: 'not clear yet', mid: null, conf: 0 }
+  }
+  const skill = close ? seen('skill', l.skill, `${Math.round(l.skill)}/100`) : null
+  const worth = close ? npcWorth(p, g.year, g) : 0
+  const wealth = close ? seen('worth', worth, `about ${money(worth)}`) : null
+  const ambition = close ? seen('ambition', l.ambition, `${Math.round(l.ambition)}/100`) : null
+  const nodes: MenuNode[] = [{ type: 'info', id: `npc.life.${p.id}`, emoji: '📖', ...chipOf([skill, wealth, ambition].flatMap((r) => (r === null ? [] : [r]))), text: `Life & Career - ${p.occupation}${l.employer ? ` at ${l.employer}` : ''}. Lives in ${l.city || getCountry(l.country).cities[0]}, ${getCountry(l.country).name}. ${l.achievements.join('; ') || (l.study > 0 ? `Studying ${l.field}` : 'No known higher qualification')}. ${close ? `Experience ${l.experience} years · professional skill ${skill!.text} · net worth incl. property & companies ${wealth!.text}. Ambition ${ambition!.text}.` : 'Private finances are not known to you.'}\n${close ? l.history.slice(-6).join('\n') : ''}` }]
+  // The sentence after the ambition follows what the player believes (the estimate's middle), so it never gives the figure away.
+  const drive = (m: number | null): string => (m === null ? '' : `: ${m >= 80 ? 'may build a competing family business' : m >= 65 ? 'wants an independent business' : 'prefers a career or a quieter life'}`)
+  if (npcHasMainCharacter(p)) nodes.push({ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', ...(ambition ? chipOf([ambition]) : {}), text: `Main Character Syndrome - every talent; masters skills through first use.${ambition ? ` Ambition ${ambition.text}${drive(ambition.mid)}.${typeof p.data.rivalOf === 'string' && company ? ` ${company.a.name} competes in your industry.` : ''}` : ''}` })
   if (!company || !p.alive || !close) return nodes
   const { a, b } = company
   nodes.push({ type: 'info', id: `npc.company.${p.id}`, emoji: '🏢', text: `${a.name}: revenue ${money(b.last?.revenue ?? 0)}, costs ${money((b.last?.netRevenue ?? 0) - (b.last?.pbt ?? 0))}, net ${money(b.last?.net ?? 0)}, cash ${money(b.cash)}, debt ${money(b.debt)}, valuation ${money(b.valuation)}. Ownership: ${p.firstName} ${pct(b.share, 1)}.` })

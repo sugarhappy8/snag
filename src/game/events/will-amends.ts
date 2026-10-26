@@ -3,6 +3,8 @@
 // time it is tried, and a place in the will (or a smaller share) is a promise on your estate. None
 // of it creates money, and trust only comes back by a bounded amount.
 import { addRelationship, addStat, canAfford, clamp, count, getPerson, log, notice, pronouns } from '../core'
+import { flagOn } from '../flags'
+import { isExact } from '../knowledge/contract'
 import { chance, randInt } from '../rng'
 import type { GameState, MenuNode, Person } from '../types'
 import { entitlement } from './wealth-core'
@@ -32,12 +34,20 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`
 }
 
+/**
+ * The person profile exists (R4-U5): the build flag is on and the player reads estimates. The same switch as peopleFog() of
+ * people-fog.ts, which this file may not import (events->life is a counted pair of the layer ratchet), so it is gated here; a case
+ * in test/people-rows.test.ts holds the two equal for the four pairs of flag and mode.
+ */
+const fogged = (): boolean => flagOn('peopleProfile') && !isExact()
+
 function statusLine(g: GameState, p: Person): string {
   const w = readWl(g, p)
   const bits: string[] = []
   if (w.estr) bits.push(`Estranged since ${w.estrY}`)
   if (w.known) {
-    bits.push(`${angerLabel(w.anger)} (${w.anger}/100)`)
+    // The word stays; the figure behind it is theirs, and a profile does not print what you cannot read.
+    bits.push(fogged() ? angerLabel(w.anger) : `${angerLabel(w.anger)} (${w.anger}/100)`)
     const how = HOW_TEXT[(w.how as Learn) in HOW_TEXT ? (w.how as Learn) : 'external']
     bits.push(`knew by ${how}${w.knownY > 0 ? ` in ${w.knownY}` : ''}`)
   } else if (w.cut) {
