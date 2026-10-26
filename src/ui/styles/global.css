@@ -1356,6 +1356,76 @@ label {
   margin-bottom: 3px;
 }
 
+/* The person profile (R4-U4): the facts of a person as two-line rows. They do not reuse the bar grid above, because its auto value column
+   squeezes the track when the value is a word such as "outstanding" at 360 px. The first line is the label and its words, and wraps
+   under the label when it has to; the second is the confidence chip or the reason a fact is unknown. Nothing in a row is tappable. */
+.person-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fact-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fact-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+}
+
+.fact-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.fact-state {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fact-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.fact-unknown .fact-text {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.fact-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+}
+
+.fact-how {
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Popups (ModalHost + dialogs)                                              */
 
@@ -1814,14 +1884,6 @@ label {
   justify-content: center;
   gap: 6px;
   margin-top: 6px;
-}
-
-.person-facts {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
-  font-size: 14px;
 }
 
 .person-notes {

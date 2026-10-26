@@ -215,11 +215,20 @@ zone.
 | charts | everything in `src/ui/charts/` | `src/ui/charts/lazy.tsx` |
 | palette | `Palette.tsx`, `paletteModel.ts`, `searchIndex.ts`, `searchRank.ts`, `useSearchIndex.ts` in `src/ui/nav/` | `src/ui/nav/lazy.tsx` |
 | minigames | `Blackjack.tsx`, `HorseRace.tsx`, `Slots.tsx`, `Burglary.tsx`, `PrisonEscape.tsx`, `Pickpocket.tsx` in `src/ui/minigames/` | `src/ui/minigames/lazy.tsx` |
+| people-profile | `PersonProfile.tsx`, `FactRow.tsx` in `src/ui/components/` | `src/ui/people/lazy.tsx` |
 
 The minigames zone came with R3 (v5.1.0), when the fog and effort code put the initial bundle over the budget; it took 12,733
 bytes out of the entry. MinigameCard draws a game inside its PopupFrame, so a game that has not loaded shows the busy box under the
 title, and the idle prefetch normally has the six chunks in long before one is offered. The Annual Report and the Nation Report
 stay in the entry: both come every year, and `test/annualReport.test.ts` pins `MINIGAMES.annualReport` to the component.
+
+The people-profile zone came with R4 (v5.3.0, X48). A living person who is not a pet, read in Realistic with `peopleProfile` on, gets
+`PersonProfile.tsx` (the rows of `personFacts`, drawn by `FactRow`); the facts builder, and later the connections and memory helpers, ride in
+the same chunk because only the profile imports them. `PersonSheet` decides with `usesProfile` (`people-fog.ts`, eager) and draws the hero
+alone while the chunk loads and if the load fails: the old bars would print the true stats. The chunk has to stay a leaf. `PersonProfile`
+imports `PersonHero.tsx` (the hero, `personName` and `personSubtitle`, which `PersonSheet` re-exports) and never `PersonSheet`: a static import of
+the sheet made the bundler move the game's screens into a shared chunk of their own, and the first download grew by about 5.5 KB of gzip
+(`node scripts/bundle-budget.mjs`: +7.0 KB with the import, +1.5 KB without; the chunk itself is 3.0 KB).
 
 Nothing outside a zone imports a zone file at run time except through its gate, and the gate imports the zone only with
 `import()`. `import type` is free. A screen that needs a chart imports `LazyChartView`, `LazyKpiTile` or `LazySparkline`
