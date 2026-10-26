@@ -8,6 +8,8 @@
 //
 // and for the same act in the allowed state (the control) that it does answer and does write, so a table that blocks everything cannot pass.
 // R4-E10b to R4-E13 add their rows to the same table: a new act appends an entry to ACTS, a new blocked state appends to STATES.
+// R4-E13 is not an act (a company's key people are not people of the game): its rows are the last describe, the same check for the year
+// step and the five writers of business/staff-loyalty.ts on a life that is not stamped.
 //
 // The blocked states: a life that is not stamped; the person dead, a pet, estranged or not in the game; the call-in cooldown not elapsed; the
 // edge cap reached (a map of 1,200 bound edges with none for this person); a key whose second end is not the current ego (another owner's edge,
@@ -15,6 +17,11 @@
 // the voucher, dead or already at 100; a broker for a relative who is not cut out, has no edge or is already at the top of the obligation).
 import { describe, expect, it } from 'vitest'
 import { personEntity } from '../src/game/kernel/person-ref'
+import { installManager, managerCandidate } from '../src/game/business/career'
+import { staffTurnover } from '../src/game/business/staff'
+import { managerPoached, staffGone, staffHired, staffLoyaltyYear, staffRaised, staffYelled } from '../src/game/business/staff-loyalty'
+import { bizOf, type KeyStaff } from '../src/game/business/state'
+import { peekLedger } from '../src/game/kernel/ledger'
 import { runAct, type SocialAct } from '../src/game/society/acts'
 import { broker, helpAct, vouch } from '../src/game/society/favor'
 import type { Edge } from '../src/game/world/edges'
@@ -22,6 +29,7 @@ import { putEdge } from '../src/game/world/edge-write'
 import { playerRef } from '../src/game/world/people'
 import type { GameState, Person } from '../src/game/types'
 import { makeTestGame } from './helpers'
+import { company } from './market-kit'
 import { cast, socialGame } from './social-kit'
 
 /** The cast of one row: a stamped adult with a circle of friends. The giver is asked; the third is vouched to; the relative is cut out. */
@@ -185,5 +193,64 @@ describe('authorization inside the function: runAct called directly, bypassing t
   it('the table is not vacuous: three acts, at least 18 blocked states for each, and the stamped control rows', () => {
     expect(ACTS).toHaveLength(3)
     for (const r of ACTS) expect(STATES.length + r.extra.length).toBeGreaterThanOrEqual(18)
+  })
+})
+
+// R4-E13: staff loyalty. The key people of a company and its hired CEO are named by refs of their own (staff:<id>, mgr:<asset id>), so the
+// authorization of the stamp is checked inside each function: on a life that is not stamped the year-end rule and the five writers answer
+// with nothing written, nothing drawn and no ledger row; on a stamped life they write.
+describe('staff loyalty: authorization inside the function', () => {
+  const crew = (n: number, morale: number): KeyStaff[] =>
+    Array.from({ length: n }, (_, i) => ({ id: `ks${i}`, firstName: 'Dana', lastName: `Reed${i}`, gender: 'female', age: 40, role: 'Head Chef', focus: 'ops', skill: 90, salary: 90_000, trait: 'steady', morale, years: 2 }))
+
+  function firm(stamped: boolean, morale: number) {
+    const g = stamped ? socialGame(7, { age: 40 }) : makeTestGame(7, { age: 40 })
+    const a = company(g, 'restaurant', { cash: 5_000_000 })
+    const b = bizOf(g, a)
+    b.wageLevel = 0.85
+    b.staff.push(...crew(12, morale))
+    installManager(g, b, managerCandidate(g, b, 60))
+    return { g, a, b }
+  }
+
+  type Call = (f: ReturnType<typeof firm>) => void
+  const CALLS: readonly (readonly [string, Call])[] = [
+    ['staffLoyaltyYear', (f) => staffLoyaltyYear(f.g, f.a, f.b)],
+    ['staffTurnover (morale at 30 or more: the old rule draws nothing)', (f) => staffTurnover(f.g, f.a, f.b)],
+    ['staffHired', (f) => staffHired(f.g, f.b.staff[0]!)],
+    ['staffRaised', (f) => staffRaised(f.g, f.b.staff[0]!, 2)],
+    ['staffYelled', (f) => staffYelled(f.g, f.b.staff[0]!)],
+    ['staffGone', (f) => staffGone(f.g, f.b.staff[0]!)],
+    ['managerPoached', (f) => managerPoached(f.g, f.a, f.b.manager!)],
+  ]
+
+  for (const [name, call] of CALLS) {
+    it(`${name} on a life that is not stamped: no edge, no draw, no ledger row, nothing changed`, () => {
+      const f = firm(false, 70)
+      const before = JSON.stringify(f.g)
+      const ledger = JSON.stringify(peekLedger(f.g))
+      const { rng, nextId } = f.g
+      call(f)
+      expect(JSON.stringify(f.g)).toBe(before)
+      expect(JSON.stringify(peekLedger(f.g))).toBe(ledger)
+      expect(f.g.rng).toBe(rng)
+      expect(f.g.nextId).toBe(nextId)
+      expect(f.g.world?.edges).toBeUndefined()
+    })
+  }
+
+  it('control: on a stamped life the writers write and the year step moves people', () => {
+    for (const [name, call] of CALLS) {
+      if (name === 'staffGone' || name.startsWith('staffTurnover')) continue
+      const f = firm(true, 5)
+      const before = JSON.stringify(f.g)
+      call(f)
+      expect(JSON.stringify(f.g), name).not.toBe(before)
+    }
+    const f = firm(true, 70)
+    staffHired(f.g, f.b.staff[0]!)
+    const hired = JSON.stringify(f.g.world?.edges)
+    staffGone(f.g, f.b.staff[0]!)
+    expect(JSON.stringify(f.g.world?.edges)).not.toBe(hired)
   })
 })

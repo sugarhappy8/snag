@@ -9,6 +9,7 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
+import { socialOn } from '../world/social'
 import { bizWorth, fxValue, LASTING_YEARS, localEcon, localPay, staffNet, TALENT_HIRE, talentCeo, type Worth } from './economy'
 import { laborProtection, localOuting, severanceMonths, STAFF_TRAITS, traitOf, unionStrength } from './flavor'
 import { roleTitle, sameRole } from './era'
@@ -21,6 +22,7 @@ import { CAND_MAX, candidateLabel, candidateLine, candidateRead, dropVet, hireFo
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
 import { clampN, markBest, money, num, rec, str, toJson } from './util'
 import { leadershipPower, leadershipSummary, LEADERSHIP } from './leadership'
+import { staffGone, staffHired, staffLoyaltyYear, staffRaised, staffYelled } from './staff-loyalty'
 
 /** Key people the company can use: more with more locations, never more than the roles it has. */
 export function maxKeyStaff(b: BizState): number {
@@ -235,6 +237,8 @@ const HIRE = defineScript('business.hire', (g, choice, data) => {
   }
   b.staff.push(s)
   if (carried) carryRead(g, a.id, s.id, carried)
+  // R4-E13: on a stamped life the hire is remembered (hired_me) on the edge staff:<id> > player; nothing otherwise
+  staffHired(g, s)
   count(g, 'businessHires')
   log(g, `I hired ${s.firstName} ${s.lastName} as ${s.role} at ${a.name}.`, 'good')
   notice(
@@ -365,6 +369,7 @@ function staffAction(a: Asset, id: string, key: string, label: string, emoji: st
 export function fireStaff(g: GameState, a: Asset, b: BizState, s: KeyStaff, why = 'fired'): void {
   const sev = Math.round((s.salary * severanceMonths(b.countryId)) / 12)
   b.staff = b.staff.filter((x) => x.id !== s.id)
+  staffGone(g, s)
   firmCash(g, b, -sev, 'payroll', a.id)
   b.yearCosts += sev
   b.morale = clampN(b.morale - 4, 0, 100)
@@ -419,6 +424,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
         if (!useYearAction(g, `biz.raise.${id}`, 1)) return tooBusy(g, `given ${x.firstName} a raise`)
         x.salary = Math.round(x.salary * 1.1)
         x.morale = clampN(x.morale + randInt(g, 12, 20), 0, 100)
+        staffRaised(g, x, 2)
         log(g, `I gave ${fullName(x)} a raise.`, 'good')
         notice(g, 'Raise', `${x.firstName} now earns ${formatMoney(x.salary)} a year and has stopped updating their résumé.`, { emoji: '\u{1F4B5}', tone: 'good' })
       }),
@@ -439,6 +445,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
         x.morale = clampN(x.morale - randInt(g, 15, 28), 0, 100)
         b.morale = clampN(b.morale - 3, 0, 100)
         addHidden(g, 'karma', -2)
+        staffYelled(g, x)
         const cur = findBusiness(g, a.id)
         if (!cur) return
         if (chance(g, 0.08 + laborProtection(b.countryId) * 0.08)) {
@@ -446,12 +453,14 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
           firmCash(g, b, -cost, 'legal', cur.id)
           b.yearCosts += cost
           b.staff = b.staff.filter((y) => y.id !== x.id)
+          staffGone(g, x)
           log(g, `${fullName(x)} sued ${cur.name} after I screamed at them.`, 'bad')
           notice(g, 'Lawsuit', `You yelled at ${x.firstName}, who recorded it, quit and sued for a hostile workplace. ${cur.name} settled for ${formatMoney(cost)}.`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
           return
         }
         if (x.morale < 25 && chance(g, 0.4)) {
           b.staff = b.staff.filter((y) => y.id !== x.id)
+          staffGone(g, x)
           log(g, `${fullName(x)} quit after I yelled at them.`, 'bad')
           notice(g, 'Quit', `${x.firstName} threw ${x.gender === 'female' ? 'her' : 'his'} badge on your desk and walked out. Rumor has it a competitor hired ${x.gender === 'female' ? 'her' : 'him'} by lunch.`, { emoji: '\u{1F6AA}', tone: 'bad' })
           return
@@ -621,6 +630,7 @@ function raiseAllAction(a: Asset): MenuAction {
       b.wageLevel = clampN(Math.round((b.wageLevel + 0.05) * 100) / 100, 0.7, 1.5)
       b.raiseYear = g.year
       b.morale = clampN(b.morale + randInt(g, 6, 12), 0, 100)
+      for (const k of b.staff) staffRaised(g, k, 1)
       log(g, `I gave everyone at ${cur.name} a raise.`, 'good')
       notice(g, 'Raises All Round', `Every employee at ${cur.name} got a 5% raise. The break room erupted in polite applause. Morale: ${b.morale}%.`, { emoji: '\u{1F4B0}', tone: 'good' })
     },
@@ -714,6 +724,8 @@ function payPolicyAction(a: Asset): MenuAction {
 
 /** Morale-driven quitting at year end (a key person with very low morale may leave). */
 export function staffTurnover(g: GameState, a: Asset, b: BizState): void {
+  // R4-E13: a stamped life reads the edge of each person (staff-loyalty.ts); any other life keeps the rule below to the draw.
+  if (socialOn(g)) return staffLoyaltyYear(g, a, b)
   for (const s of [...b.staff]) {
     if (s.morale >= 30 || !chance(g, 0.35)) continue
     b.staff = b.staff.filter((x) => x.id !== s.id)
