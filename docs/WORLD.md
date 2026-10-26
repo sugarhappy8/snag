@@ -99,11 +99,29 @@ duplicate row and drop a bad one before the check could see it. It checks:
 
 ## The budget
 
-- A shard is bounded by its own reader (the caps above and the ledger's), and the whole world by `WORLD_NODE_CAP`, 40,000 nodes:
-  `normalizeWorld` drops the largest shards first, ties by name, until it fits.
-- The budget for a long life (`WORLD_BUDGET` in `world/budget.ts`): 25,000 nodes, 450,000 bytes of JSON and a world step of 60 ms.
-  The 50-year probe in `test/world-budget.test.ts` asserts the nodes and bytes, and asserts the step at 240 ms so a loaded machine
-  does not flake. The ledger's own part is at most 9,000 nodes and 600 flow rows.
+- A shard is bounded by its own reader (the caps above and the ledger's), and the whole world by `WORLD_NODE_CAP`, 80,000 nodes
+  (40,000 until R4, which passes that by itself: the arithmetic is written next to the constant in `world/caps.ts`). Over the cap
+  `normalizeWorld` drops whole shards in a fixed order, on a load, a restore and the settle step of live play alike, and stops as soon
+  as the world fits:
+  1. the indexes and the news first, `facts`, `frontier`, `lod`, `people`, `firms` and `homes` (`WORLD_DROP_FIRST`): the next world
+     step rebuilds the three indexes from the records they list, and the others are counters, a short history and a bounded field table;
+  2. then every other shard, one of a later release or a test included;
+  3. never, while any shard of the other two classes can still go, `ledger`, `holdings`, `met`, `edges` and `social`
+     (`WORLD_KEEP_LAST`): the books, who owns what, who the player has met and what people owe and remember. `met`, `edges` and
+     `social` arrive in R4 (the shard tasks of the Registry and Edges tracks); the order already names them, so the cap can never
+     take their debts and memories with it.
+
+  Inside a class the largest shard goes first, ties by name, so the result depends on the sizes and the names and never on the order
+  the keys came in. The order is the pure function `overCapDrops` in `world/state.ts`.
+- What each release may add, in nodes, worst case (`WORLD_ALLOTMENT`): R4 about 29,000, R5 6,000 more, R6 6,000 more, on top of the
+  about 19,000 of the shards that exist in v5.2.0. The sum, about 59,000, leaves a quarter of the cap free. A release that needs more
+  raises the cap and its row in the same commit.
+- The budget for a long life (`WORLD_BUDGET` in `world/budget.ts`): 55,000 nodes, 800,000 bytes of JSON and a world step of 60 ms.
+  The nodes and bytes are the larger of two numbers: the starting figures, and the measurement of the worst case (every list at its
+  cap at once, `met` and `edges` at theirs: about 45,600 nodes and 443,000 bytes when R4-P2 measured it) plus 15%. The test pins the
+  relation, so a change that grows the worst case past it has to raise the budget on purpose. The 50-year probe in
+  `test/world-budget.test.ts` asserts the nodes and bytes, and asserts the step at 240 ms so a loaded machine does not flake. The
+  ledger's own part is at most 9,000 nodes and 600 flow rows.
 - `worldBudget(g)` is pure and walks the whole world: per-shard nodes, the total, the bytes and a line for every breach. It is for
   tests, dev tools and the platform probe, never for a tap. `timed(label, fn)` adds the time of `fn` to a table that is never saved
   and never read by the simulation; `budgetReport()` and `resetBudgetReport()` read and empty it.
@@ -140,11 +158,12 @@ record the heir does not have.
 The save loader (`isLoadableGame`) bounds a save by 500,000 JSON nodes and does not look inside `g.world`; every reader normalizes.
 So a hostile `world` is harmless in three steps: a reader never trusts what it reads (`worldShard`, `peekLedger` and each shard's
 normalizer return a valid shard for any input, and a valid input comes back as itself); the first write replaces a garbage root
-(`ensureWorld`); and the first world step replaces a world that holds a key the game does not know or more than 40,000 nodes with
+(`ensureWorld`); and the first world step replaces a world that holds a key the game does not know or more than 80,000 nodes with
 what `normalizeWorld` makes of it. `test/world-acceptance.test.ts` loads twelve of them into the oldest fixture (a number, a string,
 an array, a future version, a ledger of 50,000 accounts, a people shard of 500 rows, balances of 1e300 and minus 1e300, a ledger
 whose identity is broken, holdings that sum to 7, an `lod` shard of strings, a `__proto__` key, an unknown shard that fills the
-save): each still loads, three years play, the world ends under 40,000 nodes with no unknown key, and the books hold.
+save): each still loads, three years play, the world ends under the node cap with no unknown key, and the books hold. None of the
+twelve is sized against the cap: the big ones are cut by their own reader or dropped by the rule for an unknown key.
 
 ## The frontier
 

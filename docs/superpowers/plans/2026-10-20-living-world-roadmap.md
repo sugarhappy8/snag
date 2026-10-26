@@ -256,7 +256,7 @@ Total 24,700. Order: core, knowledge and quiet years first; migration and fog af
 | People UI and fog | D.10 1,000, G.10a 400, H.5 900, H.7 900 | 3,200 | `ui/components/PersonSheet.tsx`, `RelationshipsSheet.tsx`, `business/staff.ts`, `advisors/team.ts` |
 
 Total 16,900. Golden tests of relationships, love, wealth, will and nepo land before the shim. Opus candidates: A.K8 and the `npc-lives.ts` edits (digest A: the riskiest).
-**Size.** 16,900 source, 20,024 test, 1,800 docs; 69 agent-hours, 15 tasks, 4 tracks, 21.1 wall hours. State +20,000 nodes (Met 400 people, edges 1,200, secrets 40, feuds 12, memories 8 an edge; about 250 KB raw).
+**Size.** 16,900 source, 20,024 test, 1,800 docs; 69 agent-hours, 15 tasks, 4 tracks, 21.1 wall hours. State: R4 about 29,000 nodes, the first row of the world's allotment (R4 about 29,000, R5 +6,000, R6 +6,000; R4-P2 raised `WORLD_NODE_CAP` to 80,000 and `WORLD_BUDGET` to 55,000 nodes and 800,000 bytes, and fixed the over-cap drop order, so `edges` is not the shard that goes first). Met 400 people, edges 1,200, secrets 40, feuds 12, memories 8 an edge; about 250 KB raw.
 **CI.** 4 shards; the golden relationship, love, wealth, will and nepo files run in the fast tier.
 
 **Acceptance.**

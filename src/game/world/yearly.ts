@@ -28,7 +28,7 @@ import { syncWorld } from './sync'
 /**
  * Replaces a world that is a world (a plain object with v 1) but holds a key that is not the root's own or a registered shard, or
  * more nodes than WORLD_NODE_CAP, with what normalizeWorld makes of it: the registered shards, each through its own reader (a valid
- * one comes back as itself), the largest dropped first while it is still over the cap. A garbage world (a number, an array, a wrong
+ * one comes back as itself), shards dropped in the fixed over-cap order (state.ts) while it is still over the cap. A garbage world (a number, an array, a wrong
  * version) is left to ensureWorld, which replaces it on the first write.
  */
 function repairWorld(g: GameState): void {
