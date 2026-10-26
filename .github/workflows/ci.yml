@@ -1,6 +1,6 @@
 name: CI
 
-# Fast guards, four time-balanced test shards, the merge of the seed-sliced files, and one gate job to require.
+# Fast guards, eight time-balanced test shards, the merge of the seed-sliced files, and one gate job to require.
 # The shards come from scripts/ci-shard.mjs and scripts/test-timings.json (see docs/CI.md).
 on:
   pull_request:
@@ -30,7 +30,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node scripts/ci-shard.mjs --verify 4
+      - run: node scripts/ci-shard.mjs --verify 8
       - run: npm run typecheck
       - name: Voice report (warning only)
         continue-on-error: true
@@ -52,15 +52,15 @@ jobs:
       - run: npx vitest run --maxWorkers=2 $(node scripts/ci-shard.mjs --fast)
 
   test:
-    name: Tests, shard ${{ matrix.shard }} of 4
+    name: Tests, shard ${{ matrix.shard }} of 8
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
-      SLICE: ${{ matrix.shard }}/4
+      SLICE: ${{ matrix.shard }}/8
       SLICE_DIR: test-slices
     steps:
       - uses: actions/checkout@v5
@@ -71,7 +71,7 @@ jobs:
       - run: npm ci
       - name: List this shard's files
         shell: bash
-        run: node scripts/ci-shard.mjs ${{ matrix.shard }} 4 | tee shard-files.txt
+        run: node scripts/ci-shard.mjs ${{ matrix.shard }} 8 | tee shard-files.txt
       - name: Run the shard
         run: npx vitest run --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=test-results/shard-${{ matrix.shard }}.json $(cat shard-files.txt)
       - name: Keep timings and slices

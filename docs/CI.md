@@ -8,9 +8,9 @@ track that wants CI before it merges opens a draft PR against the release branch
 
 | Job | What it does |
 |---|---|
-| `checks` | `ci-shard.mjs --verify 4` (every test file is in the fast tier or a shard), typecheck, the voice report (warning only), `vite build`. |
+| `checks` | `ci-shard.mjs --verify 8` (every test file is in the fast tier or a shard), typecheck, the voice report (warning only), `vite build`. |
 | `fast` | The guard tests marked `// ci: fast`, one run, two workers. |
-| `test` | Four shards in a matrix. Each runs the files `ci-shard.mjs <i> 4` prints, with `SLICE=<i>/4` set for the seed-sliced files. |
+| `test` | Eight shards in a matrix. Each runs the files `ci-shard.mjs <i> 8` prints, with `SLICE=<i>/8` set for the seed-sliced files. |
 | `aggregate` | Downloads the shard artifacts and merges the sliced files with `SLICE=merge` (see the seed-sliced files below). Prints the timing summary. |
 | `gate` | Named `CI gate`. Fails unless the four jobs above passed. This is the one required status check. |
 
@@ -21,22 +21,22 @@ track that wants CI before it merges opens a draft PR against the release branch
 from that file weighs 5 seconds. `test/timings-sequencer.ts` (named in `vite.config.ts`) starts the heaviest files first
 inside a shard. Locally, `npm test` still runs everything.
 
-Useful commands: `node scripts/ci-shard.mjs --plan 4` (seconds and file counts per shard), `--verify 4` (coverage problems),
-`2 4` (the files of shard 2).
+Useful commands: `node scripts/ci-shard.mjs --plan 8` (seconds and file counts per shard), `--verify 8` (coverage problems),
+`2 8` (the files of shard 2).
 
 ## The seed-sliced files
 
 Five files are 45% of the run time, so each shard runs a slice of their seeds: `simulate`, `era-features`,
 `main-character-life`, `sector-story` and `anachronism`. A sixth file, `ledger-conservation` (R2: forty seeded lives of a
-hundred years with heirs, the books checked after every step), is sliced the same way, ten lives to a shard;
+hundred years with heirs, the books checked after every step), is sliced the same way, five lives to a shard;
 `ledger-conservation-fast` plays three of them in the fast tier. If a shard goes past the 12 minute wall, lower
 `PROBE_ACTIONS` in `test/ledger-probe.ts` before touching the lives or the years. The six are the `split` list in
 `scripts/test-timings.json`, they use `test/shard-kit.ts`, and `ci-shard.mjs --verify` fails if the two ever disagree. The check goes by what a file does,
 not by how it spells the import: any other test file that imports the kit (`./shard-kit`, `../test/shard-kit`, with or
 without `.js`, a `require` or a dynamic `import()`) or names `readSlice`, `seedSlice`, `ownedHere`, `recordSlice`,
 `mergedSlices` or `process.env.SLICE` is reported until it is in `split`, because a sliced file outside `split` would play
-one quarter of its seeds and the merge step would never run it. `shard-kit.test.ts` and `ci-shard.test.ts` are the
-two files that mention the kit on purpose. The shard sets `SLICE=<i>/4` and `SLICE_DIR=test-slices`; the `aggregate` job
+one eighth of its seeds and the merge step would never run it. `shard-kit.test.ts` and `ci-shard.test.ts` are the
+two files that mention the kit on purpose. The shard sets `SLICE=<i>/8` and `SLICE_DIR=test-slices`; the `aggregate` job
 sets `SLICE=merge`.
 
 | `SLICE` | What the file does |
@@ -65,7 +65,7 @@ store (which applies the setting at load) is still Exact. The mode lives on `glo
 ## Reading a run
 
 Open the run, then the summary: one table of wall time per shard and one of the 10 slowest files. The target is a
-sharded wall time of 12 minutes or less. The shard artifacts (`shard-1` to `shard-4`, kept 14 days) hold the JSON reports.
+sharded wall time of 12 minutes or less. The shard artifacts (`shard-1` to `shard-8`, kept 14 days) hold the JSON reports.
 
 ## Refreshing the timings
 
