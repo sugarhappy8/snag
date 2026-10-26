@@ -139,8 +139,8 @@ function step(g: GameState, a: Asset, b: BizState, e: Employee, out: Outcome[]):
     if (chance(g, 0.3)) p.stats.smarts = clampN(p.stats.smarts + 1, 0, 100)
     if (entitlement(p) > 0 && chance(g, 0.5)) addEntitlement(p, -1)
   }
-  if (job.mood >= 70 && chance(g, 0.4)) addRelationship(g, p, 1)
-  if (job.mood < 35 && chance(g, 0.4)) addRelationship(g, p, -2)
+  if (job.mood >= 70 && chance(g, 0.4)) addRelationship(g, p, 1, 'decay')
+  if (job.mood < 35 && chance(g, 0.4)) addRelationship(g, p, -2, 'decay')
   const tenure = g.year - job.since
   const drive = driveOf(p)
   const first = p.firstName

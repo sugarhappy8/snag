@@ -49,7 +49,7 @@ import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState, InputModal, MenuAction, Person, RelationKind } from '../src/game/types'
 import { deepFreeze } from './fuzz-kit'
-import { expectRows, isRecording, oracle, queueKinds, recordRows, scene, snapshot, trapRng, type CastSpec, type Extra, type ParityRow, type Scene, type Tuple } from './social-parity-kit'
+import { expectRows, isRecording, oracle, queueKinds, recordRows, scene, snapshot, trapRng, type CastSpec, type Extra, type ParityRow, type Scene, type Tuple, stampStats, withStamped } from './social-parity-kit'
 
 const ORACLE = oracle('will')
 
@@ -810,8 +810,12 @@ function estateRows(): ParityRow[] {
 let played: ParityRow[] | null = null
 
 /** Every part, played once per file. */
+function playFresh(): ParityRow[] {
+  return [...learnRows(), ...modelRows(), ...feudRows(), ...amendRows(), ...toggleRows(), ...estateRows()]
+}
+
 function playAll(): ParityRow[] {
-  if (played === null) played = [...learnRows(), ...modelRows(), ...feudRows(), ...amendRows(), ...toggleRows(), ...estateRows()]
+  if (played === null) played = playFresh()
   return played
 }
 
@@ -824,6 +828,13 @@ describe('the will oracle', () => {
     const rows = playAll()
     if (isRecording(ORACLE.area)) recordRows(ORACLE, rows)
     else expectRows(ORACLE, rows)
+  })
+
+  it('plays the same rows on a stamped life: the mirror follows every number and moves none (R4-E7)', { timeout: 120_000 }, () => {
+    const rows = withStamped(playFresh)
+    expectRows(ORACLE, rows)
+    expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
+    expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
   })
 
   it('plays the four feuds to the ends they are there to cover', () => {

@@ -41,7 +41,7 @@ import { personEntity } from '../kernel/person-ref'
 import type { GameState, Person } from '../types'
 import { EDGE_CAPS } from './caps'
 import { MEMORY_FX, formatMemory, isMemoryKind, isPinnedKind, parseMemory, type MemoryKind } from './edge-memory'
-import { edgeKey, edgeLocalBound, isSecretKey, normalizeEdges, salience, type Edge, type EdgeKey, type EdgeMap } from './edges'
+import { edgeKey, edgeLocalBound, isSecretKey, normalizeEdges, salience, trustMap, type Edge, type EdgeKey, type EdgeMap } from './edges'
 import { playerRef } from './people'
 import { SEEN_MAX, SEEN_MIN, isPlain } from './rows'
 import { socialOn } from './social'
@@ -138,6 +138,12 @@ function tallyOf(map: EdgeMap): Tally {
   return t
 }
 
+/**
+ * The counts of a root this file wrote, by its identity (R4-E7): the next write starts from them instead of walking 1,200 edges again.
+ * A root that is not here (a load, a clone, a hostile save, a write that had to trim memories) is counted by walking it, once.
+ */
+const TALLIES = new WeakMap<object, Tally>()
+
 /** The edge to evict for a new one: the lowest salience among the edges that are not bound, the highest key among equals. Null when every edge is bound. */
 function weakestUnbound(map: EdgeMap): string | null {
   let best: string | null = null
@@ -197,7 +203,7 @@ function trimMemories(entries: readonly (readonly [string, Edge])[], over: numbe
 // ---------------------------------------------------------------------------------------------------------------------------------
 
 /** Stores a new root: the keys of `cur` in order with `edits` applied (an edge, or null to remove it) and `insertKey` placed where it sorts. */
-function commit(g: GameState, cur: EdgeMap, edits: ReadonlyMap<string, Edge | null>, insertKey: string | null): void {
+function commit(g: GameState, cur: EdgeMap, edits: ReadonlyMap<string, Edge | null>, insertKey: string | null, tally?: Tally): void {
   const out: Rec = {}
   let pending = insertKey
   for (const k of Object.keys(cur)) {
@@ -215,6 +221,9 @@ function commit(g: GameState, cur: EdgeMap, edits: ReadonlyMap<string, Edge | nu
   if (pending !== null) out[pending] = edits.get(pending)
   Object.freeze(out)
   SEALED.add(out)
+  // the root is valid by construction: the readers of edges.ts take it as it is and do not normalize 1,200 edges again after every write
+  trustMap(out as unknown as EdgeMap)
+  if (tally !== undefined) TALLIES.set(out, tally)
   ensureWorld(g).edges = out
 }
 
@@ -230,7 +239,13 @@ export function putEdge(g: GameState, key: EdgeKey, patch: Partial<Edge> | null)
   const old = hasOwn(cur, key) ? cur[key] : undefined
   if (patch === null) {
     if (old === undefined) return true
-    commit(g, cur, new Map([[key, null]]), null)
+    const had = TALLIES.get(cur)
+    let next: Tally | undefined
+    if (had !== undefined) {
+      next = { ...had }
+      count(next, old, -1)
+    }
+    commit(g, cur, new Map([[key, null]]), null, next)
     return true
   }
   const e = cleaned(key, old === undefined ? { ...patch } : { ...old, ...patch })
@@ -238,7 +253,8 @@ export function putEdge(g: GameState, key: EdgeKey, patch: Partial<Edge> | null)
   if (old !== undefined && sameEdge(old, e)) return true
 
   // the room the write needs: the counts of the map without the old edge (and the one that makes room), with the new one
-  const tally = tallyOf(cur)
+  const had = TALLIES.get(cur)
+  const tally = had === undefined ? tallyOf(cur) : { ...had }
   if (old !== undefined) count(tally, old, -1)
   let victim: string | null = null
   if (old === undefined && tally.edges >= EDGE_CAPS.edges) {
@@ -263,7 +279,8 @@ export function putEdge(g: GameState, key: EdgeKey, patch: Partial<Edge> | null)
     }
   }
   edits.set(key, sealEdge(put))
-  commit(g, cur, edits, old === undefined ? key : null)
+  // the counts are the new map's own unless memories were trimmed (then the next write walks the map once)
+  commit(g, cur, edits, old === undefined ? key : null, tally.memories <= EDGE_CAPS.memTotal ? tally : undefined)
   return true
 }
 

@@ -1507,7 +1507,7 @@ export function driftRelationships(g: GameState): void {
   for (const p of g.people) {
     if (!p.alive || p.data.disowned === true) continue
     if (p.relation === 'enemy') {
-      addRelationship(g, p, randInt(g, 0, 3))
+      addRelationship(g, p, randInt(g, 0, 3), 'decay')
       continue
     }
     if (pNum(p, 'bornAge', -1) === c.age) continue
@@ -1523,7 +1523,7 @@ export function driftRelationships(g: GameState): void {
     if (c.age < 6 && (PARENTS.includes(p.relation) || p.relation === 'grandparent')) d *= 0.3
     if (prison && p.relation !== 'cellmate') d *= 1.5
     if ((FAMILY.includes(p.relation) || p.relation === 'partner' || p.relation === 'friend') && p.relationship > 20) d -= routine
-    addRelationship(g, p, -Math.round(d))
+    addRelationship(g, p, -Math.round(d), 'decay')
   }
 }
 

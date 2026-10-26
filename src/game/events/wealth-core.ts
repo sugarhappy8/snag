@@ -18,6 +18,8 @@ import { marketOf } from '../data/markets'
 import { realWealthFactor } from '../history/events-people'
 import { countryWealth, typicalIncome } from '../world/typical-income'
 import type { GameState, Json, Person, RelationKind } from '../types'
+import { syncLegacy } from '../world/edge-step'
+import { socialOn } from '../world/social'
 
 // ---------------------------------------------------------------------------
 // Wealth tiers
@@ -270,6 +272,8 @@ export function updateTies(g: GameState, p: Person, fn: (t: WealthTies) => void)
   const t = readTies(g, p)
   fn(t)
   writeTies(p, t)
+  // A stamped life follows the loan into the edge at once (R4-E7, X22); the record stays the authority.
+  if (socialOn(g)) syncLegacy(g, p)
   return t
 }
 

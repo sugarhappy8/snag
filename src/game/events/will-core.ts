@@ -16,6 +16,8 @@ import { clamp, netWorth, relationLabel } from '../core'
 import { dataObj } from '../people'
 import type { GameState, Json, Person } from '../types'
 import { TRAIT_SETS } from '../world/axes'
+import { syncLegacy } from '../world/edge-step'
+import { socialOn } from '../world/social'
 import { entitlement, personCountry, readTies, typicalIncome } from './wealth-core'
 
 // ---------------------------------------------------------------------------
@@ -375,6 +377,8 @@ export function updateWl(g: GameState, p: Person, fn: (w: Wl) => void): Wl {
   w.anger = clamp(Math.round(w.anger))
   w.peak = Math.max(w.peak, w.anger)
   writeWl(p, w)
+  // A stamped life follows the anger into the edge at once (R4-E7, X22); the record stays the authority.
+  if (socialOn(g)) syncLegacy(g, p)
   return w
 }
 

@@ -33,7 +33,7 @@ import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import type { GameState, MenuAction, Person } from '../src/game/types'
 import { drain, kid, world } from './nepo-kit'
-import { GAME_SLOT, expectRows, isRecording, oracle, recordRows, snapshot, type ParityRow, type Tuple } from './social-parity-kit'
+import { GAME_SLOT, expectRows, isRecording, oracle, recordRows, snapshot, type ParityRow, type Tuple, stampLife, stampStats, withStamped } from './social-parity-kit'
 
 const FAST = oracle('lives')
 const DEEP = oracle('lives-deep')
@@ -140,7 +140,7 @@ function playYears(life: Life, years: number): ParityRow[] {
 
 function cradle(years: number): ParityRow[] {
   const [seed, birth] = CRADLE
-  const g = track(createNewLife({ seed, year: birth, countryId: 'us' }))
+  const g = track(stampLife(createNewLife({ seed, year: birth, countryId: 'us' })))
   return playYears({ name: 'cradle', g, rows: [], i: 0, turn: 0 }, years)
 }
 
@@ -148,7 +148,7 @@ function firm(years: number): ParityRow[] {
   const [seed] = FIRM
   const w = world(seed, { age: 45 })
   const { g, a } = w
-  track(g)
+  track(stampLife(g))
   kid(g, 16, { smarts: 70, traits: ['ambitious', 'serious'] })
   kid(g, 12, { smarts: 50, traits: ['funny', 'kind'] })
   kid(g, 8, { smarts: 35, traits: ['lazy', 'calm'], entitlement: 40 })
@@ -185,7 +185,7 @@ function firm(years: number): ParityRow[] {
 
 function dynasty(years: number): ParityRow[] {
   const [seed] = DYNASTY
-  const g = createNewLife({ seed, year: 1950, countryId: 'us' })
+  const g = stampLife(createNewLife({ seed, year: 1950, countryId: 'us' }))
   g.queue = []
   g.year = 2026
   const c = g.character
@@ -235,6 +235,13 @@ describe('the scripted lives', () => {
     const rows = fastOnce()
     if (isRecording(FAST.area)) recordRows(FAST, rows)
     else expectRows(FAST, rows)
+  })
+
+  it('plays the same rows on stamped lives: the mirror, the step and the stamp move no number, no draw and no popup (R4-E7)', { timeout: 240_000 }, () => {
+    const rows = withStamped(() => playAll(25))
+    expectRows(FAST, rows)
+    expect(stampStats().stamped, 'the three lives must be stamped').toBe(3)
+    expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(100)
   })
 
   it('plays the same rows twice', { timeout: 120_000 }, () => {

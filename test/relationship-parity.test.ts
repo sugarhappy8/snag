@@ -43,6 +43,8 @@ import {
   type ParityRow,
   type SceneSpec,
   type Tuple,
+  stampStats,
+  withStamped,
 } from './social-parity-kit'
 
 const ORACLE = oracle('relationships')
@@ -526,6 +528,13 @@ describe('relationships.ts is what it was before the shim', () => {
     const rows = playAll()
     if (isRecording(ORACLE.area)) recordRows(ORACLE, rows)
     else expectRows(ORACLE, rows)
+  })
+
+  it('plays the same rows on a stamped life: the mirror follows every number and moves none (R4-E7)', () => {
+    const rows = withStamped(playAll)
+    expectRows(ORACLE, rows)
+    expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
+    expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
   })
 
   it('plays the same rows twice', () => {

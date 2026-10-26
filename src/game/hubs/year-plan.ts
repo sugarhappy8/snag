@@ -71,6 +71,7 @@ export const GROUP_OF_SOURCE: Readonly<Record<string, YearGroup>> = Object.freez
   familyUse: 'people',
   nepo: 'people',
   willFeuds: 'people',
+  'world.edges': 'people',
   // body
   health: 'body',
   // work
