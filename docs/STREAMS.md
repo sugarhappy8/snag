@@ -23,6 +23,9 @@ you opened a menu) and for words (one more line in a pool must not change the ne
 - The tag `frontier` (R3, `world/frontier.ts` and `world/frontier-step.ts`) is drawn with `outcomeStream`, with the field, a one-letter
   kind (`d` for a disclosure's luck, `f` for a rival's follow) and the origin key as the id. A Time Machine jump re-rolls the
   unfinished year and keeps the finished ones. Its row in `STREAM_SLICES` is `driven`: no played life writes a disclosure yet.
+- The tag `soc.latent` (R4, `world/latent.ts`) is not a stream. `latent` reads `streamKey(familySeed, 'soc.latent', 0, sid)` with
+  `streamUnit(key, facet)`: a hash of the family and the sid, so there is no generator, no `g`, no row in `test/stream-tap.ts` and
+  nothing to carry. The facet numbers are append-only and pinned by `test/fixtures/latent-golden.json` (`docs/PEOPLE.md`).
 
 ## Words: `pickLine` and `pick`
 
