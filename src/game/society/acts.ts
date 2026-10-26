@@ -38,6 +38,11 @@ import { edgeKey, readEdge, type Edge, type EdgeKey } from '../world/edges'
 import { playerRef } from '../world/people'
 import { socialOn } from '../world/social'
 
+// The purses of society/ (R4-E10b, X26): this is the one file of society/ that imports cash.ts, because the layer baseline counts the files
+// of a domain that reach another (`society->life` is 2: this file and the seam). A debt (society/debt.ts) takes the purses from here.
+export { moveCash, personPurse, playerPurse }
+export type { Purse }
+
 /** What an act is run with: the game (read only), the edge it is run on, the person at its other end, the year and the luck of the stream. */
 export interface ActCtx {
   g: Readonly<GameState>

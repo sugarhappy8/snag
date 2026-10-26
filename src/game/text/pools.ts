@@ -279,6 +279,30 @@ export const BROKER_LINES = defineLines('social.broker', [
   'I had {who} talk to {whom} on my behalf.',
 ])
 
+// R4-E10b (D.4, X24): the log lines of a loan between people (society/loan.ts, society/debt.ts). Each names the person. {who} is "my friend Kay"
+// (the lender), {money} the sum. A line never opens on a slot, because {who} starts with "my".
+/** A loan taken: {money}, {who}. */
+export const DEBT_BORROW_LINES = defineLines('social.borrow', [
+  'I borrowed {money} from {who}.',
+  'I took a loan of {money} from {who}.',
+  'I asked {who} for {money} and got it.',
+  'I left with {money} that {who} lent me.',
+])
+/** A payment on a loan, or the last of it: {money}, {who}. */
+export const DEBT_REPAY_LINES = defineLines('social.repay', [
+  'I paid {who} back {money}.',
+  'I sent {money} to {who} for the loan.',
+  'I put {money} toward the loan from {who}.',
+  'I counted out {money} for {who}, as agreed.',
+])
+/** A year with nothing paid: {who}. */
+export const DEBT_DEFAULT_LINES = defineLines('social.default', [
+  'I had nothing to pay {who} this year.',
+  'I missed my payment to {who}.',
+  'The loan from {who} went unpaid this year.',
+  'A year went by and I paid {who} nothing.',
+])
+
 /** A close relative loses a spouse: {who} is "my sister Fatima", {spouse} is the first name of the one who died. Said once, on a stamped life (R4-L4). */
 export const KIN_WIDOWED = defineLines('life.kinWidowed', [
   '{spouse} died this year, and {who} is on their own now.',

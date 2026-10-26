@@ -197,10 +197,10 @@ function strained(s: Standing, year: number): boolean {
 // ---------------------------------------------------------------------------------------------------------------------------------
 
 /** "my friend Kay", "my sister Marit": how the log names a person. */
-const my = (p: Person): string => `my ${relationLabel(p).toLowerCase()} ${p.firstName}`
+export const my = (p: Person): string => `my ${relationLabel(p).toLowerCase()} ${p.firstName}`
 
 /** A line of a pool by a roll in [0, 1). */
-const lineFor = (lines: readonly string[], u: number): string => lines[Math.min(lines.length - 1, Math.max(0, Math.floor(u * lines.length)))]!
+export const lineFor = (lines: readonly string[], u: number): string => lines[Math.min(lines.length - 1, Math.max(0, Math.floor(u * lines.length)))]!
 
 /** What a favor done adds to the patch: its own consequences and its words. */
 interface Done {

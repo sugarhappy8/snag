@@ -110,6 +110,12 @@ export const STATE_TABLE = {
     ],
     band: logBand(2),
   },
+  // R4-E10b (D.4): a part payment of a loan the player owes a person (society/debt.ts), one record per lender (the call passes the
+  // lender's id), the value what is still owed: it speaks each time the debt halves, or after 5 quiet years. {who} is "my friend Kay".
+  'debt.owe': {
+    variants: ['I still owe {who} {money}.', 'There is {money} left on what I owe {who}.', 'I paid down the loan from {who}. {money} to go.'],
+    band: logBand(2),
+  },
 } as const satisfies Record<string, StateSpec>
 
 export type StateKey = keyof typeof STATE_TABLE

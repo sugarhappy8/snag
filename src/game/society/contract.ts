@@ -3,7 +3,7 @@
 // Every task that adds a society function adds its own export line below, in sorted order (cross-check section 2):
 //
 //   E9    useFamilyAct, familyLive, familyRoom   the budget (society/budget.ts), and liveFeuds, openDebts (world/edges.ts, E6a's counts)
-//   E10a  socialNodes, runAct                    E10b  debtsOf, serviceDebt, DEBT_KIND, debtToken
+//   E10a  socialNodes, runAct                    E10b  debtsOf, serviceDebt, DEBT_KIND, debtToken (society/debt.ts)
 //   E11   betray, reconcileOdds                  E14   isBound
 //
 // This file imports nothing from events/ or business/. See docs/ARCHITECTURE.md ("Society") and docs/SOCIAL.md.
@@ -12,4 +12,6 @@ export type { ActCtx, ActPart, ActPatch, ActSide, MoneyLine, SocialAct } from '.
 export { familyLive, familyRoom, useFamilyAct } from './budget'
 export type { FamilySource } from './budget'
 export { socialNodes } from './menu'
+export { DEBT_KIND, debtToken, debtsOf, serviceDebt } from './debt'
+export type { DebtRow, DebtTokenKind } from './debt'
 export { liveFeuds, openDebts } from '../world/edges'

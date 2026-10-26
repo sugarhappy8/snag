@@ -6,6 +6,9 @@
 //   Ask for a Favor          on a friend or relative who can be asked: the call-in (favor.ts helpAct)
 //   Ask {name} to ...        on the same person: a good word with the third person the giver knows who thinks least of you
 //   Ask {name} to Speak ...  on a CUT-OUT or estranged relative: a brokered peace through the best giver who can be asked now
+//   Ask {name} for a Loan    on the same person (R4-E10b): a slider from the least to the most the person will lend, the rate and the odds
+//                            in the subtitle (loan.ts); it shares the call-in cooldown of the favors, and comes after their rows
+//   You owe {name} ...       an info row, while the player owes that person a loan
 //
 // The rows are visible for a living person who is not a pet while the player is alive and 16 or older, and the heading 'Favors' with
 // them. A row whose act is blocked stays and greys itself out with the reason (cooldown, trust); a person the player has no feeling
@@ -13,8 +16,8 @@
 // a plain empty array, so the rows of every v5.2.0 save are exactly what they were.
 //
 // Layer 3 (society). Other domains reach it through society/contract.ts.
-import { getPerson } from '../core'
-import type { GameState, MenuAction, MenuNode, Person } from '../types'
+import { formatMoney, getPerson } from '../core'
+import type { GameState, MenuAction, MenuInfo, MenuNode, Person } from '../types'
 import { actBlock, playerEdgeKey } from './acts'
 import {
   FAVOR_AGE,
@@ -32,6 +35,7 @@ import {
   vouch,
 } from './favor'
 import { socialOn } from '../world/social'
+import { LOAN_AGE, askLoan, debtTo, loanAct, loanTerms } from './loan'
 
 /** A person the player feels this much for or more gets the favor rows (20 under the 50 a favor needs); below it the row would never be anything but grey. */
 const SHOW_FROM = 30
@@ -99,6 +103,43 @@ function brokerRow(g: GameState, relative: Person, giver: Person): MenuAction {
   }
 }
 
+/** The step of the loan slider: whole dollars for a small loan, hundreds for a large one. */
+const stepFor = (cap: number): number => (cap >= 100_000 ? 100 : cap >= 10_000 ? 10 : 1)
+
+function loanRow(g: GameState, p: Person): MenuAction {
+  const t = loanTerms(g, p)
+  const step = stepFor(t.cap)
+  const min = Math.min(t.cap, Math.ceil(t.min / step) * step)
+  return {
+    type: 'action',
+    id: 'social.loan',
+    label: `Ask ${p.firstName} for a Loan`,
+    emoji: '\u{1F4B0}',
+    subtitle: `Up to ${formatMoney(t.cap)} at ${t.rate}% a year · about ${pct(t.odds)}% to say yes · a share of your spare cash goes back each year`,
+    disabledReason: (s) => reason(s, loanAct(t.min), p),
+    input: {
+      kind: 'slider',
+      money: true,
+      label: 'How much?',
+      min,
+      max: Math.max(min, t.cap),
+      step,
+      defaultValue: () => String(Math.max(min, Math.min(Math.max(min, t.cap), Math.round(t.cap / 2 / step) * step))),
+    },
+    run: (s, input) => {
+      const q = getPerson(s, p.id)
+      if (q) askLoan(s, q, Number(input))
+    },
+  }
+}
+
+function oweRow(g: GameState, p: Person): MenuInfo | null {
+  const d = debtTo(g, p)
+  if (d === null) return null
+  const left = Math.max(0, d.owed - d.paid)
+  return { type: 'info', id: 'social.owe', emoji: '\u{1F4DD}', text: `You owe ${p.firstName} ${formatMoney(left)} at ${d.rate}% a year.` }
+}
+
 /** The favor rows of a person's page. An empty list for a life that is not stamped, a child, a dead person, a pet. Pure. */
 export function socialNodes(g: GameState, p: Person): MenuNode[] {
   if (!socialOn(g) || !g.character.alive || !(g.character.age >= FAVOR_AGE) || !p.alive || p.relation === 'pet') return []
@@ -111,6 +152,9 @@ export function socialNodes(g: GameState, p: Person): MenuNode[] {
     rows.push(favorRow(g, p))
     const third = thirdFor(g, p)
     if (third !== null) rows.push(vouchRow(g, p, third))
+    if (g.character.age >= LOAN_AGE && p.age >= LOAN_AGE) rows.push(loanRow(g, p))
   }
+  const owe = oweRow(g, p)
+  if (owe !== null) rows.push(owe)
   return rows.length === 0 ? [] : [{ type: 'heading', id: 'social.head', label: 'Favors' }, ...rows]
 }

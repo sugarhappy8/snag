@@ -434,8 +434,8 @@ estranged relative gets 'Ask {name} to Speak for You' (the way back), through th
 greys itself out with the reason.
 
 **The module** `society.acts` (`society/module.ts`): the `close` phase of the aging seam at order 6, between the edge step (5) and the
-milestones (10), one entry. Once a year on a stamped life, idempotent by `social.ay`, a no-op on any other life. Its step list is empty
-in E10a; E10b appends the debt servicing, E11 the leak pass and the mentor settle, E12 the feuds.
+milestones (10), one entry. Once a year on a stamped life, idempotent by `social.ay`, a no-op on any other life. Its step list was empty
+in E10a; E10b appended the debt servicing (section 14), E11 adds the leak pass and the mentor settle, E12 the feuds.
 
 **What it did to the oracles.** The stamped replay of `test/relationship-parity.test.ts` compares the page of each of the 16 people with the
 recording of the plain engine. A stamped page now gains the rows `social.*`, so the replay leaves them out of the comparison (and counts
@@ -445,7 +445,90 @@ has one new entry, `society/acts.ts` with one `addRelationship(` call: the appli
 **The seam** (`society/seam.ts`): the axes of a person (`axesOfPerson`, npc-state.ts), as `honestyOf` and `temperOf`. With `acts.ts`
 importing `cash.ts`, this is the `society->life` pair of the layer baseline, and the only two files it names (X26).
 
-## 14. What the next tasks add here
+## 14. Loans and debts (R4-E10b, D.4, X24, X26, X40, X54, C9, C37, C39)
 
-- R4-E10b to E16: loans, secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
+A person lends the player money and the player owes it back with interest. The debt is one record in one place, `Edge.dv`, on the edge
+**from the debtor to the creditor**, so a loan the player owes sits on `player > lender` and a key that starts at the ego is a debt the ego
+owes (C37). There is no separate shard, no new ledger reason, and no mint or burn: the principal, the service and the interest all move
+from one purse to another through `cash.moveCash`, under `support` (a divorce debt, L7, under `divorce`). `docs/LEDGER.md` shows interest
+under Family, as it shows every other transfer between people.
+
+**The record** `dv = [owed, ratePct, since, kind, paid]`. `owed` is what the debt has grown to (the principal and the interest added so far)
+and `paid` what has been paid, so `owed - paid` is what is still owed and `owed > paid` is exactly "an unpaid debt" of `edgeLocalBound`. A
+debt that is paid in full has its record taken off the edge (the edge stays), so the 40 slots of `EDGE_CAPS.debts` are the debts that are
+open. `readDv` reads a record the way the normalizer does and answers null for anything else: NaN, a negative, 1e300, a wrong length, a
+rate over 60, a kind over 9 or a prototype's field all read as no debt. Kind 0 is a loan, kind 1 a divorce (`DEBT_KIND`); a kind from 2 to 9
+is valid in the record and is never serviced.
+
+**The door** (`society/contract.ts`, one export line from `society/debt.ts`):
+
+| Name | What it does |
+|---|---|
+| `debtsOf(g, ego)` | the debts that touch the ego, oldest first (ties by key): `{ key, owed, owedBy, kind }`. `owed` is what is still owed. `owedBy` is true when the key starts at the ego (the ego is the debtor) and false when the ego is owed: the mirror of the legacy record `data.w.owes` that E7's `syncLegacy` keeps on `person > ego`, whose repayment stays in `collectLoans` |
+| `serviceDebt(g, key, amount, token, from?)` | pays down the ego's debt on `key` by up to `amount` (whole dollars), out of `from` (the player's purse; then never more than the cash the player has), into the creditor's purse, once per token. Answers what was paid, 0 for anything that is not a payment, and records it in `dv[4]`; a payment that leaves less than a dollar owed takes the record off. Reason `support` for kind 0, `divorce` for kind 1, nothing for another kind |
+| `debtToken(kind, year, key, extra?)` | `<kind>:<year>:<8 hex of fnv1a(extra\|key)>`, under 40 characters. The ledger cuts a token at 80 and an edge key can be 95, so a token built from the key and ending in the year would lose the year (a later year would read as a replay) and two long keys would collide. The year comes first |
+| `DEBT_KIND` | `{ loan: 0, divorce: 1 }`, frozen |
+
+`serviceDebt` checks its own authorization: an unstamped life, a key that does not start at the current ego (an earlier ego's debt, a debt the
+person owes the player, an edge between two other people), a creditor who is not in the game, is dead or is a pet, an amount that is not a
+number of at least a dollar, an empty or a booked token, and a payer with no cash all answer 0 and change nothing. An estranged creditor is
+still paid. `test/social-act-auth.test.ts` holds the table.
+
+**The loan** (`society/loan.ts`). `loanTerms(g, p)` is pure and says what a lender offers:
+
+| Term | Value |
+|---|---|
+| `cap` | the most the lender will lend: `min(25% of the lender's cash, 2 x typicalIncome(g))`, a whole number. The typical income is the P7 leaf (`world/typical-income.ts`), reached through `society/seam.ts`, so `society/` joins no domain pair (X54) |
+| `min` | 1% of a typical year's pay, never under $100 (the 40 debt slots are not for dust) |
+| `rate` | the lender's, a whole percent a year fixed by a hash of their key: 5 to 10 for an ordinary lender, 25 to 60 for a sneaky, manipulative or stingy one (`sharp`) |
+| `odds` | the chance of a yes, 0.15 to 0.9: the call-in odds of the favors less 0.1, and 0.15 more from a sharp lender. The planner's numbers, tested as ranges |
+
+Two acts share the rules and the consequence: `loanAct(amount)`, the ask (a roll of the stream `social` decides), and `lendAct(amount)`,
+the loan as a fact (a lender who has agreed). `askLoan` and `lend` run them through `runAct`. The rules are the favors' (`favorBlock`: the
+lender alive, not a pet, not estranged, `f` 50 and `t` 40, the player alive, the call-in 3 years back or more, so a loan is a call-in and a
+refusal counts) and on top: the player and the lender 18 or older, nothing owed to this lender, fewer than three loans open
+(`LOAN_OPEN_MAX`), room in the table of debts, an amount from `min` to `cap`. The key of the act is the lender's edge to the player (the
+favors' key); the debt is the second side of the patch, on `player > lender`: `dv = [principal, rate, year, 0, 0]` and the memory
+`loan_given` (weight 2), which the table reads from the debtor's side. The principal moves from the lender to the player once, with the
+token `debtToken('loan', year, key of the debt)`. A yes warms the lender's regard by a point; a no costs one and stamps the call-in.
+
+**The yearly step** (`serviceDebts` in `society/debt.ts`, inside the one `society.acts` entry; kind 0 only, L7's pass serves kind 1). For each
+loan the player owes that was taken in an earlier year, oldest first:
+
+1. A lender who is gone, dead or a pet lets the debt lapse: the record goes, no money moves.
+2. Interest. In each of the first `accrualYears(rate)` years after the loan, `floor(rate% x what is still owed)` is added to `owed`.
+   `accrualYears` is the most years that keep `(1 + rate)^years` at 3 or less, and the interest is on what is still owed, so a debt never
+   passes 3 x its principal whatever is paid or missed. A shark at 60% adds interest twice (2.56 x), an ordinary lender at 5% for 22 years.
+3. Payment: `min(still owed, floor(20% x the cash above the reserve))`, the reserve being a quarter of a typical year's pay. It is booked
+   with `serviceDebt` under `debtToken('debt', year, key)`, so the cash never goes below the reserve for a payment, and so never below 0.
+4. The year is told. A part payment speaks through the status row `debt.owe` (when the debt has halved, or after 5 quiet years), the last
+   payment through a line of the repay pool, a missed year through the default pool (once, then again only after 3 quiet years). A paid
+   year writes `loan_repaid` (weight 2 for the last payment) and warms the lender by 1 or 3. A missed year (nothing paid) writes
+   `loan_unpaid` (weight 2 when the last is from the 3 years before), costs the lender's regard 3 points and, for a sharp lender (a rate of
+   25 or more), queues `A Lender Calls`.
+
+The step is idempotent by the entry's stamp `social.ay`, by the ledger token of the year and by the memory it writes, so a second run of the
+entry, a run of the step alone, a clone and a reload change nothing. Nothing is due in the year a loan is taken.
+
+**A Lender Calls** is a choice for a sharp lender and a missed year: pay what you can (up to half the cash), ask for more time (the stream
+`social` against the lender's regard) or ignore the call. It spends one of the year's three family choices (`useFamilyAct(g, 'social')`),
+waits `PACE.askGap` years between calls in the family `pop.kin.lender` and is not deferrable at the year close (`DEFERRABLE_SCRIPTS` is
+unchanged). The answers go through `serviceDebt`, `remember` and the shim.
+
+**The menu** (`society/menu.ts`): after the favor rows, 'Ask {name} for a Loan' (a money slider from `min` to `cap`, the rate and the odds in
+the subtitle, greyed with the reason when `actBlock` says so) and, while the player owes that person, an info row. A child, a dead person, a
+pet and a life that is not stamped get neither.
+
+**Text.** Three pools of four lines, each naming the person: `social.borrow`, `social.repay`, `social.default`; one row of `STATE_TABLE`,
+`debt.owe` (three variants, `{who}` and `{money}`). A debt line fires about six times in a life. **Ceilings, each probed at 100 x**: the
+principal (2 x a typical income whatever the lender holds), the interest (3 x), the payment (what is owed, and the cash above the reserve),
+the open loans (3) and the debts (40).
+
+**Where it lives.** `society/acts.ts` re-exports the purses of `cash.ts`, because the layer baseline counts the files of a domain that reach
+another and `society->life` stays at the two files the lead approved (`acts.ts` and `seam.ts`); `society/debt.ts` registers its script
+through the kernel's `scripts.ts`. `test/relationship-ratchet.json` has one new entry, `society/debt.ts` with one `addRelationship(` call.
+
+## 15. What the next tasks add here
+
+- R4-E11 to E16: secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
   (`social` at the close) and adds its export line to `society/contract.ts`.
