@@ -7,12 +7,18 @@
 //   honestyOf(g, p)  the honesty axis: 0 a liar, 100 a person whose word holds
 //   temperOf(g, p)   how quick to anger, 0 to 100: the other end of the steadiness axis (a hot-headed person is high)
 //
-// E10b adds the typical-income seam here (the loan cap and E12's fee both take it from this file). All of it is pure: no draw, no
-// write, no life made, total on any person (the axes reader is). This file is the only one of society/ that imports npc-state.ts, which
-// is what keeps the `society->life` pair to the two files the lead approved (cash.ts and npc-state.ts, X26).
+//   typicalIncome(g)  a typical full-time year's pay where the player lives (R4-E10b, X54): the yardstick of the loan cap here and of
+//                    E12's legal fee. It is the function of the layer-2 leaf world/typical-income.ts (P7), re-exported so that society/
+//                    takes it from one file and joins no domain pair (the leaf imports nothing from events/).
+//
+// All of it is pure: no draw, no write, no life made, total on any person (the axes reader is). This file is the only one of society/
+// that imports npc-state.ts, which is what keeps the `society->life` pair to the two files the lead approved (cash.ts and
+// npc-state.ts, X26).
 import { axesOfPerson } from '../npc-state'
 import type { GameState, Person } from '../types'
 import type { Axes } from '../world/axes'
+
+export { typicalIncome } from '../world/typical-income'
 
 /** The five axes of a person. A new object each call. */
 export function axesOf(g: Pick<GameState, 'world'>, p: Person): Axes {

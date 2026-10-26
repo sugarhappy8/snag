@@ -902,8 +902,8 @@ describe('the stream social', () => {
 describe('the files of society/', () => {
   const files = (): string[] => readdirSync(resolve(ROOT, 'src/game/society')).filter((f) => f.endsWith('.ts'))
 
-  it('import nothing from events/, business/, shops/ or the other domains; the root files they reach are cash.ts and npc-state.ts', () => {
-    const allowedRoot = new Set(['core', 'cash', 'npc-state', 'types', 'rng'])
+  it('import nothing from events/, business/, shops/ or the other domains; the root files they reach are cash.ts and npc-state.ts (and the kernel root files)', () => {
+    const allowedRoot = new Set(['core', 'cash', 'npc-state', 'types', 'rng', 'scripts'])
     for (const f of files()) {
       const text = src(`src/game/society/${f}`)
       for (const m of text.matchAll(/from '(\.\.\/[^']+)'/g)) {

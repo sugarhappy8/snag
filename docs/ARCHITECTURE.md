@@ -911,6 +911,12 @@ call-in, a vouch, a brokered peace), `society/menu.ts` the person rows (`socialN
 `society/module.ts` the module `society.acts` (close phase, order 6). Luck is the stream `social` (`docs/STREAMS.md`); the detail is in
 `docs/SOCIAL.md` section 13.
 
+R4-E10b added loans between people. `society/loan.ts` holds the terms and the two acts (the ask and the loan itself), `society/debt.ts` the
+debt record `Edge.dv`, `debtsOf`, `serviceDebt`, `debtToken`, `DEBT_KIND`, the yearly service (a step inside the one `society.acts` entry)
+and the choice `A Lender Calls`; the four names go out through the door. `typicalIncome` reaches `society/` through the seam from the layer-2
+leaf `world/typical-income.ts`, and `society/acts.ts` stays the one file that imports `cash.ts`, so the `society->life` pair stays at two
+imports. The detail is in `docs/SOCIAL.md` section 14.
+
 ### Main Character Syndrome and instant mastery
 
 `talents.ts MainCharacter` occupies one of the three starting-talent slots. `hasTalent(g, id)` must
