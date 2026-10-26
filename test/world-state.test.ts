@@ -9,8 +9,8 @@ import { isRef, parseRef, ref } from '../src/game/kernel/ids'
 import { continueAsChild } from '../src/game/life'
 import { createPerson } from '../src/game/people'
 import type { GameState } from '../src/game/types'
-import { LOD_CAPS, WORLD_NODE_CAP } from '../src/game/world/caps'
-import { ensureWorld, normalizeWorld, readWorld, registerShard, shardNames, worldShard, WORLD_V } from '../src/game/world/state'
+import { LOD_CAPS, WORLD_DROP_FIRST, WORLD_KEEP_LAST, WORLD_NODE_CAP } from '../src/game/world/caps'
+import { ensureWorld, normalizeWorld, overCapDrops, readWorld, registerShard, shardNames, worldShard, WORLD_V } from '../src/game/world/state'
 import { deepFreeze } from './fuzz-kit'
 import { makeTestGame } from './helpers'
 
@@ -62,9 +62,9 @@ function nodesOf(value: unknown): number {
   return n
 }
 
-/** An array of `n - 1` numbers is a shard of `n` nodes (the array itself counts as one). */
+/** An array of `n - 1` numbers is a shard of `n` nodes (the array itself counts as one); `n` is rounded, so a fraction of the cap is fine. */
 function shardOf(n: number): number[] {
-  return Array.from({ length: n - 1 }, () => 1)
+  return Array.from({ length: Math.round(n) - 1 }, () => 1)
 }
 
 describe('readWorld and ensureWorld', () => {
@@ -194,29 +194,124 @@ describe('normalizeWorld', () => {
     expect(out).toEqual({ v: 1, probe: { v: 1, rows: [1] } })
   })
 
-  it('never returns more than 40,000 nodes: the largest shard goes first, ties by name', () => {
-    expect(WORLD_NODE_CAP).toBe(40_000)
-    const a = shardOf(30_000)
-    const b = shardOf(20_000)
+  it('never returns more than the node cap (80,000): the largest shard goes first, ties by name', () => {
+    expect(WORLD_NODE_CAP).toBe(80_000)
+    const a = shardOf(WORLD_NODE_CAP * 0.75)
+    const b = shardOf(WORLD_NODE_CAP * 0.5)
     const out = normalizeWorld({ v: 1, y: 2026, bulka: a, bulkb: b, small: [1] })
     expect(Object.keys(out).sort()).toEqual(['bulkb', 'small', 'v', 'y'])
     expect(nodesOf(out)).toBeLessThanOrEqual(WORLD_NODE_CAP)
     // Equal sizes: the earlier name is dropped first, whatever order the keys came in.
-    const tie1 = normalizeWorld({ v: 1, bulka: shardOf(25_000), bulkb: shardOf(25_000) })
-    const tie2 = normalizeWorld({ v: 1, bulkb: shardOf(25_000), bulka: shardOf(25_000) })
+    const tie1 = normalizeWorld({ v: 1, bulka: shardOf(WORLD_NODE_CAP * 0.625), bulkb: shardOf(WORLD_NODE_CAP * 0.625) })
+    const tie2 = normalizeWorld({ v: 1, bulkb: shardOf(WORLD_NODE_CAP * 0.625), bulka: shardOf(WORLD_NODE_CAP * 0.625) })
     expect(Object.keys(tie1).sort()).toEqual(['bulkb', 'v'])
     expect(Object.keys(tie2).sort()).toEqual(['bulkb', 'v'])
     // Three shards: it drops only as many as it must.
-    const three = normalizeWorld({ v: 1, bulka: shardOf(15_000), bulkb: shardOf(15_000), small: shardOf(15_000) })
+    const three = normalizeWorld({ v: 1, bulka: shardOf(WORLD_NODE_CAP * 0.375), bulkb: shardOf(WORLD_NODE_CAP * 0.375), small: shardOf(WORLD_NODE_CAP * 0.375) })
     expect(Object.keys(three).sort()).toEqual(['bulkb', 'small', 'v'])
     expect(nodesOf(three)).toBeLessThanOrEqual(WORLD_NODE_CAP)
   })
 
   it('keeps a world that fits exactly as it is', () => {
-    const raw = { v: 1 as const, y: 2026, bulka: shardOf(39_000), small: [1, 2] }
+    const raw = { v: 1 as const, y: 2026, bulka: shardOf(WORLD_NODE_CAP * 0.975), small: [1, 2] }
     const out = normalizeWorld(raw)
     expect(out).toEqual(raw)
     expect(nodesOf(out)).toBeLessThanOrEqual(WORLD_NODE_CAP)
+  })
+})
+
+// R4-P2 (X47): over the cap the shards go in a fixed order, not largest first across the board. The world used to drop its largest
+// shard whole, and once `met` and `edges` exist the largest is `edges`, with every debt and memory in it. Three classes: the indexes
+// and news (rebuilt or bounded) go first, every other shard next, and the books, the ownership table and the people's memory last.
+// Inside a class the largest goes first, ties by name.
+describe('the order shards go in when the world is over its cap (R4-P2, X47)', () => {
+  const shards = (rows: Record<string, number>): { name: string; nodes: number }[] => Object.entries(rows).map(([name, nodes]) => ({ name, nodes }))
+  /** The world's own size: the root and its `v` count 2 and the year 1, then every shard. */
+  const totalOf = (list: readonly { nodes: number }[]): number => 3 + list.reduce((sum, s) => sum + s.nodes, 0)
+
+  it('names the two classes, in the lists the cross-check fixes', () => {
+    expect([...WORLD_DROP_FIRST].sort()).toEqual(['facts', 'firms', 'frontier', 'homes', 'lod', 'people'])
+    expect([...WORLD_KEEP_LAST].sort()).toEqual(['edges', 'ledger', 'holdings', 'met', 'social'].sort())
+    expect(WORLD_DROP_FIRST.filter((name) => WORLD_KEEP_LAST.includes(name))).toEqual([])
+  })
+
+  it('drops nothing while the world fits', () => {
+    const list = shards({ ledger: 9_000, edges: 17_000, met: 10_401, facts: 2_800, frontier: 3_600 })
+    expect(totalOf(list)).toBeLessThanOrEqual(WORLD_NODE_CAP)
+    expect(overCapDrops(list, totalOf(list))).toEqual([])
+    // Exactly at the cap is a fit.
+    expect(overCapDrops(shards({ ledger: WORLD_NODE_CAP - 3 }), WORLD_NODE_CAP)).toEqual([])
+    expect(overCapDrops(shards({ ledger: WORLD_NODE_CAP - 2 }), WORLD_NODE_CAP + 1)).toEqual(['ledger'])
+  })
+
+  it('drops facts and frontier before edges, even when edges is the largest shard', () => {
+    const list = shards({ edges: 52_000, met: 10_401, ledger: 9_000, holdings: 5_000, social: 16, facts: 2_800, frontier: 3_600, lod: 9, people: 1_200, firms: 700, homes: 1_500 })
+    expect(totalOf(list)).toBeGreaterThan(WORLD_NODE_CAP)
+    // The index class goes largest first (frontier, then facts) and the world fits after two: nothing else goes.
+    expect(overCapDrops(list, totalOf(list))).toEqual(['frontier', 'facts'])
+    // The same list handed over in another order gives the same answer.
+    expect(overCapDrops([...list].reverse(), totalOf(list))).toEqual(['frontier', 'facts'])
+  })
+
+  it('goes through the whole index class before it touches any other shard', () => {
+    const list = shards({ edges: 60_000, met: 10_401, ledger: 9_000, facts: 2_800, frontier: 3_600, lod: 9, people: 1_200, firms: 700, homes: 1_500, stray: 5_000 })
+    expect(totalOf(list)).toBe(94_213)
+    // The indexes alone (9,809 nodes) do not bring 94,213 under the cap, so the stray (the second class) goes next, and then it fits.
+    expect(overCapDrops(list, totalOf(list))).toEqual(['frontier', 'facts', 'homes', 'people', 'firms', 'lod', 'stray'])
+  })
+
+  it('keeps ledger, holdings, met, edges and social while any other shard can go', () => {
+    const keep = shards({ edges: 40_000, met: 10_401, ledger: 9_000, holdings: 5_000, social: 16 })
+    const others = shards({ zeta: 12_000, alpha: 12_000, facts: 2_800 })
+    const list = [...keep, ...others]
+    expect(totalOf(list)).toBeGreaterThan(WORLD_NODE_CAP)
+    // facts (the index class) first; then the other class, largest first and the tie by name (alpha before zeta): one is enough.
+    const out = overCapDrops(list, totalOf(list))
+    expect(out).toEqual(['facts', 'alpha'])
+    for (const name of WORLD_KEEP_LAST) expect(out, name).not.toContain(name)
+    // Even with the protected shards the largest by far, a stray one-node shard is dropped before them when that is enough.
+    const tight = shards({ edges: WORLD_NODE_CAP - 3, stray: 1 })
+    expect(totalOf(tight)).toBe(WORLD_NODE_CAP + 1)
+    expect(overCapDrops(tight, totalOf(tight))).toEqual(['stray'])
+  })
+
+  it('drops a protected shard only when nothing else is left, largest first and the tie by name', () => {
+    const list = shards({ met: 50_000, edges: 50_000, social: 16, ledger: 9_000 })
+    expect(overCapDrops(list, totalOf(list))).toEqual(['edges'])
+    const more = shards({ met: 50_000, edges: 50_000, social: 16, ledger: 9_000, holdings: 50_000 })
+    // 159,019 nodes: edges, holdings and met tie at 50,000, so the earlier names go first, and two are enough.
+    expect(overCapDrops(more, totalOf(more))).toEqual(['edges', 'holdings'])
+  })
+
+  it('goes largest first inside a class, ties by name, whatever the order it was handed in', () => {
+    const list = shards({ lod: 40_000, people: 40_000, firms: 40_000, homes: 1_000, ledger: 100 })
+    const forward = overCapDrops(list, totalOf(list))
+    expect(forward).toEqual(['firms', 'lod'])
+    expect(overCapDrops([...list].reverse(), totalOf(list))).toEqual(forward)
+    // The second class as well: three equal strays.
+    const strays = shards({ gamma: 45_000, beta: 45_000, alpha: 45_000 })
+    expect(overCapDrops(strays, totalOf(strays))).toEqual(['alpha', 'beta'])
+  })
+
+  it('is total: no shards, a total that is not a number, a cap that is not a number', () => {
+    expect(overCapDrops([], 10)).toEqual([])
+    expect(overCapDrops(shards({ ledger: 5 }), Number.NaN)).toEqual([])
+    expect(overCapDrops(shards({ a: 5 }), 100, Number.NaN)).toEqual([])
+  })
+
+  it('applies the order through normalizeWorld: an index is dropped before a larger stray, a stray before the books', () => {
+    // `people` is a real, registered shard (an index). The stray is far larger and is what is over, yet the index goes first.
+    const people = { v: 1, rows: [{ id: 'person:p001', seen: 2020 }], over: 0 }
+    expect(normalizeWorld({ v: 1, people }).people).toEqual(people)
+    const out = normalizeWorld({ v: 1, y: 2026, people, bulka: shardOf(WORLD_NODE_CAP * 0.95), bulkb: shardOf(WORLD_NODE_CAP * 0.1) })
+    expect(Object.keys(out).sort()).toEqual(['bulkb', 'v', 'y'])
+    expect(nodesOf(out)).toBeLessThanOrEqual(WORLD_NODE_CAP)
+    // `holdings` is a real, registered shard that is never dropped while a stray can go.
+    const holdings = { v: 1, y: 2026, rows: [['person:p001', 'firm:f001', 1]] }
+    expect(normalizeWorld({ v: 1, holdings }).holdings).toEqual(holdings)
+    const kept = normalizeWorld({ v: 1, y: 2026, holdings, people, bulka: shardOf(WORLD_NODE_CAP * 0.6), bulkb: shardOf(WORLD_NODE_CAP * 0.6) })
+    expect(Object.keys(kept).sort()).toEqual(['bulkb', 'holdings', 'v', 'y'])
+    expect(nodesOf(kept)).toBeLessThanOrEqual(WORLD_NODE_CAP)
   })
 })
 

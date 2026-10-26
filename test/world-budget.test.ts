@@ -1,6 +1,7 @@
 // R2-L17 (K.6 b): the budget meter, the world step and the 50-year size probe. The world is metered (nodes, bytes, and the one
 // timer the world step reports through), it gets one yearly hook that runs last, and a long life with many companies proves that the
-// registry stays inside its budget: 25,000 nodes, 450,000 bytes, a world step far under a tap's patience, and the books still balance.
+// registry stays inside its budget: 55,000 nodes, 800,000 bytes (R4-P2 raised them from 25,000 and 450,000, X47), a world step far
+// under a tap's patience, and the books still balance.
 //
 // No pinned seed: the lives are a tuple (the first of the conservation probe's forty is the same life, R2-L5).
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -9,10 +10,12 @@ import { checkLedger, LEDGER_CAPS, peekLedger } from '../src/game/kernel/ledger'
 import { REASONS } from '../src/game/kernel/reasons'
 import type { GameState } from '../src/game/types'
 import { WORLD_BUDGET, budgetReport, resetBudgetReport, timed, worldBudget } from '../src/game/world/budget'
-import { HOLDING_ROWS_CAP, LOD_CAPS } from '../src/game/world/caps'
+import { FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS, WORLD_ALLOTMENT, WORLD_DROP_FIRST, WORLD_KEEP_LAST, WORLD_NODE_CAP } from '../src/game/world/caps'
+import { FIELD_IDS, FIELDS } from '../src/game/world/frontier-fields'
+import { normalizeFrontier } from '../src/game/world/frontier'
 import { worldProblems } from '../src/game/world/invariants'
 import '../src/game/world/shards'
-import { normalizeWorld, readWorld } from '../src/game/world/state'
+import { normalizeWorld, readWorld, registerShard } from '../src/game/world/state'
 import { yearlyWorld } from '../src/game/world/yearly'
 import { K_ID, loadSources } from './scan-kit'
 import { deepFreeze } from './fuzz-kit'
@@ -112,8 +115,8 @@ describe('the world step', () => {
 })
 
 describe('the budget meter', () => {
-  it('pins the budget: 25,000 nodes, 450,000 bytes, a 60 ms world step', () => {
-    expect(WORLD_BUDGET).toEqual({ nodes: 25_000, bytes: 450_000, stepMs: 60 })
+  it('pins the budget: 55,000 nodes, 800,000 bytes, a 60 ms world step', () => {
+    expect(WORLD_BUDGET).toEqual({ nodes: 55_000, bytes: 800_000, stepMs: 60 })
   })
 
   it('reads an absent world as the empty root, on a frozen state, and writes nothing', () => {
@@ -145,7 +148,7 @@ describe('the budget meter', () => {
 
   it('names every breach: the node total, the bytes, a shard over its cap, a ledger over its caps', () => {
     const g = makeTestGame(7, { age: 40, money: 50_000 })
-    setWorld(g, { v: 1, junk: Array.from({ length: 25_100 }, () => 1) })
+    setWorld(g, { v: 1, junk: Array.from({ length: WORLD_BUDGET.nodes + 100 }, () => 1) })
     expect(worldBudget(g).over.some((line) => /nodes/.test(line))).toBe(true)
 
     setWorld(g, { v: 1, junk: 'x'.repeat(WORLD_BUDGET.bytes + 10) })
@@ -316,6 +319,145 @@ describe('a synthetic world at every cap', () => {
     expect(w.firms!.rows).toHaveLength(LOD_CAPS.fullFirms)
     expect(w.homes!.rows).toHaveLength(LOD_CAPS.homes)
     expect(w.holdings!.rows).toHaveLength(HOLDING_ROWS_CAP)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// R4-P2 (X47): the world at the caps of the whole of R4
+//
+// `met` (S4), `edges` and `social` (E6b, E7) are not registered shards yet, so a reader would drop them; the budget meter reads the
+// raw world and counts them. Until those tasks land, stand-ins at the node counts of the plans' own caps carry the measurement; S4 and
+// E6b replace each stand-in with the real builder at its caps (MET_CAPS, EDGE_CAPS) and keep the assertions.
+
+/** Real-length names, so the bytes are a real figure and not a minimum. */
+const FIRST = ['Maribel', 'Okonkwo', 'Takeshi', 'Ingrid', 'Rashid', 'Bao', 'Odalys', 'Lennart']
+const LAST = ['Okonkwo-Reyes', 'Nakamura', 'Lindqvist', 'Abdelrahman', 'Castellanos', 'Whitfield']
+
+/**
+ * `met` at its caps: 400 records of 22 nodes (the record, 15 fields, the axis tuple and its 5 numbers) and 200 tombstones of 8, and
+ * the map root: 10,401 nodes. `edges` at its caps: 1,200 edges of 8 nodes (7 numbers and the edge), 1,200 memory arrays, 4,000 memories
+ * in all, `n` and `d` on 120 edges (16 nodes each), 12 feuds, 40 debts, and the 40 secrets that live in the same map (13 nodes each):
+ * about 17,500. `social`: 16 nodes.
+ */
+function r4StandIns(year: number): Record<string, unknown> {
+  const met: Record<string, unknown> = {}
+  for (let i = 0; i < 400; i++) {
+    met[`cls.us.${1950 + (i % 60)}.${i}`] = {
+      f: FIRST[i % FIRST.length], l: LAST[i % LAST.length], g: i % 2, b: 1950 + (i % 60), c: 'us', k: i % 16, a: [50, 40, 60, 30, 70],
+      y: year - 30, s: year, w: i % 10, fl: i % 64, gr: i % 100, ob: (i % 200) - 100, d: year - 2, r: 'banker', j: `firm:f${1000 + i}`,
+    }
+  }
+  for (let i = 0; i < 200; i++) met[`actor.us.${1950 + (i % 60)}.${i}`] = [year - 5, 20, -10, 3, FIRST[i % FIRST.length], LAST[i % LAST.length], 3_949]
+
+  const edges: Record<string, unknown> = {}
+  for (let i = 0; i < 1_200; i++) {
+    const e: Record<string, unknown> = {
+      t: 55, f: 62, r: 48, s: 12, o: -5, y: year - 20, l: year,
+      m: Array.from({ length: i < 1_000 ? 4 : 0 }, (_, k) => `betrayal.${year - k}.7.t`),
+    }
+    if (i < 120) {
+      e.n = Array.from({ length: 6 }, (_, k) => `cb.${k}${i}`)
+      e.d = Array.from({ length: 8 }, (_, k) => k + 1)
+    }
+    if (i < 12) e.q = [2, year - 3, 5]
+    else if (i < 52) e.dv = [12_000, 5, year - 2, 0, 3_000]
+    edges[`person:p${pad(i, 4)}>person:p${pad((i + 1) % 1_200, 4)}`] = e
+  }
+  for (let i = 0; i < 40; i++) edges[`secret:${i}`] = { a: `person:p${pad(i, 4)}`, k: 'debt', v: `person:p${pad(i + 1, 4)}`, h: Array.from({ length: 6 }, (_, k) => `person:p${pad(k, 4)}`), y: year, p: 1 }
+
+  const ms: Record<string, number> = {}
+  for (let i = 0; i < 12; i++) ms[`m${i}`] = 100 + i
+  return { met, edges, social: { s: 1, ay: year, ms } }
+}
+
+/** The worst case of the whole of R4: the R2 maximal world, the frontier, the facts and the lod shard of R3, and the stand-ins. */
+function r4Worst(year: number): Record<string, unknown> {
+  const frontier: { v: 1; y: number; f: Record<string, unknown> } = { v: 1, y: 2035, f: {} }
+  for (const id of FIELD_IDS) {
+    const lead = FIELDS[id].lead
+    const rows: { y: number; w: string; m: string; d: number; o: string; f: number }[] = []
+    for (let m = 0; m < FRONTIER_CAPS.marketsPerField; m++) for (let i = 0; i < FRONTIER_CAPS.rowsPerMarket; i++) rows.push({ y: 2030 + i, w: i % 2 ? 'you' : 'rival', m: `m${m}`, d: lead ? 50 : 0, o: `${m}${i}x`, f: 1 })
+    rows.sort((a, b) => a.y - b.y)
+    frontier.f[id] = lead ? { fold: 0, pub: 180, ly: 2035, yg: 200, rows } : { fold: 0, pub: 180, ly: 2035, rows }
+  }
+  const rows = Array.from({ length: 400 }, (_, i) => ({ k: 'company.failed', y: year - 59 + (i % 60), c: `company:${i}`, a: `person:p${pad(i)}`, v: 1_000 + i, s: 50 }))
+  rows.sort((a, b) => a.y - b.y)
+  return {
+    ...maximalWorld(year),
+    lod: { v: 1, y: year, pooled: { person: 12, firm: 3, home: 7 }, demoted: 40 },
+    facts: { v: 1, rows },
+    frontier,
+    ...r4StandIns(year),
+  }
+}
+
+/** A shard that keeps whatever it is given and is in neither class: it stands for a shard of a later release (R5, R6) that the order has no name for. */
+const STRAY = { normalize: (raw: unknown): unknown => raw }
+
+describe('the world at the caps of R4 (R4-P2, X47)', () => {
+  const measured = (): ReturnType<typeof worldBudget> => {
+    const g = makeTestGame(7, { age: 40, money: 50_000 })
+    setWorld(g, r4Worst(g.year))
+    return worldBudget(g)
+  }
+
+  it('has the stand-ins at the node counts of the plans: met 10,401, edges and secrets about 17,500, social 16', () => {
+    const b = measured()
+    expect(b.nodes.met).toBe(10_401)
+    expect(b.nodes.edges).toBeGreaterThan(17_000)
+    expect(b.nodes.edges).toBeLessThan(18_000)
+    expect(b.nodes.social).toBe(16)
+  })
+
+  it('measures the whole worst case, and the budget is that measurement plus 15%', () => {
+    const b = measured()
+    console.info('R4-P2 maximal world', json({ total: b.total, bytes: b.bytes, nodes: b.nodes }))
+    expect(b.over).toEqual([])
+    // The starting numbers are 55,000 nodes and 800,000 bytes; the budget is the larger of those and the measurement plus 15%.
+    expect(WORLD_BUDGET.nodes).toBeGreaterThanOrEqual(Math.ceil(b.total * 1.15))
+    expect(WORLD_BUDGET.bytes).toBeGreaterThanOrEqual(Math.ceil(b.bytes * 1.15))
+    expect(b.total).toBeLessThan(WORLD_BUDGET.nodes)
+    expect(b.bytes).toBeLessThan(WORLD_BUDGET.bytes)
+  })
+
+  it('has an allotment: R4 about 29,000 nodes, R5 and R6 6,000 each, all of it under the cap beside the shards of v5.2.0', () => {
+    expect(WORLD_ALLOTMENT).toEqual({ r4: 29_000, r5: 6_000, r6: 6_000 })
+    const b = measured()
+    const r4 = (b.nodes.met ?? 0) + (b.nodes.edges ?? 0) + (b.nodes.social ?? 0)
+    expect(r4).toBeLessThanOrEqual(WORLD_ALLOTMENT.r4)
+    const today = b.total - r4
+    expect(today).toBeGreaterThan(15_000)
+    expect(today + WORLD_ALLOTMENT.r4 + WORLD_ALLOTMENT.r5 + WORLD_ALLOTMENT.r6).toBeLessThan(WORLD_NODE_CAP)
+    // The worst case of R4 is under the cap and the budget by itself; the old cap of 40,000 was passed by it.
+    expect(b.total).toBeLessThan(WORLD_NODE_CAP)
+    expect(b.total).toBeGreaterThan(40_000)
+  })
+
+  it('is read whole by the shards that exist: the frontier, the facts and the lod shard come back as themselves', () => {
+    const raw = r4Worst(2030)
+    expect(normalizeFrontier(raw.frontier)).toBe(raw.frontier)
+    const out = normalizeWorld(JSON.parse(json(raw)))
+    for (const name of ['ledger', 'people', 'firms', 'homes', 'holdings', 'lod', 'facts', 'frontier']) expect(out[name], name).toEqual(raw[name])
+  })
+
+  it('puts every shard of v5.2.0 in a class of the over-cap order', () => {
+    const ordered = [...WORLD_DROP_FIRST, ...WORLD_KEEP_LAST]
+    for (const name of ['ledger', 'people', 'firms', 'homes', 'holdings', 'lod', 'facts', 'frontier']) expect(ordered, name).toContain(name)
+    expect(new Set(ordered).size).toBe(ordered.length)
+  })
+
+  it('over the cap, the indexes go first, then the stray; the ledger and the holdings stay whole, whatever is largest', () => {
+    registerShard('stray', STRAY)
+    const world: Record<string, unknown> = { ...maximalWorld(2030), stray: Array.from({ length: WORLD_NODE_CAP }, () => 1) }
+    const out = normalizeWorld(world)
+    expect(Object.keys(out).sort()).toEqual(['holdings', 'ledger', 'v', 'y'])
+    expect(out.ledger).toEqual(world.ledger)
+    expect(out.holdings).toEqual(world.holdings)
+    // The books of the world that is left are sound.
+    const g = makeTestGame(7, { age: 40, money: 50_000 })
+    setWorld(g, out)
+    expect(worldBudget(g).total).toBeLessThan(WORLD_NODE_CAP)
+    expect(worldProblems(g, { live: false })).toEqual([])
   })
 })
 

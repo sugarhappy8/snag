@@ -14,8 +14,14 @@ import type { GameState } from '../types'
 import { FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS } from './caps'
 import { readWorld } from './state'
 
-/** What the world may cost: nodes and bytes of g.world after a long life, and the milliseconds one world step is meant to take. */
-export const WORLD_BUDGET = { nodes: 25_000, bytes: 450_000, stepMs: 60 } as const
+/**
+ * What the world may cost: nodes and bytes of g.world after a long life, and the milliseconds one world step is meant to take.
+ * R4-P2 raised the nodes from 25,000 to 55,000 and the bytes from 450,000 to 800,000 (cross-check X47). The measurement behind them
+ * (test/world-budget.test.ts, every list at its cap at once, `met` and `edges` included): about 45,600 nodes and 443,000 bytes, and
+ * the budget is the larger of the starting numbers and that measurement plus 15% (52,500 nodes, 510,000 bytes), so the starting
+ * numbers stand. The hard ceiling is WORLD_NODE_CAP in world/caps.ts, and the split by release is WORLD_ALLOTMENT beside it.
+ */
+export const WORLD_BUDGET = { nodes: 55_000, bytes: 800_000, stepMs: 60 } as const
 
 export interface WorldBudget {
   /** Nodes of each shard of the stored world, by name (the root's own `v` and `y` are not shards). */

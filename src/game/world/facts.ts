@@ -11,7 +11,7 @@
 // What it keeps, and why that is safe:
 //   - bounded: at most FACT_CAP (400) rows, and at most FACTS_PER_KIND_YEAR (12) of one kind in one year, so one chatty module cannot
 //     push the rest out. The oldest row goes first. 400 rows of at most 6 fields is about 2,800 JSON nodes (0.6% of the 500,000 node
-//     cap of a save, 7% of the world's own WORLD_NODE_CAP) and, with every field at its limit, under 75 KB;
+//     cap of a save, 3.5% of the world's own WORLD_NODE_CAP) and, with every field at its limit, under 75 KB;
 //   - replay-safe: a row is keyed by kind, year, subject and other party (k, y, c, a). Recording the same fact again adds nothing, so
 //     a yearly step that runs twice, or a Time Machine jump that replays a year, stores one set;
 //   - ordered: by year, then by the order the rows came in. A fact for an older year goes where its year belongs;
