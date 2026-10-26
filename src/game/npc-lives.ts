@@ -165,21 +165,51 @@ export function startNpcCompany(g: GameState, p: Person, industry?: Industry): b
   saveNpcLife(p, l)
   return true
 }
+/** What the caller may ask of adoptNpcCompany. Both fields are new and the default is v5.2.0: 21 or over, a mortgage left where it is (R4-L8). */
+export interface AdoptOptions {
+  /** The youngest age that may own the firm (21 without it). A value that is not a finite number is the default. */
+  minAge?: number
+  /** The firm's mortgage joins its own debt and the record leaves the asset (a relabelled liability, no flow). Refused when the mortgage is not under the asset's value. */
+  carryMortgage?: boolean
+}
 /**
  * A family firm passes to a living adult relative (the designated sibling of a player who died) and
  * runs on as their company, instead of being turned into cash. Refuses when the person is dead,
- * under 21 or already holds any company record. Draws nothing from g.rng.
+ * under `opts.minAge` (21) or already holds any company record. Draws nothing from g.rng.
+ *
+ * With `carryMortgage` (a stamped life, R4-L8) the asset's mortgage becomes the firm's own debt: the balance joins `b.debt`, the firm
+ * pays the higher of its rate and the mortgage's (never above 60%), the record is deleted from the asset, and the firm is revalued net
+ * of it. It books no flow: the same liability changes its label. A mortgage that is not under the asset's value stays cash (false, and
+ * nothing is touched); a record with no usable balance is dropped as junk.
  */
-export function adoptNpcCompany(g: GameState, p: Person, a: Asset, b: BizState): boolean {
-  if (!p.alive || p.age < 21 || npcCompany(p, g.year) || (p.data.npcCompany ?? null) !== null) return false
+export function adoptNpcCompany(g: GameState, p: Person, a: Asset, b: BizState, opts?: AdoptOptions): boolean {
+  const minAge = typeof opts?.minAge === 'number' && Number.isFinite(opts.minAge) ? opts.minAge : 21
+  if (!p.alive || p.age < minAge || npcCompany(p, g.year) || (p.data.npcCompany ?? null) !== null) return false
+  const carry = opts?.carryMortgage === true && a.mortgage !== undefined
+  const balance = carry ? mortgageOwed(a) : 0
+  if (carry && balance > 0 && !(balance < a.value && Number.isFinite(b.debt + balance))) return false
   const l = initializeNpc(g, p)
   b.npcOwnerId = p.id; b.ceo = 'manager'
   b.manager = { firstName: p.firstName, lastName: p.lastName, gender: p.gender, skill: l.skill, salary: 0, since: g.year }
   a.details = b as unknown as Record<string, Json>
+  if (carry) {
+    if (balance > 0) {
+      const rate = a.mortgage ? Number(a.mortgage.rate) : Number.NaN
+      b.debt = b.debt + balance
+      b.debtRate = clampN(Number.isFinite(rate) ? Math.max(b.debtRate, rate) : b.debtRate, 0, 0.6)
+      b.valuation = valuationOf(b)
+    }
+    delete a.mortgage
+  }
   refreshValue(a, b); storeCompany(p, a)
   p.occupation = 'Business Owner'; l.employer = a.name
   saveNpcLife(p, l)
   return true
+}
+/** The mortgage balance on an asset as a usable sum: 0 for a record that has none (not a number, not finite, not above 0). */
+function mortgageOwed(a: Asset): number {
+  const balance = Number(a.mortgage?.balance)
+  return Number.isFinite(balance) && balance > 0 ? balance : 0
 }
 function claim(g: GameState, id: string): Asset | undefined { return g.assets.find(a => a.kind === 'investment' && a.details.npcCompanyId === id) }
 /** One affordable, forecast-positive expansion at a time; the same site planner as player CEOs. */

@@ -65,7 +65,7 @@ import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, 
 import { flagOn } from './flags'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
 import './world/edge-mirror'
-import { stampSocial } from './world/social'
+import { socialOn, stampSocial } from './world/social'
 import { syncWorld } from './world/sync'
 import type {
   AncestorSummary,
@@ -1226,9 +1226,15 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     if (unit.assets.some(a => groupIds.has(a.id)) || !unit.recipient || unit.recipient.id === childId) continue
     // A plain firm (one asset, no mortgage, no family co-owners) stays a company: the designated
     // sibling runs it as an NPC owner. Anything else falls through to the cash conversion below.
+    // On a stamped life (R4-L8, X35) a mortgage under the firm's value goes with it, as the firm's own debt, and a sibling of 18
+    // to 20 may own it; an unstamped life keeps the rule above to the letter.
     const firm = !unit.group && unit.assets.length === 1 ? unit.assets[0] : null
-    const firmState = firm && firm.kind === 'business' && !(firm.mortgage?.balance ?? 0) ? readBiz(n, firm) : null
-    if (firm && firmState && !firmState.familyShares?.length && adoptNpcCompany(n, unit.recipient, firm, firmState)) {
+    const stamped = socialOn(n)
+    const owed = firm?.mortgage?.balance ?? 0
+    const passes = !owed || (stamped && owed > 0 && owed < (firm?.value ?? 0))
+    const firmState = firm && firm.kind === 'business' && passes ? readBiz(n, firm) : null
+    const terms = stamped ? { minAge: 18, carryMortgage: true } : undefined
+    if (firm && firmState && !firmState.familyShares?.length && adoptNpcCompany(n, unit.recipient, firm, firmState, terms)) {
       delete unit.recipient.data.nepo
       continue
     }
