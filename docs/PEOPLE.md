@@ -153,8 +153,9 @@ with its own goldens.
 
 `g.world.met` is where a person the game has met, or is bound to, lives when the person is not (or no longer) in `g.people`. A plain
 object keyed by sid, with no `v` and no `y` (the version of the slice travels in `sv`). It is absent until a writer runs: nothing in
-R4's kernel calls `writeMet`, so an old save and a life that never meets anyone have no `met` key. The first writers are Life's
-(R4-L4, R4-L9) and the registry's own behaviour (R4-S7), and they run only on a life stamped by the `social` flag (X6).
+a played life calls `writeMet` in R4 except through the yearly sweep, which does nothing for a life with no shard, so an old save and
+a life that never meets anyone have no `met` key. The writers are the registry's own behaviour (`world/met-ops.ts`, R4-S7, below) and
+its first callers are Life's (R4-L4, R4-L9); they run only on a life stamped by the `social` flag (X6).
 
 ```ts
 export interface MetRecord { f: string; l: string; g: 0 | 1; b: number; c: string; k: number; a: AxisTuple; y: number; s: number; w: number; fl: number; gr: number; ob: number; d?: number; r?: string; j?: string }
@@ -206,10 +207,54 @@ What the code gives (R4-S4; behaviour is S6 and S7):
   stepchild or grandchild (`heirUnsafe`). `worldProblems` prints each as a "met: ..." line.
 - `worldBudget` counts records and tombstones against `MET_CAPS`. `met` is in the keep-last class of the over-cap order.
 
+### Touch, mark, evict, tombstone, sweep (`src/game/world/met-ops.ts`, R4-S7)
+
+How a person becomes Met, what keeps a record, how it is let go. All of it is action or yearly-step code: it draws nothing, reads
+no clock and takes no id, and every write hands the next shard to `writeMet`, which replaces the root.
+
+| Call | What it does |
+|---|---|
+| `touchMet(g, key, patch?, home?, identity?)` | Makes the record of a sid, or stamps `s` and lays `patch` over the one it has. A new record comes from `identity` when one is given (the face the legacy code already drew, from `fromSeeded`; stored exactly, `k = 0`, its `sid` must be `key`), else from `latent` and `resolveName`; `home` is the country of an entity-placed slot. A tombstone wakes with its stored names, gender, birth year and stake; the axes and country come back from `latent`. A key that is no sid of the strict grammar returns false and writes nothing (a legacy person id has a tombstone only) |
+| `markMet(g, key, stake)` | SET semantics on `fl`, `gr`, `ob` of a record or a tombstone: a bit can be cleared when a link ends. It does not stamp the record |
+| `evictMet(g, key, why)` | `why` is `idle`, `cap` or `gone` (the reason is the caller's; the rules are the same). Returns `dropped`, `tomb`, `kept` or `absent` |
+| `tombstoneMet(g, key, stake?)` | Makes the tombstone of a key whatever holds it, setting the stake given. A legacy id `p<digits>` is allowed, so a debt outlives its Person; for a key with no entry the names are read from the Person still in `g.people`, so call it before the Person is removed. False for a full list of held tombstones: the cap never drops an obligation |
+| `sweepMet(g)` | The yearly clean-up, called by `lodSweep` inside the `lod.y` stamp. A life with no shard writes nothing and returns 0 |
+| `isProtected(g, key)`, `salienceOf(g, key)` | Pure reads |
+| `registerProtector(id, fn)`, `registerSalience(id, fn)` | The two hooks E14 fills at module load (X13) |
+
+Stake bits (`STAKE`, `MetRecord.fl`): 1 debt, 2 spouse, 4 heir, 8 company, 16 feud, 32 will. Who writes what (X14): Life writes only
+bits 2 and 4 with `markMet` (L4); Edges write none and protect through `registerProtector`; by that rule `gr` and `ob` are written only
+through `tombstoneMet` and by synthetic tests (`markMet` can set them, and the callers leave them alone: the Edges own obligation and
+grudge on `Edge.o`, `Edge.s`, `Edge.dv`).
+
+What holds a key (`isProtected`): a stake on the entry itself (a flag, an obligation of either sign, a grudge of 20 or more), a Person
+of `g.people` with that `personKey`, a holder in the holdings table, or a registered protector. A protector returns `personKey` values
+(a legacy person is protected by its id), runs in id order, and one that throws, or fails half way through its keys, protects nothing.
+A registered salience returns the edge part only, `f + s + abs(o)` of the edge person>player; Met adds the role weight `w x 10`
+(`MET_RULES.roleRank`), so a weight is never counted twice. A salience that throws or answers no finite number ranks 0 and one is cut to
+0..1,000,000. The same id with another function throws, for both.
+
+Letting go:
+
+- A record held by a Person, a holder or a protector is `kept` as it is, never a tombstone. A record held only by its own stake becomes a
+  tombstone `[last seen, gr, ob, fl, first, last, gb]` that keeps the obligation. A plain record is dropped. The account `person:<key>` is
+  folded into `pool:hh:<the person's own country>` (not the player's): a relabel, the sum of the books never changes and no flow is booked.
+- The cap on records: the newcomer is ranked with the 400 held by `[protected, salience, recency, key]` (higher salience, newer, smaller key
+  rank higher; a protected entry ranks above all others). The lowest ranked unprotected one goes. If that is the newcomer, `touchMet`
+  returns false and nothing changes; if every record is held it returns false too. The rank never reads a name, so the 400 that stay depend
+  only on the set of names touched, in any order. (The names of two colliding people can depend on the order: of a colliding pair the first
+  promoted keeps the pure name, S6.)
+- A tombstone is let go only when nothing holds it (no flag, obligation 0, grudge under 20, no Person, no holder, no protector) and it is
+  20 years old (`MET_RULES.tombYears`, counted from the year it carries). The cap on tombstones makes room by dropping such a one, the
+  oldest first; if there is none, a record that would need the room stays a record.
+- `sweepMet`: first the tombstones that may go, then every record not seen for more than 5 full years (`s < year - 5`, the rule of
+  `lodSweep`) is let go as `evictMet` does. It is a fixed point of the year, and it returns how many records left the list (dropped or
+  turned into tombstones), which `lodSweep` adds to `lod.demoted`.
+
 ## 6. What the next tasks add here
 
 - R4-S4: done, see section 5.
-- R4-S7: `touchMet`, `markMet`, `evictMet`, `tombstoneMet`, `sweepMet`, the protector and salience contract.
+- R4-S7: done, see section 5 (touch, mark, evict, tombstone, sweep, the protector and salience contract).
 - R4-E6a: the edge model (`Edge`, `EdgeKey`, `MEMORY_KINDS`).
 - R4-S11: completes this note (the acceptance figures, the scans, the closing caps).
 
