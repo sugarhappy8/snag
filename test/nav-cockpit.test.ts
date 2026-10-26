@@ -13,7 +13,7 @@ import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { moneyLabel } from '../src/game/charts/money'
 import { readChartSpec } from '../src/game/charts/spec'
 import { netWorth, shortMoney } from '../src/game/core'
-import { resetFlags, setFlags } from '../src/game/flags'
+import { resetFlags, setFlags, withFlags } from '../src/game/flags'
 import { cockpitOf, type CockpitModel, type CockpitTab } from '../src/game/hubs/cockpit'
 import { hubIds } from '../src/game/hubs/company'
 import { peopleMenu, personGroupId } from '../src/game/hubs/people'
@@ -367,21 +367,24 @@ describe('5. cockpitOf occupation', () => {
 })
 
 describe('6. cockpitOf relationships and activities', () => {
+  // Relationships has tiles behind `peopleProfile` (R4-U8, test/people-cockpit.test.ts), so the "no tiles" pin names the flag off.
   it('has no tiles and a one-line summary', () => {
-    for (const tab of ['relationships', 'activities'] as const) {
-      for (const name of ['kid', 'adult', 'ceo', 'elder'] as const) {
-        const model = cockpitOf(tab, frozen(name))
-        expect(model.tab).toBe(tab)
-        expect(model.tiles, `${tab} ${name}`).toEqual([])
-        expect(model.summary, `${tab} ${name}`).not.toBe('')
-        expect(model.summary).not.toContain('\n')
-        expect(model.summary.length).toBeLessThanOrEqual(120)
-        expect(model.chart).toBeNull()
-        expect(model.cards).toEqual([])
-        expect(model.moreCards).toBe(0)
-        expectClean(model)
+    withFlags({ peopleProfile: false }, () => {
+      for (const tab of ['relationships', 'activities'] as const) {
+        for (const name of ['kid', 'adult', 'ceo', 'elder'] as const) {
+          const model = cockpitOf(tab, frozen(name))
+          expect(model.tab).toBe(tab)
+          expect(model.tiles, `${tab} ${name}`).toEqual([])
+          expect(model.summary, `${tab} ${name}`).not.toBe('')
+          expect(model.summary).not.toContain('\n')
+          expect(model.summary.length).toBeLessThanOrEqual(120)
+          expect(model.chart).toBeNull()
+          expect(model.cards).toEqual([])
+          expect(model.moreCards).toBe(0)
+          expectClean(model)
+        }
       }
-    }
+    })
   })
 
   it('counts the people who are still in your life', () => {

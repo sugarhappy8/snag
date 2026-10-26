@@ -1,17 +1,20 @@
 // The cockpit of a tab (G.5): a few tiles, one chart and, on Assets, one card for each company, drawn above the list of the
 // tab. Occupation gets the facts of the job or the school, Assets gets the wealth cockpit (net worth, cash, debt, the
-// net-worth line and the company cards), and Relationships and Activities are thin: no tiles, one line, and the screen's own
-// "Needs you" card and Pinned/Recent strip carry them until the full People and World cockpits arrive (G.10, R4 to R8 plug
-// into cockpitOf).
+// net-worth line and the company cards). Relationships gets up to four tiles behind the build flag peopleProfile (R4-U8: Closest,
+// Drifting, Owed to you, Estranged, all things the player already sees on the list), and Activities stays thin: no tiles, one
+// line, and the screen's own "Needs you" card and Pinned/Recent strip carry it until the full World cockpit arrives (G.10, R5 to
+// R8 plug into cockpitOf). With the flag off Relationships is thin too, line for line as v5.2.0 had it.
 //
 // Pure, like every hub: no draw, no write to the game, and no foresight (the settled years and the live books only). Every
 // number here is one a screen already prints; a number that is not finite is 0, never NaN. Money text goes through
 // moneyLabel, so it reads in the currency of the life it is built for.
-import { netWorth, roleLabel } from '../core'
+import { netWorth, relationLabel, roleLabel } from '../core'
 import { businessAssets } from '../business/state'
-import { fit, moneyLabel } from '../charts/money'
+import { fit, moneyLabel, whole } from '../charts/money'
 import type { ChartSpec, ChartTone } from '../charts/spec'
-import type { GameState, Job } from '../types'
+import { flagOn } from '../flags'
+import type { GameState, Job, Person } from '../types'
+import { cutContact, isDrifting, owedBy, personGroupId } from './people'
 import { lifeRowsOf, netWorthChart } from './series-adapter'
 import { companyCards, finiteOrNull, plainText, type CompanyCard } from './wealth'
 
@@ -211,12 +214,81 @@ function occupationModel(g: GameState): CockpitModel {
 }
 
 // ---------------------------------------------------------------------------
-// The thin tabs
+// The thin tabs (Relationships has tiles behind peopleProfile)
+
+/** A first name and a last, cut to fit a tile note. */
+function nameText(p: Person, max: number): string {
+  const full = typeof p.firstName === 'string' && typeof p.lastName === 'string' ? `${p.firstName} ${p.lastName}` : p.firstName
+  return plainText(full, 'Someone', max)
+}
+
+const peopleText = (n: number): string => `${n} ${n === 1 ? 'person' : 'people'}`
+
+interface Ranked {
+  /** The relationship, 0 to 100, as the list ranks it (a value that is not a number is 0). */
+  rank: number
+  p: Person
+}
+
+/** `a` ranks ahead of `b` when its relationship is higher, the lower id breaking a tie (so the order of the list never matters). */
+function closer(a: Ranked, b: Ranked): boolean {
+  return a.rank > b.rank || (a.rank === b.rank && a.p.id < b.p.id)
+}
+
+/** `a` ranks ahead of `b` when its relationship is lower, the lower id breaking a tie. */
+function lower(a: Ranked, b: Ranked): boolean {
+  return a.rank < b.rank || (a.rank === b.rank && a.p.id < b.p.id)
+}
+
+/**
+ * The People tiles (R4-U8): one pass over the living, no pet, whose id is a word. Closest is the highest relationship (the bar of the
+ * list), Drifting counts the people the Drifting rule of the badge flags (people.ts isDrifting, whatever else the badge says) and opens the lowest, Owed to you adds what the living still owe the
+ * player (the money ties the person sheet shows), Estranged counts the people who cut contact. A tile with nothing to say is absent,
+ * so at most four. Nothing here is an estimate or a hidden stat: no happiness, health, smarts, looks, cash, trait or data stat of a
+ * person, and no roll. The sum has a ceiling (SPEC_LIMITS.magnitude through `whole`), and every text fits TEXT_MAX.
+ */
+function peopleTiles(g: GameState, people: readonly Person[]): CockpitTile[] {
+  let closest: Ranked | null = null
+  let drifting: Ranked | null = null
+  let drifts = 0
+  let owed = 0
+  let owing = 0
+  let cut = 0
+  for (const p of people) {
+    if (!p || p.alive !== true || p.relation === 'pet' || typeof p.id !== 'string' || p.id === '') continue
+    const row: Ranked = { rank: Math.max(0, Math.min(100, finiteOrNull(p.relationship) ?? 0)), p }
+    if (closest === null || closer(row, closest)) closest = row
+    if (isDrifting(p)) {
+      drifts += 1
+      if (drifting === null || lower(row, drifting)) drifting = row
+    }
+    const lent = owedBy(g, p)
+    if (lent > 0) {
+      owing += 1
+      owed = whole(owed + lent)
+    }
+    if (cutContact(g, p)) cut += 1
+  }
+  const tiles: CockpitTile[] = []
+  if (closest !== null) {
+    const { p } = closest
+    const rel = percent(closest.rank)
+    const note = plainText(relationLabel(p), '', TEXT_MAX)
+    tiles.push(tile('closest', 'Closest', nameText(p, TEXT_MAX), scoreTone(rel), { ...(note === '' ? {} : { note }), meter: rel, open: [personGroupId(p.id)] }))
+  }
+  if (drifting !== null) {
+    tiles.push(tile('drifting', 'Drifting', peopleText(drifts), 'bad', { note: `Lowest: ${nameText(drifting.p, 28)}`, open: [personGroupId(drifting.p.id)] }))
+  }
+  if (owed > 0) tiles.push(tile('owed', 'Owed to you', moneyLabel(g, owed), 'c3', { note: peopleText(owing) }))
+  if (cut > 0) tiles.push(tile('estranged', 'Estranged', peopleText(cut), 'bad', { note: 'Cut contact' }))
+  return tiles
+}
 
 function relationshipsModel(g: GameState): CockpitModel {
-  const people = Array.isArray(g.people) ? g.people.filter((p) => p && p.alive === true && p.relation !== 'pet').length : 0
+  const list: readonly Person[] = Array.isArray(g.people) ? g.people : []
+  const people = list.filter((p) => p && p.alive === true && p.relation !== 'pet').length
   const summary = people === 0 ? "You're on your own." : `${people} ${people === 1 ? 'person' : 'people'} in your life.`
-  return { tab: 'relationships', summary, tiles: [], chart: null, cards: [], moreCards: 0 }
+  return { tab: 'relationships', summary, tiles: flagOn('peopleProfile') ? peopleTiles(g, list) : [], chart: null, cards: [], moreCards: 0 }
 }
 
 function activitiesModel(g: GameState): CockpitModel {
