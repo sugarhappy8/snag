@@ -51,7 +51,7 @@ const RECORD_COMMAND = 'RECORD_LATENT_GOLDEN=1 /Users/saeed/projects/anotherlife
  * 3.3, X57). While it is true a missing file leaves the reading tests pending and says so; the recording commit sets it to false,
  * and from then on a missing file is a failure that names the command. One line, one commit: nothing else about the test changes.
  */
-const AWAITING_LEAD_READ = true
+const AWAITING_LEAD_READ = false
 
 const GOLDEN_FAMILIES = ['gold-family-a', 'gold-family-b', 'gold-family-c'] as const
 const GOLDEN_COHORTS = [1850, 1990, 2400] as const
