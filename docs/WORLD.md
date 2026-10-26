@@ -309,6 +309,17 @@ are described in `docs/PEOPLE.md`; this section is the shard.
 - Load order: the shard registers itself when `world/met.ts` loads, and `world/shards.ts` imports it, like `facts` and `frontier`.
 - Proven by `test/world-met.test.ts`: twelve hostile shards, the ranges, the cut, the order, the writer on a deep-frozen root, pure
   reads, every fault of `metProblems`, and the shard at its caps inside the budget P2 set.
+- The acceptance, `test/registry-acceptance.test.ts` (R4-S11): a 120-year probe of one life through two hand-overs, with a scripted
+  caller that touches three slots a year, puts and clears stakes, leaves tombstones, makes a person every ten years, nudges the persona
+  and floods the store with 450 people twice. After every year the world has no problem, the books hold, the shard is inside its caps and
+  at most 10,401 nodes, every number is finite, no Person with a sid is a child, and every stake and debt the caller left is still there.
+  A rerun, a clone and a JSON reload of year 60, an heir and a Time Machine fork give the same Met keys and names (a fork differs only
+  in people met after its snapshot); a person owed in 2031 and let go comes back in 2040 with the same name; every fixture from before
+  v5.3.0 has no `met` key and no `persona.me` key, even after three played years, and a fixture of v5.3.0 or later loads and saves
+  again byte for byte; twelve hostile shards are played through the whole game, an heir included. The ceiling `met-caps` (40,000 touches,
+  20,000 tombstones asked for 200 places, a hostile shard of 40,000 entries) and its sister `persona-nudge` are in
+  `test/ceiling-list.json`, and `test/registry-money-scan.test.ts` holds the static rules: no dollar, no `g.rng`, no unlisted stream tag
+  in the registry files, and `Person.data.sid` written by two files only.
 
 ## The edge store and the social stamp
 
