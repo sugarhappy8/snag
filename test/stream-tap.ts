@@ -177,4 +177,9 @@ export const STREAM_SLICES: Readonly<Record<string, StreamRow>> = {
     why: 'R3-M7 simulateStudioEngines draws a pushing year\'s setback from outcomeStream(g, "effort.risk", year, "studio:<engine>"); it cuts the gain of an engine in development (assets), which moves the studio\'s costs and cash, so the owner\'s pay and net worth (character), the company\'s investment (economy) and the report line (text), and no played life pushes an engine yet',
     driven: true,
   },
+  'life.path': {
+    slices: ['world', 'people', 'flagsPersonal', 'text'],
+    why: 'R4-L2 ageTo (world/life-path.ts) draws a kin record\'s death and illness from outcomeStream(g, "life.path", year, sid); once L4 steps with it, a kin death widows an anchor (people), writes the death year d into the Met shard (world), moves the family-year stamps in the personal flags and says a line (text); no played life holds a kin record yet, so the test drives the call',
+    driven: true,
+  },
 }
