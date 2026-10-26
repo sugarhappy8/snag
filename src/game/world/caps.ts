@@ -58,3 +58,16 @@ export const DEMOTE_AFTER_YEARS = 5
  * field 4 markets, and there are room for 32 fields (20 today). An older row folds into the field's `fold`, so no lead is lost.
  */
 export const FRONTIER_CAPS = { leadYears: 12, yearYears: 2, spillPoints: 18, spillPerDisclosure: 6, rowsPerMarket: 6, marketsPerField: 4, fields: 32 } as const
+
+/**
+ * The edge model's ceilings (R4-E6a, world/edges.ts). The edges map keeps at most 1,200 edges and 40 secrets; an edge keeps 8 memories
+ * and the whole map 4,000; at most 120 edges hold the dialogue store (`n`, `d`), 12 hold a feud rung (`q`) and 40 a debt (`dv`); a
+ * secret has 6 holders. Over a cap the normalizer cuts by salience (the most salient kept, an edge that is bound last to go), so a
+ * save can never hold more, however it got there.
+ *
+ * The worst case in nodes, every cap reached at once and a link kind and a call-in stamp on every edge: 1 + 9,600 (an edge and its seven
+ * numbers) + 2,400 (`k`, `c`) + 1,200 (memory arrays) + 4,000 (memories) + 1,920 (`n`, `d`) + 288 (`q`, `dv`) = 19,409 nodes, plus 520
+ * for 40 full secrets. The allotment of about 17,000 in the comment above leaves `k` and `c` out; test/world-edges.test.ts counts the
+ * map and pins both figures. The slice of E6b (`world.edges`, 24,000 nodes) and the world cap hold the larger one.
+ */
+export const EDGE_CAPS = { edges: 1200, memPerEdge: 8, memTotal: 4000, talkEdges: 120, feuds: 12, debts: 40, secrets: 40, holders: 6 } as const
