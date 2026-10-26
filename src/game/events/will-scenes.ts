@@ -12,6 +12,7 @@ import { notePerson } from '../people'
 import { pick } from '../rng'
 import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, Json, Person } from '../types'
+import { remember } from '../world/edge-write'
 import { common, landline, phoneWord } from './era'
 import { addEntitlement, entitlement, goodsScale, noteCashGift, updateTies, readTies } from './wealth-core'
 import { askedPurse, wholePurse } from './purses'
@@ -94,6 +95,7 @@ defineScript(S_TELL, (g, choice, data) => {
   if (!p || !readWl(g, p).cut) return
   if (choice === 'kind' || choice === 'blunt') {
     const line = learn(g, p, choice)
+    remember(g, p, choice === 'kind' ? 'told_gently' : 'told_bluntly', { w: 2, by: 'ego' })
     log(g, choice === 'kind' ? `I sat down with ${myWho(p)} and explained my will.` : `I told ${myWho(p)} they were out of my will.`, 'neutral')
     say(g, `${line} ${nowAngry(g, p)}`, readWl(g, p).anger >= 50 ? 'bad' : undefined)
     return

@@ -13,6 +13,7 @@ import { addRelationship, clamp, log, pronouns, setRelationship } from '../core'
 import { notePerson } from '../people'
 import { chance } from '../rng'
 import type { GameState, Person } from '../types'
+import { remember } from '../world/edge-write'
 import { landline } from './era'
 import { isAbroad, updateTies } from './wealth-core'
 import {
@@ -122,6 +123,7 @@ export function learn(g: GameState, p: Person, how: Learn, by?: Person): string 
     w.anger = Math.max(w.anger, a)
   })
   if (dent > 0) addRelationship(g, p, -dent)
+  remember(g, p, 'cut_from_will', { w: a >= 55 ? 3 : a >= 30 ? 2 : 1, by: 'ego' })
   notePerson(p, 'Found out they were cut out of the player’s will.')
   const react = reactionClause(p, a)
   const who = nm(p)
@@ -206,6 +208,7 @@ function restore(g: GameState, p: Person): string | null {
   })
   if (gain > 0) addRelationship(g, p, gain)
   if (!w.known) return null
+  remember(g, p, 'restored_to_will', { w: pct >= 100 ? 2 : 1, by: 'ego' })
   notePerson(p, 'Was put back in the player’s will.')
   const left = readWl(g, p).anger
   return `${nm(p)} learned ${pronouns(p.gender).he}'s back in your will. ${left >= 35 ? `${pronouns(p.gender).He} is still ${angerLabel(left).toLowerCase()}, but it helps.` : `${pronouns(p.gender).He} is ${angerLabel(left).toLowerCase()} now.`}`
@@ -326,6 +329,7 @@ export function estrange(g: GameState, p: Person): string {
     gc.livesWithPlayer = false
     setRelationship(g, gc, Math.max(0, gc.relationship - 15))
   }
+  remember(g, p, 'estranged', { w: 3, by: 'them' })
   notePerson(p, 'Cut off contact with the player over the will.')
   log(g, `${cap(myWho(p))} cut off all contact with me.`, 'bad')
   return `${p.firstName} has stopped answering your ${contactWord(g)}, and ${x.he} isn't coming to visit. ${p.firstName} says ${x.he} needs space, and it doesn't sound temporary. The grandchildren won't be at your door either.`
@@ -344,6 +348,7 @@ export function reconcile(g: GameState, p: Person): void {
   updateTies(g, p, (t) => {
     t.bound = Math.min(t.bound, g.year)
   })
+  remember(g, p, 'reconciled', { w: 2, by: 'ego' })
   notePerson(p, 'Started talking to the player again after the will.')
   log(g, `${cap(myWho(p))} and I started talking again.`, 'good')
 }

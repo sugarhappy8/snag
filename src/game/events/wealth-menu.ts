@@ -276,7 +276,7 @@ function repayAction(p: Person): MenuAction {
       const t = readTies(g, q)
       if (t.owes <= 0) return
       const x = pr(q)
-      if (q.money <= 0 || !chance(g, Math.min(0.9, repayOdds(q, t.owes) + 0.15))) {
+      if (q.money <= 0 || !chance(g, Math.min(0.9, repayOdds(q, t.owes, g) + 0.15))) {
         addRelationship(g, q, -randInt(g, 3, 8))
         notice(g, 'Paying It Back', q.money <= 0 ? `${q.firstName} turned ${x.his} pockets inside out. ${cap(x.he)} really doesn't have it.` : `${q.firstName} said ${x.he}'ll "definitely" pay you back "soon." ${cap(x.he)} changed the subject to the weather. Twice.`, { emoji: '\u{1F9FE}' })
         return

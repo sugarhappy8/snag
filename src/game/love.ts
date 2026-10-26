@@ -44,6 +44,7 @@ import { common, eraPick, eraPickPlain, landline, texting } from './events/era'
 import { stableRng } from './activities/common'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 import { businessGone } from './assetHooks'
+import { remember as rememberEdge } from './world/edge-write'
 
 // ---------------------------------------------------------------------------
 // Small shared helpers (also used by relationships.ts)
@@ -910,6 +911,7 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
     addHidden(g, 'karma', -3)
     if (chance(g, cheatDetectionOdds(g))) {
       addRelationship(g, partner, -randInt(g, 25, 45))
+      rememberEdge(g, partner, 'betrayal', { w: 3, by: 'ego' })
       if (partner.relationship < 30 && chance(g, 0.6)) {
         breakUp(g, partner, 'them', `found out you hooked up with ${name}`)
       } else {
@@ -991,6 +993,7 @@ export function breakUp(g: GameState, p: Person, by: 'player' | 'them', reason?:
     notice(g, wasEngaged ? 'Engagement Called Off' : 'Dumped', `${p.firstName} broke up with you${reason ? ` because ${pronouns(p.gender).he} ${reason}` : ''}.\n\n${fillPronouns(eraPick(g, BREAKUP_THEM), p.gender)}`, { emoji: '\u{1F494}', tone: 'bad' })
   }
   remember(g, `Broke up with ${fullName(p)}.`)
+  rememberEdge(g, p, 'broke_up', { w: wasEngaged ? 3 : 2, by: by === 'player' ? 'ego' : 'them' })
   breakupFallout(g, p, by)
 }
 
@@ -1110,6 +1113,7 @@ defineScript('love.propose.ring', (g, choice, data) => {
     addStat(g, 'happiness', randInt(g, 10, 16))
     log(g, `I proposed to ${fullName(p)} ${ringText}. ${He} said yes!`, 'good')
     remember(g, `Got engaged to ${fullName(p)}.`)
+    rememberEdge(g, p, 'proposed_yes', { w: 2, by: 'ego' })
     notePerson(p, `Got engaged to the player at age ${c.age}.`)
     notice(
       g,
@@ -1121,6 +1125,7 @@ defineScript('love.propose.ring', (g, choice, data) => {
     addRelationship(g, p, -randInt(g, 8, 18))
     addStat(g, 'happiness', -randInt(g, 8, 14))
     log(g, `I proposed to ${fullName(p)}, but ${he} said no.`, 'bad')
+    rememberEdge(g, p, 'proposed_no', { w: 1, by: 'ego' })
     const refund = ring.price > 0 ? Math.round(ring.price * 0.5) : 0
     if (refund) addMoney(g, refund, 'asset.buy')
     let text = `You proposed to ${p.firstName} ${ringText}.${caughtFake ? `\n\n${He} immediately noticed the ring was fake.` : ''}\n\n${pickSite(g, [`${He} said no.`, `${He} said ${he} isn't ready.`, `${He} laughed, then realized you were serious, then said no.`, `${He} said "Can we talk about this later?" which means no.`], 0x33215d6e)}`
@@ -1160,10 +1165,12 @@ defineScript('love.proposed', (g, choice, data) => {
     addStat(g, 'happiness', randInt(g, 10, 16))
     log(g, `${fullName(p)} proposed to me and I said yes!`, 'good')
     remember(g, `Got engaged to ${fullName(p)}.`)
+    rememberEdge(g, p, 'proposed_yes', { w: 2, by: 'them' })
     notice(g, 'Engaged!', `You said yes! You and ${p.firstName} are engaged. You now own ${article2(dStr(data, 'ring', 'ring'))} worth more than your car.`, { emoji: '\u{1F48D}', tone: 'good' })
   } else {
     addRelationship(g, p, -randInt(g, 15, 30))
     log(g, `${fullName(p)} proposed to me and I said no.`, 'bad')
+    rememberEdge(g, p, 'proposed_no', { w: 2, by: 'them' })
     if (p.relationship < 35 && chance(g, 0.5)) breakUp(g, p, 'them', 'was crushed that you turned down the proposal')
     else notice(g, 'Proposal Declined', `You turned ${p.firstName} down. The walk back to the car was very, very quiet.`, { emoji: '\u{1F494}' })
   }
@@ -1702,6 +1709,7 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
 
   log(g, by === 'player' ? `I divorced ${fullName(p)}.` : `${fullName(p)} divorced me.`, 'bad')
   remember(g, `Divorced ${fullName(p)}.`)
+  rememberEdge(g, p, 'divorced', { w: 3, by: by === 'player' ? 'ego' : 'them' })
   notePerson(p, `Divorced the player at age ${c.age}.`)
   notice(g, 'Divorce', lines.join('\n\n'), { emoji: '\u{1F4C4}', tone: 'bad' })
   const birth = g.flags.birthSurname

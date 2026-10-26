@@ -7,6 +7,7 @@ import { flagOn } from '../flags'
 import { isExact } from '../knowledge/contract'
 import { chance, randInt } from '../rng'
 import type { GameState, MenuNode, Person } from '../types'
+import { remember } from '../world/edge-write'
 import { entitlement } from './wealth-core'
 import { addHeir, changeWill, reconcile } from './will-act'
 import {
@@ -236,6 +237,7 @@ function heartToHeart(g: GameState, p: Person): void {
       y.hard = Math.max(0, y.hard - 1)
     })
     addRelationship(g, p, Math.min(4, 1 + Math.round(relief / 10)))
+    remember(g, p, 'olive_branch', { w: w.estr ? 3 : 2, by: 'ego' })
     log(g, `I had an honest talk with ${p.firstName} about my will.`, 'good')
     if (w.estr) reconcile(g, p)
     const left = readWl(g, p)
@@ -264,6 +266,7 @@ function explainReasons(g: GameState, p: Person): void {
     x.explained = 'kind'
   })
   addRelationship(g, p, 2)
+  remember(g, p, 'told_gently', { w: 2, by: 'ego' })
   addStat(g, 'happiness', -1)
   log(g, `I explained my will to ${p.firstName}.`)
   const left = readWl(g, p)

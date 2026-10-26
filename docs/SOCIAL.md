@@ -2,7 +2,7 @@
 
 How people feel about each other, and what they remember, as the engine keeps it (R4, v5.3.0). This note starts with the
 **edge model** (R4-E6a): the record, the 40 memory kinds, the caps and the rules of the normalizer. R4-E6b adds the writer, the
-stamp and the slice; R4-E7 the mirror and the yearly step (sections 9 and 10); the later tasks of the Edges and acts track add the acts. Until a
+stamp and the slice; R4-E7 the mirror and the yearly step (sections 9 and 10); R4-E8 the memory writers, the odds terms and the heir copy (section 11); the later tasks of the Edges and acts track add the acts. Until a
 section below says otherwise, `docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md` section 3.1 is the authority for every
 name and signature. Plain hyphens only: no long dashes anywhere in this file.
 
@@ -258,6 +258,65 @@ It draws nothing, makes no id, books no dollar and logs nothing. A stamp from th
 left as it is, the very object. A tap of 10 writes at 1,200 edges is measured by the test and stays under a millisecond on the
 reference machine; the step itself writes only the edges that changed.
 
-## 11. What the next tasks add here
+## 11. The memory writers, the odds terms and the heir copy (R4-E8, X22, X27, X28, X33, C10)
 
-- R4-E8 to E16: memory writers and odds, the family-act budget, the acts, loans, secrets, feuds, staff.
+Three things use the edges that sections 6 to 10 keep. Each is a no-op on a life that is not stamped (X6): the writers return at
+once, the odds terms are 0, and the heir copy is not called by an unstamped hand-over.
+
+**The writers.** Twenty-four of the 40 kinds are made by the game, one `remember` line at each site. `by` is the side of the edge:
+`ego` is the second end (the player on every `person > player` edge), `them` the first end. Weights are 1 to 3.
+
+| Site | Kind | Weight | By |
+|---|---|---|---|
+| `events/wealth-resolve.ts` `lend` | `loan_given` | 2 | ego |
+| `events/wealth-resolve.ts` `refuse` | `gift_refused` | 1, 2 for a boundary | ego |
+| `events/wealth-resolve.ts` `refuse` | `asked_too_often` | 2, on a boundary or the third ask in four years | them |
+| `events/wealth.ts` `payAllowances`, a missed payment | `allowance_cut` | 1, 2 when it stops | ego |
+| `events/wealth.ts` `collectLoans`, a payment | `loan_repaid` | 1, 2 for the last | them |
+| `events/wealth.ts` `collectLoans`, avoiding you | `loan_unpaid` | 1, 2 from the third year | them |
+| `events/will-act.ts` `learn` | `cut_from_will` | 3 from anger 55, 2 from 30, else 1 | ego |
+| `events/will-act.ts` `restore` | `restored_to_will` | 2 for a full share, else 1 | ego |
+| `events/will-act.ts` `estrange` | `estranged` | 3 | them |
+| `events/will-act.ts` `reconcile` | `reconciled` | 2 | ego |
+| `events/will-amends.ts` `heartToHeart`, it got through | `olive_branch` | 2, 3 for an estranged child | ego |
+| `events/will-amends.ts` `explainReasons`, `events/will-scenes.ts` the telling (kind) | `told_gently` | 2 | ego |
+| `events/will-scenes.ts` the telling (blunt) | `told_bluntly` | 2 | ego |
+| `events/will-feud.ts` `takeSides` | `took_my_side` | 1 | ego |
+| `love.ts` a hook-up found out | `betrayal` | 3 | ego |
+| `love.ts` `breakUp` | `broke_up` | 2, 3 for an engagement | who ended it |
+| `love.ts` `divorce` | `divorced` | 3 | who filed |
+| `love.ts` a proposal answered | `proposed_yes`, `proposed_no` | 2 and 1 (the player proposes), 2 and 2 (they do) | who proposed |
+| `business/nepo-actions.ts` `hireRelative` | `hired_me` | 2, 1 for a summer job | ego |
+| `business/nepo-actions.ts` `promote`, `demote`, `fire` | `promoted_me`, `demoted_me`, `fired_me` | 2; 3 if spoiled, else 2; 3 for a child, else 2 | ego |
+| `business/nepo-year.ts` `siblingDrama`, the one passed over | `passed_over` | 2 | ego |
+| `relationships.ts` `rumor` | `gossiped_about_me` | 2 | ego |
+
+`took_my_side` is the one memory on an edge between two people: the angry relative remembers who took their side, so it sits on
+`angry > relative`, and the relative, the second end, is `ego`. On `relative > player` the table would read as goodwill toward the
+player. A kind is written once per edge and year (`remember` refuses a second one, and applies its effect once), so a site reached
+twice in a year keeps the first weight. The writers draw nothing and book nothing. `test/edge-writers.test.ts` holds this list as
+data and proves each line on a stamped game, on a game that is not stamped (nothing written, and the game equal to the stamped one but
+for the world) and by mutation.
+
+**The odds terms** (`world/edge-odds.ts`). `memoryOdds(g, p, group)` reads the memories of the edge `person > player` and gives a
+signed number for one group, within plus or minus 0.15 in all and plus or minus 0.05 for any one kind. The table `MEMORY_ODDS` has
+a row for each kind and an entry for each group in hundredths at weight 3; a memory of weight 1 or 2 is a third or two thirds of it.
+The group `repay` is added inside `repayOdds` (the game is an optional third argument; `collectLoans` and the Ask to Be Paid Back
+action pass it), `peace` inside `peaceOdds`, and `ask` multiplies the weight of an ask in `requestCandidates` by `1 + term`. The term is
+0 for a life that is not stamped, for a person with no edge and for an edge with no memory, so `x + 0` and `x * 1` leave every old
+number to the last digit. It is pure: no draw, no write, no world made. `test/edge-odds.test.ts` prints the table. The numbers are
+tuning, not a frozen table: a changed entry moves only stamped lives and takes a row in `moved-tests.md`.
+
+**The heir copy** (`world/edge-heir.ts`). `heirEdges(map, fromEgo, toEgo, year)` is the pure half of the hand-over: Life's `carryEdges`
+(R4-L9) calls it over the edges that end at the late player and merges the answer as returned. Every edge `X > fromEgo` comes back as
+`X > toEgo`; `t`, `f` and `r` are halved, `s` is scaled by 0.6 and `o` by 1 (`EGO_COPY`), each rounded to hundredths and never
+raised; every memory keeps one point less of weight and a memory at weight 1 goes, the pinned five too; `n`, `d`, `c` and `dv` are
+dropped (C10: the legacy record carries what the late player was owed, and a debt the late player owed was settled before the
+switch); `q` and `k` stay only for a link kind in `HEIR_KEEP_KINDS` (`kin`, X28), so a rival's feud ends at the hand-over. The last touch
+`l` is the hand-over year. A direct kin's `f` is then set by Life to the blended `Person.relationship` (X33), so it is not half of the
+old number. The answer goes back through `normalizeEdges`: a hostile map copies to a valid one and 100 times any cap comes out inside
+`EDGE_CAPS`.
+
+## 12. What the next tasks add here
+
+- R4-E9 to E16: the family-act budget, the acts, loans, secrets, feuds, staff.
