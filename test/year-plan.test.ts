@@ -117,7 +117,7 @@ describe('the limits and the group table', () => {
 
   it('maps the 36 yearly hooks, the year events and this release modules to the agreed groups', () => {
     const expected: Record<YearGroup, string[]> = {
-      people: ['household', 'relationships', 'sharedProjects', 'background', 'royalty', 'royalCareers', 'familyUse', 'nepo', 'willFeuds', 'world.edges', 'life.kin'],
+      people: ['household', 'relationships', 'sharedProjects', 'background', 'royalty', 'royalCareers', 'familyUse', 'nepo', 'willFeuds', 'world.edges', 'life.kin', 'life.estates'],
       body: ['health'],
       work: ['education', 'professions', 'career', 'special', 'advisors', 'effort.you'],
       companies: ['workshop', 'corruption', 'business', 'techWaves', 'hedge'],

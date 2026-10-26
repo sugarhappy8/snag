@@ -99,7 +99,7 @@ row that is not in the table drops that row on load.
 | | `inheritance` | family | family | what an heir receives |
 | | `support` | family | family | money sent to relatives |
 | | `divorce` | family | family | a divorce settlement |
-| | `estate` | family | family | an estate passed on |
+| | `estate` | family | family | an estate passed on; also the NPC estate: the cash a dead relative leaves when no heir is modeled (R4-L5) |
 | | `donation` | charity | charity | gifts to charity |
 | Crime | `crime.take` | crime | crime | what a crime brings in |
 | | `crime.cost` | crime | crime | what a crime costs its author |

@@ -53,6 +53,7 @@ import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
 import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
+import { settleKinEstates } from './modules/kin-estates'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
 import { benchWorldFlags } from './business/ai-bench-claims'
@@ -1191,6 +1192,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // the result independent of which child the user chooses to continue as.
   // Co-owners who died before the player pass their stakes on first (the player's part joins the
   // estate that divides now), so no share stays on a late relative's record.
+  // On a stamped life a relative's estate is settled first (R4-L5): the people it names become Persons, so the stake below can reach them.
+  settleKinEstates(n)
   settleLateFamilyOwners(n)
   // The same for family hedge funds: a relative who died first passes their units on, and yours are in the estate.
   settleFundsAtDeath(n)

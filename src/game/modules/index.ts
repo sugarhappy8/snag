@@ -14,6 +14,7 @@ import { knowledgeModule } from '../knowledge/module'
 import { edgesModule } from '../world/edge-step'
 import { factsModule } from '../world/facts'
 import { frontierModule } from '../world/frontier-step'
+import { estatesModule } from './kin-estates'
 import { kinModule } from './kin-years'
 import { MENU_MODULES } from './menus-core'
 import { YEARLY_AGING } from './yearly-aging'
@@ -21,6 +22,7 @@ import { YEARLY_AGING } from './yearly-aging'
 export const MODULES: readonly ModuleDef[] = [
   effortModule, // the player's effort: the yearly settle of posture, overtime, fading know-how and burnout (R3-E6)
   knowledgeModule, // R3-H5: the Intelligence Briefing and the yearly standing orders (ids ascend: effort.you, knowledge.core, then menus.core)
+  estatesModule, // R4-L5: the estate of a relative who died, life phase order 55 ('life.estates' sorts between 'knowledge.core' and 'life.kin')
   kinModule, // R4-L4: the yearly step of the kin records, life phase order 37 ('life.kin' sorts between 'knowledge.core' and 'menus.core')
   ...MENU_MODULES, // the rows of the Assets, Shopping and Activities menus (menus.ts imports this file for them)
   edgesModule, // R4-E7: the yearly edge step, close phase order 5 ('world.edges' sorts before 'world.facts')
