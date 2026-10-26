@@ -84,7 +84,7 @@ describe('lineWeight', () => {
 describe('the source groups', () => {
   // The shape contract with the game side (hubs/year-plan.ts, R3-Q3); R3-Q13 compares the two copies.
   const TABLE: Record<string, string[]> = {
-    people: ['household', 'relationships', 'sharedProjects', 'background', 'royalty', 'royalCareers', 'familyUse', 'nepo', 'willFeuds', 'society.acts', 'world.edges', 'life.kin'],
+    people: ['household', 'relationships', 'sharedProjects', 'background', 'royalty', 'royalCareers', 'familyUse', 'nepo', 'willFeuds', 'society.acts', 'world.edges', 'life.estates', 'life.kin'],
     body: ['health'],
     work: ['education', 'professions', 'career', 'special', 'advisors', 'effort.you'],
     companies: ['workshop', 'corruption', 'business', 'techWaves', 'hedge'],

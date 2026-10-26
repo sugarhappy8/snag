@@ -3,9 +3,9 @@
 The note for the kin links of R4 (v5.3.0). A sibling, a child or a parent of the player marries and has babies. Before R4 that was
 three fields on the relative (`married`, `spouseName`, `kids`) and a log line. R4 adds the people behind those fields as Met records
 (`docs/PEOPLE.md`, section 5), so their faces never change, and links the relative to them. This file is the saved shape of the
-links, the caps, the pure readers and the problems list (R4-L3, `src/game/world/kin.ts`), and, from section 9, the writers, the
-yearly step and the frozen table of the face (R4-L4, `src/game/kin.ts`). Later tasks add their sections: the estate (R4-L5), the
-hand-over (R4-L9) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
+links, the caps, the pure readers and the problems list (R4-L3, `src/game/world/kin.ts`), from section 9, the writers, the yearly
+step and the frozen table of the face (R4-L4, `src/game/kin.ts`), and from section 10 the estate (R4-L5, `src/game/modules/kin-estates.ts`).
+Later tasks add their sections: the hand-over (R4-L9) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
 
 ## 1. The rules
 
@@ -207,5 +207,48 @@ asked about `g.year` and never later. The facts `life.wed`, `life.birth` and `li
 - A relative's baby becomes a record only when the legacy code rolls it, and only for an anchor that is not a child or a stepchild.
 - At most 160 kin records at once. Past that `adoptSpouse` returns null and the step tries a wedding again next year; a baby is not
   retried.
-- A record is not stepped: it has an age, a spouse, children, an illness and a death by `ageTo`, and nothing else until R4-L5 makes a
-  Person of it.
+- A record is not stepped: it has an age, a spouse, children, an illness and a death by `ageTo`, and nothing else until an estate
+  (section 10) makes a Person of it.
+
+## 10. The estate (R4-L5, `src/game/modules/kin-estates.ts`)
+
+When a relative dies, the cash on their record goes to the family the game models, through the ledger, once. Before R4 it stayed on the
+record for ever: the legacy death (`relationships.ts` `handleDeath`) sells the NPC's investments, housing and firm into cash, passes the
+player's share and leaves the rest where it is. The module `life.estates` (aging seam, `life` phase, order 55, group `people`) settles
+it in the year of the death: relationships (40) is where a death happens, so 55 comes after it and before `givingFund` (60). 45 stays
+free and the society phase stays empty (`test/kernel-aging.test.ts`). It runs on a stamped life only (X6); an unstamped life, a v5.2.0
+save and every heir of one are left exactly as they are.
+
+| Step | Rule |
+|---|---|
+| Who | a dead Person with no `estateY` that is not a pet, an ex, an ex spouse or a disowned relative (their cash legacy leaves with them) |
+| Means | cash of a dollar or more and at least half the last yearly `NpcLife.income`, or a holding in the holdings table (a stake the family reads). Below that the record keeps its dust, as before, and gets no `estateY` |
+| Heirs | `kinHeirIds` (the living Persons the links name: the spouse, then the kids by birth) and then `kinPending` (the living relatives that are Met records only), each made a Person by `materializePerson` as a `friend` with `data.kin` (`kinLabel`: `niece`, `brother-in-law`; none for a friend's kin) and relationship 40 |
+| Caps | 7 heirs for a death, 12 relatives made Persons in a year (`g.yearActions['kin.persons']`), 30 kin Persons alive (a Person with a kin sid; a dead one or a nepo coworker with `data.kin` is not counted). A relative the caps leave out is not an heir |
+| Cash | the whole dollars of the record, split equally, the remainder to the first heir (the Persons who existed before the Persons made now). One booking per heir by `moveCash`, reason `inheritance`, token `estate:<id>:<year>:<heir>`. With no heir, the rest goes to the pool under `estate` |
+| Stamp | `estateY`, the year. A second call, a clone, a reload or the next year changes nothing |
+| Fact | `life.estate` (subject the dead, other party the first heir, magnitude the cash that moved), within Life's 8 a year (`g.yearActions['life.facts']`, shared with `life.kin`) |
+
+**The stake.** A dead co-owner's `familyShares` need no move here. `business/dynasty-ownership.ts` `settleLateFamilyOwners` asks
+`familyStakeHeirs`, which for a sibling, a child or a grandchild with a family of their own (`married` or `kids`) used to answer nobody
+and let the stake leave the family records; it now answers `kinHeirIds`, the Person ids this step has just made, and the stake lands on
+the spouse and the kids in equal parts. For a relative with no links the answer is `[]`, as before. `continueAsChild` calls
+`settleKinEstates` right before `settleLateFamilyOwners`, so a death the yearly step has not seen yet is settled before the late
+player's own estate reads the stakes.
+
+**Materialized kin have a life (X38).** A relative made a Person is a `friend` with a kin sid, so `yearlyNpcLife` gives them a full
+`NpcLife` every year, as it does to every relation in `IMPORTANT` and to any person with a string `data.kin`: keyed decisions (no
+`g.rng`), a wage from `pool:employers` under the `npc-wage` ceiling, expenses, and a marriage roll that can add kin records of their
+own. That is deliberate (a niece has a life). It is bounded by the 30 Persons and by the ceiling, and tested for a `g.rng` draw. The
+nepo code puts a string `data.kin` on a coworker too (in-laws and cousins it hires); the two do not meet, because a materialized
+relative is a `friend` and the count of 30 reads the kin sid, not `data.kin`.
+
+**Limits.**
+
+- The heirs are the links of the dead and nobody else: a dead parent's cash goes to the pool, not to the siblings; a dead child's
+  grandchildren are real Persons and hold the stake by the old rule, while the cash goes to the spouse record, if any.
+- An estate over the booking cap of the ledger (1e15) pays the cap and leaves the rest on the record.
+- The holdings table is as last written (the settle phase of the year before), so a stake given and left in the same year may read as
+  none; the stake then leaves the family records, as it did before R4.
+- The part of a relative the caps leave out is shared by the others, not sent to the pool; the pool takes a whole estate only when no
+  heir is left.

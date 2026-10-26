@@ -10,6 +10,7 @@ import { foundersWhole, keepFoundersWhole } from './share-classes'
 import type { SuccessionEstateUnit } from './nepo-inheritance'
 import type { FamilyShare } from './family-share-state'
 import { money, num, pct } from './util'
+import { kinHeirIds } from '../world/kin'
 
 const splitUp = (p: Person) => p.data.divorced === true || typeof p.data.exSpouseId === 'string'
 const parentLinks = (p: Person) => [p.data.parentId, p.data.childOf, p.otherParentId, ...(Array.isArray(p.data.parentIds) ? p.data.parentIds : [])].filter((x): x is string => typeof x === 'string')
@@ -41,16 +42,16 @@ export function familyStakeHeirs(g: GameState, dead: Person): string[] {
     case 'child':
     case 'stepchild': {
       const kids = living(['grandchild'], x => parentLinks(x).includes(dead.id))
-      return kids.length ? kids : ownFamily ? [] : [me]
+      return kids.length ? kids : ownFamily ? kinHeirIds(g, dead) : [me]
     }
     case 'grandchild': {
-      if (ownFamily) return []
+      if (ownFamily) return kinHeirIds(g, dead)
       const parent = living(['child', 'stepchild'], x => parentLinks(dead).includes(x.id))
       return parent.length ? parent : [me]
     }
     case 'sibling':
     case 'halfSibling': {
-      if (ownFamily) return []
+      if (ownFamily) return kinHeirIds(g, dead)
       const parents = living(['parent'])
       return parents.length ? parents : [me, ...living(['sibling', 'halfSibling'])]
     }
