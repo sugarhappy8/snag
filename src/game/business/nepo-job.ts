@@ -5,6 +5,7 @@
 // The record belongs to the Person, not to the company: when an heir takes over, a sibling who
 // worked at the family firm still does, and an heir who was an employee simply stops being one
 // (the heir's Person is not in the list any more).
+import { personKey } from '../kernel/person-ref'
 import type { Json, Person } from '../types'
 import type { StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
@@ -13,11 +14,13 @@ import { readGroupJob } from './conglomerate-job'
 /**
  * The key a person's stable rolls (drive, department, made-up title) are drawn from. An in-law or a
  * cousin who asks before being hired is shown with a stand-in id; once hired they keep that key
- * (Person.data.nepoSeed), so the skill and the title the owner saw are the ones they get.
+ * (Person.data.nepoSeed), so the skill and the title the owner saw are the ones they get. Everyone
+ * else is keyed by personKey: the sid when they have one, else their id (every person made before
+ * sids existed), so a sid-born person draws the same numbers whatever id the life gave them.
  */
 export function seedKey(p: Person): string {
   const k = p.data.nepoSeed
-  return typeof k === 'string' && k ? k : p.id
+  return typeof k === 'string' && k ? k : personKey(p)
 }
 
 export const FOCUSES: readonly StaffFocus[] = ['ops', 'sales', 'quality', 'finance']

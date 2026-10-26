@@ -10,6 +10,8 @@
 //   3. the axis   a person with a Met record starts from the record's ambition axis (cut 5..98), the same after an heir switch and
 //                 a reload; the record is written by hand with S4's writeMet (touchMet and materializePerson come later)
 //   4. axesOfPerson  the Met axes for a sid-born person, else the trait axes with the life's ambition; total, pure, bounded
+//   5. the tables    the four trait sets, the drive table and the integrity deltas have one home (world/axes.ts), the four readers
+//                 read them from there inside their functions, and seedKey falls back to personKey
 //
 // No pinned seed: every life is makeTestGame's or adult()'s own.
 import { execSync } from 'node:child_process'
@@ -17,17 +19,21 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { seedKey } from '../src/game/business/nepo-job'
+import { driveOf } from '../src/game/business/nepo-model'
+import { integrityFor, styleFor } from '../src/game/business/nepo-succession'
 import { killCharacter } from '../src/game/death'
+import { isDiscreet, isGossip, temper } from '../src/game/events/will-core'
 import { continueAsChild } from '../src/game/life'
 import { initializeNpc, yearlyNpcLife } from '../src/game/npc-lives'
 import { axesOfPerson, npcLife, saveNpcLife } from '../src/game/npc-state'
-import { createPerson } from '../src/game/people'
+import { createPerson, TRAITS } from '../src/game/people'
 import { MAIN_CHARACTER } from '../src/game/talents'
 import type { GameState, Person } from '../src/game/types'
 import { assembleSave, encodeSave } from '../src/game/save-codec'
 import { isLoadableGame, migrateSave } from '../src/game/save-schema'
 import { personKey } from '../src/game/kernel/person-ref'
-import { AXIS_IDS, axesFromTraits, type AxisTuple, type Axes } from '../src/game/world/axes'
+import { AXIS_IDS, DRIVE_TRAITS, INTEGRITY_TRAITS, TRAIT_SETS, axesFromTraits, type AxisTuple, type Axes } from '../src/game/world/axes'
 import { readMet, writeMet, type MetRecord } from '../src/game/world/met'
 import { makeSid } from '../src/game/world/sid'
 import '../src/game/world/shards'
@@ -36,7 +42,7 @@ import { deepFreeze } from './fuzz-kit'
 import { canonicalJson, fnv } from './golden-kit'
 import { makeTestGame } from './helpers'
 import { adult } from './market-kit'
-import { npcPersons, plainPerson } from './registry-pins-kit'
+import { npcPersons, pinDiff, plainPerson } from './registry-pins-kit'
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 const PINS_FILE = 'test/fixtures/axes-readers-pins.json'
@@ -511,5 +517,111 @@ describe('axesOfPerson', () => {
     expect(hi).toBeLessThanOrEqual(100)
     expect(g.world).toBeUndefined()
     expect(canonicalJson(g.people.map((p) => p.data))).not.toContain('life')
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// The tables have one home
+// ---------------------------------------------------------------------------------------------------------------------------
+
+/** The drive table of business/nepo-model.ts as it stood at v5.2.0, written out here so a copy that drifts is caught. */
+const OLD_DRIVE: Record<string, number> = {
+  ambitious: 12,
+  serious: 6,
+  sporty: 4,
+  nerdy: 4,
+  loyal: 3,
+  honest: 2,
+  optimistic: 3,
+  calm: 2,
+  lazy: -22,
+  rebellious: -4,
+  arrogant: -3,
+  anxious: -3,
+  dramatic: -2,
+}
+
+/** The integrity deltas of business/nepo-succession.ts (the inline object of integrityFor) as they stood at v5.2.0. */
+const OLD_INTEGRITY: Record<string, number> = { honest: 15, loyal: 6, kind: 3, caring: 3, sneaky: -20, manipulative: -15, arrogant: -8, jealous: -4 }
+
+const READER_FILES = ['src/game/events/will-core.ts', 'src/game/business/nepo-model.ts', 'src/game/business/nepo-succession.ts', 'src/game/business/nepo-job.ts'] as const
+const sourceOf = (file: string): string => readFileSync(join(ROOT, file), 'utf8')
+
+describe('DRIVE_TRAITS and INTEGRITY_TRAITS', () => {
+  it('equal the old tables key for key, value for value and in the same order', () => {
+    expect(Object.entries(DRIVE_TRAITS)).toEqual(Object.entries(OLD_DRIVE))
+    expect(Object.entries(INTEGRITY_TRAITS)).toEqual(Object.entries(OLD_INTEGRITY))
+  })
+
+  it('are frozen, and every key is a word of TRAITS', () => {
+    expect(Object.isFrozen(DRIVE_TRAITS)).toBe(true)
+    expect(Object.isFrozen(INTEGRITY_TRAITS)).toBe(true)
+    for (const k of [...Object.keys(DRIVE_TRAITS), ...Object.keys(INTEGRITY_TRAITS)]) expect(TRAITS, k).toContain(k)
+  })
+})
+
+describe('the readers read the tables from world/axes.ts', () => {
+  it('read the four sets live: a word added to a set is read at once', () => {
+    // The sets are typed read-only; the test opens them for a moment to see that the readers look at these very sets.
+    const sets = TRAIT_SETS as unknown as Record<'forgiving' | 'petulant' | 'gossips' | 'discreet', Set<string>>
+    const p = plainPerson('p1', { traits: ['funny'] })
+    const q = plainPerson('p2', { traits: ['shy'] })
+    expect([temper(p).forgiving, temper(p).petulant, isGossip(q), isDiscreet(p)]).toEqual([0, 0, false, false])
+    sets.forgiving.add('funny')
+    sets.petulant.add('funny')
+    sets.gossips.add('shy')
+    sets.discreet.add('funny')
+    try {
+      expect([temper(p).forgiving, temper(p).petulant, isGossip(q), isDiscreet(p)]).toEqual([1, 1, true, true])
+    } finally {
+      sets.forgiving.delete('funny')
+      sets.petulant.delete('funny')
+      sets.gossips.delete('shy')
+      sets.discreet.delete('funny')
+    }
+    expect([temper(p).forgiving, temper(p).petulant, isGossip(q), isDiscreet(p)]).toEqual([0, 0, false, false])
+  })
+
+  it('keep no copy of a table: no module-level set or table, and no read of an imported table while the module loads', () => {
+    for (const file of READER_FILES) {
+      const src = sourceOf(file)
+      expect(src, file).not.toMatch(/^(export )?const (FORGIVING|PETULANT|GOSSIPS|DISCREET|DRIVE_TRAITS|INTEGRITY_TRAITS)\b/m)
+      expect(src, file).not.toMatch(/^(export )?const \w+(: [^=]+)? = (TRAIT_SETS|DRIVE_TRAITS|INTEGRITY_TRAITS)\b/m)
+    }
+    expect(sourceOf('src/game/business/nepo-succession.ts')).not.toContain('Object.entries({')
+    expect(sourceOf('src/game/business/nepo-succession.ts')).toContain('INTEGRITY_TRAITS')
+    expect(sourceOf('src/game/business/nepo-model.ts')).toContain('DRIVE_TRAITS[t]')
+    expect(sourceOf('src/game/events/will-core.ts')).toContain('TRAIT_SETS.forgiving.has(t)')
+  })
+
+  it('draw the drive, the integrity and the style of one sid the same under any id', () => {
+    const ids = ['p2', 'p9', 'p31', 'p400', 'p77']
+    const read = (id: string): unknown[] => {
+      const p = plainPerson(id, { traits: [], data: { sid: SID } })
+      return [driveOf(p), integrityFor(p), styleFor(p)]
+    }
+    const first = read(ids[0]!)
+    for (const id of ids.slice(1)) expect(read(id), id).toEqual(first)
+  })
+
+  it('still draw them from the id for a person with no sid', () => {
+    const ids = ['p2', 'p9', 'p31', 'p400', 'p77']
+    const drives = ids.map((id) => driveOf(plainPerson(id, { traits: [] })))
+    expect(new Set(drives).size).toBeGreaterThan(1)
+  })
+
+  it('seedKey is the stored nepoSeed, else personKey', () => {
+    expect(seedKey(plainPerson('p7', { data: { sid: SID } }))).toBe(SID)
+    expect(seedKey(plainPerson('p7', { data: { sid: SID, nepoSeed: 'stand-in' } }))).toBe('stand-in')
+    expect(seedKey(plainPerson('p7', { data: { nepoSeed: 'stand-in' } }))).toBe('stand-in')
+    expect(seedKey(plainPerson('p7', { data: { nepoSeed: '' } }))).toBe('p7')
+    expect(seedKey(plainPerson('p7'))).toBe('p7')
+    expect(seedKey(plainPerson('p7', { data: { sid: 'not a name' } }))).toBe('p7')
+    expect(seedKey(plainPerson('p7', { data: { sid: 12 } }))).toBe('p7')
+  })
+
+  it('pass the S1 grid again: every trait reader over every pair and entitlement, and initializeNpc for forty persons', { timeout: 120_000 }, () => {
+    expect(pinDiff('traits')).toEqual([])
+    expect(pinDiff('npc')).toEqual([])
   })
 })

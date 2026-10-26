@@ -15,6 +15,7 @@
 import { clamp, netWorth, relationLabel } from '../core'
 import { dataObj } from '../people'
 import type { GameState, Json, Person } from '../types'
+import { TRAIT_SETS } from '../world/axes'
 import { entitlement, personCountry, readTies, typicalIncome } from './wealth-core'
 
 // ---------------------------------------------------------------------------
@@ -404,10 +405,7 @@ export function angerLabel(a: number): string {
 // ---------------------------------------------------------------------------
 // Personality
 
-const FORGIVING = new Set(['kind', 'caring', 'calm', 'optimistic', 'generous', 'loyal'])
-const PETULANT = new Set(['hot-headed', 'jealous', 'arrogant', 'dramatic', 'grumpy', 'manipulative', 'rebellious', 'spoiled', 'stingy'])
-const GOSSIPS = new Set(['jealous', 'manipulative', 'sneaky', 'dramatic', 'outgoing'])
-const DISCREET = new Set(['loyal', 'honest', 'calm', 'shy', 'serious'])
+// The four trait sets (forgiving, petulant, gossips, discreet) live in world/axes.ts as TRAIT_SETS and are read inside the functions below.
 
 export interface Temper {
   forgiving: number
@@ -418,8 +416,8 @@ export function temper(p: Person): Temper {
   let forgiving = 0
   let petulant = 0
   for (const t of p.traits) {
-    if (FORGIVING.has(t)) forgiving += 1
-    if (PETULANT.has(t)) petulant += 1
+    if (TRAIT_SETS.forgiving.has(t)) forgiving += 1
+    if (TRAIT_SETS.petulant.has(t)) petulant += 1
   }
   // A spoiled streak counts once even before the trait pill shows.
   if (entitlement(p) >= 45 && !p.traits.includes('spoiled')) petulant += 1
@@ -434,11 +432,11 @@ export function personaMult(p: Person): number {
 }
 
 export function isGossip(p: Person): boolean {
-  return p.traits.some((t) => GOSSIPS.has(t))
+  return p.traits.some((t) => TRAIT_SETS.gossips.has(t))
 }
 
 export function isDiscreet(p: Person): boolean {
-  return p.traits.some((t) => DISCREET.has(t))
+  return p.traits.some((t) => TRAIT_SETS.discreet.has(t))
 }
 
 // ---------------------------------------------------------------------------
