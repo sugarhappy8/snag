@@ -131,6 +131,14 @@ the full 25, and every row moves something. A row is read from the first end's s
 memory. The table is written for the usual direction of each kind, and `by` does not flip it. The values are in the source; after R4
 a changed value needs a `RECORD_REASON`, a row in `moved-tests.md` and the lead's OK (cross-check section 3.3, X57).
 
+**`MEMORY_PHRASE`** (R4-U10, `hubs/people-memory.ts`) is the frozen table of what a player reads: two sentences for each kind, one for
+each side of `by` (`ego` is "You lent Ana money", `them` is "Ana lent you money"), with one `{name}` slot and at most 60 characters. The
+same fact has to read right from both ends. `memoryLines(g, p, n)` turns the memories of the edge `person > player` into up to three
+lines on the "Shared history" card of the profile, the strongest weight first and then the newest, each `phrase (year)`; it is empty for
+a life the social flag never stamped. The table is typed `Record<MemoryKind, ...>` and `test/people-memory.test.ts` compares its rows to
+`MEMORY_KINDS`, so a kind appended without a phrase fails the build and the test, by design (X45). A changed phrase after R4 needs a
+`RECORD_REASON`, a row in `moved-tests.md` and the lead's OK (cross-check section 3.3, X57).
+
 ## 6. The writer (R4-E6b)
 
 `world/edge-write.ts` is the one place `g.world.edges` is written. It is layer 2, draws no number and books no dollar.
