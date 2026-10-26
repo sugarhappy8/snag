@@ -11,7 +11,9 @@
 // function of the game; this file only measures it. No luck is drawn here either.
 import { LEDGER_CAPS } from '../kernel/ledger'
 import type { GameState } from '../types'
-import { FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS, MET_CAPS } from './caps'
+import { EDGE_CAPS, FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS, MET_CAPS } from './caps'
+import { isSecretKey } from './edges'
+import { SOCIAL_MS_MAX } from './social'
 import { readWorld } from './state'
 
 /**
@@ -89,6 +91,38 @@ function capsOf(name: string, shard: unknown): [string, number, number][] {
         ['tombstones', tombs, MET_CAPS.tombs],
       ]
     }
+    case 'edges': {
+      // Counted as stored, so a map written around its reader shows. A secret is not an edge; the dialogue store is an `n` or a `d` that is not empty.
+      let edges = 0
+      let secrets = 0
+      let memories = 0
+      let feuds = 0
+      let debts = 0
+      let talk = 0
+      for (const key of Object.keys(shard)) {
+        if (isSecretKey(key)) {
+          secrets++
+          continue
+        }
+        edges++
+        const e = shard[key]
+        if (!isPlain(e)) continue
+        if (Array.isArray(e.m)) memories += e.m.length
+        if (e.q !== undefined) feuds++
+        if (e.dv !== undefined) debts++
+        if ((Array.isArray(e.n) && e.n.length > 0) || (Array.isArray(e.d) && e.d.length > 0)) talk++
+      }
+      return [
+        ['edges', edges, EDGE_CAPS.edges],
+        ['secrets', secrets, EDGE_CAPS.secrets],
+        ['memories', memories, EDGE_CAPS.memTotal],
+        ['feuds', feuds, EDGE_CAPS.feuds],
+        ['debts', debts, EDGE_CAPS.debts],
+        ['dialogue edges', talk, EDGE_CAPS.talkEdges],
+      ]
+    }
+    case 'social':
+      return [['pairs', sizeOf(shard.ms), SOCIAL_MS_MAX]]
     case 'frontier': {
       const recs = isPlain(shard.f) ? Object.values(shard.f) : []
       let rows = 0

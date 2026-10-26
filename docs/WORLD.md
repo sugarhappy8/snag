@@ -22,7 +22,9 @@ and `src/game/kernel/ids.ts`.
 - The shards of R2: `ledger` (the books, `kernel/ledger.ts`), `people`, `firms`, `homes`, `holdings` and `lod`. The module registry
   of the Kernel track adds `facts` (the facts the bus recorded, at most 400, `world/facts.ts`); it joins the hub with one line.
   R3 adds `frontier` (how far the world's research is ahead of the calendar path, `world/frontier.ts`, see "The frontier" below).
-  R4 adds `met` (who the player has met, `world/met.ts`, see "The Met store" below).
+  R4 adds `met` (who the player has met, `world/met.ts`, see "The Met store" below), `edges` (what people feel about each other and
+  remember, `world/edges.ts`) and `social` (the stamp of a life that plays the social track, `world/social.ts`); see "The edge store and
+  the social stamp" below.
 - A shard is written by replacing its root (`ensureWorld(g).people = { ...next }`, or `commitShard`), never by editing it in place,
   because the save layer shares each shard root between drafts, frozen. The one exception is `ledger`, which every booking edits in
   place and which the save layer therefore treats as a core slice. Every writer has a test that runs it on a state whose shard roots
@@ -162,11 +164,13 @@ The save loader (`isLoadableGame`) bounds a save by 500,000 JSON nodes and does 
 So a hostile `world` is harmless in three steps: a reader never trusts what it reads (`worldShard`, `peekLedger` and each shard's
 normalizer return a valid shard for any input, and a valid input comes back as itself); the first write replaces a garbage root
 (`ensureWorld`); and the first world step replaces a world that holds a key the game does not know or more than 80,000 nodes with
-what `normalizeWorld` makes of it. `test/world-acceptance.test.ts` loads twelve of them into the oldest fixture (a number, a string,
+what `normalizeWorld` makes of it. `test/world-acceptance.test.ts` loads sixteen of them into the oldest fixture (a number, a string,
 an array, a future version, a ledger of 50,000 accounts, a people shard of 500 rows, balances of 1e300 and minus 1e300, a ledger
 whose identity is broken, holdings that sum to 7, an `lod` shard of strings, a `__proto__` key, an unknown shard that fills the
-save): each still loads, three years play, the world ends under the node cap with no unknown key, and the books hold. None of the
-twelve is sized against the cap: the big ones are cut by their own reader or dropped by the rule for an unknown key.
+save, and four of R4 for `edges` and `social`: 20,000 edges, edges of 1e300 beside an unknown shard, a stamp with 40,000 mentor pairs,
+an edges string and a stamp list beside an unknown shard): each still loads, three years play, the world ends under the node cap with no
+unknown key, and the books hold. None of the sixteen is sized against the cap: the big ones are cut by their own reader or dropped by
+the rule for an unknown key.
 
 ## The frontier
 
@@ -297,6 +301,33 @@ are described in `docs/PEOPLE.md`; this section is the shard.
 - Load order: the shard registers itself when `world/met.ts` loads, and `world/shards.ts` imports it, like `facts` and `frontier`.
 - Proven by `test/world-met.test.ts`: twelve hostile shards, the ranges, the cut, the order, the writer on a deep-frozen root, pure
   reads, every fault of `metProblems`, and the shard at its caps inside the budget P2 set.
+
+## The edge store and the social stamp
+
+Since R4 (v5.3.0) a life that has the stamp keeps `g.world.edges`, who feels what about whom and what they remember, and
+`g.world.social`, the stamp itself. The model, the caps and the writer are described in `docs/SOCIAL.md`; this section is the two
+shards as the world sees them. The code is `world/edges.ts` (the model and the reader), `world/edge-memory.ts` (the 40 memory kinds),
+`world/edge-write.ts` (the writer), `world/social.ts` (the stamp) and `world/edges-slice.ts` (the save row); the ceilings are
+`EDGE_CAPS` in `world/caps.ts`.
+
+- `edges` is one keyed map, `'person:p12>person:p3'` to the edge, with no `v` and no `y` (the version of the slice travels in `sv`).
+  Keys ascend in plain code-unit order, like the Met store, for the entity codec. The same map holds the secrets under `secret:<n>`.
+  At most 1,200 edges, 8 memories an edge and 4,000 in all, 12 feuds, 40 debts, the dialogue store on 120 edges, 40 secrets.
+- `social` is `{ v: 1, on: 1, y, fy }` with an optional `ay` and at most three `[person ref, skill]` pairs in `ms`. A life that has it is
+  stamped; every other life, every v5.2.0 save and every heir of one has neither shard and plays as it did (X6).
+- Absent until a writer runs. Nothing in the game calls the writers in this task: `putEdge` and `remember` (`world/edge-write.ts`) and
+  `stampSocial` and `patchSocial` (`world/social.ts`) wait for R4-E7. An old save loads with neither key, and saves again byte for byte.
+- Bounded by their readers. `normalizeEdges` and `normalizeSocial` are total: any value in, a valid shard out (the stamp is dropped when
+  it is not a stamp), and a valid shard comes back as itself. `worldBudget` counts the map against its caps as stored, and
+  `worldProblems` prints `edgeProblems` and `socialProblems` as "edges: ..." and "social: ..." lines. Over the world's node cap both are
+  in the keep-last class, beside the books, the holdings and `met`.
+- `edges` is an entity slice (`world/edges-slice.ts`): it leaves the `world` chunk and takes eight chunks `e.edge.0` to `e.edge.7`, so
+  a tap that changes one edge writes one chunk (see "An entity record" in `docs/SAVE.md`). `social` is a derived row of the world chunk.
+- Load order: both shards register themselves when their files load, and `world/shards.ts` imports them, like `facts`, `frontier` and `met`.
+- Worst case 19,929 nodes for the map with its secrets and 5 to 16 for the stamp. The R4 allotment (`WORLD_ALLOTMENT`) counts the map
+  without a link kind and a call-in stamp on every edge (17,529 nodes with the secrets); the slice row and the world cap hold the larger one.
+- Proven by `test/world-edge-slice.test.ts` (the writer on a deep-frozen root, 100 times the caps, the codec, one chunk a tap, the
+  Time Machine, every fixture, forged chunks) and `test/world-social.test.ts`.
 
 ## How to add a shard
 

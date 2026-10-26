@@ -10,6 +10,10 @@
 //   - the frontier (R3): a v1 shard of known fields whose rows, markets, lead and public research are inside their caps (world/frontier.ts)
 //   - the Met shard (R4), read RAW: keys that are sids, fields in range, counts under the caps, keys ascending, a living Person whose
 //     strict sid has a record, and no sid on a child, stepchild or grandchild (world/met.ts metProblems)
+//   - the edge map (R4), read RAW: edge keys and secret keys in ascending order, every field in range, lists inside their caps, memories of
+//     known kinds, a valid feud and debt, the caps in all, and for a person who is not a pet whose edge points at the player an affection
+//     `f` equal to Person.relationship (world/edges.ts edgeProblems)
+//   - the social stamp (R4), read RAW: { v: 1, on: 1, y, fy } with an optional `ay` and at most 3 mentor pairs (world/social.ts socialProblems)
 //   - the people of the game: unique ids, at most one living spouse
 //   - the index against the live records, only when the index was just built (see `live`): a row stamped with this year names a
 //     record that exists, no more fresh rows than the index may hold, every held asset is in the firms or the homes index
@@ -23,13 +27,15 @@
 import { ledgerProblems } from '../kernel/ledger'
 import type { GameState } from '../types'
 import { HOLDING_ROWS_CAP, LOD_CAPS } from './caps'
+import { edgeProblems } from './edges'
 import { firmRef } from './firms'
 import { frontierProblems } from './frontier'
 import { OUTSIDE } from './holdings'
 import { homeRef } from './homes'
 import { metProblems } from './met'
-import { npcFirmId, personRef } from './people'
+import { npcFirmId, personRef, playerRef } from './people'
 import { isPlain, OVER_MAX, refOfKind, SEEN_MAX, SEEN_MIN } from './rows'
+import { socialProblems } from './social'
 import { readWorld } from './state'
 
 export interface WorldCheckOptions {
@@ -147,6 +153,8 @@ export function worldProblems(g: GameState, opts?: WorldCheckOptions): string[] 
   const held = holdingsShard(world.holdings, out)
   for (const p of frontierProblems(world.frontier)) out.push(`frontier: ${p}`)
   for (const p of metProblems(world.met, g.people)) out.push(`met: ${p}`)
+  for (const p of edgeProblems(world.edges, g.people, playerRef(g))) out.push(`edges: ${p}`)
+  for (const p of socialProblems(world.social)) out.push(`social: ${p}`)
 
   // The index against the records, when it was just built.
   const live = opts?.live ?? world.y === g.year

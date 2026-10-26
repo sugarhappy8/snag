@@ -130,6 +130,16 @@ Measured at R4-S5 on a twelve-year life with 400 records: touching one record wr
 head; the world chunk of 414,639 characters is not written. The shard at its caps (400 records of 22 nodes and 200 tombstones) is 8
 chunks and 85,964 characters in all, the largest 12,318.
 
+`world.edges` (R4-E6b, `world/edges-slice.ts`) is the second entity slice and copies this row: kind `edge`, 8 shards (`e.edge.0` to
+`e.edge.7`), version 1, `write: 'replace'`, caps of 24,000 nodes and 420,000 characters, `normalize` the shard's own reader
+(`normalizeEdges`). Its writer is `putEdge` (`world/edge-write.ts`), which replaces the root, keeps every untouched entry by identity
+and seals what it stores. The map holds the secrets (`secret:<n>`) too, so they share its chunks. A save with no `edges` key (every save
+before v5.3.0 and every life the social stamp has not touched) has no `e.edge` chunk and saves again byte for byte. The hash is FNV-1a
+modulo the shard count, which reads only the low bits of each character: keys that differ in a few characters can fall unevenly, so the
+bytes of a tap depend on the keys (`docs/SOCIAL.md`, section 8). Measured at R4-E6b with 1,200 edges at their worst (link kind, call-in,
+memories, dialogue store, feuds, debts, 40 secrets, 79-character keys): the map is about 310,000 characters, a tap that changes one edge
+writes one `e.edge` chunk and the head, and the world chunk is not written.
+
 ## Reading
 
 `assembleSave(head, texts)` rebuilds the record and never throws. A chunk is checked before anything is built from it: the manifest
@@ -233,6 +243,7 @@ Two R3 keys are `flags` subkeys, so they need no row in `save-slices.ts`: `flags
 | `defineSlice`, `listSlices`, `sliceOf`, `hasSlice`, `migrateSlices`, `getAt`, `setAt`, `deleteAt`, `countNodes`, `freezeRoot` | `kernel/slices.ts` |
 | the slice table, `CORE_SCALARS`, `ensureSliceTable` | `save-slices.ts` |
 | `MET_SLICE`, the `world.met` entity row | `world/met-slice.ts` |
+| `EDGES_SLICE`, the `world.edges` entity row | `world/edges-slice.ts` |
 | `encodeSave`, `assembleSave`, `inlineSave`, `isChunkedHead`, `neededChunkIds`, `textSum`, `ChunkManifest`, `LostChunk` | `save-codec.ts` |
 | `packShapes`, `unpackShapes` | `kernel/shapes.ts` |
 | `cloneForAct` | `save-clone.ts` |

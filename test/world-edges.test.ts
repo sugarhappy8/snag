@@ -94,10 +94,13 @@ describe('layer and files', () => {
     for (const f of ['src/game/world/edges.ts', 'src/game/world/edge-memory.ts']) expect(DASH.test(read(f)), f).toBe(false)
   })
 
-  it('registers no shard and draws no number: the sources never mention registerShard or a generator', () => {
+  it('registers exactly one shard, `edges`, in edges.ts (R4-E6b) and none in edge-memory.ts, and draws no number: the sources never mention a generator', () => {
+    const edges = read('src/game/world/edges.ts')
+    expect(edges.match(/registerShard\(/g)).toHaveLength(1)
+    expect(edges).toContain("registerShard('edges', { normalize: (raw) => normalizeEdges(raw) })")
+    expect(read('src/game/world/edge-memory.ts')).not.toMatch(/registerShard\(/)
     for (const f of ['src/game/world/edges.ts', 'src/game/world/edge-memory.ts']) {
       const src = read(f)
-      expect(src, f).not.toMatch(/registerShard\(/)
       expect(src, f).not.toMatch(/g\.rng|\brand\(|Math\.random|Date\.now|\bensureWorld\(/)
     }
   })
