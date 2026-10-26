@@ -14,9 +14,11 @@
 //
 // Two proofs. The first runs here, on the kit's own reference scene (referenceRows): the kit's rows go red under each mutation, at
 // the first row the mutation can move, and the real actions of relationships.ts move too. The second runs the parity files of
-// R4-E2 to R4-E4 (relationship-parity, wealth-parity, social-lives-parity) in a vitest of their own with the same wrapper in a
-// setup file, and expects each of them to fail under each mutation and none to fail under the control. It switches itself on when
-// the three files exist, so it is written now and has nothing to run until R4-E4 (SOCIAL_MUTATION_FILES=a,b,c names other files).
+// R4-E2 to R4-E4 (relationship-parity, wealth-parity, nepo-parity, heir-parity, social-lives-parity) in a vitest of their own with
+// the same wrapper in a setup file, and expects each of them to fail under each mutation and none to fail under the control. R4-E4
+// enabled it: it runs the files that exist on the tree it is run on (the area files of E2 and E3 join as they merge) and switches
+// itself on once the scripted lives are there, the last file to land, so a tree with only some of them still proves those go red.
+// SOCIAL_MUTATION_FILES=a,b,c names other files (and runs when all of them exist).
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -105,7 +107,17 @@ describe('the oracle sees a one-point drift', () => {
 // ---------------------------------------------------------------------------------------------------------------------
 // The parity files of R4-E2 to R4-E4
 
-const PARITY_FILES = (process.env.SOCIAL_MUTATION_FILES ?? 'test/relationship-parity.test.ts,test/wealth-parity.test.ts,test/social-lives-parity.test.ts').split(',')
+const AREA_FILES = [
+  'test/relationship-parity.test.ts', // R4-E2
+  'test/wealth-parity.test.ts', // R4-E3
+  'test/nepo-parity.test.ts', // R4-E4
+  'test/heir-parity.test.ts', // R4-E4
+  'test/social-lives-parity.test.ts', // R4-E4
+]
+const here = (f: string): boolean => existsSync(join(ROOT, f))
+const PARITY_FILES = (process.env.SOCIAL_MUTATION_FILES ?? AREA_FILES.filter(here).join(',')).split(',').filter((f) => f !== '')
+/** On when the scripted lives are on the tree (or the caller named the files and all of them are). */
+const ENABLED = PARITY_FILES.length > 0 && PARITY_FILES.every(here) && (process.env.SOCIAL_MUTATION_FILES !== undefined || PARITY_FILES.includes('test/social-lives-parity.test.ts'))
 
 /** Runs the files in a vitest of their own with the wrapper in a setup file; returns each file's status. */
 function runUnder(mode: Mode, files: readonly string[]): Map<string, string> {
@@ -152,7 +164,7 @@ function runUnder(mode: Mode, files: readonly string[]): Map<string, string> {
   }
 }
 
-describe.runIf(PARITY_FILES.every((f) => existsSync(join(ROOT, f))))('the parity files go red under each mutation', () => {
+describe.runIf(ENABLED)('the parity files go red under each mutation', () => {
   it('stay green with the wrapper in place and nothing mutated', { timeout: 600_000 }, () => {
     const status = runUnder('none', PARITY_FILES)
     expect([...status.entries()].filter(([, s]) => s !== 'passed')).toEqual([])
