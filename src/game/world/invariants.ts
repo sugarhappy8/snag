@@ -8,6 +8,8 @@
 //     list of valid rows, one row for an id, at most the shard's cap of rows; the holdings: valid rows, one for each owner and asset,
 //     at most 1,200, every asset summing to 1 within 1e-6
 //   - the frontier (R3): a v1 shard of known fields whose rows, markets, lead and public research are inside their caps (world/frontier.ts)
+//   - the Met shard (R4), read RAW: keys that are sids, fields in range, counts under the caps, keys ascending, a living Person whose
+//     strict sid has a record, and no sid on a child, stepchild or grandchild (world/met.ts metProblems)
 //   - the people of the game: unique ids, at most one living spouse
 //   - the index against the live records, only when the index was just built (see `live`): a row stamped with this year names a
 //     record that exists, no more fresh rows than the index may hold, every held asset is in the firms or the homes index
@@ -25,6 +27,7 @@ import { firmRef } from './firms'
 import { frontierProblems } from './frontier'
 import { OUTSIDE } from './holdings'
 import { homeRef } from './homes'
+import { metProblems } from './met'
 import { npcFirmId, personRef } from './people'
 import { isPlain, OVER_MAX, refOfKind, SEEN_MAX, SEEN_MIN } from './rows'
 import { readWorld } from './state'
@@ -143,6 +146,7 @@ export function worldProblems(g: GameState, opts?: WorldCheckOptions): string[] 
   const homes = indexShard('homes', world.homes, LOD_CAPS.homes, (r) => refOfKind(r.id, 'home') !== null && refOfKind(r.owner, 'person') !== null, out)
   const held = holdingsShard(world.holdings, out)
   for (const p of frontierProblems(world.frontier)) out.push(`frontier: ${p}`)
+  for (const p of metProblems(world.met, g.people)) out.push(`met: ${p}`)
 
   // The index against the records, when it was just built.
   const live = opts?.live ?? world.y === g.year

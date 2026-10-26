@@ -58,3 +58,11 @@ export const DEMOTE_AFTER_YEARS = 5
  * field 4 markets, and there are room for 32 fields (20 today). An older row folds into the field's `fold`, so no lead is lost.
  */
 export const FRONTIER_CAPS = { leadYears: 12, yearYears: 2, spillPoints: 18, spillPerDisclosure: 6, rowsPerMarket: 6, marketsPerField: 4, fields: 32 } as const
+
+/**
+ * The Met store's ceilings (R4-S4, world/met.ts, cross-check 3.1): at most 400 records and 200 tombstones, at most 5,000 entries looked
+ * at when a stored shard is read, at most 24 nodes in one record and a key of 40 characters (a sid is never longer). A full record uses
+ * 22 nodes: itself, 12 plain fields, the axes list with its five numbers, and the died year, the role tag and the job ref; a tombstone
+ * uses 8. Worst case 400 x 22 + 200 x 8 + the map root = 10,401 nodes, about 90,000 characters of JSON.
+ */
+export const MET_CAPS = { records: 400, tombs: 200, scan: 5_000, nodes: 24, key: 40 } as const

@@ -6,6 +6,7 @@
 import { normalizeLedger } from '../kernel/ledger'
 import './facts'
 import './frontier'
+import './met'
 import { normalizeFirms } from './firms'
 import { normalizeHoldings } from './holdings'
 import { normalizeHomes } from './homes'
