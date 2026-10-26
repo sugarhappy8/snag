@@ -13,7 +13,9 @@
 //                       world.ledger, which every booking edits in place and so stays in the core. Every sub-slice takes the
 //                       root's `pack: 'shapes'`. A shard that changes more than once a year does not belong in the `world`
 //                       chunk (its id would change with it and the whole chunk would be written again): declare it a core row
-//                       like the ledger. test/save-budget.test.ts measures the bytes a tap writes and is the detector
+//                       like the ledger. test/save-budget.test.ts measures the bytes a tap writes and is the detector. A shard that
+//                       changes on taps and is keyed by person is an entity slice instead (world.met, world/met-slice.ts): its
+//                       own row says chunk 'entities', and it takes `e.<kind>.<n>` chunks of its own
 //
 // `pack: 'shapes'` (kernel/shapes.ts, R2-S11) writes a value with its repeated object shapes in a table, so a country, a sector
 // row, a history point or a rival stores its values only. The codec writes the packed form only when a shape repeats, and reads
@@ -23,6 +25,8 @@
 // countries a reader can name, 16 years of history; economy/slice.ts). A later release that changes a slice's shape bumps its
 // version and adds a `migrate`; a record's `sv` map (save-codec.ts) tells which version each slice was written at.
 import './economy/slice'
+// The Met shard's entity slice (R4-S5): `world.met` in the chunk `entities`, a tap that touches one person writes one chunk.
+import './world/met-slice'
 import { normalizeLedger } from './kernel/ledger'
 import { defineSlice } from './kernel/slices'
 // The world's registration hub, for its effect: normalizeWorld keeps a shard only when it is registered, so a process that reads a

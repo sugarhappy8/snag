@@ -440,20 +440,48 @@ describe('the world shards of the game, shared by act()', () => {
     expect(sliceOf('world.ledger')).toMatchObject({ chunk: 'core', write: 'inplace' })
   })
 
-  it('has no shard shaped like an entity record, so none belongs in an entity chunk yet (the world chunk holds them all)', () => {
-    // An entity record is a plain object of at least eight plain objects with its keys in ascending order: the shape the codec cuts into
-    // `e.<kind>.<n>` shards (save-codec.ts). Ledger-world's shards are `{ v, rows: [...] }`. A shard that qualifies and changes on
-    // player actions is declared `chunk: 'entities'` in save-slices.ts (R2-S12 step 1b); this test is the reminder that none did.
-    const world = forty.world as Record<string, unknown>
-    for (const name of shardNames()) {
+  /**
+   * The shards of `world` that are shaped like an entity record and that the slice table does not declare as one. An entity record is a
+   * plain object of at least eight plain objects with its keys in ascending order: the shape the codec cuts into `e.<kind>.<n>` shards
+   * (save-codec.ts). Ledger-world's shards are `{ v, rows: [...] }`. A shard that qualifies and changes on player actions is declared
+   * `chunk: 'entities'` (R4-S5 declares world.met in world/met-slice.ts, and E6b declares world.edges): the premise of this guard, that
+   * none did, ends with that declaration, so a shard the table declares as an entity slice is skipped, and one that nothing declares
+   * still fails. `names` is the shard names to look at (the registered ones).
+   */
+  const entityShaped = (world: Record<string, unknown>, names: readonly string[] = shardNames()): string[] => {
+    const found: string[] = []
+    for (const name of names) {
       const shard = world[name]
       if (name === 'ledger' || typeof shard !== 'object' || shard === null || Array.isArray(shard)) continue
+      if (sliceOf(`world.${name}`)?.chunk === 'entities') continue
       const keys = Object.keys(shard)
       const values = Object.values(shard)
       const ascending = keys.every((k, i) => i === 0 || keys[i - 1]! < k)
       const objects = values.every((v) => typeof v === 'object' && v !== null && !Array.isArray(v))
-      expect(keys.length >= 8 && ascending && objects, `world.${name} looks like an entity record`).toBe(false)
+      if (keys.length >= 8 && ascending && objects) found.push(name)
     }
+    return found
+  }
+  /** Eight plain objects under ascending keys: the least a shard needs to look like an entity record. */
+  const eightRecords = (): Record<string, unknown> => Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`k${i}`, { n: i }]))
+
+  it('has no shard shaped like an entity record that the slice table does not declare as an entity slice', () => {
+    expect(entityShaped(forty.world as Record<string, unknown>).map((name) => `world.${name} looks like an entity record`)).toEqual([])
+  })
+
+  it('passes a life holding a met shard of eight object records, because world.met is a declared entity slice', () => {
+    const world = { ...(forty.world as Record<string, unknown>), met: eightRecords() }
+    expect(sliceOf('world.met')?.chunk).toBe('entities')
+    expect(entityShaped(world, ['met'])).toEqual([])
+    expect(entityShaped(world)).toEqual([])
+  })
+
+  it('still fails a synthetic shard of eight object records that nothing declares', () => {
+    expect(sliceOf('world.junk')?.chunk).toBe('world')
+    expect(entityShaped({ junk: eightRecords() }, ['junk'])).toEqual(['junk'])
+    expect(entityShaped({ junk: { ...eightRecords(), k9: 1 } }, ['junk'])).toEqual([])
+    expect(entityShaped({ junk: Object.fromEntries(Object.entries(eightRecords()).reverse()) }, ['junk'])).toEqual([])
+    expect(entityShaped({ junk: Object.fromEntries(Object.entries(eightRecords()).slice(0, 7)) }, ['junk'])).toEqual([])
   })
 
   it('hands a draft the very roots of the state, frozen, and a ledger of its own that a booking may edit', () => {
