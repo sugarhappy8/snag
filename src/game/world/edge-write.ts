@@ -25,6 +25,10 @@
 //     of the lowest-salience edge goes first, a pinned one only when no unpinned memory is left anywhere.
 //   - The map it reads is the map the reader would make of the stored one. A root this file wrote is known to be valid and is not read
 //     again; any other root (a load, a clone, a hostile save) is normalized first, once.
+//   - A write costs one pass over the root (the root is replaced, so the keys are copied) and nothing else that grows with the map: the
+//     counts and the key list of the root it wrote are kept by its identity, and a write that only replaces edges shares the key list
+//     and copies the entries without a look at the edits per key. A tap of 10 writes at 1,200 edges stays well under a millisecond on the
+//     reference machine (test/world-edge-step.test.ts, section 7).
 //
 // remember writes the memory string `kind.year.weight.by` (world/edge-memory.ts) and applies MEMORY_FX[kind] to the edge's t, r, s and
 // o, scaled by weight / 3 and clamped to the field ranges, rounded to hundredths so a stored number stays short. It does nothing unless
@@ -202,25 +206,75 @@ function trimMemories(entries: readonly (readonly [string, Edge])[], over: numbe
 // The one write
 // ---------------------------------------------------------------------------------------------------------------------------------
 
+/**
+ * The keys of a root this file wrote, in order, by its identity (CP2): a write that replaces edges and adds none leaves the keys as they
+ * were, so the next root shares the list instead of listing 1,200 keys again. The list is never edited, and a root that is not sealed is
+ * never cached (nothing says it will not change).
+ */
+const KEYS = new WeakMap<object, readonly string[]>()
+
+function keysOf(root: EdgeMap): readonly string[] {
+  const hit = KEYS.get(root)
+  if (hit !== undefined) return hit
+  const keys = Object.keys(root)
+  if (SEALED.has(root)) KEYS.set(root, keys)
+  return keys
+}
+
+/** True when the edits only replace edges the root holds: no key is added and none is removed, so the root keeps its keys and their order. */
+function replacesOnly(cur: EdgeMap, edits: ReadonlyMap<string, Edge | null>, insertKey: string | null): boolean {
+  if (insertKey !== null) return false
+  for (const [k, v] of edits) if (v === null || v === undefined || !hasOwn(cur, k)) return false
+  return true
+}
+
 /** Stores a new root: the keys of `cur` in order with `edits` applied (an edge, or null to remove it) and `insertKey` placed where it sorts. */
 function commit(g: GameState, cur: EdgeMap, edits: ReadonlyMap<string, Edge | null>, insertKey: string | null, tally?: Tally): void {
-  const out: Rec = {}
-  let pending = insertKey
-  for (const k of Object.keys(cur)) {
-    if (pending !== null && pending < k) {
+  const keys = keysOf(cur)
+  // Born as a dictionary (no prototype yet): a map of 1,200 keys is one in the end, and an object that starts as a plain literal first
+  // walks through a hidden-class step for each of its first keys. The prototype is put back before the root is stored, so what is stored
+  // is an ordinary object.
+  const out: Rec = Object.create(null) as Rec
+  let outKeys: readonly string[]
+  if (replacesOnly(cur, edits, insertKey)) {
+    // an edge that is there keeps its place when it is written again, so the copy needs no look at the edits per key
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]!
+      out[k] = cur[k]
+    }
+    for (const [k, v] of edits) out[k] = v
+    outKeys = keys
+  } else {
+    const list: string[] = []
+    let pending = insertKey
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]!
+      if (pending !== null && pending < k) {
+        out[pending] = edits.get(pending)
+        list.push(pending)
+        pending = null
+      }
+      if (edits.has(k)) {
+        const v = edits.get(k)
+        if (v !== null && v !== undefined) {
+          out[k] = v
+          list.push(k)
+        }
+        continue
+      }
+      out[k] = cur[k]
+      list.push(k)
+    }
+    if (pending !== null) {
       out[pending] = edits.get(pending)
-      pending = null
+      list.push(pending)
     }
-    if (edits.has(k)) {
-      const v = edits.get(k)
-      if (v !== null && v !== undefined) out[k] = v
-      continue
-    }
-    out[k] = cur[k]
+    outKeys = list
   }
-  if (pending !== null) out[pending] = edits.get(pending)
+  Object.setPrototypeOf(out, Object.prototype)
   Object.freeze(out)
   SEALED.add(out)
+  KEYS.set(out, outKeys)
   // the root is valid by construction: the readers of edges.ts take it as it is and do not normalize 1,200 edges again after every write
   trustMap(out as unknown as EdgeMap)
   if (tally !== undefined) TALLIES.set(out, tally)
