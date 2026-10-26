@@ -2,13 +2,13 @@
 
 How people feel about each other, and what they remember, as the engine keeps it (R4, v5.3.0). This note starts with the
 **edge model** (R4-E6a): the record, the 40 memory kinds, the caps and the rules of the normalizer. R4-E6b adds the writer, the
-stamp and the slice; R4-E7 the mirror and the yearly step; the later tasks of the Edges and acts track add the acts. Until a
+stamp and the slice; R4-E7 the mirror and the yearly step (sections 9 and 10); the later tasks of the Edges and acts track add the acts. Until a
 section below says otherwise, `docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md` section 3.1 is the authority for every
 name and signature. Plain hyphens only: no long dashes anywhere in this file.
 
 Sections 1 to 5 are pure code: `world/edges.ts` and `world/edge-memory.ts` are in layer 2 (`world/`) and draw no number, read no clock
 and write nothing. Sections 6 to 8 (R4-E6b) are the writer, the stamp and the slice: `world/edge-write.ts`, `world/social.ts` and
-`world/edges-slice.ts`. Nothing in the game calls the writers yet, so a life is not touched by them until R4-E7 stamps new lives.
+`world/edges-slice.ts`. R4-E7 is their first caller: it stamps new lives, mirrors the relationship numbers into the edges and steps them once a year.
 
 ## 1. The edge
 
@@ -199,7 +199,65 @@ The worst case the model can reach is 19,929 nodes and about 310,000 characters,
 which reads only the low three bits of every character: keys that differ in a few characters can fall unevenly (a test with 1,200
 keys that share a long prefix put about 600 in each of two chunks). Keys of real lives, which differ in a whole id, spread better.
 
-## 9. What the next tasks add here
+## 9. The mirror (R4-E7, X22, X23)
 
-- R4-E7: the mirror of `Person.relationship`, the yearly step (resentment x0.9, memory decay, orphans) and the stamp in `createNewLife`.
+`Person.relationship`, the money ties `data.w` and the will's feelings `data.wl` stay the authority through R4; the edge follows them
+(X22). `world/edge-mirror.ts` is the hook that `kernel/relations.ts` calls after every change `core.ts` makes
+(`addRelationship(g, p, delta, kind?)` and `setRelationship(g, p, value, kind?)`). It is a hook, not a port (X23): importing the file
+binds it, and `world/edge-step.ts` and `life.ts` import it for that effect, so it is bound after entering through `aging` and `menus`
+and wherever a stamped life is made. `test/world-edge-mirror.test.ts` proves both entries.
+
+What it does, in the order it asks:
+
+- Nothing unless the life is stamped (`socialOn`). An unstamped life writes no edge and no shard: every v5.2.0 save and every heir of
+  one plays as it always did.
+- Nothing for a pet, for a change that leaves the number as it was (a zero delta, a bound, a raw write of the same value), for a number
+  that is not finite, or for a person who has no ref (an id that is no name gives `pool:other`).
+- Otherwise the edge `personEntity(p) > playerRef(g)`. At the first touch it starts at `t` 50, `r` 50, `s` 0, `o` 0, with `y` and `l`
+  this year. It gets `f = after`, so `edge.f === p.relationship` after every call for a number from 0 to 100 (the model cuts to that
+  range). The kind of the change says what it was: an `offence` adds what was lost (`before - after`) to the resentment `s`, up to 100;
+  an `affection` and a `decay` add nothing. The default kind is the sign of the change; `decay` is named by the yearly drift of
+  `driftRelationships` (both of its writes) and by the two nepo mood steps. `l` moves to this year; every other field is left alone.
+- Everything goes through `putEdge`. A map of 1,200 bound edges refuses a new edge and the mirror lets it go: the number has moved all
+  the same, because the edge only follows it.
+
+The yearly negative call sites were read by hand (the list is in `test/world-edge-mirror.test.ts`). Only the drift and the mood steps
+are `decay`; a missed allowance, a chased loan, a quarrel, a partner's drama and a relative who leaves are `offence`, because they are
+slights somebody did and the resentment should keep them.
+
+**The legacy readers** (`world/edge-legacy.ts`). `readTies` and `readWl` live in `events/` (layer 3) and `world/` and `society/` may not
+import `events/`, so two small total readers of the raw records are here: `legacyTies(p, ego)` gives `{ owes, since }` of `data.w` and
+`legacyWl(p, ego)` gives `{ anger, cut, estr }` of `data.wl`. A record whose `by` is not the ego's character id reads as blank, and so
+does anything hostile. A test holds them equal to `readTies` and `readWl` on every shape. The later tasks that need the cut-out and
+estranged flags (`familyLive`, the broker, the will-owned test, `isBound`) read them through this file.
+
+**`syncLegacy(g, p)`** follows the two records of one person into the edge. `updateTies` and `updateWl` call it after they write (when
+the life is stamped), and the yearly step calls it for everyone.
+
+- The debt. While the ego's record says the person owes, the edge carries a kind-0 debt `[owed, 0, since, 0, 0]` (no interest, nothing
+  paid: the legacy record keeps its own books) and obligation is at least `min(100, 20 + 10 x years owed)`; it only ever raises `o`.
+  When they owe nothing a kind-0 debt is removed and `o` is left to the acts. A debt of another kind (a divorce debt) is never touched
+  and never overwritten. A debt cannot begin after today and is at most a trillion.
+- The anger. `s` is at least the anger of the ego's will record and is never lowered.
+- No edge is made for a person whose records say nothing to follow. The numbers 20 and 10 are the planner's; the tests prove the range.
+
+## 10. The yearly step (R4-E7, X42, C14)
+
+`world/edge-step.ts` is the module `world.edges` (layer 2): one yearly entry in the `close` phase of the aging seam at order 5, so it
+runs right before `milestones`, and it owns the slice `world.edges`. Its group row is `people` in the planner, the log view and the
+integration test (X42). Once a year, on a stamped life, and idempotent by `social.y` (written with `patchSocial`):
+
+1. Resentment fades: `s` x 0.9, rounded down to hundredths, so it reaches 0.
+2. Memories lose weight: every memory loses 1 every `decay` years of its `MEMORY_FX` row (4 for most kinds, 2 for a petty one),
+   counted from the year it was made, and at 0 it goes. The pinned five never lose any. A gap of years pays every decay that fell in it.
+3. The legacy sync for every person of the game.
+4. Orphan edges go: the person is gone from the game, the edge is not bound by its own fields (`edgeLocalBound`), it has no debt at all,
+   `l` is five years old or more and `f + s + |o|` is under 40. E14 widens "bound" to `isBound`.
+
+It draws nothing, makes no id, books no dollar and logs nothing. A stamp from the future is stepped once and put right. A calm map is
+left as it is, the very object. A tap of 10 writes at 1,200 edges is measured by the test and stays under a millisecond on the
+reference machine; the step itself writes only the edges that changed.
+
+## 11. What the next tasks add here
+
 - R4-E8 to E16: memory writers and odds, the family-act budget, the acts, loans, secrets, feuds, staff.

@@ -66,8 +66,8 @@ const esc = (t: string): string => t.replace(/&/g, '&amp;').replace(/</g, '&lt;'
 /** The 36 yearly hooks of the game, by name: the entries of src/game/modules/yearly-aging.ts. */
 const HOOKS = [...src('src/game/modules/yearly-aging.ts').matchAll(/^ {2}hook\('([A-Za-z]+)'/gm)].map((m) => m[1]!)
 
-/** The sources of this release's modules (D31): the Effort, Knowledge and Frontier tracks. Their group is the plan's, written out. */
-const MODULE_SOURCES: Readonly<Record<string, string>> = { 'effort.you': 'work', 'knowledge.core': 'money', 'world.frontier': 'world' }
+/** The sources of this release's modules (D31): the Effort, Knowledge and Frontier tracks, and the edge step of R4 (X42). Their group is the plan's, written out. */
+const MODULE_SOURCES: Readonly<Record<string, string>> = { 'effort.you': 'work', 'knowledge.core': 'money', 'world.edges': 'people', 'world.frontier': 'world' }
 
 describe('the planner and the log view agree on the groups', () => {
   it('have one table: the same keys and the same group for each', () => {

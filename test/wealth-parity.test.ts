@@ -65,6 +65,8 @@ import {
   type ParityRow,
   type Scene,
   type Tuple,
+  stampStats,
+  withStamped,
 } from './social-parity-kit'
 
 const ORACLE = oracle('wealth')
@@ -608,8 +610,12 @@ function popupRows(): ParityRow[] {
 let played: ParityRow[] | null = null
 
 /** Every part, played once per file. */
+function playFresh(): ParityRow[] {
+  return [...tierRows(), ...candidateRows(), ...matrixRows(), ...entitlementRows(), ...allowanceRows(), ...loanRows(), ...popupRows()]
+}
+
 function playAll(): ParityRow[] {
-  if (played === null) played = [...tierRows(), ...candidateRows(), ...matrixRows(), ...entitlementRows(), ...allowanceRows(), ...loanRows(), ...popupRows()]
+  if (played === null) played = playFresh()
   return played
 }
 
@@ -620,6 +626,22 @@ describe('the wealth oracle', () => {
     const rows = playAll()
     if (isRecording(ORACLE.area)) recordRows(ORACLE, rows)
     else expectRows(ORACLE, rows)
+  })
+
+  it('plays the same rows on a stamped life: the mirror follows every number and moves none (R4-E7)', { timeout: 120_000 }, () => {
+    // the matrix plays an ask the first time it meets it (seenAsks), so a second pass in this process starts from an empty set and puts it back
+    const met = new Set(seenAsks)
+    seenAsks.clear()
+    let rows: ParityRow[]
+    try {
+      rows = withStamped(playFresh)
+    } finally {
+      seenAsks.clear()
+      for (const id of met) seenAsks.add(id)
+    }
+    expectRows(ORACLE, rows)
+    expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
+    expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
   })
 
   it('plays every ask of the catalog', () => {

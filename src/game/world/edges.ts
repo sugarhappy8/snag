@@ -527,6 +527,14 @@ function storedMap(g: Pick<GameState, 'world'>): EdgeMap {
   return out
 }
 
+/**
+ * Takes a root that world/edge-write.ts has just built as already normalized (R4-E7): the reads of this file then find it in the cache
+ * and cost nothing, instead of normalizing the whole map once after every write. Only the writer calls it, with a root it validated.
+ */
+export function trustMap(root: EdgeMap): void {
+  MAPS.set(root, root)
+}
+
 function derived(map: EdgeMap): Derived {
   let d = DERIVED.get(map)
   if (d === undefined) {

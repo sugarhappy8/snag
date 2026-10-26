@@ -23,6 +23,13 @@
 //   referenceRows()           the kit's own small scene: a table of deltas at the bounds and non-finite values, and four real
 //                             actions of relationships.ts. The kit self-test and the mutation test (test/social-mutation.test.ts)
 //                             use it, so both see an engine change the way an oracle file would
+//   withStamped(fn)           (R4-E7) runs fn with every scene stamped (stampSocial, the mark X6 puts on a new life) and with the
+//                             Edge mirror checked at every change: after each call that moves a number, the edge person > player
+//                             holds that number (cut to 0..100) or is not there (a map full of bound edges). The same oracle rows
+//                             are expected: the mirror follows the numbers and never moves one, never draws, never makes an id.
+//                             `SceneSpec.stamped` stamps one scene by itself; stampLife(g) stamps a game that a life made (the
+//                             lives and the nepo worlds) when the mode is on; stampStats() says how many games were stamped and how
+//                             many changes were checked, so a replay that stamped nothing cannot pass for one
 //
 // An area's test plays its scenes, then either records or compares:
 //
@@ -44,11 +51,16 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { addRelationship } from '../src/game/core'
-import type { RelKind } from '../src/game/kernel/relations'
+import { personEntity } from '../src/game/kernel/person-ref'
+import { bindMirror, type MirrorHook, type RelKind } from '../src/game/kernel/relations'
 import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import { fnv1a } from '../src/game/text/hash'
 import type { Character, GameState, Gender, Json, MenuAction, ModalItem, Person, RelationKind, StatKey } from '../src/game/types'
+import { mirrorChange } from '../src/game/world/edge-mirror'
+import { readEdge } from '../src/game/world/edges'
+import { playerRef } from '../src/game/world/people'
+import { socialOn, stampSocial } from '../src/game/world/social'
 import { frozenGame, roundSig, trapRng } from './effort-kit'
 import { checkReason } from './golden-cli'
 import { makeTestGame } from './helpers'
@@ -116,6 +128,71 @@ export function snapshot(label: string, g: GameState, extra?: Extra): ParityRow 
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Stamped replays (R4-E7)
+
+/** What a stamped replay did: the games it stamped and the changes of a number whose edge it checked. */
+export interface StampStats {
+  stamped: number
+  checked: number
+}
+
+let stampedMode = false
+const stats: StampStats = { stamped: 0, checked: 0 }
+
+/** The numbers of the replay in progress or of the last one. */
+export function stampStats(): Readonly<StampStats> {
+  return { ...stats }
+}
+
+/** True inside withStamped. */
+export function isStampedMode(): boolean {
+  return stampedMode
+}
+
+/**
+ * Stamps a game when the mode is on (or `force` says so) and returns it. A scene does this for its own game; a life that createNewLife
+ * or a builder made is passed through here by the test that plays it. Idempotent.
+ */
+export function stampLife<T extends GameState>(g: T, force?: boolean): T {
+  if (force ?? stampedMode) {
+    stampSocial(g)
+    stats.stamped++
+  }
+  return g
+}
+
+const clampRel = (n: number): number => Math.max(0, Math.min(100, n))
+
+/** The mirror, then a check of what it wrote: the edge person > player holds the new number, cut to 0..100, or there is no edge. */
+const checkedMirror: MirrorHook = (g, p, change) => {
+  mirrorChange(g, p, change)
+  if (!socialOn(g) || p.relation === 'pet' || !Number.isFinite(change.after) || change.after === change.before) return
+  stats.checked++
+  const e = readEdge(g, personEntity(p), playerRef(g))
+  if (e !== null && e.f !== clampRel(change.after)) {
+    throw new Error(`the mirror: ${p.relation} ${p.firstName} is now at ${String(change.after)} (${change.kind}) but the edge holds f ${e.f}`)
+  }
+}
+
+/**
+ * Runs fn with every scene (and every life passed through stampLife) stamped and the Edge mirror checked at every change. The oracle
+ * rows are the ones of the unstamped recording: a stamped life must play the same numbers, draws, ids and popups. Resets the counts.
+ */
+export function withStamped<T>(fn: () => T): T {
+  if (stampedMode) throw new Error('withStamped: already inside a stamped replay')
+  stampedMode = true
+  stats.stamped = 0
+  stats.checked = 0
+  bindMirror(checkedMirror)
+  try {
+    return fn()
+  } finally {
+    bindMirror(mirrorChange)
+    stampedMode = false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Scenes
 
 /** [seed, year]: the dice and the calendar year of a scene. Searched once with findSeed at record time, constant after (X30). */
@@ -144,6 +221,8 @@ export interface SceneSpec {
   /** Overrides for the player (the default is an adult of 30 in the US). */
   character?: Partial<Character>
   cast?: readonly CastSpec[]
+  /** Stamp the scene's game with the social mark (R4-E7), whatever the mode. Absent: the mode of withStamped decides. */
+  stamped?: boolean
 }
 
 export interface Scene {
@@ -190,6 +269,7 @@ export function scene(tuple: Tuple, spec: SceneSpec = {}): Scene {
     })
   })
   if (g.rng !== seed) throw new Error(`scene: building the cast drew from g.rng (${seed} -> ${g.rng}); give createPerson every field`)
+  stampLife(g, spec.stamped)
   const rows: ParityRow[] = []
   const made: Scene = {
     g,

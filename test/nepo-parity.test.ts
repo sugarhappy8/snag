@@ -33,10 +33,17 @@ import { companyEffects, familyYear } from '../src/game/business/nepo-year'
 import { bizOf, type BizState } from '../src/game/business/state'
 import { createPerson } from '../src/game/people'
 import type { Asset, GameState, Json, Person, RelationKind } from '../src/game/types'
-import { drain, kid, world, type World } from './nepo-kit'
-import { GAME_SLOT, expectRows, isRecording, oracle, recordRows, scene, snapshot, type CastSpec, type ParityRow, type Tuple } from './social-parity-kit'
+import { drain, kid, world as plainWorld, type World } from './nepo-kit'
+import { GAME_SLOT, expectRows, isRecording, oracle, recordRows, scene, snapshot, type CastSpec, type ParityRow, type Tuple, stampLife, stampStats, withStamped } from './social-parity-kit'
 
 const ORACLE = oracle('nepo')
+
+/** The company world of nepo-kit; in a stamped replay (R4-E7) its game carries the social mark, otherwise it is the game it always was. */
+const world = (...a: Parameters<typeof plainWorld>): World => {
+  const w = plainWorld(...a)
+  stampLife(w.g)
+  return w
+}
 
 /** The pure model's tuple: nothing in it rolls, the seed only names the state. */
 const MODEL: Tuple = [5, 2026]
@@ -436,6 +443,13 @@ describe('the nepo and dynasty oracle', () => {
     const rows = rowsOnce()
     if (isRecording(ORACLE.area)) recordRows(ORACLE, rows)
     else expectRows(ORACLE, rows)
+  })
+
+  it('plays the same rows on a stamped life: the mirror follows every number and moves none (R4-E7)', { timeout: 120_000 }, () => {
+    const rows = withStamped(playAll)
+    expectRows(ORACLE, rows)
+    expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
+    expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
   })
 
   it('plays the same rows twice', { timeout: 120_000 }, () => {

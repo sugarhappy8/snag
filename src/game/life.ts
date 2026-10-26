@@ -61,7 +61,10 @@ import { waveWorldFlags } from './business/tech-waves'
 import { bizOf, readBiz, type Manager } from './business/state'
 import { yearlyMainCharacter } from './mastery'
 import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, pickedTalents, refreshFamilyTalents, talentLabel, type TalentId } from './talents'
+import { flagOn } from './flags'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
+import './world/edge-mirror'
+import { stampSocial } from './world/social'
 import { syncWorld } from './world/sync'
 import type {
   AncestorSummary,
@@ -1010,6 +1013,10 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   }
   // A citizen of the country you're born in (immigration.ts adds passports later).
   c.citizenships = [c.countryId]
+  // The social stamp (R4-E7, X6): the one place a life is marked. The build key decides only whether a NEW life is stamped; everything
+  // after this asks socialOn(g), so every v5.2.0 save, every unstamped life and every heir of one plays as it always did. The mark draws
+  // nothing and makes no id, so the life a seed rolls is the same either way.
+  if (flagOn('social')) stampSocial(g)
   return g
 }
 
