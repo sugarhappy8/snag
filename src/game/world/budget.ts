@@ -11,7 +11,7 @@
 // function of the game; this file only measures it. No luck is drawn here either.
 import { LEDGER_CAPS } from '../kernel/ledger'
 import type { GameState } from '../types'
-import { FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS } from './caps'
+import { FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS, MET_CAPS } from './caps'
 import { readWorld } from './state'
 
 /**
@@ -80,6 +80,15 @@ function capsOf(name: string, shard: unknown): [string, number, number][] {
       return [['rows', sizeOf(shard.rows), LOD_CAPS.homes]]
     case 'holdings':
       return [['rows', sizeOf(shard.rows), HOLDING_ROWS_CAP]]
+    case 'met': {
+      // A tombstone is an array, a record is not: counted as stored, so a shard written around its reader shows.
+      let tombs = 0
+      for (const v of Object.values(shard)) if (Array.isArray(v)) tombs++
+      return [
+        ['records', sizeOf(shard) - tombs, MET_CAPS.records],
+        ['tombstones', tombs, MET_CAPS.tombs],
+      ]
+    }
     case 'frontier': {
       const recs = isPlain(shard.f) ? Object.values(shard.f) : []
       let rows = 0

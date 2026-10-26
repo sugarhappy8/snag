@@ -1,8 +1,8 @@
 # People: the registry freeze note
 
 The note R5 and R6 code against (R4, v5.3.0). It starts here with the sid, the latent person and the inventory of the eight
-parallel named-person shapes (R4-S3). R4-S4 and R4-S7 add the Met store and promotion and demotion, R4-E6a adds the edge model,
-and R4-S11 completes it. Until a section below says otherwise, `docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md`
+parallel named-person shapes (R4-S3). R4-S4 adds the Met store (section 5), R4-S7 adds promotion and demotion, R4-E6a adds the edge
+model, and R4-S11 completes it. Until a section below says otherwise, `docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md`
 section 3.1 is the authority for every name and signature. Plain hyphens only: no long dashes anywhere in this file.
 
 The one idea: a person who is not in `g.people` yet is a **slot** `(kind, place, cohort, ord)`. The text of a slot is the
@@ -94,7 +94,8 @@ change between releases too; only a never-met slot feels that, because a Met rec
 
 ## 3. Caps and writer rules
 
-Caps in force or fixed by the plan (the Met store is R4-S4's; the figures are the contract of cross-check 3.1):
+Caps in force or fixed by the plan (the Met caps are `MET_CAPS` in `world/caps.ts`, section 5; the figures are the contract of
+cross-check 3.1):
 
 | Cap | Value |
 |---|---|
@@ -138,9 +139,66 @@ Counted from the code: six of the eight draw `g.rng` when they are created, so n
 `latent` without moving a seeded life. That is why R4 ships the registry dark (no writer in a played life) and R6 D.6 moves them
 with its own goldens.
 
-## 5. What the next tasks add here
+## 5. The Met store (`src/game/world/met.ts`, layer 2)
 
-- R4-S4: the Met shard `g.world.met`, `MetRecord`, `Tomb`, `MET_CAPS` in `world/caps.ts`, the readers and the one writer.
+`g.world.met` is where a person the game has met, or is bound to, lives when the person is not (or no longer) in `g.people`. A plain
+object keyed by sid, with no `v` and no `y` (the version of the slice travels in `sv`). It is absent until a writer runs: nothing in
+R4's kernel calls `writeMet`, so an old save and a life that never meets anyone have no `met` key. The first writers are Life's
+(R4-L4, R4-L9) and the registry's own behaviour (R4-S7), and they run only on a life stamped by the `social` flag (X6).
+
+```ts
+export interface MetRecord { f: string; l: string; g: 0 | 1; b: number; c: string; k: number; a: AxisTuple; y: number; s: number; w: number; fl: number; gr: number; ob: number; d?: number; r?: string; j?: string }
+export type Tomb = readonly [y: number, gr: number, ob: number, fl: number, first: string, last: string, gb: number]
+export type MetShard = { [key: string]: MetRecord | Tomb }
+```
+
+| Field | Meaning | Range |
+|---|---|---|
+| `f`, `l` | first and last name, resolved the day the person was first met | 1 to 24 and 1 to 32 characters, no control characters, trimmed |
+| `g` | gender | 0 or 1 (1 male) |
+| `b` | born | 1700 to 100000. Wider than the other years on purpose: a person is born before the life starts, so an elder of a 1900 life, or a latent person of cohort 1850 aged 90 (born 1760), comes back as stored and not cut |
+| `c` | the person's own country | 1 to 12 of `[A-Za-z0-9_-]` |
+| `k` | which name was drawn | 0 to 8 (0 the latent name, 1 to 7 the stored alternates, 8 the hyphenated surname; S6 writes it) |
+| `a` | the five axes, in `AXIS_IDS` order | exactly five whole numbers, 0 to 100 |
+| `y`, `s`, `d` | first met, last seen, died | 1900 to 100000, because a life starts no earlier than `HISTORY_START` (1900) |
+| `w` | role weight | 0 to 9 |
+| `fl` | stake flags | 0 to 63: 1 debt, 2 spouse, 4 heir, 8 company, 16 feud, 32 will |
+| `gr`, `ob` | grudge, obligation | 0 to 100 and -100 to 100 |
+| `r`, `j` | role tag, job or firm ref | reserved for R6 (X17): `[a-z][a-z0-9.-]{0,15}` and a valid ref of 52 characters at most. Sanitized, written by nobody in R4 |
+
+A tombstone is what is left of a person who is only owed, remembered or feuded with: `[year, grudge, obligation, flags, first, last,
+gb]`. `gb = born * 2 + gender` (`packGb`, `unpackGb`), saved state that `test/world-met.test.ts` pins, so waking a tombstone gives
+the born year and the gender back; its range is 3400 to 200001. A key is a sid of the strict grammar, or a legacy person id
+`p<digits>` when the value is a tombstone (a debt outlives its Person). A record uses 22 of its 24 nodes (`MET_CAPS.nodes`).
+
+| Cap (`MET_CAPS`) | Value |
+|---|---|
+| `records` | 400 |
+| `tombs` | 200 |
+| `scan` | 5,000 entries looked at when a shard is read |
+| `nodes` | 24 in one record |
+| `key` | 40 characters |
+| worst case | 10,401 nodes (400 x 22 + 200 x 8 + the map root), about 90,000 characters |
+
+What the code gives (R4-S4; behaviour is S6 and S7):
+
+- `normalizeMet(raw)` is total and bounded; a valid shard comes back as itself. It cuts a field into its range, drops what cannot be
+  read, drops unknown keys and a record of more than 24 nodes, keeps 400 records and 200 tombstones (the ones held on the entry itself
+  first: a flag, an obligation, a grudge of 20 or more; then the freshest; then by key) and returns the keys in plain code-unit order
+  (`a < b`, never `localeCompare`, because the entity codec tests `prev < k`).
+- `readMet(g)`, `metRecord(g, key)`, `metTomb(g, key)`, `isTomb(x)` and `metKinds(g)` (records per sid kind, every kind present, 0 when
+  none; R6 counts career peers with it) are pure.
+- `writeMet(g, next)` is the one writer: it replaces the root only when something changed, keeps every unchanged entry by identity,
+  writes nothing for an absent shard and an empty `next`, and seals what it stores (frozen). S7's `touchMet`, `markMet`, `evictMet`
+  and `tombstoneMet` are built on it.
+- `metProblems(raw, people?)` names every way a stored shard is wrong; with `g.people` it also names a living Person whose
+  `data.sid` is a sid of the strict grammar and has no record (a lenient text such as `s77` needs none), and a sid on a child,
+  stepchild or grandchild (`heirUnsafe`). `worldProblems` prints each as a "met: ..." line.
+- `worldBudget` counts records and tombstones against `MET_CAPS`. `met` is in the keep-last class of the over-cap order.
+
+## 6. What the next tasks add here
+
+- R4-S4: done, see section 5.
 - R4-S7: `touchMet`, `markMet`, `evictMet`, `tombstoneMet`, `sweepMet`, the protector and salience contract.
 - R4-E6a: the edge model (`Edge`, `EdgeKey`, `MEMORY_KINDS`).
 - R4-S11: completes this note (the acceptance figures, the scans, the closing caps).

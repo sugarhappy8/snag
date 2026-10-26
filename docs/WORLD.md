@@ -8,7 +8,7 @@ and `src/game/kernel/ids.ts`.
 
 ## g.world
 
-- `GameState.world?: WorldState` is `{ v: 1, y?, ledger?, people?, firms?, homes?, holdings?, lod?, ...other shards }`. `v` is the
+- `GameState.world?: WorldState` is `{ v: 1, y?, ledger?, people?, firms?, homes?, holdings?, lod?, met?, ...other shards }`. `v` is the
   root's version, `y` the year the world last stepped (an integer from 1900 to 100000, or absent).
 - Absent reads as empty. `readWorld(g)` is pure and returns a frozen `{ v: 1 }` for an absent, garbage or wrong-version `g.world`, so
   a save from before R2 needs no migration. `ensureWorld(g)` is the writer: it creates `{ v: 1 }` and drops garbage on the first
@@ -22,6 +22,7 @@ and `src/game/kernel/ids.ts`.
 - The shards of R2: `ledger` (the books, `kernel/ledger.ts`), `people`, `firms`, `homes`, `holdings` and `lod`. The module registry
   of the Kernel track adds `facts` (the facts the bus recorded, at most 400, `world/facts.ts`); it joins the hub with one line.
   R3 adds `frontier` (how far the world's research is ahead of the calendar path, `world/frontier.ts`, see "The frontier" below).
+  R4 adds `met` (who the player has met, `world/met.ts`, see "The Met store" below).
 - A shard is written by replacing its root (`ensureWorld(g).people = { ...next }`, or `commitShard`), never by editing it in place,
   because the save layer shares each shard root between drafts, frozen. The one exception is `ledger`, which every booking edits in
   place and which the save layer therefore treats as a core slice. Every writer has a test that runs it on a state whose shard roots
@@ -80,6 +81,8 @@ duplicate row and drop a bad one before the check could see it. It checks:
 - the three indexes and the holdings table: a v1 shard, a list of valid rows, one row for an id, at most the shard's cap of rows, and
   every asset in the holdings summing to 1 within 1e-6;
 - the frontier (R3): a v1 shard of known fields, every row valid and in its caps, no lead over 12 years and no lead on an AI capability;
+- the Met shard (R4), read raw: every key a sid (or a legacy person id on a tombstone), every field in its range, at most 400 records and
+  200 tombstones, keys ascending, a living Person whose strict sid has a record, and no sid on a child, stepchild or grandchild;
 - the people of the game: unique ids and at most one living spouse;
 - the index against the records, only when the world was stamped this year (or `live: true`): a row stamped with this year names a
   record that exists, there are no more fresh rows than the index may hold, and every held asset is in the firms or the homes index.
@@ -107,9 +110,9 @@ duplicate row and drop a bad one before the check could see it. It checks:
      step rebuilds the three indexes from the records they list, and the others are counters, a short history and a bounded field table;
   2. then every other shard, one of a later release or a test included;
   3. never, while any shard of the other two classes can still go, `ledger`, `holdings`, `met`, `edges` and `social`
-     (`WORLD_KEEP_LAST`): the books, who owns what, who the player has met and what people owe and remember. `met`, `edges` and
-     `social` arrive in R4 (the shard tasks of the Registry and Edges tracks); the order already names them, so the cap can never
-     take their debts and memories with it.
+     (`WORLD_KEEP_LAST`): the books, who owns what, who the player has met and what people owe and remember. `met` arrives with
+     R4-S4; `edges` and `social` are the Edges track's. The order already names all three, so the cap can never take their debts and
+     memories with it.
 
   Inside a class the largest shard goes first, ties by name, so the result depends on the sizes and the names and never on the order
   the keys came in. The order is the pure function `overCapDrops` in `world/state.ts`.
@@ -259,6 +262,41 @@ All reads are pure: no write, no `g.rng`, the same number for the same source in
   size 1 by both sides and 5 port calls a year) holds every cap above and the state at 3,600 nodes, books no money and leaves `g.rng`
   and `g.nextId` alone; a rerun, a clone and a JSON reload give equal JSON; an heir keeps the shard; every old fixture, a life to 2026
   and a modern life with no company have no `frontier` key; twelve hostile shards load into the oldest fixture and stay bounded.
+
+## The Met store
+
+Since R4 (v5.3.0) `g.world.met` keeps who the player has met, or is bound to by a debt, a spouse, an heir, a company or a feud. The
+code is `world/met.ts` and the ceilings are `MET_CAPS` in `world/caps.ts`. The person, the sid and the latent identity behind a record
+are described in `docs/PEOPLE.md`; this section is the shard.
+
+- The shape is a plain object keyed by sid, with no `v` and no `y` (the version of the slice travels in `sv`). A key is a sid of the
+  strict grammar (`world/sid.ts`), or a legacy person id `p<digits>` when the value is a tombstone, so a debt outlives its Person.
+  Keys ascend in plain code-unit order (`a < b`, never `localeCompare`): the entity codec tests `prev < k`, and a shard that is not
+  in that order rides whole in the world chunk and `stats.unsortedEntities` names it.
+- A record is `{ f, l, g, b, c, k, a, y, s, w, fl, gr, ob, d?, r?, j? }`: first and last name (24 and 32 characters), gender (1 male),
+  born (1700..100000: wider than the rest on purpose, because a person is born before the life starts), country, which name was drawn
+  (0..8), the five axes (whole 0..100), first met, last seen and died (1900..100000), role weight (0..9), stake flags (0..63: 1 debt,
+  2 spouse, 4 heir, 8 company, 16 feud, 32 will), grudge (0..100) and obligation (-100..100). `r` (a role tag) and `j` (a job or firm
+  ref of 52 characters at most) are reserved for R6, sanitized and written by nobody in R4. A tombstone is `[year, grudge, obligation,
+  flags, first, last, gb]` with `gb = born * 2 + gender`, so waking one gives both back (`packGb`, `unpackGb`).
+- Absent until a writer runs. Nothing in R4's kernel calls `writeMet`: a life that never meets anyone has no `met` key, and an old
+  save loads with none. Reads (`readMet`, `metRecord`, `metTomb`, `metKinds`) are pure, draw nothing and write nothing.
+- Bounded by its reader. `normalizeMet` is total: any value in, a valid shard out, and a valid shard comes back as itself. It scans at
+  most 5,000 entries, cuts every field into its range and drops what cannot be read (a number that is not finite, axes that are not
+  five numbers, a key that is no sid, a tombstone of the wrong length, a record of more than 24 nodes), drops unknown keys, keeps 400
+  records and 200 tombstones (protected entries first: a flag, an obligation or a grudge of 20 held on the entry itself; then the
+  freshest; then by key, so the survivors depend only on the set of names) and returns the keys ascending. A record born in 1760
+  comes back as stored; one seen in 1850 is cut to 1900.
+- Worst case 10,401 nodes: 400 records of 22 (the record, 12 plain fields, the axes list with its five numbers, and `d`, `r`, `j`) +
+  200 tombstones of 8 + the map root, about 90,000 characters. `worldBudget` counts records and tombstones against the caps, as
+  stored, and `worldProblems` prints `metProblems` as "met: ..." lines. Over the world's node cap `met` is in the keep-last class.
+- One writer. `writeMet(g, next)` stores the cleaned shard by replacing the root, only when something changed, with keys ascending and
+  every unchanged entry kept by identity (so the save layer rewrites one chunk for one tap). It writes nothing when the shard is absent
+  and `next` is empty. What it stores is sealed (the root, each entry and the axes list are frozen), so a record is built new for each
+  change and never edited, and a read of a sealed root costs nothing.
+- Load order: the shard registers itself when `world/met.ts` loads, and `world/shards.ts` imports it, like `facts` and `frontier`.
+- Proven by `test/world-met.test.ts`: twelve hostile shards, the ranges, the cut, the order, the writer on a deep-frozen root, pure
+  reads, every fault of `metProblems`, and the shard at its caps inside the budget P2 set.
 
 ## How to add a shard
 
