@@ -27,6 +27,7 @@ import { firmRef } from './firms'
 import { frontierProblems } from './frontier'
 import { OUTSIDE } from './holdings'
 import { homeRef } from './homes'
+import { kinProblems } from './kin'
 import { metProblems } from './met'
 import { npcFirmId, personRef } from './people'
 import { isPlain, OVER_MAX, refOfKind, SEEN_MAX, SEEN_MIN } from './rows'
@@ -146,6 +147,7 @@ export function worldProblems(g: GameState, opts?: WorldCheckOptions): string[] 
   const homes = indexShard('homes', world.homes, LOD_CAPS.homes, (r) => refOfKind(r.id, 'home') !== null && refOfKind(r.owner, 'person') !== null, out)
   const held = holdingsShard(world.holdings, out)
   for (const p of frontierProblems(world.frontier)) out.push(`frontier: ${p}`)
+  for (const p of kinProblems(g)) out.push(`kin: ${p}`)
   for (const p of metProblems(world.met, g.people)) out.push(`met: ${p}`)
 
   // The index against the records, when it was just built.
