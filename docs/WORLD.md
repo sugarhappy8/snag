@@ -99,6 +99,13 @@ duplicate row and drop a bad one before the check could see it. It checks:
   cap, in sorted id order, once a year. Protected means an obligation exists (a person of `g.people`, the owner of an old NPC firm, a
   holder in the table, a company or home whose record still exists, the player): a protected row is never let go by idleness or by
   the cap. The rows that survive depend only on the set of names, never on the order they came in.
+- The Met store follows the same rules (`world/met-ops.ts`, R4-S7; the full note is in `docs/PEOPLE.md`). `lodSweep` calls `sweepMet`
+  inside its year stamp: a record idle for the same five years (`s < year - 5`) is dropped and its account folded into
+  `pool:hh:<the person's own country>`, or, when only its own stake holds it (a flag, an obligation, a grudge of 20 or more), turned into a
+  tombstone that keeps the obligation; a record held by a Person of `g.people`, a holder in the table or a registered protector stays as
+  it is. A tombstone is let go only when nothing holds it and it is 20 years old. `touchMet` at 400 records lets go the lowest ranked
+  unprotected one by `[protected, salience, recency, key]` and returns false when every record is held, so the 400 that stay depend only
+  on the set of names. `lodSweep` counts the records that left in `demoted`, and a life with no `met` key writes nothing.
 
 ## The budget
 
@@ -279,8 +286,9 @@ are described in `docs/PEOPLE.md`; this section is the shard.
   2 spouse, 4 heir, 8 company, 16 feud, 32 will), grudge (0..100) and obligation (-100..100). `r` (a role tag) and `j` (a job or firm
   ref of 52 characters at most) are reserved for R6, sanitized and written by nobody in R4. A tombstone is `[year, grudge, obligation,
   flags, first, last, gb]` with `gb = born * 2 + gender`, so waking one gives both back (`packGb`, `unpackGb`).
-- Absent until a writer runs. Nothing in R4's kernel calls `writeMet`: a life that never meets anyone has no `met` key, and an old
-  save loads with none. Reads (`readMet`, `metRecord`, `metTomb`, `metKinds`) are pure, draw nothing and write nothing.
+- Absent until a writer runs. The writers are `touchMet`, `markMet`, `evictMet`, `tombstoneMet` and `sweepMet` of `world/met-ops.ts`;
+  nothing in a played life calls them in R4 except the yearly sweep, which does nothing for a life with no `met` key, so such a life has
+  none, and an old save loads with none. Reads (`readMet`, `metRecord`, `metTomb`, `metKinds`) are pure, draw nothing and write nothing.
 - Bounded by its reader. `normalizeMet` is total: any value in, a valid shard out, and a valid shard comes back as itself. It scans at
   most 5,000 entries, cuts every field into its range and drops what cannot be read (a number that is not finite, axes that are not
   five numbers, a key that is no sid, a tombstone of the wrong length, a record of more than 24 nodes), drops unknown keys, keeps 400
