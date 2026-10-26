@@ -12,9 +12,19 @@
 //   shownLeader(g, asset, s)     a hire as the player knows them: the middle of the read for the skill, a steady trait until it is named.
 //                                The sheet works "current contribution" out on that copy, so it no longer gives the true values away
 //   leaderRead, skillText        a range and its chip for any skill key (the CEO shortlist and rows of R4-U7), and the words of a range
+//   leaderEstimate               the estimate behind leaderRead, for a screen that works a second number out of the range (finance skill)
 //
-// The leaf also registers the owner of the `stf` kind: a label and `gone` (true when the hire left, or the company is gone, so the yearly
-// knowledge step forgets the row). It has no truth to sell and no scope, so no source reads it and nothing is for sale: the interview is
+// R4-U7 puts the hired CEO on the same key family (`stf:<company>:ceo:skill`; a group's CEO uses the group's id):
+//
+//   ceoSkillRead(g, id, m)       the read of a CEO's skill at the exposure of their years (g.year - since); a row learned before they began
+//                                is about the CEO before and is ignored
+//   ceoRead                      its text and chip: today's `N/100` without staffFog(), a range, or "not clear yet"
+//   ceoWord                      the letter's word (competent, elite, world-class), from the middle of the read and never from the skill
+//   startCeoRead                 a new CEO: the row of the one before goes, and the read you had of the one you hired is kept
+//   mappedText                   a range worked through a function of the skill (the finance skill of a finance CEO)
+//
+// The leaf also registers the owner of the `stf` kind: a label and `gone` (true when the hire left, or the company is gone, or the CEO
+// has changed since the row was learned, so the yearly knowledge step forgets the row). It has no truth to sell and no scope, so no source reads it and nothing is for sale: the interview is
 // the read, the background check is the other one, and both are the shortlist's. `cand` stays ownerless (test/fog-acceptance.test.ts).
 //
 // Why a leaf of its own. A business file may not import people-fog.ts (business->life is a counted pair of the layer ratchet, 97 today),
@@ -27,7 +37,7 @@
 // read is a hashed draw of life, key, year and source (knowledge/normal.ts), never g.rng; every reader is total (a key the contract
 // refuses reads as "not clear yet", never as the exact number); Exact and a flag-off life never get here, they print today's sheet.
 import { flagOn } from '../flags'
-import { isExact, know, learn, parseKey, readKnow, registerKeyKind, type Estimate } from '../knowledge/contract'
+import { estimate, forget, isExact, know, learn, parseKey, readKnow, registerKeyKind, type Estimate, type StoredRow } from '../knowledge/contract'
 import type { GameState } from '../types'
 
 /** What a screen prints when a read cannot be made. */
@@ -136,16 +146,92 @@ export function carryRead(g: GameState, assetId: string, staffId: string, r: Hir
 }
 
 /**
- * The skill of a candidate or a leader as a screen prints it, with its confidence (R4-U7 calls this for the CEO shortlist and rows).
+ * The estimate behind leaderRead: the read of `skill` on a `cand` or `stf` skill key at `exposure` 0 to 1. Null when staffFog() is off,
+ * when the key is refused or belongs to another family, when the skill is not a number, and when the answer would be the truth.
+ */
+export function leaderEstimate(g: GameState, key: string, skill: number, exposure: number): Estimate | null {
+  if (!staffFog()) return null
+  const p = parseKey(key)
+  if (p === null || p.field !== 'skill' || (p.kind !== 'cand' && p.kind !== 'stf') || !finite(skill)) return null
+  const e = know(g, key, Math.min(100, Math.max(0, skill)), { exp: finite(exposure) ? Math.min(1, Math.max(0, exposure)) : 0 })
+  return e.exact ? null : e
+}
+
+/**
+ * The skill of a candidate or a leader as a screen prints it, with its confidence (R4-U7 calls this for the CEO shortlist).
  * `key` is a `cand` or `stf` skill key and `exposure` 0 to 1. Exact and a flag-off life print today's `N/100`; otherwise a range, or
  * "not clear yet" for a key the contract refuses, another family, or a skill that is not a number. Never the truth.
  */
 export function leaderRead(g: GameState, key: string, skill: number, exposure: number): LeaderText {
   if (!staffFog()) return { text: `${skill}/100` }
-  const p = parseKey(key)
-  if (p === null || p.field !== 'skill' || (p.kind !== 'cand' && p.kind !== 'stf') || !finite(skill)) return { text: NOT_CLEAR, conf: 0 }
-  const e = know(g, key, Math.min(100, Math.max(0, skill)), { exp: finite(exposure) ? Math.min(1, Math.max(0, exposure)) : 0 })
-  return e.exact ? { text: NOT_CLEAR, conf: 0 } : { text: skillText(e, skill), conf: e.conf }
+  const e = leaderEstimate(g, key, skill, exposure)
+  return e === null ? { text: NOT_CLEAR, conf: 0 } : { text: skillText(e, skill), conf: e.conf }
+}
+
+/** A range worked through a function of the skill, printed the way skillText prints it ("not clear yet" when there is no read). */
+export function mappedText(e: Estimate | null, f: (skill: number) => number): string {
+  if (e === null) return NOT_CLEAR
+  const lo = f(e.lo)
+  const hi = f(e.hi)
+  const mid = f(e.mid)
+  return [lo, hi, mid].every(finite) ? skillText({ ...e, lo, hi }, mid) : NOT_CLEAR
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// The hired CEO (R4-U7)
+
+/** The id a CEO has inside a company's `stf` keys: `stf:<company>:ceo:skill`. */
+export const CEO_ID = 'ceo'
+
+/** A hired CEO as the leaf needs them (the Manager of business/state.ts fits). */
+export interface CeoRef {
+  skill: number
+  since: number
+}
+
+/** The row of a CEO, unless it was learned before they began (it is about the one before, and learn would blend the two). */
+function ceoRow(g: GameState, key: string, m: CeoRef): StoredRow | null {
+  const stored = readKnow(g)?.k[key]
+  return stored !== undefined && (!finite(m.since) || stored.y >= m.since) ? stored : null
+}
+
+/**
+ * What the player may read of a hired CEO's skill: the estimate on `stf:<id>:ceo:skill` at the exposure of their years in the chair
+ * (`g.year - since`), or the carried read while that one is sharper. `ownerId` is the company, or the group for a group's CEO. Null
+ * when staffFog() is off (the caller prints today's text), when the key is refused or the skill is not a number. Never the truth.
+ */
+export function ceoSkillRead(g: GameState, ownerId: string, m: CeoRef): Estimate | null {
+  if (!staffFog() || typeof m !== 'object' || m === null) return null
+  const key = staffKey(ownerId, CEO_ID)
+  if (key === null || !finite(m.skill)) return null
+  const e = estimate(g, key, Math.min(100, Math.max(0, m.skill)), { exp: staffExposure(g.year - m.since), row: ceoRow(g, key, m) })
+  return e.exact ? null : e
+}
+
+/** A CEO's skill as a screen prints it: today's `N/100` without staffFog(), else a range with its chip, or "not clear yet". */
+export function ceoRead(g: GameState, ownerId: string, m: CeoRef): LeaderText {
+  if (!staffFog()) return { text: `${m.skill}/100` }
+  const e = ceoSkillRead(g, ownerId, m)
+  return e === null ? { text: NOT_CLEAR, conf: 0 } : { text: skillText(e, m.skill), conf: e.conf }
+}
+
+/** The word of the yearly letter, by the middle of the player's read against the same 90 and 95 as before (50 when nothing can be read). */
+export function ceoWord(g: GameState, ownerId: string, m: CeoRef): 'competent' | 'elite' | 'world-class' {
+  const e = ceoSkillRead(g, ownerId, m)
+  const mid = e === null ? MIDDLING : Math.round(Math.min(100, Math.max(0, e.mid)))
+  return mid >= 95 ? 'world-class' : mid >= 90 ? 'elite' : 'competent'
+}
+
+/**
+ * A new CEO sits down: the row of the one before is forgotten (a stored read is merged with the next one, and it is not about this
+ * person), and the read you had of the candidate you hired is kept. Nothing without staffFog().
+ */
+export function startCeoRead(g: GameState, ownerId: string, carried: HiredRead | null): void {
+  if (!staffFog()) return
+  const key = staffKey(ownerId, CEO_ID)
+  if (key === null) return
+  forget(g, key)
+  if (carried !== null) carryRead(g, ownerId, CEO_ID, carried)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -185,7 +271,12 @@ registerKeyKind({
     const d = detailsOf(g, p.ids[0]!)
     if (d === null) return true
     if (d === undefined) return false
-    if (p.ids[1] === 'ceo') return !isObj(d.manager)
+    if (p.ids[1] === 'ceo') {
+      if (!isObj(d.manager)) return true
+      // A row learned before this CEO began is about the one before: nothing reads it (ceoSkillRead) and the next step forgets it.
+      const row = readKnow(g)?.k[key]
+      return row !== undefined && finite(d.manager.since) && row.y < d.manager.since
+    }
     if (!Array.isArray(d.staff)) return false
     return !d.staff.some((x: unknown) => isObj(x) && x.id === p.ids[1])
   },

@@ -30,6 +30,7 @@ export { ceoLetter, ownerAvailable } from './career'
 import { bestPlan, bookYear, planFor, bizWorth, fxValue, LASTING_YEARS, lineCost, linesOf, localEcon, localPay, marketCtxFor, maxProduction, priceBounds, refreshValue, startupCost, staffNet, valuationOf, type Worth } from './economy'
 import { roleTitle } from './era'
 import { laborProtection, severanceMonths, STAFF_TRAITS } from './flavor'
+import { ceoWord, staffFog } from './leader-fog'
 import { financeTarget } from './finance-leadership'
 import { industryDef, lineOf, type RoleDef } from './industries'
 import { complexityShare, productIdeas } from './products'
@@ -691,6 +692,16 @@ function payoutTurn(t: Turn): void {
 }
 
 /**
+ * The first line of the yearly letter. Today's line names the skill and its band. Behind staffFog() (R4-U7) it gives the word the
+ * player's own read earns (the middle of the range against the same 90 and 95), never the skill, which would print the true band next to
+ * a range.
+ */
+function skillLine(g: GameState, a: Asset, m: Manager): string {
+  if (staffFog()) return `By your read, skill is ${ceoWord(g, a.id, m)}.`
+  return m.skill === 100 ? 'Skill 100/100. Forecasts can still miss.' : `Skill ${m.skill}/100, ${m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}.`
+}
+
+/**
  * One year at the helm for a smart hired CEO of a price-and-production company. Mutates the
  * company (g's RNG drives their small mistakes) and writes the owner the yearly letter.
  */
@@ -716,7 +727,7 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   payoutTurn(t)
   const planned = bookYear(g, b, g.year, planFor(g, b, g.year, { noise: 1 }), b.production, 0).stmt.net
   t.lines.unshift(
-    m.skill === 100 ? 'Skill 100/100. Forecasts can still miss.' : `Skill ${m.skill}/100, ${m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}.`,
+    skillLine(g, a, m),
     `Forecast ${money(planned)} profit, ${money(baseline)} on the old plan.`,
   )
   if (!b.public) b.valuation = valuationOf(b)
