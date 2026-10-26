@@ -75,8 +75,11 @@ function frozenRows<T extends Record<string, readonly [number, number]>>(t: T): 
 /**
  * The age band of each kind, [lo, hi], whole years, both ends reachable: a person of the kind is `cohort - age` born, age drawn
  * uniformly from lo..hi. The age is the person's age in the year the slot belongs to (its cohort).
- *   careers  the debut age of the career kit (rivals.ts planOf defaults to 18..30; ACTOR_SPEC 19-26, MODEL_SPEC 16-22, MUSIC_SPEC 17-28,
- *            ASTRO_SPEC 26-40), a little wider on both sides because a rival debuts up to four years after the cohort starts
+ *   careers  a little wider than the debut age of the career kit spec: actor 18-30 (ACTOR_SPEC 19-26; 18..30 is also the default of
+ *            rivals.ts planOf), model 15-23 (MODEL_SPEC 16-22), music 17-30 (MUSIC_SPEC 17-28), astronaut 26-42 (ASTRO_SPEC 26-40). Actor
+ *            and model are wider at both ends, music and astronaut at the top end only. author 22-50, gamedev 20-42 and sport 16-32 have
+ *            no kit spec yet: they come from a reading of the career (an author debuts late, a game developer in the early twenties,
+ *            an athlete young), not from a table. Every career band is the age in the cohort year, not the age at debut
  *   cls      a classmate of the cohort that starts school: 5 to 7
  *   tch      a teacher: 28 to 60
  *   cow      a coworker of working age: 20 to 60
@@ -111,7 +114,11 @@ export const KIND_AGE: Readonly<Record<SidKind, readonly [lo: number, hi: number
   pol: [30, 70],
 } as const)
 
-/** The range of each stat, the one createPerson and makeCandidate roll with (a person from a slot reads like a rolled one). */
+/**
+ * The range of each stat, the one createPerson and makeCandidate roll with (a person from a slot reads like a rolled one). One exception
+ * is frozen on purpose: createPerson rolls health 20 to 100 above age 70, a slot reads 50 to 100 at any age, and only the kin band
+ * (up to 75) reaches an age above 70.
+ */
 export const STAT_RANGE: Readonly<Record<StatKey, readonly [lo: number, hi: number]>> = frozenRows({
   happiness: [30, 100],
   health: [50, 100],
