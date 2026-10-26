@@ -11,18 +11,20 @@
 //
 // A shortlist is named by shortlistId (asset, year, round of interviews this year, role), so two rounds for one role in one year
 // never share a reading. The popup data carries that name (`ck`) and `vet` only in Realistic; Exact leaves the data as it was.
-// The candidates in the data stay the true ones: you hired them, and the trait-after-a-year reveal is a later item (H.5, R4).
+// The candidates in the data stay the true ones: you hired them. What the player reads of the one hired goes with the hire (R4-U6:
+// hiredRead here, leader-fog.ts carryRead), and the sheet names the trait after a year or a check.
 //
 // No KeyKind owner is registered for `cand`: a popup cannot hold a Look closer group, so the check above is the one way to read a
 // candidate. An owner would also make the rows trackable by the standing orders and buyable from every source, for a number that is
 // gone when the shortlist is. The family has a rule row (cand.skill) and takeReading takes the truth as an argument, so neither
 // needs one.
 import { localPay } from '../data/local-pay'
-import { forget, isExact, know, takeReading, type Estimate } from '../knowledge/contract'
+import { forget, isExact, know, takeReading } from '../knowledge/contract'
 import { fnv1a } from '../text/hash'
 import type { ChoiceOption, GameState, Json, MenuInfo } from '../types'
 import { traitOf } from './flavor'
 import type { RoleDef } from './industries'
+import { skillText, staffFog, type HiredRead } from './leader-fog'
 import type { BizState } from './state'
 import { money } from './util'
 
@@ -69,18 +71,6 @@ export function validId(v: Json | undefined): string | null {
 }
 
 /**
- * The skill as a range, rounded outward so it holds the truth at least as often as the band (to 5 while the read is rough, to 1 once
- * a check has sharpened it): "about 55 to 75", or "about 70" when it comes to one number. Exact estimates print as today.
- */
-function skillText(e: Estimate, skill: number): string {
-  if (e.exact) return `${skill}/100`
-  const step = e.sd > 0.1 ? 5 : 1
-  const lo = Math.max(0, Math.floor(e.lo / step) * step)
-  const hi = Math.min(100, Math.ceil(e.hi / step) * step)
-  return lo >= hi ? `about ${lo}` : `about ${lo} to ${hi}`
-}
-
-/**
  * What the player may read of candidate `i` of shortlist `id`: Exact mode, today's text; otherwise a range for the skill with its
  * confidence, and the trait only once a check has been paid for (`vet`). Pure: the same candidate in the same year reads the same.
  */
@@ -89,6 +79,17 @@ export function candidateRead(g: GameState, id: string, i: number, c: { skill: n
   if (isExact()) return { skill: { text: `${c.skill}/100` }, trait: label }
   const e = know(g, candKey(id, i), c.skill)
   return { skill: { text: skillText(e, c.skill), conf: e.conf }, trait: vet === 1 ? label : 'not clear yet' }
+}
+
+/**
+ * The read of candidate `i` of shortlist `id` as the popup showed it, for the one you hire (R4-U6): the middle and sd of the estimate,
+ * and whether a background check made it. It is taken before the settled shortlist forgets its checks, and carried to the sheet of the
+ * new hire (leader-fog.ts carryRead). Null unless staffFog() (Exact and a flag-off life carry nothing).
+ */
+export function hiredRead(g: GameState, id: string, i: number, skill: number): HiredRead | null {
+  if (!staffFog()) return null
+  const e = know(g, candKey(id, i), skill)
+  return e.exact ? null : { mid: e.mid, sd: e.sd, checked: e.src.split('+').includes('diligence') }
 }
 
 /** One line of the shortlist text. Exact: today's "• Dana Lee, 34: skill 73/100, asks $60K, steady." */
