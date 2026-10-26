@@ -11,8 +11,10 @@
 import { addStat, count, formatMoney, log, notice, setRelationship, spend, useYearAction } from '../core'
 import { realWealthFactor } from '../history/events-people'
 import { divorce } from '../love'
+import { personEntity } from '../kernel/person-ref'
 import { chance, pick, randInt, shuffle } from '../rng'
 import type { GameState, Person } from '../types'
+import { remember } from '../world/edge-write'
 import { landline } from './era'
 import { goodsScale, isAbroad, typicalIncome } from './wealth-core'
 import { afterWillChange, ensureSnap, estrange, learn } from './will-act'
@@ -99,6 +101,8 @@ function takeSides(g: GameState, angry: Person, notes: string[]): void {
       const dent = randInt(g, 3, 7)
       setRelationship(g, x, Math.max(0, x.relationship - dent))
       if (xw.cut && xw.known) updateWl(g, x, (w) => void (w.anger = Math.min(Math.max(w.anger, aw.anger), w.anger + 5)))
+      // the memory is the angry one's: on the edge angry > x, where x (the second end, so by 'ego') took the side
+      remember(g, angry, 'took_my_side', { w: 1, by: 'ego', with: personEntity(x) })
       notes.push(`${cap(yourWho(x))} took ${angry.firstName}'s side, loudly, at the worst possible moment.`)
       log(g, `${cap(myWho(x))} took ${angry.firstName}'s side about my will.`, 'bad')
     } else {

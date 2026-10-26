@@ -24,6 +24,8 @@ import { logStateLine } from '../text/state-log'
 import { askIsStoryline, askPaceKey } from './ask-families'
 import { askDefs } from './wealth-catalog'
 import { askedPurse, wholePurse } from './purses'
+import { remember } from '../world/edge-write'
+import { memoryOdds } from '../world/edge-odds'
 import { ADULT_SCRIPT, presentAsk, presentBundle } from './wealth-resolve'
 import type { Ask, AskDef } from './wealth-ask'
 import { isEstranged } from './will-core'
@@ -142,6 +144,7 @@ function payAllowances(g: GameState): void {
         x.missed = missed
         if (missed >= 2) x.allowance = 0
       })
+      remember(g, p, 'allowance_cut', { w: missed >= 2 ? 2 : 1, by: 'ego' })
       log(g, missed >= 2 ? `I couldn't afford ${myOf(p)}'s allowance again, so I stopped it.` : `I couldn't afford ${myOf(p)}'s allowance this year.`, 'bad')
     }
   }
@@ -157,7 +160,7 @@ function collectLoans(g: GameState): void {
     const t = readTies(g, p)
     if (t.owes <= 0) continue
     const years = Math.max(0, g.year - (t.owesSince || g.year))
-    if (p.money > 0 && chance(g, repayOdds(p, t.owes))) {
+    if (p.money > 0 && chance(g, repayOdds(p, t.owes, g))) {
       const want = Math.max(Math.min(t.owes, 100), Math.round(t.owes * randFloat(g, 0.3, 1)))
       const pay = Math.max(0, Math.min(t.owes, Math.floor(p.money), want))
       if (pay <= 0) continue
@@ -168,6 +171,7 @@ function collectLoans(g: GameState): void {
       })
       addRelationship(g, p, 2)
       const left = t.owes - pay
+      remember(g, p, 'loan_repaid', { w: left > 0 ? 1 : 2, by: 'them' })
       // A part payment is said through its row (text/state-table.ts), one record per person: when the debt has halved since the
       // last line (after 2 years) or after 5 quiet years. A quiet year still takes the log id the line took. The last payment
       // is its own line and always speaks.
@@ -175,6 +179,7 @@ function collectLoans(g: GameState): void {
       else log(g, `${cap(myOf(p))} paid back the last ${money(pay)} ${p.gender === 'male' ? 'he' : 'she'} owed me!`, 'good')
     } else if (chance(g, Math.min(0.5, 0.1 + years * 0.04))) {
       addRelationship(g, p, -randInt(g, 1, 4))
+      remember(g, p, 'loan_unpaid', { w: years >= 3 ? 2 : 1, by: 'them' })
       // The last mark is read before this year's is written: the line comes once in five years.
       const said = t.marks.avoid
       updateTies(g, p, (x) => {
@@ -326,7 +331,7 @@ export function requestCandidates(g: GameState, tier: number): Candidate[] {
         if (last > 0 && g.year - last < def.cooldown) continue
         if (def.when && !def.when(g, tier, p)) continue
         // Kids and young adults ask far more often than anyone else; estranged people rarely do.
-        const w = def.weight(g, tier, p) * (p.relationship < 15 ? 0.3 : 1) * (isDescendant(p) ? (p.age < 18 ? 3 : p.age < 25 ? 2 : 1) : 1)
+        const w = def.weight(g, tier, p) * (p.relationship < 15 ? 0.3 : 1) * (isDescendant(p) ? (p.age < 18 ? 3 : p.age < 25 ? 2 : 1) : 1) * (1 + memoryOdds(g, p, 'ask'))
         if (w > 0 && Number.isFinite(w)) out.push({ def, p, w })
       }
     } else {

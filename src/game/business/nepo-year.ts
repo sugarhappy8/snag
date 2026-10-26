@@ -15,6 +15,7 @@ import { notePerson } from '../people'
 import { chance, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { Asset, GameState, Person } from '../types'
+import { remember } from '../world/edge-write'
 import { handOver, managerCandidate } from './career'
 import { driveOf, expectedRating, fitOf, nextSkill } from './nepo-model'
 import { clearJob, readJob, writeJob, writePast, type FamilyJob } from './nepo-job'
@@ -408,6 +409,7 @@ function siblingDrama(g: GameState, a: Asset, b: BizState, emps: readonly Employ
     if (passed.length > 0 && chance(g, 0.2)) {
       const p = passed[randInt(g, 0, passed.length - 1)]
       addRelationship(g, p, -randInt(g, 2, 5))
+      remember(g, p, 'passed_over', { w: 2, by: 'ego' })
       log(g, `${p.firstName} told me it is not fair that ${senior.p.firstName} got a ${senior.job.title} job at ${a.name} and ${he(p)} didn't.`, 'bad')
     }
   }

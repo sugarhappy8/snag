@@ -80,6 +80,7 @@ import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import { npcMortality } from './world/mortality'
+import { remember as rememberEdge } from './world/edge-write'
 import { locale, localeOf } from './data/locales'
 import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, texting, venueExists } from './events/era'
 import type { TechId } from './history/timeline'
@@ -2823,6 +2824,7 @@ function rumor(g: GameState, p: Person): void {
   addHidden(g, 'karma', -3)
   const r = fill(eraPick(g, RUMORS), p)
   addRelationship(g, p, -randInt(g, 8, 15))
+  rememberEdge(g, p, 'gossiped_about_me', { w: 2, by: 'ego' })
   let text = `You started a rumor that ${p.firstName} ${r}. It spread like wildfire.`
   if (chance(g, 0.35)) {
     addRelationship(g, p, -randInt(g, 8, 15))

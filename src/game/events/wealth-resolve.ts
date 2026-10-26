@@ -30,6 +30,7 @@ import {
   money,
   myOf,
   perceivedWealth,
+  readTies,
   recordAsk,
   round,
   sting,
@@ -37,6 +38,7 @@ import {
   updateTies,
   type Answer,
 } from './wealth-core'
+import { remember } from '../world/edge-write'
 import type { ChoiceOption, GameState, Json, Person } from '../types'
 
 export { BOUNDARY_LINES }
@@ -271,6 +273,7 @@ function lend(g: GameState, a: Ask): void {
   })
   recordAsk(g, p, a.what, 'lend', a.amt)
   bumpRelationship(g, p, gratitude(p, (def.thanks ?? 8) * 0.6))
+  remember(g, p, 'loan_given', { w: 2, by: 'ego' })
   count(g, 'wealthLoans')
   log(g, fillSlots(pickLine(g, LENT_LINES), { who: myOf(p), money: money(a.amt), what: a.what }))
   const promise = pickLine(g, ['by the end of the year', 'as soon as things pick up', 'with interest, probably', '"soon"'])
@@ -284,6 +287,11 @@ function refusalCost(g: GameState, a: Ask, def: AskDef, p: Person): number {
   return Math.round(base * (pocketChange ? 1.3 : 1))
 }
 
+/** Three asks in four years, this one included: the person has been coming to you too often. */
+function askedOften(g: GameState, p: Person): boolean {
+  return readTies(g, p).history.filter((h) => g.year - h.y <= 3).length >= 3
+}
+
 function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
   const def = askDef(a.k)
   const { ok, p } = liveAsker(g, a)
@@ -293,6 +301,8 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
   if (p) {
     touch(g, p)
     recordAsk(g, p, a.what, answer, a.amt)
+    remember(g, p, 'gift_refused', { w: answer === 'bound' ? 2 : 1, by: 'ego' })
+    if (answer === 'bound' || askedOften(g, p)) remember(g, p, 'asked_too_often', { w: 2, by: 'them' })
     const respect = answer === 'no' && respects(g, p)
     if (answer === 'bound') {
       updateTies(g, p, (t) => {

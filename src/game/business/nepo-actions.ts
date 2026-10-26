@@ -9,6 +9,7 @@ import { incomeTax } from '../finance'
 import { notePerson, createPerson } from '../people'
 import { chance, randInt, rand } from '../rng'
 import type { Asset, GameState, Person } from '../types'
+import { remember as rememberEdge } from '../world/edge-write'
 import { npcLife, npcEducationSkill } from '../npc-state'
 import { npcHasMainCharacter } from '../talents'
 import { getCountry, randomFirstName, randomLastName } from '../world'
@@ -231,6 +232,7 @@ export function hireRelative(g: GameState, a: Asset, b: BizState, p: Person, o: 
   const fam = familyOf(b)
   fam.hires += 1
   addRelationship(g, p, randInt(g, 5, 10))
+  rememberEdge(g, p, 'hired_me', { w: plan.part ? 1 : 2, by: 'ego' })
   p.stats.happiness = clampN(p.stats.happiness + 5, 0, 100)
   // A made-up job spoils; a real job that is too big spoils a little; earning a place at the bottom does not.
   if (plan.kind === 'cushy') addEntitlement(p, randInt(g, 6, 12))
@@ -308,6 +310,7 @@ export function promote(g: GameState, a: Asset, b: BizState, p: Person): HireRes
   writeJob(p, job)
   setOccupation(p, job, a)
   addRelationship(g, p, randInt(g, 3, 6))
+  rememberEdge(g, p, 'promoted_me', { w: 2, by: 'ego' })
   if (fitOf(job.skill, job.rank) < -10) addEntitlement(p, randInt(g, 1, 3))
   const reaction = staffReaction(g, a, b, p, job, 'promoted')
   notePerson(p, `Promoted to ${m.title} at ${a.name} (age ${p.age}).`)
@@ -333,6 +336,7 @@ export function demote(g: GameState, a: Asset, b: BizState, p: Person): HireResu
   writeJob(p, job)
   setOccupation(p, job, a)
   addRelationship(g, p, -(entitled ? 14 : 7))
+  rememberEdge(g, p, 'demoted_me', { w: entitled ? 3 : 2, by: 'ego' })
   const fam = familyOf(b)
   fam.resent = Math.round(clampN(fam.resent - 6, 0, 100))
   if (job.groom) clearIf(b, p)
@@ -440,6 +444,7 @@ export function fire(g: GameState, a: Asset, b: BizState, p: Person): HireResult
   const kid = p.relation === 'child' || p.relation === 'stepchild' || p.relation === 'grandchild'
   const entitled = entitlement(p) >= 60
   addRelationship(g, p, -randInt(g, kid ? 22 : 16, kid ? 38 : 30) - (entitled ? 6 : 0))
+  rememberEdge(g, p, 'fired_me', { w: kid ? 3 : 2, by: 'ego' })
   p.data.nepoGrudge = g.year
   p.stats.happiness = clampN(p.stats.happiness - 12, 0, 100)
   if (kid) addStat(g, 'happiness', -5)

@@ -17,6 +17,7 @@ import { dataObj } from '../people'
 import type { GameState, Json, Person } from '../types'
 import { TRAIT_SETS } from '../world/axes'
 import { syncLegacy } from '../world/edge-step'
+import { memoryOdds } from '../world/edge-odds'
 import { socialOn } from '../world/social'
 import { entitlement, personCountry, readTies, typicalIncome } from './wealth-core'
 
@@ -582,11 +583,11 @@ export function angerAfterShare(anger: number, sharePct: number): number {
   return clamp(Math.round(anger * (1 - 0.75 * Math.pow(f, 0.8))))
 }
 
-/** Odds that a heart-to-heart (an honest apology) gets through, 0.05-0.85. Pure. */
+/** Odds that a heart-to-heart (an honest apology) gets through, 0.05-0.85. Pure. A stamped life adds what the person remembers (world/edge-odds.ts). */
 export function peaceOdds(g: GameState, p: Person): number {
   const w = readWl(g, p)
   const t = temper(p)
-  const o = 0.22 + 0.1 * t.forgiving - 0.1 * t.petulant + (clamp(p.relationship) / 100) * 0.3 - (w.anger / 100) * 0.3 + (w.explained === 'kind' ? 0.08 : 0) - w.hard * 0.08 - (w.estr ? 0.15 : 0)
+  const o = 0.22 + 0.1 * t.forgiving - 0.1 * t.petulant + (clamp(p.relationship) / 100) * 0.3 - (w.anger / 100) * 0.3 + (w.explained === 'kind' ? 0.08 : 0) - w.hard * 0.08 - (w.estr ? 0.15 : 0) + memoryOdds(g, p, 'peace')
   return clamp(Math.round(o * 100) / 100, 0.05, 0.85)
 }
 
