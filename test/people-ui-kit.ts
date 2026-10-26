@@ -291,7 +291,7 @@ const FOCUS_ROLE = (industry: Industry, focus: KeyStaff['focus']): string => {
   return role.title
 }
 
-interface StaffSpec {
+export interface StaffSpec {
   co: 'rest' | 'fund'
   n: number
   first: string
@@ -319,7 +319,7 @@ const STAFF: readonly StaffSpec[] = [
 const INDUSTRY = { rest: 'restaurant', fund: 'investmentFirm' } as const satisfies Record<StaffSpec['co'], Industry>
 
 /** The two companies with their leadership teams in place (3 and 2 seats of 5). */
-function staffedCompany(co: StaffSpec['co']): { g: GameState; a: Asset } {
+export function staffedCompany(co: StaffSpec['co']): { g: GameState; a: Asset } {
   const { g, a } = companyGame(INDUSTRY[co])
   const b = bizOf(g, a)
   for (const s of STAFF.filter((x) => x.co === co)) {
