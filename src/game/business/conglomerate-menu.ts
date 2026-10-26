@@ -10,6 +10,7 @@ import { getCountry } from '../world'
 import { passOdds, type Proposal } from './board'
 import { controlsBoard, directorName, mandateDef, MANDATES, ownerSeats, seatLabel, stanceLabel, type Mandate } from './board-state'
 import { askingSalary, ceoSeverance, headhunterFee, managerName, SMART_SKILL, STYLE_INFO, styleOf } from './career'
+import { ceoRead, staffFog } from './leader-fog'
 import { acquisitionQuote } from './competition-moves'
 import { marketViewOf, shareText } from './competition'
 import {
@@ -385,7 +386,7 @@ function summaryRows(g: GameState, grp: Group): MenuNode[] {
     info(
       `biz.group.i.${id}.5`,
       core.ceo === 'manager' && m
-        ? `Group CEO: ${managerName(m)} (skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()}, ${money(m.salary)}/yr)${m.skill > SMART_SKILL ? ' \u{00B7} works the numbers' : ''} \u{00B7} captures ${pct(captureOf(g, core))} of the synergies`
+        ? `Group CEO: ${managerName(m)} (skill ${ceoRead(g, id, m).text}, ${STYLE_INFO[styleOf(m)].label.toLowerCase()}, ${money(m.salary)}/yr)${!staffFog() && m.skill > SMART_SKILL ? ' \u{00B7} works the numbers' : ''} \u{00B7} captures ${pct(captureOf(g, core))} of the synergies`
         : `You chair the group yourself \u{00B7} you capture about ${pct(ownerCapture(g))} of the synergies`,
       '\u{1F454}',
     ),
@@ -411,7 +412,7 @@ function ceoMenu(groupId: string): MenuGroup {
     subtitle: (g) => {
       const grp = groupById(g, groupId)
       const m = grp?.core.manager
-      return grp && grp.core.ceo === 'manager' && m ? `${managerName(m)} \u{00B7} skill ${m.skill}/100 \u{00B7} ${money(m.salary)}/yr` : 'You chair it yourself'
+      return grp && grp.core.ceo === 'manager' && m ? `${managerName(m)} \u{00B7} skill ${ceoRead(g, groupId, m).text} \u{00B7} ${money(m.salary)}/yr` : 'You chair it yourself'
     },
     disabledReason: (g) => groupBlock(g),
     hint: (g) => {

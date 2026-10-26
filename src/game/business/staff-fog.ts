@@ -14,6 +14,10 @@
 // The candidates in the data stay the true ones: you hired them. What the player reads of the one hired goes with the hire (R4-U6:
 // hiredRead here, leader-fog.ts carryRead), and the sheet names the trait after a year or a check.
 //
+// R4-U7 uses the same check for the CEO shortlist (manage.ts): the list can hold more than the four a hire shortlist has (relatives
+// first, then four or five from the search), so takeVet and dropVet take an optional `max` (CEO_VET_MAX covers the first eight; the
+// hire path keeps CAND_MAX), and ceoFooter says what the check does for a CEO (a CEO's style is on the list already).
+//
 // No KeyKind owner is registered for `cand`: a popup cannot hold a Look closer group, so the check above is the one way to read a
 // candidate. An owner would also make the rows trackable by the standing orders and buyable from every source, for a number that is
 // gone when the shortlist is. The family has a rule row (cand.skill) and takeReading takes the truth as an argument, so neither
@@ -47,6 +51,8 @@ export interface CandidateRead {
 export const VET_RATE = 0.03
 /** candidatesFor draws two to four candidates. */
 export const CAND_MAX = 4
+/** A CEO shortlist can hold more (relatives first, then four or five from the search): a background check covers the first eight. */
+export const CEO_VET_MAX = 8
 
 const CONF_WORDS = ['a rough guess', 'a fair estimate', 'a good estimate', 'close to exact'] as const
 const SHORTLIST_ID = /^[0-9a-z]{1,10}$/
@@ -121,21 +127,34 @@ export function hireFooter(reads: readonly CandidateRead[], vet: Vet, fee: numbe
 }
 
 /**
+ * The words under a CEO shortlist (R4-U7): how sure the skill reads are, and what a check does. A CEO's style is on the list already, so
+ * the check only sharpens the skill. `confs` are the chips of the reads; `fee` is null when nobody can pay for a check now. Empty without reads.
+ */
+export function ceoFooter(confs: readonly (0 | 1 | 2 | 3 | undefined)[], vet: Vet, fee: number | null, covered: number): string {
+  if (confs.length === 0) return ''
+  const first = confs.length > covered ? ` It covers the first ${covered}.` : ''
+  if (vet === 1) return `Background checks are in. The skill reads are tighter.${first}`
+  const word = CONF_WORDS[Math.min(3, ...confs.map((c) => c ?? 3))]
+  if (fee === null) return `Skill reads are ${word}.`
+  return `Skill reads are ${word}. A background check (${money(fee)}) sharpens them.${first}`
+}
+
+/**
  * The background check of a shortlist: one due diligence reading per candidate, kept in the record until the shortlist is settled.
  * True when any reading was new (the caller then charges the fee); false when every candidate had been checked this year already, so
  * a repeat of the choice reads and costs nothing. Writes only through Knowledge's record; nothing here draws from g.rng.
  */
-export function takeVet(g: GameState, id: string, list: readonly { skill: number }[]): boolean {
+export function takeVet(g: GameState, id: string, list: readonly { skill: number }[], max = CAND_MAX): boolean {
   let fresh = false
-  list.slice(0, CAND_MAX).forEach((c, i) => {
+  list.slice(0, Math.max(0, max)).forEach((c, i) => {
     if (takeReading(g, 'diligence', candKey(id, i), c.skill) !== null) fresh = true
   })
   return fresh
 }
 
-/** Forget the readings of a settled shortlist, so a hire never leaves rows in the Briefing. */
-export function dropVet(g: GameState, id: string, n: number): void {
-  for (let i = 0; i < Math.min(CAND_MAX, Math.max(0, n)); i++) forget(g, candKey(id, i))
+/** Forget the readings of a settled shortlist, so a hire never leaves rows in the Briefing. `max` is how many candidates a check covers. */
+export function dropVet(g: GameState, id: string, n: number, max = CAND_MAX): void {
+  for (let i = 0; i < Math.min(max, Math.max(0, n)); i++) forget(g, candKey(id, i))
 }
 
 /** The Look closer row of the Hire Key Staff menu (Realistic only): the check is a choice in the interview popup. */
