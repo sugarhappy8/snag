@@ -1,7 +1,7 @@
 {
   "v": 1,
-  "base": "7164895",
-  "aging": ["world.frontier","history","digest","household","effort.you","relationships","sharedProjects","givingFund","background","royalty","royalCareers","health","education","professions","career","special","nation","workshop","corruption","business","techWaves","development","investments","hedge","shops","computer","finance","wealth","familyUse","nepo","willFeuds","immigration","assets","crime","underworld","advisors","world.edges","milestones","knowledge.core","world"],
+  "base": "57602ac",
+  "aging": ["world.frontier","history","digest","household","effort.you","relationships","sharedProjects","givingFund","background","royalty","royalCareers","health","education","professions","career","special","nation","workshop","corruption","business","techWaves","development","investments","hedge","shops","computer","finance","wealth","familyUse","nepo","willFeuds","immigration","assets","crime","underworld","advisors","world.edges","society.acts","milestones","knowledge.core","world"],
   "special": ["military","actor","music","sports","gamedev","author","model","politics","astronaut","careers2","hustler","social","fame"],
   "lives": {
     "traces": [
@@ -156,11 +156,11 @@
       ["3a77cf38","a290a0f1","8d1db767","4e75445b","5ae52711","df4f6272","3928dc89","bd4d2d81","5c0f4b43","f0dbf2e9","741638a5","43ac5324"]
     ],
     "hooks": {
-      "b1960-rich": {"n":2120,"h":"a3ac3b6d"},
-      "b2000-rich": {"n":2120,"h":"a3ac3b6d"},
-      "f1950-1x25": {"n":1325,"h":"363927c9"},
-      "f1990-3x25": {"n":1325,"h":"363927c9"},
-      "v1": {"n":265,"h":"975167b9"}
+      "b1960-rich": {"n":2160,"h":"a3424435"},
+      "b2000-rich": {"n":2160,"h":"a3424435"},
+      "f1950-1x25": {"n":1350,"h":"16a9ba30"},
+      "f1990-3x25": {"n":1350,"h":"16a9ba30"},
+      "v1": {"n":270,"h":"b000696c"}
     }
   },
   "menus": {
