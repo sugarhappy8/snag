@@ -20,15 +20,25 @@ import { valKey } from '../src/game/business/valuation-fog'
 import { rdCost, rdQuote } from '../src/game/business/rd'
 import { ECONOMY_VERSION, initialCountry } from '../src/game/economy/model'
 import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
+import { withFlags } from '../src/game/flags'
 import { realWealthFactor } from '../src/game/history/events-people'
 import { buySecurity, investmentHoldings, investmentListing, yearlyInvestments } from '../src/game/investments'
-import { KNOW_LIMITS, learn, readKnow } from '../src/game/knowledge/contract'
+import { personFacts, DATA_STATS } from '../src/game/hubs/people-facts'
+import { memoryLines } from '../src/game/hubs/people-memory'
+import { connectionsOf } from '../src/game/hubs/people-web'
+import { KNOW_LIMITS, buyIntel, learn, offersFor, readKnow } from '../src/game/knowledge/contract'
 import { kindOfKey } from '../src/game/knowledge/kinds'
+import { withInfoMode } from '../src/game/knowledge/mode'
+import { yearlyKnowledge } from '../src/game/knowledge/module'
 import { SOURCES, SOURCE_IDS, priceOf, readingSd } from '../src/game/knowledge/sources'
+import { personEntity } from '../src/game/kernel/person-ref'
 import { BURNS, LEDGER_CAPS, MINTS, book, bookBurn, bookMint, checkLedger, peekLedger, playerAcct, type AcctRef } from '../src/game/kernel/ledger'
 import { REASONS, type BurnName, type MintName, type Reason } from '../src/game/kernel/reasons'
 import { SPREADS, ask, bid } from '../src/game/kernel/spreads'
 import { transactionsLevy } from '../src/game/nation/rates'
+import { saveNpcLife, type NpcLife } from '../src/game/npc-state'
+import { PEOPLE_CAPS, exposureOf, lookKeysOf } from '../src/game/people-fog'
+import { createPerson } from '../src/game/people'
 import { editPolicy, writePolicy } from '../src/game/nation/state'
 import { authorAdaptationOffer } from '../src/game/special/author-career'
 import { normalizeAuthor } from '../src/game/special/author-state'
@@ -38,19 +48,22 @@ import { gamersIn, nextTail, publisherCopiesCap, titleCopiesCap } from '../src/g
 import type { ScopeId } from '../src/game/special/gamedev-data'
 import { payScale } from '../src/game/special/pay-scale'
 import { dealCeiling } from '../src/game/special/sports-core'
-import type { GameState } from '../src/game/types'
+import type { GameState, Person } from '../src/game/types'
 import { COUNTRIES } from '../src/game/world'
 import { readFirms } from '../src/game/world/firms'
 import { readHomes } from '../src/game/world/homes'
-import { FRONTIER_CAPS, MET_CAPS } from '../src/game/world/caps'
+import { EDGE_CAPS, FRONTIER_CAPS, MET_CAPS } from '../src/game/world/caps'
+import { formatMemory, MEMORY_KINDS } from '../src/game/world/edge-memory'
+import { putEdge } from '../src/game/world/edge-write'
 import { applyDisclosure, frontierLead, frontierRows, readFrontier } from '../src/game/world/frontier'
 import { FIELD_IDS, FIELDS, fieldOfKind } from '../src/game/world/frontier-fields'
 import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod'
 import { isTomb, normalizeMet, readMet } from '../src/game/world/met'
 import { markMet, STAKE, sweepMet, tombstoneMet, touchMet } from '../src/game/world/met-ops'
 import { AT_MAX, NUDGE_AXES, NUDGE_MAX, nudgePersona, personaOf, readPersona } from '../src/game/world/persona-me'
-import { readPeople } from '../src/game/world/people'
+import { playerRef, readPeople } from '../src/game/world/people'
 import { makeSid } from '../src/game/world/sid'
+import { stampSocial } from '../src/game/world/social'
 import { APPROACHES, MAX_OVERTIME_BUILDS, buildLimit, resolveBuild } from '../src/game/workshop/build'
 import { catalogIdea, type Level } from '../src/game/workshop/catalog'
 import { HELPER_CENTRE_MAX, WORKSHOP_TOOLS_MAX, buildNumbers } from '../src/game/workshop/effort'
@@ -754,6 +767,91 @@ const WORLD_ROWS: readonly CeilingProbe[] = [
   },
 ]
 
+// R4-U11: the People UI and fog track. A profile, a Look closer and the research record are bounded by PEOPLE_CAPS and by the Knowledge
+// record's 120 rows, whatever the data holds: the fifteen stats of a sheet and 15 x scale more keys, kin links (kids, stakes in companies, an ex,
+// another parent, a debt, a cut-off), the memories of one edge, 12 x scale people each bought from, and the people who then leave.
+const PEOPLE_LIFE: NpcLife = {
+  v: 1, lastYear: 2025, country: 'us', field: 'Engineering', education: 2, study: 0, skill: 62, experience: 8, income: 90_000, debt: 0,
+  investments: 0, housing: 0, ambition: 70, employer: '', history: [], achievements: [], housingQuality: 50,
+}
+
+/** A friend with every field given. `data` is laid over the fifteen stats of the sheet. */
+function peopleFriend(g: GameState, over: Partial<Parameters<typeof createPerson>[1]> = {}): Person {
+  return createPerson(g, { relation: 'friend', age: 31, gender: 'female', firstName: 'Dana', lastName: 'Reed', occupation: 'Nurse', money: 40_000, traits: ['kind', 'proud', 'calm'], stats: { happiness: 60, health: 70, smarts: 55, looks: 65 }, relationship: 60, ...over })
+}
+
+function peopleReadsRow(): CeilingProbe {
+  return {
+    id: 'people-reads',
+    cap: "a profile shows at most 6 personality words, 6 connection rows and 3 memory lines, Look closer offers at most 5 keys at a fee that never follows the player's cash, the yearly step forgets at most 12 research rows of people who left, the research record keeps its 120 rows and exposure stays between 0 and 1, however many data stats, kin links, memories, purchases or people a life has (R4-U11)",
+    run: (scale) => {
+      const t = tightest()
+      const real = <T,>(fn: () => T): T => withFlags({ peopleProfile: true }, () => withInfoMode('realistic', fn))
+      return real(() => {
+        // Data stats, kin links and the connections card: the fifteen stats and 15 x scale keys of junk, `scale` kids, `scale` companies that hold a
+        // stake in the person, a debt, a cut-off, a spouse, another parent and an ex. Seven rows are true; the card shows six.
+        const g = makeTestGame(1, { age: 40, countryId: 'us', money: 1e9 })
+        const other = peopleFriend(g, { firstName: 'Sam', lastName: 'Reed' })
+        const stats = Object.fromEntries(DATA_STATS.map(([key], i) => [key, 10 + ((i * 7) % 90)]))
+        const junk = Object.fromEntries(Array.from({ length: 15 * scale }, (_, i) => [`junk${i}`, i % 100]))
+        const dana = peopleFriend(g, {
+          otherParentId: other.id,
+          data: {
+            countryId: 'us', ...stats, ...junk, married: true, spouseName: 'Sam Reed', kids: scale, exSpouseId: other.id,
+            wl: { by: g.character.id, cut: true, cutY: 2021, known: true, how: 'external', knownY: 2022, anger: 70, estr: true, estrY: 2023 },
+            w: { by: g.character.id, owes: 12_000 * scale, owesSince: 2023, given: 12_000, yes: 1, no: 0, asked: 2023, bound: 0, marks: {}, car: null, history: [] },
+          },
+        })
+        for (let i = 0; i < scale; i++) g.assets.push({ id: `ceil${i}`, kind: 'business', name: `Probe Company ${i}`, details: { familyShares: [{ id: dana.id, share: 0.01 }] } } as never)
+        const facts = personFacts(g, dana)
+        const words = (facts?.rows ?? []).filter((r) => r.id.startsWith('personality.') && r.state === 'estimate').length
+        t.add(words, PEOPLE_CAPS.personality, `${15 + 15 * scale} data stats on one person`)
+        const rows = connectionsOf(g, dana)
+        t.add(rows.length, PEOPLE_CAPS.connections, `kin links: ${scale} kids and ${scale} companies with a stake`)
+        t.add(Math.max(0, ...rows.map((r) => r.text.length)), 90, 'the longest connection row')
+        t.add(Math.max(0, ...(facts?.rows ?? []).map((r) => r.text.length)), 90, 'the longest fact row')
+
+        // The memories of one edge: every kind, `scale` times what an edge can hold.
+        const s = makeTestGame(1, { age: 40, countryId: 'us', money: 1e9 })
+        stampSocial(s)
+        const friend = peopleFriend(s, { firstName: 'Marisol', lastName: 'Vale' })
+        const memories = Array.from({ length: EDGE_CAPS.memPerEdge * scale }, (_, i) => formatMemory({ kind: MEMORY_KINDS[i % MEMORY_KINDS.length]!, year: 2000 + (i % 26), w: (1 + (i % 3)) as 1 | 2 | 3, by: i % 2 === 0 ? 'ego' : 'them' }))
+        putEdge(s, `${personEntity(friend)}>${playerRef(s)}`, { t: 50, f: 50, r: 50, s: 0, o: 0, y: 2000, l: 2026, m: memories })
+        t.add(memoryLines(s, friend).length, PEOPLE_CAPS.memories, `${memories.length} memories on one edge`)
+        t.add(memoryLines(s, friend, 3 * scale).length, EDGE_CAPS.memPerEdge, `${3 * scale} lines asked for`)
+
+        // Look closer: five keys for a person with a life and the fee for a poor and a rich player, and a person read at 100 times the years.
+        const poor = makeTestGame(1, { age: 40, countryId: 'us', money: 200_000 })
+        const rich = makeTestGame(1, { age: 40, countryId: 'us', money: 200_000 * scale })
+        const fee = (x: GameState, p: Person): number => offersFor(x, lookKeysOf(x, p))[0]?.price ?? 0
+        const pa = peopleFriend(poor)
+        const pb = peopleFriend(rich)
+        saveNpcLife(pa, PEOPLE_LIFE)
+        saveNpcLife(pb, PEOPLE_LIFE)
+        t.add(lookKeysOf(rich, pb).length, PEOPLE_CAPS.lookKeys, 'keys a person with a life and a lot of data is offered')
+        t.add(fee(rich, pb), fee(poor, pa), `the fee when the player's cash is ${scale} times as much`)
+        t.add(exposureOf({ yearsKnown: 8 * scale, relationship: 100 * scale, livesWithPlayer: true }), 1, `exposure at ${8 * scale} years and a feeling of ${100 * scale}`)
+        t.add(1 - exposureOf({ yearsKnown: -8 * scale, relationship: -100 * scale, livesWithPlayer: false }), 1, 'a stranger with a negative record (1 less the exposure, so below 0 shows)')
+
+        // Purchases: 12 x scale people are each bought from the same year; the record keeps 120 rows. Then they all leave, and the yearly
+        // step forgets 12.
+        const buyer = makeTestGame(1, { age: 40, countryId: 'us', money: 1e12 })
+        for (let i = 0; i < 12 * scale; i++) {
+          const p = peopleFriend(buyer, { firstName: `N${i}`, lastName: 'Probe' })
+          buyIntel(buyer, 'investigator', lookKeysOf(buyer, p))
+        }
+        const kept = Object.keys(readKnow(buyer)?.k ?? {})
+        t.add(kept.length, KNOW_LIMITS.keys, `${12 * scale} people bought from, 5 keys each`)
+        buyer.people = []
+        yearlyKnowledge(buyer)
+        const left = Object.keys(readKnow(buyer)?.k ?? {}).length
+        t.add(kept.length - left, PEOPLE_CAPS.forgetPerStep, `${kept.length} rows of people who all left`)
+        return t.result()
+      })
+    },
+  }
+}
+
 /** A private company of the player's, worth `valuation`, and the key of its valuation (what an audit of it reads). */
 function firmWorth(valuation: number): { g: GameState; key: string } {
   const g = lifeIn('us', 2026)
@@ -819,5 +917,8 @@ const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
   },
 ]
 
-/** Every row: the R0 and R1 growth terms, the world rows, the effort rows (R3-E9, test/effort-ceilings.ts), then the Knowledge rows (R3-H4). */
-export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS, ...KNOWLEDGE_ROWS]
+// R4-U11: the People UI and fog track.
+const PEOPLE_ROWS: readonly CeilingProbe[] = [peopleReadsRow()]
+
+/** Every row: the R0 and R1 growth terms, the world rows, the effort rows (R3-E9, test/effort-ceilings.ts), the Knowledge rows (R3-H4), then the People rows (R4-U11). */
+export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS, ...KNOWLEDGE_ROWS, ...PEOPLE_ROWS]
