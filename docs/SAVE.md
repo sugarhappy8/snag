@@ -36,7 +36,7 @@ object or array is moved out, so a placeholder can never be a real value.
 |---|---|---|
 | `world` | the economy (`flags.worldEconomy`) and every `world.<shard>` that is a replace root | once a year |
 | `log.<n>` | the completed life-log years of age decade n (n = floor(age / 10)), as an array | once, when the decade fills |
-| `e.<kind>.<n>` | one shard of an entity record, split by a hash of the key | when an entry in it changes |
+| `e.<kind>.<n>` | one shard of an entity record, split by a hash of the key (`e.met.0` to `e.met.7` hold `world.met`) | when an entry in it changes |
 
 The current log year stays in the core (`LOG_TAIL` is 1). An id is `<name>.<textSum>`, the two 32-bit FNV variants and the length in
 base 36, so a chunk is written once and a second life of the same text is the same id. The grammar is
@@ -87,6 +87,48 @@ The `world` row reads what it is given through `normalizeWorld` (only registered
 40,000 nodes), with the keys left in the order they had; `world.ledger` reads through `normalizeLedger`. `save-slices.ts` imports the
 world's registration hub (`world/shards.ts`) for effect, so a process that reads a save without loading the game's modules still
 keeps every shard. A new shard registers itself in that hub, and a module that owns one lists `world.<name>` in `ModuleDef.slices`.
+
+### An entity record: the Met store
+
+`world.met` (R4-S5, `src/game/world/met-slice.ts`) is the first entity slice the game declares, and the pattern any later one copies
+(`world.edges` of R4-E6b does). Every other world shard is a derived row of the `world` chunk, which is written again, whole, when
+any of them changes (about 520 KB after fifty years). A shard that changes on a tap, and is a plain object of plain records keyed
+by something that sorts, is declared an entity slice instead, and a tap that touches one record writes that record's chunk and the
+head, and nothing else:
+
+```ts
+defineSlice({ key: 'world.met', version: 1, chunk: 'entities', entities: { kind: 'met', shards: 8 },
+  caps: { nodes: 12_000, chars: 300_000 }, normalize: (raw) => normalizeMet(raw), write: 'replace' })
+```
+
+- **The row is declared, not derived.** `sliceOf` reads the table before it derives a `world.<name>` row from the parent, so the
+  declared row wins. The `world` root keeps `shape: 'subkeys'`; the head keeps a placeholder (`"met": "~world.met"`) and `sv` names
+  the row. The row lives in a file beside the shard (`world/met-slice.ts`) and `save-slices.ts` imports it for its effect, one
+  import per entity slice. A `pack` is refused on an entity row: the shard must stay a record of its own keys.
+- **Chunks.** The codec cuts the record into `shards` chunks `e.<kind>.<n>` (`kind` is 1 to 16 lower case letters or digits, `shards`
+  1 to 16) by `shardOf(key, shards)`, a hash of the key. At most 96 chunks in all, so each entity slice spends its `shards` of them
+  (the Met store 8, the edges 8 more). A shard is written when one of its entries changed; the others keep their id.
+- **Keys ascend in plain code-unit order** (`a < b`, never `localeCompare`). The codec tests `prev < k` while it cuts, and a record
+  whose keys are not in that order rides whole in the `world` chunk and is named in `stats.unsortedEntities`. The reader returns
+  them so, and the writer sorts on every write; `test/world-met-save.test.ts` asserts it on the real shard, with upper and lower case
+  places in the keys.
+- **`write: 'replace'`.** The writer builds a new root and keeps every untouched entry by identity (`writeMet`), so the codec reuses
+  the text of every shard whose entries are the same objects and stringifies the one that changed. A draft shares the frozen root.
+  An entry is built new for each change and never edited.
+- **`normalize` is the shard's own reader.** It runs on the merged record after the codec has checked each chunk (name, length,
+  checksum, JSON, the row's caps summed over its shards, depth, finite numbers, and that every key hashes to the shard it sits in).
+  A chunk that fails any of those is a lost chunk (`hostile`, `size` or `missing`) and the other shards still load; the caps are
+  for all the shards together.
+- **No chunk before there is a record.** A save with no `met` key (every save before v5.3.0, and a life the social flag has not
+  stamped) has no `e.met` chunk and saves again byte for byte; an empty shard is not moved out of the head at all.
+- **The guard.** `test/save-budget.test.ts` fails a world shard shaped like an entity record (eight or more plain objects under
+  ascending keys) that the table does not declare as one; a declared entity slice is skipped, and one nothing declares still fails.
+- **If a spike ever shows the world chunk still rewritten** (the derived row inherits its parent's chunk), the fallback is a derived
+  `world` row with the measured bytes a tap writes in the commit message, accepted only with the chunk numbers in hand.
+
+Measured at R4-S5 on a twelve-year life with 400 records: touching one record writes one `e.met` chunk of 7,934 characters and the
+head; the world chunk of 414,639 characters is not written. The shard at its caps (400 records of 22 nodes and 200 tombstones) is 8
+chunks and 85,964 characters in all, the largest 12,318.
 
 ## Reading
 
@@ -190,6 +232,7 @@ Two R3 keys are `flags` subkeys, so they need no row in `save-slices.ts`: `flags
 |---|---|
 | `defineSlice`, `listSlices`, `sliceOf`, `hasSlice`, `migrateSlices`, `getAt`, `setAt`, `deleteAt`, `countNodes`, `freezeRoot` | `kernel/slices.ts` |
 | the slice table, `CORE_SCALARS`, `ensureSliceTable` | `save-slices.ts` |
+| `MET_SLICE`, the `world.met` entity row | `world/met-slice.ts` |
 | `encodeSave`, `assembleSave`, `inlineSave`, `isChunkedHead`, `neededChunkIds`, `textSum`, `ChunkManifest`, `LostChunk` | `save-codec.ts` |
 | `packShapes`, `unpackShapes` | `kernel/shapes.ts` |
 | `cloneForAct` | `save-clone.ts` |
