@@ -29,6 +29,7 @@ import {
   remember,
   removePerson,
   scriptChoice,
+  setRelationship,
   spend,
   useYearAction,
 } from './core'
@@ -3064,7 +3065,7 @@ function makePeace(g: GameState, p: Person): void {
   touch(g, p)
   if (chance(g, clamp(0.2 + p.relationship / 100 + (has(p, 'kind', 'caring', 'calm') ? 0.15 : 0), 0.05, 0.9))) {
     p.relation = 'friend'
-    p.relationship = Math.max(p.relationship, randInt(g, 35, 50))
+    setRelationship(g, p, Math.max(p.relationship, randInt(g, 35, 50)))
     addHidden(g, 'karma', 3)
     log(g, `I made peace with ${fullName(p)}.`, 'good')
     notice(g, 'Make Peace', `You offered ${p.firstName} an olive branch and ${pr(p).he} took it. You're friends now!`, { emoji: '\u{1F54A}\u{FE0F}', tone: 'good' })
@@ -3449,7 +3450,7 @@ const D = {
     run: (g, p) => {
       p.data.disowned = true
       p.data.disownedAge = g.character.age
-      p.relationship = 0
+      setRelationship(g, p, 0)
       addHidden(g, 'karma', -8)
       addStat(g, 'happiness', -randInt(g, 3, 8))
       const other = getPerson(g, p.otherParentId)
@@ -3467,7 +3468,7 @@ const D = {
       const years = g.character.age - pNum(p, 'disownedAge', g.character.age)
       if (chance(g, clamp(0.25 + years * 0.04, 0.1, 0.8))) {
         delete p.data.disowned
-        p.relationship = randInt(g, 25, 40)
+        setRelationship(g, p, randInt(g, 25, 40))
         touch(g, p)
         log(g, `I reconnected with ${myRel(p)}.`, 'good')
         notice(g, 'Reconnect', `${p.firstName} agreed to reconnect. It's a start.`, { emoji: '\u{1F91D}', tone: 'good' })

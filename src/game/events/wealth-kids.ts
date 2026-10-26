@@ -4,7 +4,7 @@
 // ask for more and thank you less; see wealth-core entitlement.
 import { notePerson } from '../people'
 import { personCash } from '../cash'
-import { addRelationship, log, notice, pronouns, scriptInput } from '../core'
+import { addRelationship, log, notice, pronouns, scriptInput, setRelationship } from '../core'
 import { chance, pick, randInt, uid } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
 import { getCountry, randomFirstName, randomLastName } from '../world'
@@ -881,7 +881,7 @@ export const KID_ASKS: AskDef[] = [
         emoji: '\u{2696}\u{FE0F}',
         run: (g, _a, p) => {
           g.character.willBeneficiaries = []
-          for (const q of g.people) if (q.alive && isKid(q)) q.relationship = Math.max(0, Math.min(100, q.relationship + (p && q.id === p.id ? -6 : 3)))
+          for (const q of g.people) if (q.alive && isKid(q)) setRelationship(g, q, Math.max(0, Math.min(100, q.relationship + (p && q.id === p.id ? -6 : 3))))
           willNotice(g, 'You told them everything will be split evenly. The lawyer named Chad was disappointed.')
         },
       },
@@ -899,7 +899,7 @@ export const KID_ASKS: AskDef[] = [
         label: () => '"I\'m spending it all first"',
         emoji: '\u{1F6E5}\u{FE0F}',
         run: (g) => {
-          for (const q of g.people) if (q.alive && isKid(q)) q.relationship = Math.max(0, q.relationship - 3)
+          for (const q of g.people) if (q.alive && isKid(q)) setRelationship(g, q, Math.max(0, q.relationship - 3))
           g.character.stats.happiness = Math.min(100, g.character.stats.happiness + 4)
           willNotice(g, 'You announced you plan to spend every last cent before you go. The fighting stopped. The worrying began.')
         },

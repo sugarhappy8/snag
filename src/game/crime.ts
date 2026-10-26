@@ -27,6 +27,7 @@ import {
   relationLabel,
   remember,
   scriptChoice,
+  setRelationship,
   shortMoney,
   spend,
   useYearAction,
@@ -814,7 +815,7 @@ function acquit(g: GameState, t: TrialData): void {
   if (t.violent === 'attempted' && t.victimId) {
     const v = getPerson(g, t.victimId)
     if (v && v.alive) {
-      v.relationship = 0
+      setRelationship(g, v, 0)
       notePerson(v, 'Knows I tried to kill them, even though I was acquitted.')
     }
   }
@@ -881,11 +882,11 @@ function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
   if (t.violent) {
     for (const p of g.people) {
       if (!p.alive || !isFamily(p)) continue
-      p.relationship = t.violent === 'murder' ? 0 : Math.round(p.relationship / 2)
+      setRelationship(g, p, t.violent === 'murder' ? 0 : Math.round(p.relationship / 2))
     }
     if (t.victimId) {
       const v = getPerson(g, t.victimId)
-      if (v && v.alive) v.relationship = 0
+      if (v && v.alive) setRelationship(g, v, 0)
     }
     addHidden(g, 'notoriety', 10)
   }
@@ -2285,7 +2286,7 @@ function attemptMurder(g: GameState, victim: Victim, person: Person | null, meth
   if (chance(g, method.backfire)) {
     commitCrime(g, 'Attempted Murder', { karma: 15, notoriety: 5, heat: 0 })
     if (person) {
-      person.relationship = 0
+      setRelationship(g, person, 0)
       notePerson(person, 'I tried to murder them and it backfired.')
     }
     if (chance(g, 0.5)) {
@@ -2327,7 +2328,7 @@ function attemptMurder(g: GameState, victim: Victim, person: Person | null, meth
 
   const idx = commitCrime(g, 'Attempted Murder', { karma: 20, notoriety: 6, heat: 0.3 })
   if (person) {
-    person.relationship = Math.min(person.relationship, randInt(g, 0, 10))
+    setRelationship(g, person, Math.min(person.relationship, randInt(g, 0, 10)))
     notePerson(person, `I tried to murder ${pr.him} (${method.label.toLowerCase()}).`)
   }
   const roll = rand(g)

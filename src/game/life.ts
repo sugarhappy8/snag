@@ -30,6 +30,7 @@ import {
   roleLabel,
   SAVE_SCHEMA,
   scriptChoice,
+  setRelationship,
   spend,
   zodiacFor,
 } from './core'
@@ -1885,11 +1886,11 @@ const SEXUALITY = defineScript('life.sexuality', (g, choice) => {
     const supportive = chance(g, (strict ? 0.45 : 0.88) * era)
     const who = p.relation === 'stepparent' ? (p.gender === 'male' ? 'stepfather' : 'stepmother') : p.gender === 'male' ? 'father' : 'mother'
     if (supportive) {
-      p.relationship = clampStat(p.relationship + randInt(g, 3, 10))
+      setRelationship(g, p, clampStat(p.relationship + randInt(g, 3, 10)))
       reactions.push(pickSite(g, [`Your ${who} hugged you and said they're proud of you.`, `Your ${who} said, "We know, sweetie. We've known for years."`, `Your ${who} cried happy tears and offered to make a celebratory cake.`], 0xbfbad3cf))
     } else {
       rejected++
-      p.relationship = clampStat(p.relationship - randInt(g, 10, 25))
+      setRelationship(g, p, clampStat(p.relationship - randInt(g, 10, 25)))
       reactions.push(pickSite(g, [`Your ${who} went quiet and left the room.`, `Your ${who} said they "need some time to process this."`], 0x9fc22c0f))
     }
   }

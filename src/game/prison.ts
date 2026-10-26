@@ -24,6 +24,7 @@ import {
   relationLabel,
   remember,
   scriptChoice,
+  setRelationship,
   spend,
   useYearAction,
   yearActionsUsed,
@@ -535,7 +536,7 @@ function partnerReacts(g: GameState, sentence: number): void {
     log(g, `My ${label} ${partner.firstName} broke up with me after I went to prison.`, 'bad')
   }
   partner.livesWithPlayer = false
-  partner.relationship = Math.min(partner.relationship, randInt(g, 5, 30))
+  setRelationship(g, partner, Math.min(partner.relationship, randInt(g, 5, 30)))
   notePerson(partner, 'Left me when I went to prison.')
   addStat(g, 'happiness', -randInt(g, 8, 15))
   notice(
@@ -2004,7 +2005,7 @@ function fightInmate(g: GameState, name: string, desc: string, person: Person | 
     )
     if (person) {
       addPersonStat(person, 'health', -randInt(g, 10, 30))
-      person.relationship = Math.min(person.relationship, randInt(g, 0, 10))
+      setRelationship(g, person, Math.min(person.relationship, randInt(g, 0, 10)))
       notePerson(person, 'I beat them up in prison.')
     }
     log(g, `I beat up ${person ? `my cellmate ${person.firstName}` : `an inmate named ${first}`}.`, 'event')

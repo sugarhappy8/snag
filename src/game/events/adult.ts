@@ -6,7 +6,7 @@
 // where the player actually lives (a braai in Johannesburg, Lebaran at the in-laws', a
 // lay judge summons in Tokyo) and the same person or situation doesn't come back year
 // after year.
-import { addMoney, count, currentPartner, peopleBy } from '../core'
+import { addMoney, count, currentPartner, peopleBy, setRelationship } from '../core'
 import { locale, localPick, localTerm, type LocaleToken } from '../data/locales'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
@@ -1383,7 +1383,7 @@ export const ADULT_EVENTS = defineEvents([
         const ok = chance(g, 0.35 + g.character.stats.smarts / 300)
         if (ok && x.p) {
           x.p.relation = 'friend'
-          x.p.relationship = Math.max(x.p.relationship, 45)
+          setRelationship(g, x.p, Math.max(x.p.relationship, 45))
         }
         say(g, x, ok ? 'Peace treaty' : 'Talk is cheap', ok ? `You talked it out with ${x.p?.firstName ?? 'them'}. Somehow, you're now friends.` : `${x.p?.firstName ?? 'They'} weren't interested in talking and shoved you into a dumpster.`, ok ? `I made peace with my enemy, ${x.p?.firstName ?? ''}.` : `My enemy, ${x.p?.firstName ?? ''}, shoved me into a dumpster.`, ok ? { happiness: 8, karma: 4 } : { health: -6, happiness: -8 }, ok ? 'good' : 'bad')
       },

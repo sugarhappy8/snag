@@ -1,5 +1,6 @@
 // Shared helpers every game module uses: stats, money, log, modals, people lookups.
 import { bookPlayer, roomFor, tokenSeen, type Why } from './kernel/ledger'
+import { applyRelationship, assignRelationship, notifyMirror, type RelKind } from './kernel/relations'
 import { noticeWeightFor, noticeWeightOf } from './notice-weights'
 import { chance, uid } from './rng'
 import type {
@@ -56,9 +57,22 @@ export function addPersonStat(p: Person, key: StatKey, delta: number): void {
   p.stats[key] = Math.round(clamp(p.stats[key] + delta))
 }
 
-export function addRelationship(_g: GameState, p: Person, delta: number): void {
-  if (!Number.isFinite(p.relationship) || !Number.isFinite(delta)) return
-  p.relationship = Math.round(clamp(p.relationship + delta))
+/**
+ * The one way to move a relationship by an amount. The body is the v5.2.0 expression (kernel/relations.ts applyRelationship: nothing for a
+ * non-finite relationship or delta, else Math.round(clamp(p.relationship + delta))); what it changed goes to the mirror hook, which is
+ * unbound until R4-E7 (a stamped life only). `kind` is `decay` for the yearly drift; the default is the sign of the delta.
+ */
+export function addRelationship(g: GameState, p: Person, delta: number, kind?: RelKind): void {
+  const change = applyRelationship(p, delta, kind)
+  if (change !== null) notifyMirror(g, p, change)
+}
+
+/**
+ * The one way to set a relationship to a value: the old raw write `p.relationship = value`, verbatim (no clamp, no rounding), so a
+ * call site passes its old right-hand side unchanged and a randInt inside it draws in the same place.
+ */
+export function setRelationship(g: GameState, p: Person, value: number, kind?: RelKind): void {
+  notifyMirror(g, p, assignRelationship(p, value, kind))
 }
 
 // ---------------------------------------------------------------------------

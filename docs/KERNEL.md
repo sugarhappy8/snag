@@ -145,6 +145,7 @@ One line each. A track that adds a file here adds its line; `test/kernel-accepta
 - `src/game/kernel/ports.ts` - `definePort` and `portStatus`: how one domain calls another without importing it.
 - `src/game/kernel/reasons.ts` - the reason table: why money moved, who is on the other side, and the closed lists of mints and burns with their yearly caps.
 - `src/game/kernel/registry.ts` - the module registry: `ModuleDef`, `registerModule`, `YEARLY_PHASES` and the sorted lists.
+- `src/game/kernel/relations.ts` - the door for `Person.relationship`: `applyRelationship` and `assignRelationship` (the v5.2.0 write, to the digit), `RelKind`, and the mirror hook `bindMirror` and `notifyMirror`; a hook, not a port, and nothing binds it until the Edge mirror (R4-E7).
 - `src/game/kernel/shapes.ts` - shape tables for the save: `packShapes` writes a repeated object shape's key list once, `unpackShapes` reads it back under hard limits.
 - `src/game/kernel/slices.ts` - the slice table: every piece of saved state declares its home chunk, caps, `normalize` and `migrate`; `sliceOf`, `hasSlice`.
 - `src/game/kernel/spreads.ts` - the bid-ask spreads of the pools: `ask` and `bid`, so no pool trades at the mid price both ways.

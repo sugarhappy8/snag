@@ -13,8 +13,8 @@
 //   runAction(g, p, id)       runs a person's menu action by id, the way the Relationships screen would; throws when the action
 //                             is missing or disabled, so a path a change closes fails loudly (a proposal at 67 was refused once)
 //   applyDelta(g, p, d, kind?) the ONE place an oracle file calls addRelationship (the ratchet, test/relationship-ratchet.test.ts,
-//                             counts every other). It is written against the two-argument addRelationship(p, delta) of v5.2.0;
-//                             R4-E5 changes the one call in its body and no oracle file
+//                             counts every other). It was written against the two-argument addRelationship(p, delta) of v5.2.0;
+//                             R4-E5 changed the one call in its body and no oracle file
 //   compareRows(old, new)     the rows that moved, the first one named; expectRows(oracle, rows) throws that report
 //   oracle(area, file?)       where an area is recorded: test/fixtures/social-parity-<area>.json unless a file is given
 //   isRecording / recordRows  the recorder (below); readRows reads a recording and refuses one edited by hand
@@ -44,6 +44,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { addRelationship } from '../src/game/core'
+import type { RelKind } from '../src/game/kernel/relations'
 import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import { fnv1a } from '../src/game/text/hash'
@@ -223,14 +224,14 @@ export function runAction(g: GameState, p: Person, id: string, input?: string): 
 }
 
 /** The three kinds a change of relationship can have (kernel/relations.ts, R4-E5). v5.2.0 has none and ignores the argument. */
-export type RelKindName = 'affection' | 'offence' | 'decay'
+export type RelKindName = RelKind
 
 /**
- * The one place an oracle file calls addRelationship. Today the call is the two-argument addRelationship(p, delta); R4-E5 gives it
- * the game and the kind, and changes the call here to `addRelationship(...a)` and nothing else. The social-mutation test finds the
- * delta and the person by their types, so it does not care which list the call takes.
+ * The one place an oracle file calls addRelationship. v5.2.0 took (p, delta); since R4-E5 the call takes the game and an optional kind
+ * (addRelationship(g, p, delta, kind?)), and `addRelationship(...a)` is the only line that knows the list. The social-mutation test finds
+ * the delta and the person by their types, so it does not care which list the call takes.
  */
-export const applyDelta = (...a: [g: GameState, p: Person, delta: number, kind?: RelKindName]): void => addRelationship(a[0], a[1], a[2])
+export const applyDelta = (...a: [g: GameState, p: Person, delta: number, kind?: RelKindName]): void => addRelationship(...a)
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Comparing
