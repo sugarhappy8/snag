@@ -20,6 +20,13 @@
 //          at that snapshot
 //   idb    { saves, marker, state }: the 12-year life as IndexedDB held it, `saves['anotherlife.save.v1']` the gz2 record that
 //          encodeSnapshotRecord(json, 1000) gives, `marker` the localStorage marker value and `state` the plain JSON text
+//   social gzip(JSON.stringify(a 30-year life of a founder with a family)): the v5.2.0 social save (R4-E1,
+//          test/fixtures/save-v5.2.0-social.json.gz), the one fixture that holds every record the People track of v5.3.0 reads or
+//          mirrors, all written by the v5.2.0 engine: a spouse and two children, a family firm with both children on the payroll
+//          (their data.nepo) and one named successor (the company's family record), a will that cuts one child out (that child's
+//          data.wl), a loan to a friend (data.w, owes) and 22 live exes (the cap is 20, cleanupPeople in relationships.ts, so the
+//          first year played drops 2). The exes are made last, after the last year, because cleanupPeople would cut them to 20 in it.
+//          The family is kept warm while the 30 years are played (see oneYear), a measurement aid like keepAlive
 //
 // Never regenerate a fixture from a later engine: it would be a later save (the header of scripts/save-size.ts says the same of
 // test/fixtures/save-v1.json.gz). A new release adds one fixture, written by that release's tag.
@@ -27,8 +34,15 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { ageUp } from '../src/game/aging'
+import { designateSuccessor, hireRelative } from '../src/game/business/nepo-actions'
+import { bizOf } from '../src/game/business/state'
+import { cutFromWill } from '../src/game/events/wealth-kids'
+import { wealthNodes } from '../src/game/events/wealth-menu'
+import { breakUp, performWedding } from '../src/game/love'
+import { createPerson } from '../src/game/people'
 import { memorySnapshotBackend, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
 import { encodeSnapshotRecord } from '../src/game/snapshot-codec'
+import type { GameState, MenuAction, MenuNode, Person } from '../src/game/types'
 import { probeLife, type ProbeOptions } from '../test/probe-life'
 
 /** The lives each mode plays. The seed, the birth year and the counts are part of the fixture's identity. */
@@ -38,6 +52,10 @@ const TM_LIFE: ProbeOptions = { seed: 11, birthYear: 1990, businesses: 2, years:
 const TM_YEARS = 6
 /** The first of the TM_YEARS after which a snapshot is taken: the last four. */
 const TM_FIRST_SNAPSHOT = 3
+/** The social life (R4-E1): a founder of 30 with one company in 1996, played for 30 years with a family. The years are played by socialLife, not by probeLife. */
+const SOCIAL_LIFE: ProbeOptions = { seed: 3, birthYear: 1966, businesses: 1, years: 0 }
+const SOCIAL_YEARS = 30
+const SOCIAL_EXES = 22
 
 const INDEX_KEY = 'anotherlife.timemachine.v1'
 const SAVE_KEY = 'anotherlife.save.v1'
@@ -99,9 +117,99 @@ async function timeMachine(): Promise<string> {
   return JSON.stringify({ lifeId: g.lifeId, index, entries, states })
 }
 
+/**
+ * One year of the founder's life. Two measurement aids, as the heavy mode's keepAlive is one: health is put back to 100, and the
+ * family is kept warm (a spouse's relationship is raised to 80 and a child's to 70 when it fell below, as a player who calls home
+ * would), so the marriage and the children are still there at the end; the life is there to be loaded, not to end or to divorce.
+ */
+function oneYear(g: GameState): void {
+  g.queue = []
+  g.character.stats.health = 100
+  g.character.conditions = []
+  for (const p of g.people) {
+    if (!p.alive) continue
+    const floor = p.relation === 'spouse' ? 80 : p.relation === 'child' ? 70 : 0
+    if (p.relationship < floor) p.relationship = floor
+  }
+  ageUp(g)
+}
+
+/** The menu row with this id, looking through the groups. */
+function findAction(nodes: readonly MenuNode[], id: string, g: GameState): MenuAction | undefined {
+  for (const n of nodes) {
+    if (n.type === 'action' && n.id === id) return n
+    if (n.type === 'menu') {
+      const hit = findAction(n.children(g), id, g)
+      if (hit) return hit
+    }
+  }
+  return undefined
+}
+
+/**
+ * The social life. Everything is made by the engine's own functions, in the order a life would: a wedding (performWedding), two
+ * children as processPregnancies makes them, thirty years of ageUp, then in the last year a family firm (hireRelative,
+ * designateSuccessor), a will that cuts a child out (cutFromWill), a loan to a friend (the Lend row of the Money menu), and last
+ * of all the exes, each a partner who is then broken up with (breakUp), so there are more than the cleanup keeps.
+ */
+function socialLife(): GameState {
+  const g = probeLife(SOCIAL_LIFE)
+  const c = g.character
+  const asset = g.assets.find((a) => a.kind === 'business')
+  if (!asset) fail('the social life has no company')
+  const partner = createPerson(g, { relation: 'partner', age: 29, relationship: 78, livesWithPlayer: true })
+  performWedding(g, partner, { venue: 'eloped', prenup: false, honeymoon: null })
+  for (const age of [3, 1]) {
+    createPerson(g, {
+      relation: 'child',
+      age,
+      lastName: c.lastName,
+      relationship: 85,
+      money: 0,
+      otherParentId: partner.id,
+      biological: true,
+      livesWithPlayer: true,
+    })
+  }
+  const friend = createPerson(g, { relation: 'friend', age: 33, relationship: 62 })
+  for (let year = 1; year <= SOCIAL_YEARS; year++) {
+    if (year === SOCIAL_YEARS) {
+      // The last year: the records are in place when the engine runs its yearly steps over them once.
+      g.queue = []
+      const kids = g.people.filter((p) => p.alive && p.relation === 'child')
+      const [elder, younger] = kids
+      if (kids.length !== 2 || !elder || !younger || !partner.alive || partner.relation !== 'spouse') fail(`the family did not last: ${kids.length} children, the spouse is ${partner.alive ? partner.relation : 'dead'}: pick another seed`)
+      const biz = bizOf(g, asset)
+      for (const [kid, rank] of [[elder, 2], [younger, 1]] as const) {
+        // A grown child asks for what they earn already: offer more until they take it.
+        let hired = hireRelative(g, asset, biz, kid, { rank }, { quiet: true })
+        for (const payMult of [1.25, 1.5, 2, 3]) {
+          if (hired.ok || hired.reason?.includes('expectations') !== true) break
+          hired = hireRelative(g, asset, biz, kid, { rank, payMult }, { quiet: true })
+        }
+        if (!hired.ok) fail(`${kid.firstName} was not hired: ${hired.reason ?? 'no reason'}: pick another seed`)
+      }
+      const named = designateSuccessor(g, asset, biz, elder, { quiet: true })
+      if (!named.ok) fail(`no successor: ${named.reason ?? 'no reason'}: pick another seed`)
+      cutFromWill(g, younger)
+      const lend = findAction(wealthNodes(g, friend), 'wealth.lend', g)
+      if (!lend) fail('the friend has no Lend row')
+      lend.run(g, '25000')
+      g.queue = []
+    }
+    oneYear(g)
+    if (!g.character.alive) fail(`the life died in year ${year}`)
+  }
+  g.queue = []
+  const ex = (i: number): Person => createPerson(g, { relation: 'partner', age: 24 + (i % 17), relationship: 40 + ((i * 7) % 35) })
+  for (let i = 0; i < SOCIAL_EXES; i++) breakUp(g, ex(i), i % 2 === 0 ? 'them' : 'player')
+  g.queue = []
+  return g
+}
+
 async function main(): Promise<void> {
   const [mode, path] = process.argv.slice(2)
-  if (path === undefined) fail('usage: save-fixtures <v402|heavy|tm|idb> <out.json.gz>')
+  if (path === undefined) fail('usage: save-fixtures <v402|heavy|tm|idb|social> <out.json.gz>')
   if (mode === 'v402') {
     writeGz(path, JSON.stringify(probeLife(V402_LIFE)), 'v402 life')
   } else if (mode === 'heavy') {
@@ -113,8 +221,10 @@ async function main(): Promise<void> {
     const record = await encodeSnapshotRecord(state, 1000)
     if (!record.startsWith('gz2:')) fail('the record was not compressed: is CompressionStream missing?')
     writeGz(path, JSON.stringify({ saves: { [SAVE_KEY]: record }, marker: IDB_MARKER, state }), 'indexeddb record')
+  } else if (mode === 'social') {
+    writeGz(path, JSON.stringify(socialLife()), 'social life')
   } else {
-    fail(`unknown mode ${String(mode)}: v402, heavy, tm or idb`)
+    fail(`unknown mode ${String(mode)}: v402, heavy, tm, idb or social`)
   }
 }
 
