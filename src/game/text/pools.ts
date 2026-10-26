@@ -250,9 +250,9 @@ export const DONATED_LINES = defineLines('charity.donated', [
 /** A close relative loses a spouse: {who} is "my sister Fatima", {spouse} is the first name of the one who died. Said once, on a stamped life (R4-L4). */
 export const KIN_WIDOWED = defineLines('life.kinWidowed', [
   '{spouse} died this year, and {who} is on their own now.',
-  'I\'m sorry to hear that {who} lost {spouse} this year.',
-  '{spouse} passed away, and {who} could use a call from me.',
-  'News came that {spouse} died, and {who} has a hard road ahead.',
-  '{spouse} is gone, and {who} is left to carry on alone.',
-  'This year {who} buried {spouse}. I felt it too.',
+  'This year {who} lost their spouse, {spouse}.',
+  '{spouse}, {who}\'s spouse, died this year.',
+  'This year {who} buried {spouse}.',
+  'This year {who} was widowed when {spouse} died.',
+  'I got word that {spouse} died, leaving {who} widowed.',
 ])
