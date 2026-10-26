@@ -577,7 +577,8 @@ describe('the module', () => {
     expect(getModule('effort.you')).toBeDefined()
     const ids = yearlyEntries('aging').map((e) => e.id)
     expect(ids.indexOf('effort.you')).toBe(ids.indexOf('yearly.household') + 1)
-    expect(ids.indexOf('effort.you')).toBe(ids.indexOf('yearly.relationships') - 1)
+    // R4-L4 put life.kin (life phase, order 37) between the effort step and the relationships hook; any other entry there is new.
+    expect(ids.slice(ids.indexOf('effort.you') + 1, ids.indexOf('yearly.relationships'))).toEqual(['life.kin'])
   })
 
   it('leaves a life that never touches it identical, 20 years through the real age-up', () => {
