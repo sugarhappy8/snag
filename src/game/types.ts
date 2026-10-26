@@ -417,6 +417,9 @@ export interface Person {
   /**
    * Free-form data (e.g. 'metAt', 'engagementRing', 'cheating'). `sid` names a person who began as a slot (world/sid.ts): it is written
    * on a NEW person only, because the ledger account is person:<sid> and a sid added later would rename it (kernel/person-ref.ts).
+   * The kin keys of a relative (R4, world/kin.ts), all optional and each cut by its own reader: `spouseSid` (one sid), `kidSids` (at
+   * most 6), `kinY` (the year Life last looked at the links), `estateY` (the year the estate was settled), `widowed`, and `kin` (the
+   * label of a relative who became a Person: 20 characters at most, /^[a-z][a-z -]{0,19}$/). Life writes them, on a stamped life only.
    */
   data: Record<string, Json>
 }
