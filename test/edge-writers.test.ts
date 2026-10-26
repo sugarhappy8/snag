@@ -7,9 +7,9 @@
 //   angry > relative and the relative (the second end) is 'ego'. Written on relative > player it would read as goodwill toward the player.
 //
 // For every site the file proves: on a stamped game the kind is on the edge once, with the listed weight, side and year; on a game that is
-// not stamped nothing is written and the game is the stamped game to the last field, apart from the world (the dice, the ids, the money, the
-// queue and the log are the same, so the parity files stay as they are); and a second memory of the kind in the same year is refused and
-// moves nothing. The sites that wait on a die find a seed by search (findSeed), never by a pinned number.
+// not stamped nothing is written and the game is the stamped game to the last field, apart from the world and the family-act counters of
+// R4-E9 (the dice, the ids, the money, the queue and the log are the same, so the parity files stay as they are); and a second memory of
+// the kind in the same year is refused and moves nothing. The sites that wait on a die find a seed by search (findSeed), never by a pinned number.
 import { describe, expect, it } from 'vitest'
 import { demote, fire, hireRelative, promote } from '../src/game/business/nepo-actions'
 import { readJob } from '../src/game/business/nepo-job'
@@ -397,8 +397,18 @@ const memoriesAt = (r: Played): readonly Memory[] => {
   return e === null ? [] : memoriesOf(e)
 }
 
-/** The game without its world: the part of the state a memory must not touch. */
-const withoutWorld = (g: GameState): string => JSON.stringify({ ...g, world: undefined })
+/**
+ * The two counters of the family-act budget (R4-E9, X40): a stamped life spends them where a family choice is queued, and a life that is not
+ * stamped never writes either, so they are the one place a stamped game and a plain one differ outside the world.
+ */
+const FAMILY_ACT_COUNTERS = ['fam.act', 'fam.early'] as const
+
+/** The game without its world and without the family-act counters: the part of the state a memory must not touch. */
+const withoutWorld = (g: GameState): string => {
+  const yearActions: Record<string, number> = { ...g.yearActions }
+  for (const k of FAMILY_ACT_COUNTERS) delete yearActions[k]
+  return JSON.stringify({ ...g, world: undefined, yearActions })
+}
 
 const seedFor = (s: Site): number => (s.dice ? findSeed((n) => s.play(false, n).ok, { label: `${s.site} ${s.kind}`, tries: 400 }) : 7)
 const expectedW = (s: Site, r: Played): number => (typeof s.w === 'function' ? s.w(r) : s.w)
@@ -435,6 +445,8 @@ describe('the sites', () => {
         expect((plain.g.world as { edges?: unknown } | undefined)?.edges).toBeUndefined()
         expect(plain.g.world === undefined || !('social' in plain.g.world)).toBe(true)
         expect(memoriesAt(plain)).toEqual([])
+        // the comparison below sets the counters aside on both sides, so the plain game is held to having none here
+        for (const k of FAMILY_ACT_COUNTERS) expect(plain.g.yearActions[k], k).toBeUndefined()
         expect(withoutWorld(plain.g)).toBe(withoutWorld(stamped.g))
       })
     })

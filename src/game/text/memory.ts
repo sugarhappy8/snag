@@ -257,7 +257,7 @@ export function familyStats(g: GameState, fam: string): { last: number | null; c
  * Pure. The years the family record holds, ascending, read the way familyStats reads them, for a hot path (R3-Q8 pace asks it for every
  * event it weighs): it reads the one record instead of sanitizing the whole memory, so a year's pick costs a few reads, not a few
  * hundred. An own key, a valid key and a record that is exactly the codec; a family map over its cap is the one case that needs the
- * full clean (it keeps the newest 120 keys), so it asks the sanitized memory. Null for a family that was never noted or a damaged one.
+ * full clean (it keeps the newest 160 keys), so it asks the sanitized memory. Null for a family that was never noted or a damaged one.
  * Years after g.year are still in the list: each reader drops them (no foresight).
  */
 function yearsOf(g: GameState, fam: string): number[] | null {

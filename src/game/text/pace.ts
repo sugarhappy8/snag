@@ -7,7 +7,7 @@
 //
 // The memory is the text kit's family record (flags.textMem.f, see memory.ts), under keys 'pop.<engine>.<family>', so the rule adds
 // no saved field. The record of an ask family keeps its years for the whole life (noteFamily's `lifetime`, at most 12 of them), where
-// every other family forgets a year 10 behind, so the cap can count what was offered. The memory keeps 120 families in all and the
+// every other family forgets a year 10 behind, so the cap can count what was offered. The memory keeps 160 families in all and the
 // pools of the text kit share them: a track of this kind declares at most PACE.maxFamilies of its own (test/pace.test.ts and
 // test/pace-families.test.ts count them), which leaves the rest for text.
 //
