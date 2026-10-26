@@ -137,7 +137,7 @@ export interface Memory {
   by: 'ego' | 'them'
 }
 
-/** The longest text a memory can have: the longest kind id (16), the longest year (6), a weight and a side, and three dots, with room to spare. */
+/** The longest text a memory can have: the longest kind id (17, gossiped_about_me), the longest year (6), a weight and a side, and three dots: 28 characters, with room to spare. */
 const TEXT_MAX = 40
 const YEAR_TEXT = /^[1-9][0-9]{3,5}$/
 
