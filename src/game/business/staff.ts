@@ -16,7 +16,8 @@ import { manageBlock, noCash, tooBusy } from './gate'
 import { familyStaffLine } from './nepo-staff-line'
 import { industryDef, type RoleDef } from './industries'
 import { sectorRoleBlurb } from './sector-data'
-import { CAND_MAX, candidateLabel, candidateLine, candidateRead, dropVet, hireFooter, hireLookRow, shortlistId, takeVet, validId, vetChoice, vetFee, type Vet } from './staff-fog'
+import { carryRead, shownLeader, skillText, staffFog, staffSkillRead, traitNamed, type HiredRead } from './leader-fog'
+import { CAND_MAX, candidateLabel, candidateLine, candidateRead, dropVet, hireFooter, hireLookRow, hiredRead, shortlistId, takeVet, validId, vetChoice, vetFee, type Vet } from './staff-fog'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
 import { clampN, markBest, money, num, rec, str, toJson } from './util'
 import { leadershipPower, leadershipSummary, LEADERSHIP } from './leadership'
@@ -166,8 +167,21 @@ function openShortlist(g: GameState, a: Asset, b: BizState, role: RoleDef, list:
   })
 }
 
+/**
+ * What the player read of the candidate picked from a shortlist, as the popup showed it (R4-U6), for the sheet of the new hire. Null in
+ * Exact, with the flag off, and for a pick that is not a candidate. Pure: it is taken before the settled shortlist forgets its checks.
+ */
+function readOfPick(g: GameState, d: Record<string, Json>, choice: string): HiredRead | null {
+  const i = /^c\d$/.test(choice) ? Number(choice.slice(1)) : -1
+  const id = validId(d.ck)
+  const list = Array.isArray(d.candidates) ? d.candidates : []
+  const c = i >= 0 && i < CAND_MAX ? asCandidate(list[i]) : null
+  return id !== null && c !== null ? hiredRead(g, id, i, c.skill) : null
+}
+
 const HIRE = defineScript('business.hire', (g, choice, data) => {
   const d = rec(data)
+  const carried = d ? readOfPick(g, d, choice) : null
   // A settled shortlist (hired, or nobody) forgets its background checks; the choice to check keeps them.
   if (d && choice !== 'vet') {
     const id = validId(d.ck)
@@ -220,6 +234,7 @@ const HIRE = defineScript('business.hire', (g, choice, data) => {
     years: 0,
   }
   b.staff.push(s)
+  if (carried) carryRead(g, a.id, s.id, carried)
   count(g, 'businessHires')
   log(g, `I hired ${s.firstName} ${s.lastName} as ${s.role} at ${a.name}.`, 'good')
   notice(
@@ -366,6 +381,12 @@ export function fireStaff(g: GameState, a: Asset, b: BizState, s: KeyStaff, why 
   notice(g, 'Let Go', text, { emoji: '\u{1F4E6}' })
 }
 
+/** What the sheet prints for a hire's skill behind staffFog() (R4-U6): a range, or "not clear yet" when no read can be made. */
+function skillShown(g: GameState, a: Asset, s: KeyStaff): string {
+  const e = staffSkillRead(g, a.id, s)
+  return e === null ? 'not clear yet' : skillText(e, s.skill)
+}
+
 function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
   const id = s.id
   return {
@@ -373,14 +394,20 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
     id: `biz.staffMember.${a.id}.${id}`,
     label: `${s.firstName} ${s.lastName}`,
     emoji: s.gender === 'female' ? '\u{1F469}\u{200D}\u{1F4BC}' : '\u{1F468}\u{200D}\u{1F4BC}',
-    subtitle: `${s.role} · skill ${s.skill} · morale ${s.morale}%`,
+    subtitle: g => `${s.role} · skill ${staffFog() ? skillShown(g, a, s) : s.skill} · morale ${s.morale}%`,
     header: g => {
       const b = readBiz(g, a), live = b.staff.find(x => x.id === id)
       if (!live) return 'This leader no longer works here.'
-      const contribution = leadershipPower(b, live.focus) - leadershipPower({ ...b, staff: b.staff.filter(x => x.id !== id) }, live.focus)
+      // R4-U6: behind staffFog() the skill is a range that tightens with the years, the trait is named after a year or a check, and the
+      // contribution is worked out on the team as the player reads it (the middle of each range), so it no longer gives the truth away.
+      const fog = staffFog()
+      const team = fog ? { ...b, staff: b.staff.map(x => shownLeader(g, a.id, x)) } : b
+      const skillWords = fog ? skillShown(g, a, live) : `${live.skill}/100`
+      const traitWords = fog && !traitNamed(g, a.id, live) ? 'Trait not clear yet' : traitOf(live.trait).label
+      const contribution = leadershipPower(team, live.focus) - leadershipPower({ ...team, staff: team.staff.filter(x => x.id !== id) }, live.focus)
       const pct = (factor: number) => (100 * contribution * factor).toFixed(1)
       const impact = live.focus === 'sales' ? `+${pct(LEADERSHIP.sales)} percentage points of customer demand` : live.focus === 'finance' ? `−${pct(LEADERSHIP.overhead)} percentage points of operating overhead` : live.focus === 'ops' ? `+${pct(LEADERSHIP.capacity)} percentage points of capacity and −${pct(LEADERSHIP.unitCost)} of unit costs` : `+${(contribution * LEADERSHIP.quality).toFixed(1)} points toward the quality target`
-      return `${live.firstName} ${live.lastName}, ${live.age} · ${live.role}\nSkill ${live.skill}/100 · ${traitOf(live.trait).label} · Morale ${live.morale}% · ${formatMoney(live.salary)}/yr.\n${b.industry === 'bank' || b.industry === 'onlineBank' || b.industry === 'investmentFirm' ? 'Their specialty directly improves financial operations and the strength of private models.' : `Their current contribution: ${impact}.`} Training and morale improve their contribution.\n\n${leadershipSummary(b)}`
+      return `${live.firstName} ${live.lastName}, ${live.age} · ${live.role}\nSkill ${skillWords} · ${traitWords} · Morale ${live.morale}% · ${formatMoney(live.salary)}/yr.\n${b.industry === 'bank' || b.industry === 'onlineBank' || b.industry === 'investmentFirm' ? 'Their specialty directly improves financial operations and the strength of private models.' : `Their current contribution: ${impact}.`} Training and morale improve their contribution.\n\n${leadershipSummary(b)}`
     },
     children: (): MenuNode[] => [
       staffAction(a, id, 'compliment', 'Compliment', '\u{1F44F}', 'Tell them they are doing great', (g, _b, x) => {
