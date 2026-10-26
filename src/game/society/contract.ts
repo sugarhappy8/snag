@@ -7,6 +7,9 @@
 //   E11   betray, reconcileOdds                  E14   isBound
 //
 // This file imports nothing from events/ or business/. See docs/ARCHITECTURE.md ("Society") and docs/SOCIAL.md.
+export { runAct } from './acts'
+export type { ActCtx, ActPart, ActPatch, ActSide, MoneyLine, SocialAct } from './acts'
 export { familyLive, familyRoom, useFamilyAct } from './budget'
 export type { FamilySource } from './budget'
+export { socialNodes } from './menu'
 export { liveFeuds, openDebts } from '../world/edges'

@@ -495,6 +495,19 @@ function nodeRow(g: GameState, n: MenuNode, depth = 0): Cell {
   return cut([n.type, n.id, label, shown, why, kids])
 }
 
+/**
+ * The rows R4-E10a adds to the page of a person on a stamped life (society/menu.ts, ids `social.*`). The recording is the plain
+ * engine's menu, so they are left out of the comparison; the count says how many were left out, so a stamped replay that stopped
+ * producing them, or an unstamped one that started to, shows.
+ */
+let favorRowsSeen = 0
+const withoutFavorRows = (nodes: MenuNode[]): MenuNode[] =>
+  nodes.filter((n) => {
+    if (!n.id.startsWith('social.')) return true
+    favorRowsSeen++
+    return false
+  })
+
 function playMenus(): ParityRow[] {
   const s = scene([4, 2026], { character: PLAYER, cast: MENU_CAST })
   const g = s.g
@@ -509,8 +522,8 @@ function playMenus(): ParityRow[] {
   deepFreeze(trapRng(g))
   MENU_CAST.forEach((c, i) => {
     const p = s.who[c.key]!
-    const first = personActions(g, p).map((n) => nodeRow(g, n))
-    const second = personActions(g, p).map((n) => nodeRow(g, n))
+    const first = withoutFavorRows(personActions(g, p)).map((n) => nodeRow(g, n))
+    const second = withoutFavorRows(personActions(g, p)).map((n) => nodeRow(g, n))
     expect(second).toEqual(first)
     rows.push({ ...bases[i]!, x: { nodes: first } })
   })
@@ -525,14 +538,18 @@ export function playAll(): ParityRow[] {
 
 describe('relationships.ts is what it was before the shim', () => {
   it('has the rows it recorded: every number, every draw, every popup', () => {
+    favorRowsSeen = 0
     const rows = playAll()
     if (isRecording(ORACLE.area)) recordRows(ORACLE, rows)
     else expectRows(ORACLE, rows)
+    expect(favorRowsSeen, 'a life that is not stamped has no favor rows (R4-E10a)').toBe(0)
   })
 
   it('plays the same rows on a stamped life: the mirror follows every number and moves none (R4-E7)', () => {
+    favorRowsSeen = 0
     const rows = withStamped(playAll)
     expectRows(ORACLE, rows)
+    expect(favorRowsSeen, 'a stamped page gains the favor rows of R4-E10a, which the comparison leaves out').toBeGreaterThan(0)
     expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
     expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
   })

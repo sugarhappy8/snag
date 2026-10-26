@@ -2,7 +2,7 @@
 
 How people feel about each other, and what they remember, as the engine keeps it (R4, v5.3.0). This note starts with the
 **edge model** (R4-E6a): the record, the 40 memory kinds, the caps and the rules of the normalizer. R4-E6b adds the writer, the
-stamp and the slice; R4-E7 the mirror and the yearly step (sections 9 and 10); R4-E8 the memory writers, the odds terms and the heir copy (section 11); the later tasks of the Edges and acts track add the acts. Until a
+stamp and the slice; R4-E7 the mirror and the yearly step (sections 9 and 10); R4-E8 the memory writers, the odds terms and the heir copy (section 11); R4-E9 the family-act budget (section 12); R4-E10a the act engine and the favors (section 13); the later tasks of the Edges and acts track add the rest. Until a
 section below says otherwise, `docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md` section 3.1 is the authority for every
 name and signature. Plain hyphens only: no long dashes anywhere in this file.
 
@@ -374,7 +374,70 @@ never both), then each of nepo, will and social alone; 30 years of the tier-4 ho
 `ageUp` with a second run of each yearly entry. The whole-life canaries (`golden-digest`, `kernel-parity`, `r2-codemod-parity`) pass
 unchanged, which is the proof that an unstamped life does not move.
 
-## 13. What the next tasks add here
+## 13. The acts and the favors (R4-E10a, D.4, X24, X26, X40, X42, C7, C9, C14, C31, C39)
 
-- R4-E10a to E16: the acts, loans, secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
+What people do to each other is a **SocialAct**: `society/acts.ts`. An act is a pure `blocked(g, c)` (the reason it can't be run now, in
+words, or null) and a pure `plan(g, c)` (the consequence as data, an `ActPatch`), and `runAct(g, act, key, person)` is the one place an
+act writes. A patch carries the edge fields to set, memories to make, relationship deltas, money lines, a log line and a notice. Money
+lines (`{ from, to, amount, token }`, the player or a Person at either end) are booked once through `cash.moveCash` under the reason
+`support`, so a replayed token books nothing and the dollars that leave one purse arrive in the other. A patch may also carry `also`, the
+same shapes for a second edge and person (the third person of a vouch, the relative of a brokered peace); it is an optional addition to
+the frozen shape of the cross-check (3.1), and money, log and notice belong to the patch as a whole.
+
+**Authorization is inside the function** (design 14.1, invariant 4). `runAct` checks the stamp, that the key is an edge of the current ego
+(one end is the player's own ref, so an edge between two other people or one of an earlier ego is refused), that the person is the other end
+of the key and is in the game, then runs `blocked`, and only then plans. It writes the edges first (a new edge may be refused by the cap;
+the edges made so far are taken back and the answer is null), then the money, the memories, the relationship deltas through the shim of
+`core.ts`, the log and the notice. A blocked call answers null and changes nothing: not a byte of the state, not a draw of `g.rng`, not an
+id. `test/social-act-auth.test.ts` calls `runAct` directly in each blocked state for each act; later acts add rows to its table.
+
+**Luck** comes from the stream `social` only: `actRoll(g, act, key, year)` is `outcomeStream(g, 'social', year, '<act>|<key>')`, which is
+`ActCtx.roll`. It draws nothing from `g.rng`, and a Time Machine jump re-rolls the year it lands in. A plan is a pure function of the state
+and that stream; its log line is picked with the same roll, because a plan may not touch the text memory.
+
+**The favors** (`society/favor.ts`) are calls-in on a person who is fond of the player and trusts them. The giver is the person, the edge
+is `giver > player`.
+
+| Rule | Value |
+|---|---|
+| Who can be asked | alive, not a pet, not estranged; the player alive and 16 or older |
+| Standing | `f` 50 or more and `t` 40 or more (a person with no edge reads as t 50 and f their relationship) |
+| Cooldown | one call-in an edge every 3 years (`Edge.c`); a refusal counts, so asking again is no way round it |
+| Strength | `min(1, 0.5 + reach / 24)`, reach the giver's living family and friends in `g.people` (the same circle) |
+| Odds of yes | 0.25 to 0.95: `0.3 + 0.5 x strength + (t - 40) / 300`, a little for honesty and temper; no wealth term |
+| A favor done | `o` of the edge goes down by 20 (the player owes), not below -100, and nothing decays it; the bond warms by 2 |
+| A favor refused | one point of relationship (an offence); no obligation |
+| Strain | the third favor within 6 years while two are still owed (`o` -40 or less, last call-in 6 years back or less) also writes `asked_too_often` |
+| Vouch | the third person's relationship rises by `round(15 x strength)`, 8 to 15, at most 100 |
+| Broker | the cut-out or estranged relative's `o` toward the player rises by 20 a brokered peace, at most 100 |
+
+`o` is positive when the first end owes the second, so a favor the player is owed by nobody and owes lands as a negative number on the
+giver's edge and passes to an heir with the edge (`EGO_COPY.o` is 1; the call-in year `c` is dropped). E11's `reconcileOdds` reads the
+relative's `o` at 0.0015 a point, so a brokered peace adds at most 0.15 to the peace odds (`BROKER_OBLIGATION`, `BROKER_ODDS_PER_POINT`
+and `BROKER_ODDS_MAX` are exported for it); the 20 and the 0.0015 are the planner's and the tests hold them as ranges. Two people know each
+other when they share a circle: the family, the friends, or the same school or firm (`contextId`); the model has no other acquaintance graph yet.
+`FavorKind` is an open union, so a later release adds the kinds that need a consumer outside the people systems (references,
+introductions, votes, hires; R9).
+
+**The menu** (`society/menu.ts`): `socialNodes(g, p)` is spliced into `personActions` before the will's rows. It is a plain empty list on
+a life that is not stamped, so every v5.2.0 save shows the rows it always did. On a stamped life a friend or relative gets 'Ask for a
+Favor' and, when there is a third person the friend knows who thinks least of the player, 'Ask {name} to Vouch for You'; a cut-out or
+estranged relative gets 'Ask {name} to Speak for You' (the way back), through the best giver who can be asked now. A row that is blocked
+greys itself out with the reason.
+
+**The module** `society.acts` (`society/module.ts`): the `close` phase of the aging seam at order 6, between the edge step (5) and the
+milestones (10), one entry. Once a year on a stamped life, idempotent by `social.ay`, a no-op on any other life. Its step list is empty
+in E10a; E10b appends the debt servicing, E11 the leak pass and the mentor settle, E12 the feuds.
+
+**What it did to the oracles.** The stamped replay of `test/relationship-parity.test.ts` compares the page of each of the 16 people with the
+recording of the plain engine. A stamped page now gains the rows `social.*`, so the replay leaves them out of the comparison (and counts
+them: more than 0 stamped, exactly 0 unstamped); every other row is still compared to the last digit. `test/relationship-ratchet.json`
+has one new entry, `society/acts.ts` with one `addRelationship(` call: the applier is a new caller of the shim, which is what the shim is for.
+
+**The seam** (`society/seam.ts`): the axes of a person (`axesOfPerson`, npc-state.ts), as `honestyOf` and `temperOf`. With `acts.ts`
+importing `cash.ts`, this is the `society->life` pair of the layer baseline, and the only two files it names (X26).
+
+## 14. What the next tasks add here
+
+- R4-E10b to E16: loans, secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
   (`social` at the close) and adds its export line to `society/contract.ts`.

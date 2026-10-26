@@ -25,7 +25,7 @@ The aging seam is `ageUp`: the clock and the economy step run first, then one en
 | `money` | development 10, investments 20, hedge 30, shops 40, computer 50, finance 60, wealth 70, familyUse 80, nepo 90, willFeuds 100 |
 | `assets` | immigration 10, assets 20, crime 30, underworld 40 |
 | `advisors` | advisors 10 |
-| `close` | world.edges 5, milestones 10 |
+| `close` | world.edges 5, society.acts 6, milestones 10 |
 | `settle` | W7: world 10 (the world indexes and the invariant check; it runs after every module that books money, and before the year events and the player) |
 | `news` | the news detectors (empty) |
 

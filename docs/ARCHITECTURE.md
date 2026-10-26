@@ -892,8 +892,9 @@ cutting them out at the reading.
 `society/` is the domain of what people do to each other and the budget that keeps it from burying the player in popups. It is layer 3,
 like `events/` and `business/`, and it is new in R4 (v5.3.0). Its one door is `society/contract.ts`: another domain imports only that
 file (the domain rule of `test/layers-domains.test.ts` does not count a contract import), and `society/` reaches `life` and no other
-domain (the `society->life` pair arrives with the acts of R4-E10a, when its files import `cash.ts` and `npc-state.ts`). The files of
-the domain read the world (`world/`), `core` and the kernel, and nothing from `events/` or `business/`.
+domain (the `society->life` pair arrived with the acts of R4-E10a: `society/acts.ts` imports `cash.ts` and `society/seam.ts` imports
+`npc-state.ts`, the only two files the pair names). The files of the domain read the world (`world/`), `core` and the kernel, and nothing
+from `events/` or `business/`.
 
 R4-E9 put the first two files in it. `society/budget.ts` is the family-act budget: `useFamilyAct(g, source)` spends one of the three
 family choices a year (`g.yearActions['fam.act']`) on a life the social stamp marks, `familyRoom(g, source)` looks before the spend, and
@@ -902,6 +903,13 @@ relatives) that holds one slot back from the wealth asks and the luxury choice. 
 luxury family choice, the nepo ask, life event and baton prompt, and the will's scene; the acts of the close join them. An
 unstamped life has no counter and keeps the old caps. Later tasks add one export line each to the contract, and their detail goes to
 `docs/SOCIAL.md` (section 12 has the budget).
+
+R4-E10a added the act engine. `society/acts.ts` is the typed `SocialAct` (a pure `blocked` and a pure `plan`) and `runAct`, the one place
+an act writes (the edge through `putEdge`, money through `cash.moveCash`, memories, the relationship shim, the log); it checks its own
+authorization and answers null with nothing written when an act is blocked. `society/favor.ts` holds the first three acts (a favor
+call-in, a vouch, a brokered peace), `society/menu.ts` the person rows (`socialNodes`), `society/seam.ts` the axes, and
+`society/module.ts` the module `society.acts` (close phase, order 6). Luck is the stream `social` (`docs/STREAMS.md`); the detail is in
+`docs/SOCIAL.md` section 13.
 
 ### Main Character Syndrome and instant mastery
 
