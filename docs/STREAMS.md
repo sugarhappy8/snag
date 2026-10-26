@@ -26,6 +26,12 @@ you opened a menu) and for words (one more line in a pool must not change the ne
 - The tag `soc.latent` (R4, `world/latent.ts`) is not a stream. `latent` reads `streamKey(familySeed, 'soc.latent', 0, sid)` with
   `streamUnit(key, facet)`: a hash of the family and the sid, so there is no generator, no `g`, no row in `test/stream-tap.ts` and
   nothing to carry. The facet numbers are append-only and pinned by `test/fixtures/latent-golden.json` (`docs/PEOPLE.md`).
+- The tag `life.path` (R4, `world/life-path.ts`) is drawn with `outcomeStream`: the id is the sid of a kin record for the death roll
+  of a year, and the sid plus `|ill` for the illness roll. `ageTo(g, base, year)` says from the family seed whether a record that is
+  not a Person is alive in a year and whether it is unwell. It is a pure read (no `g.rng`, no write), scans at most 130 years and, with
+  `since`, only the years after the last one seen. A Time Machine jump re-rolls the year it lands in and keeps the finished years.
+  Its row in `STREAM_SLICES` is `driven`: no played life holds a kin record until L4 steps with it. Facet 15 of the latent person
+  stays reserved and unused.
 
 ## Words: `pickLine` and `pick`
 

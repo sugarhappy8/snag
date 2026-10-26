@@ -79,6 +79,7 @@ import { chance, pick, rand, randFloat, randInt, uid, weightedPick } from './rng
 import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { getCountry, randomFirstName, randomLastName } from './world'
+import { npcMortality } from './world/mortality'
 import { locale, localeOf } from './data/locales'
 import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, texting, venueExists } from './events/era'
 import type { TechId } from './history/timeline'
@@ -897,27 +898,8 @@ function localSudden(g: GameState, d: DeathCause): DeathCause {
   return { ...d, text: 'got food poisoning from some very questionable street-stall seafood' }
 }
 
-/** Annual chance an NPC dies, by age and health. */
-export function npcMortality(age: number, health: number): number {
-  let base: number
-  if (age < 1) base = 0.002
-  else if (age < 18) base = 0.0006
-  else if (age < 40) base = 0.0012
-  else if (age < 50) base = 0.0025
-  else if (age < 60) base = 0.006
-  else if (age < 65) base = 0.012
-  else if (age < 70) base = 0.02
-  else if (age < 75) base = 0.032
-  else if (age < 80) base = 0.05
-  else if (age < 85) base = 0.085
-  else if (age < 90) base = 0.14
-  else if (age < 95) base = 0.24
-  else if (age < 100) base = 0.36
-  else base = 0.55
-  // Median NPC lifespan lands around 79 (p90 ~88), like the original's grandparents and parents.
-  const mult = health < 20 ? 2.5 : health < 40 ? 1.5 : health > 80 ? 0.7 : 1
-  return Math.min(0.95, base * mult)
-}
+/** Annual chance an NPC dies, by age and health: the table moved to world/mortality.ts (R4-L2), where a kin record is judged by it too. */
+export { npcMortality } from './world/mortality'
 
 function deathCause(g: GameState, p: Person): DeathCause {
   if (p.age >= 80 && chance(g, 0.5)) return pick(g, OLD_AGE)

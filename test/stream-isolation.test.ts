@@ -24,6 +24,7 @@ import { hazardRoll } from '../src/game/knowledge/risk'
 import { setbackLuck } from '../src/game/business/studio-effort'
 import { gainLuck } from '../src/game/world/frontier'
 import { followDraw } from '../src/game/world/frontier-step'
+import { ageTo } from '../src/game/world/life-path'
 import { seededEntity } from '../src/game/world/lod'
 import { makeTestGame } from './helpers'
 import { STREAM_SLICES, tap, type StreamRow, type TapRule } from './stream-tap'
@@ -81,6 +82,8 @@ const DRIVERS: Readonly<Record<string, (g: GameState) => void>> = {
     void followDraw(g, 'fusion', 'probe', g.year)
   },
   'effort.risk': (g) => void setbackLuck(g, g.year, 'probe'),
+  // A played life holds no kin record, so the driver asks for the life path of a record born 40 years ago, up to this year: a pure read of the stream.
+  'life.path': (g) => void ageTo(g, { sid: 'kin.us.1980.0', born: g.year - 40, health: 60 }, g.year),
 }
 
 /** The hook of a row that is driven: calls its driver after the years the row taps at, in every life. Undefined for a row that is not. */
