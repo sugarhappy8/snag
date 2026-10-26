@@ -7,18 +7,19 @@
 //   facts        one card of FactRows: your own feeling as the one bar, the estimates with their chips, the job, how long you have known them, the
 //                cash (an estimate when you are close, "Private." when you are not), and a row for the traits you have not seen yet
 //   personality  the stats of the person's data as one word each, at most PEOPLE_CAPS.personality, and one row for the rest
-//   notes        the last six lines of shared history, as the old sheet listed them
+//   notes        "Shared history": what the person remembers first (R4-U10, memoryLines of people-memory.ts: up to three sentences, only on a life
+//                the social flag stamped), then the last six notes, as the old sheet listed them
 //
 //   connections "How you're connected" (R4-U9, connectionsOf of people-web.ts): at most six known rows, from today's data, after the personality card
 //
-// Cards that come later go in the marked places, in this file and in this lane: the memory lines at the top of the notes card (R4-U10, from
-// people-memory.ts), and the reputation card, whose place is kept empty for R5 (D.7, X45).
+// The reputation card, whose place is kept empty for R5 (D.7, X45), goes in the marked place in this file.
 //
 // Pure: the rows are the answer of personFacts for this game and this person, which draws nothing and writes nothing, so the same page twice in a
 // year. A person the builder refuses (the mode or the flag changed under an open sheet) gets the hero alone until PersonSheet draws today's sheet
 // again. The file imports PersonHero.tsx and never PersonSheet.tsx: see the first lines of PersonHero.tsx for why.
 import type { ReactElement } from 'react'
 import { personFacts, type FactRow as FactData } from '../../game/hubs/people-facts'
+import { memoryLines } from '../../game/hubs/people-memory'
 import { connectionsOf } from '../../game/hubs/people-web'
 import type { GameState, Person } from '../../game/types'
 import { FactRow } from './FactRow'
@@ -43,6 +44,7 @@ export function PersonProfile({ g, person }: PersonProfileProps): ReactElement {
   const personality = inSection('personality')
   const notes = inSection('notes')
   const connections = connectionsOf(g, person)
+  const memories = memoryLines(g, person)
 
   return (
     <>
@@ -88,12 +90,14 @@ export function PersonProfile({ g, person }: PersonProfileProps): ReactElement {
 
       {/* rep: reserved for R5 (D.7), draws nothing. */}
 
-      {notes.length > 0 ? (
+      {memories.length > 0 || notes.length > 0 ? (
         <div className="person-section">
           <div className="menu-heading">Shared history</div>
           <div className="card">
-            {/* memories: the lines of R4-U10 go first in this card. */}
             <ul className="person-notes">
+              {memories.map((line, i) => (
+                <li key={`memory.${i}`}>{line}</li>
+              ))}
               {notes.map((r) => (
                 <li key={r.id}>{r.text}</li>
               ))}
