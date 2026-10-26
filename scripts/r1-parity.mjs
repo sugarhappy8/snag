@@ -12,7 +12,9 @@
 //          { seed, kind, age, alive, bytes, nodes, ms }: bytes is the JSON length, ms the time to play the life).
 //          A 'birth' life is createNewLife from age 0 and `years` calls of ageUp; a 'founder' life is probeLife. The queue is
 //          cleared every year, so no choices are made and nothing depends on R1 code. --flags none (the default) turns every
-//          build flag off, --flags all turns every one on (a tree without src/game/flags.ts has none; --flags all needs one).
+//          build flag off, --flags all turns every presentation flag on (a tree without src/game/flags.ts has none; --flags all needs
+//          one). A flag that changes simulation output is stamped into the life and is not a presentation flag (src/game/flags.ts):
+//          SIMULATION_FLAGS lists them, and `all` leaves them off, because this probe asks whether presentation changes a life.
 // compare  reads the baseline folder as is and the R1 folder through stripR1 (test/r1-strip.ts of --repo-r1, default .),
 //          prints one line per life (ok, or the JSON pointer of the first difference with both values) and which keys the
 //          stripper took out of the R1 run. Exit 1 on any difference. The lead runs it three times against one baseline:
@@ -38,6 +40,9 @@ const USAGE = `usage: node scripts/r1-parity.mjs <command> [options]
   play    --repo <dir> --out <dir> [--lives 30] [--years 40] [--flags none|all]
   compare --base <dir> --r1 <dir> [--repo-r1 <dir>]
   cost    --base <dir> --r1 <dir> [--reps 15] [--limit 1.05]`
+
+/** Build flags that change simulation output (the life is stamped when it is made). `--flags all` leaves them off: R4 `social` is one (X6). */
+const SIMULATION_FLAGS = ['social']
 
 const WARMUP_ROUNDS = 3
 const DEFAULT_LIMIT = 1.05
@@ -95,7 +100,7 @@ import { countNodes } from ${JSON.stringify(LIB)}
 ${hasFlags ? `import { FLAG_DEFS, setFlags } from ${at('src/game/flags')}` : ''}
 const CONFIG = ${JSON.stringify(config)}
 
-${hasFlags ? 'setFlags(Object.fromEntries(Object.keys(FLAG_DEFS).map((key) => [key, CONFIG.flags === "all"])))' : ''}
+${hasFlags ? 'setFlags(Object.fromEntries(Object.keys(FLAG_DEFS).map((key) => [key, CONFIG.flags === "all" && !CONFIG.simulation.includes(key)])))' : ''}
 
 function playLife(spec) {
   if (spec.kind === 'founder') {
@@ -146,7 +151,7 @@ async function play(values) {
   const work = mkdtempSync(join(tmpdir(), 'r1-parity-'))
   try {
     const file = join(work, 'driver.mjs')
-    const contents = driverSource(repo, hasFlags, { specs: lifeSpecs(lives, years), out, flags })
+    const contents = driverSource(repo, hasFlags, { specs: lifeSpecs(lives, years), out, flags, simulation: SIMULATION_FLAGS })
     await bundleTo({ stdin: { contents, resolveDir: repo, sourcefile: 'r1-parity-driver.ts', loader: 'ts' } }, file)
     const run = spawnSync(process.execPath, [file], { stdio: ['ignore', 'inherit', 'inherit'] })
     if (run.status !== 0) {

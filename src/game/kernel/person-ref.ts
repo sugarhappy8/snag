@@ -2,7 +2,8 @@
 // the same way, and each used to carry its own copy of the rule. This is the only copy.
 //
 //   validSid(x)       the text itself when `person:<x>` is a ref (the test both old copies ran), else null
-//   personKey(p)      validSid(p.data.sid) when there is one, else p.id
+//   personSid(p)      validSid(p.data.sid): a file outside this one that needs a person's sid asks here (world/met.ts does)
+//   personKey(p)      personSid(p) when there is one, else p.id
 //   personEntity(p)   person:<personKey(p)>, or pool:other for a key that is no name at all (never a person row)
 //   heirUnsafe(p)     a valid sid on a child, a stepchild or a grandchild: kin whose sid the hand-over would carry along
 //
@@ -20,9 +21,14 @@ export function validSid(x: unknown): string | null {
   return typeof x === 'string' && parseRef(`person:${x}`) !== null ? x : null
 }
 
+/** A person's sid when it is a valid one, else null. The only read of `data.sid` in src/game; a person with no `data` has none. */
+export function personSid(p: Pick<Person, 'data'>): string | null {
+  return validSid(p.data?.sid)
+}
+
 /** A person's key: the sid when it is a valid one, else the id. This is the id of every person made before sids existed. */
 export function personKey(p: Pick<Person, 'id' | 'data'>): string {
-  return validSid(p.data?.sid) ?? p.id
+  return personSid(p) ?? p.id
 }
 
 /** person:<sid> for a person with a valid sid, else person:<id>; pool:other for one whose key is no name at all (an id of a hostile save). */
@@ -37,5 +43,5 @@ export function personEntity(p: Pick<Person, 'id' | 'data'>): EntityRef {
  * so a layer-2 file can name it; the materializer re-exports it.
  */
 export function heirUnsafe(p: Pick<Person, 'relation' | 'data'>): boolean {
-  return (p.relation === 'child' || p.relation === 'stepchild' || p.relation === 'grandchild') && validSid(p.data?.sid) !== null
+  return (p.relation === 'child' || p.relation === 'stepchild' || p.relation === 'grandchild') && personSid(p) !== null
 }

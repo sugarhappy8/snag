@@ -33,8 +33,9 @@
 //   - a link to the anchor itself, a sid linked as the spouse and as a kid, a link on the player's own spouse (relation 'spouse');
 //   - a sid on a child, a stepchild or a grandchild (heirUnsafe);
 //   - a spouse sid linked by two living anchors;
-//   - a Met record with the spouse or heir flag (fl bit 2 or 4) that no living anchor, and no anchor dead for under KIN_CAPS.deadYears,
-//     links. Life's yearly sweep clears such a flag in the year it appears, so after any year one is a fault and not a lag.
+//   - a Met record of the kin kind (sid kin.*) with the spouse or heir flag (fl bit 2 or 4) that no living anchor, and no anchor dead for
+//     under KIN_CAPS.deadYears, links. Life's yearly sweep clears such a flag in the year it appears, so after any year one is a fault and
+//     not a lag. Life flags only the records it mints, and those are of the kin kind (X16); a record of another kind is no link of Life's.
 // An anchor dead for KIN_CAPS.deadYears years or more (data.diedYear) is let go: its links need not resolve and hold no record, because
 // the sweep has cleared the flags and the record may be evicted. A dead anchor with no death year is not known to be old, so it holds.
 //
@@ -416,11 +417,12 @@ export function kinProblems(g: Pick<GameState, 'people' | 'world' | 'year'>): st
   }
   for (const [key, n] of spouses) if (n > 1) add(`spouse ${key} is linked by ${n} living people`)
 
-  // A record that carries the spouse or heir flag is linked by someone.
+  // A kin record that carries the spouse or heir flag is linked by someone. Life flags only the records it mints, and those are of the kin
+  // kind (X16); a record of another kind is not in these links (a classmate whose fl a hostile save cut to 63 is the reader's cut, not a drift).
   const shard = readMet(g)
   for (const key of Object.keys(shard)) {
     const v = shard[key]!
-    if (isTomb(v)) continue
+    if (isTomb(v) || parseSid(key)?.kind !== 'kin') continue
     if (((v as MetRecord).fl & 6) !== 0 && !linked.has(key)) add(`record ${key} carries the spouse or heir flag and no living or recently dead person links it`)
   }
   if (more) out.push('and more')

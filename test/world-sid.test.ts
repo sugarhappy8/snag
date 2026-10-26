@@ -229,8 +229,8 @@ describe('docs/PEOPLE.md: the eight named-person shapes', () => {
 
   // [name in the doc, file, the text the line at the cited number must hold]
   const ANCHORS: readonly (readonly [name: string, file: string, line: number, holds: string])[] = [
-    ['Candidate', 'src/game/love.ts', 251, 'interface Candidate'],
-    ['makeCandidate', 'src/game/love.ts', 285, 'function makeCandidate'],
+    ['Candidate', 'src/game/love.ts', 252, 'interface Candidate'],
+    ['makeCandidate', 'src/game/love.ts', 286, 'function makeCandidate'],
     ['strangerName', 'src/game/events/helpers.ts', 454, 'function strangerName'],
     ['opponent', 'src/game/special/politics.ts', 583, 'opponent: string'],
     ['opponentName', 'src/game/special/politics.ts', 594, 'function opponentName'],
@@ -238,7 +238,7 @@ describe('docs/PEOPLE.md: the eight named-person shapes', () => {
     ['Director', 'src/game/business/board-state.ts', 22, 'interface Director'],
     ['KeyStaff', 'src/game/business/state.ts', 24, 'interface KeyStaff'],
     ['Manager', 'src/game/business/state.ts', 282, 'interface Manager'],
-    ['Outsider', 'src/game/business/nepo-actions.ts', 135, 'interface Outsider'],
+    ['Outsider', 'src/game/business/nepo-actions.ts', 136, 'interface Outsider'],
   ]
 
   it('names each of the eight shapes with the path and the line of its type, and the line still holds the type', () => {

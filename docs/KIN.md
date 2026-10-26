@@ -101,7 +101,9 @@ and R4-L4 adds the pair and kin edges once edges exist.
 - a link to the anchor itself; a sid linked as the spouse and as a kid; a link on the player's own spouse (relation `spouse`);
 - a sid on a child, a stepchild or a grandchild (`heirUnsafe`);
 - a spouse sid linked by two living anchors;
-- a Met record with the spouse or heir flag (`fl` bit 2 or 4) that no living anchor, and no anchor dead for under `deadYears`, links.
+- a Met record of the kin kind (`kin.*`) with the spouse or heir flag (`fl` bit 2 or 4) that no living anchor, and no anchor dead for
+  under `deadYears`, links. Life flags only the records it mints, and those are kin records (X16); a record of another kind is not
+  Life's link, so the check leaves it alone (a classmate whose `fl` a hostile save cut to 63 is the reader's business, not a drift).
 
 An anchor dead for 10 years or more is let go: its links need not resolve and hold no record. A dead anchor with no `diedYear` is not
 known to be old, so it holds. Life's yearly sweep (R4-L4) clears an orphan flag in the year it appears, so after any year a flagged

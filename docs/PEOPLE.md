@@ -138,14 +138,14 @@ of the 18 fits, the name R6 appends is a working name.
 
 | Shape | Type and path:line | Built by | Saved? | Kind for R6 |
 |---|---|---|---|---|
-| dating `Candidate` | `Candidate`, `love.ts:251` | `makeCandidate`, `love.ts:285`, from `dateCandidate`, the hookup and the memberships; draws `g.rng` (age, looks, stats, names, traits) | only inside the data of the pending popup (`candidate` in `showDateCandidate`) until the player chooses; then `personFromCandidate` makes a Person with `createPerson` | `dat` |
+| dating `Candidate` | `Candidate`, `love.ts:252` | `makeCandidate`, `love.ts:286`, from `dateCandidate`, the hookup and the memberships; draws `g.rng` (age, looks, stats, names, traits) | only inside the data of the pending popup (`candidate` in `showDateCandidate`) until the player chooses; then `personFromCandidate` makes a Person with `createPerson` | `dat` |
 | `strangerName` | `strangerName`, `events/helpers.ts:454`; the result is `{ first, last, gender }` | called at 36 sites in nine files of `events/`; draws `g.rng` (`crime.ts:244` has a second, local function of the same name that returns one string) | no: the name lives in the log line or the popup text, and the person is not added to the contacts | none fits a one-off passer-by; R6 decides (`frn` or `cow` by the scene, or a kind it appends) |
 | election opponent | `opponent: string` of the `Campaign` state, `special/politics.ts:583` | `opponentName`, `special/politics.ts:594`, called when the campaign is launched (`:681`); draws `g.rng` | only in the data of the three campaign popups (`trailChoice`, `:777`; read back at `:868`); afterwards it is a log line | `pol` |
 | `CareerRival` | `CareerRival`, `special/kit/rivals.ts:32` (the roadmap's `Me.rivals`) | `rosterAt`, derived from the family seed with `seeded()`, never stored; draws no `g.rng`; the id `<career>.<country>.<cohort>.<i>` is already a sid | no: only the career record's memory rows, keyed by the rival id | the career id: `actor`, `model`, `music`, `astronaut` today (`author`, `gamedev`, `sport` for the specs R6 adds); a career outside the seven needs a kind R6 appends |
 | `Director` | `Director`, `business/board-state.ts:22` | `makeDirector`, `business/board-state.ts:374`, seeded from the life id, the asset and a key; draws no `g.rng` | yes, in the board state `members` of the company (names stored, read back by `readDirector`) | `dir` |
 | `KeyStaff` | `KeyStaff`, `business/state.ts:24` | the hire script `business.hire` in `business/staff.ts`, from a shortlist built by `candidatesFor` (a local `Candidate` type, age 22 to 61); draws `g.rng` | yes, in the company's `staff` list | `stf` |
 | `Manager` | `Manager`, `business/state.ts:282` | `managerCandidate` and `installManager` in `business/career.ts`, `interimCeo` in `business/conglomerate-actions.ts`; draws `g.rng`. A relative who is CEO links to a Person through `personId` | yes, as the company's (or group's) `manager` | `exe` is the nearest of the 18; R6 appends `mgr` if a hired CEO must be told apart from a group executive |
-| nepo `Outsider` | `Outsider`, `business/nepo-actions.ts:135` | `rollOutsider`, `business/nepo-actions.ts:170`, for the ask popups; draws `g.rng`. The stand-in id is `pseudoId` (`out.<First>.<Last>.<kin>.<age>.<smarts>`) | only inside a pending ask popup, until hired; `materialize` then makes a coworker Person with `data.nepoSeed` | `kin` (an in-law or a cousin); the `out.` stand-in id stays outside the grammar |
+| nepo `Outsider` | `Outsider`, `business/nepo-actions.ts:136` | `rollOutsider`, `business/nepo-actions.ts:171`, for the ask popups; draws `g.rng`. The stand-in id is `pseudoId` (`out.<First>.<Last>.<kin>.<age>.<smarts>`) | only inside a pending ask popup, until hired; `materialize` then makes a coworker Person with `data.nepoSeed` | `kin` (an in-law or a cousin); the `out.` stand-in id stays outside the grammar |
 
 Counted from the code: six of the eight draw `g.rng` when they are created, so none of them can move onto a pure
 `latent` without moving a seeded life. That is why R4 ships the registry dark (no writer in a played life) and R6 D.6 moves them
@@ -330,7 +330,8 @@ year and country from the record. It returns null for a text that is not a sid o
 ```ts
 // kernel/person-ref.ts (layer 0)
 validSid(x: unknown): string | null          // text that parses as 'person:' + x; 's77', 's9' and 's-42' stay valid
-personKey(p: Pick<Person, 'id' | 'data'>): string          // validSid(p.data.sid) ?? p.id
+personSid(p: Pick<Person, 'data'>): string | null           // validSid(p.data.sid): the one read of data.sid outside the kernel file
+personKey(p: Pick<Person, 'id' | 'data'>): string          // personSid(p) ?? p.id
 personEntity(p: Pick<Person, 'id' | 'data'>): EntityRef     // 'person:' + personKey(p), or 'pool:other' for an id that is no name
 heirUnsafe(p: Pick<Person, 'relation' | 'data'>): boolean   // a valid sid on a child, stepchild or grandchild
 // world/sid.ts (layer 2)
@@ -382,7 +383,7 @@ nudgePersona(g, axis: NudgeAxis, by: number, why: string): number
    in id order, return `personKey` values (a legacy person is protected by its id), and one that throws protects nothing. A salience
    returns the edge part only (`f + s + abs(o)` of the edge person>player): Met adds the role weight itself.
 4. **Stake bits** (`fl`): 1 debt, 2 spouse, 4 heir, 8 company, 16 feud, 32 will. Life writes bits 2 and 4 with `markMet`, and only for a
-   person a living or recently dead Person links (`kinProblems` names a record that carries either bit with no link); Edges write none and
+   person a living or recently dead Person links (`kinProblems` names a kin record that carries either bit with no link); Edges write none and
    protect through a protector. `gr` and `ob` are written by `tombstoneMet` and by synthetic tests only.
 5. **New luck comes from named streams only** (`outcomeStream`, `streamKey`, `streamUnit`). The registry draws from no stream: `latent`
    is a hash of the family seed and the sid. A new `stream(` tag gets its rows in `test/stream-tap.ts` and

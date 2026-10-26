@@ -37,7 +37,7 @@
 // Pure reads: no luck, no clock, no write. Nothing in a played life calls the writer in R4 (S7 builds the behaviour on it). Layer 2: it
 // imports the kernel's leaves, the sid grammar and the world root, and registers itself like facts and frontier do.
 import { parseRef } from '../kernel/ids'
-import { heirUnsafe } from '../kernel/person-ref'
+import { heirUnsafe, personSid } from '../kernel/person-ref'
 import type { GameState, Person } from '../types'
 import type { AxisTuple } from './axes'
 import { MET_CAPS } from './caps'
@@ -568,7 +568,7 @@ export function metProblems(raw: unknown, people?: readonly Pick<Person, 'id' | 
   if (people !== undefined) {
     const list = people.length > MET_CAPS.scan ? people.slice(0, MET_CAPS.scan) : people
     for (const p of list) {
-      const sid: unknown = p.data?.sid
+      const sid = personSid(p)
       if (heirUnsafe(p)) add(`person ${p.id} is a ${p.relation} and carries sid ${shown(String(sid))}`)
       if (p.alive && isSid(sid) && !(shard !== null && hasOwn(shard, sid) && isPlain(shard[sid]))) add(`person ${p.id} holds sid ${sid} and the shard has no record of it`)
     }
