@@ -855,7 +855,17 @@ export function removePerson(g: GameState, id: string): void {
   g.people = g.people.filter((p) => p.id !== id)
 }
 
-/** Human label for a relation: "Mother", "Boyfriend", "Best Friend", "Dog"... */
+/** What a relative who became a Person is called: lower-case letters, spaces and hyphens, 20 characters at most (`niece`, `sister-in-law`; KIN.md). */
+const KIN_WORD = /^[a-z][a-z -]{0,19}$/
+
+/** The kin word of a friend, with its first letter capitalized ("niece" reads "Niece"), or undefined for no word and for a value that is not one (R4-U9, X38). */
+function kinWord(p: Person): string | undefined {
+  const data: unknown = p.data
+  const kin = typeof data === 'object' && data !== null ? (data as Record<string, unknown>).kin : undefined
+  return typeof kin === 'string' && KIN_WORD.test(kin) ? kin.charAt(0).toUpperCase() + kin.slice(1) : undefined
+}
+
+/** Human label for a relation: "Mother", "Boyfriend", "Best Friend", "Dog"... A friend with a kin word reads as it ("Niece", "Sister-in-law"). */
 export function relationLabel(p: Person): string {
   const m = p.gender === 'male'
   switch (p.relation) {
@@ -878,7 +888,7 @@ export function relationLabel(p: Person): string {
     case 'grandchild':
       return m ? 'Grandson' : 'Granddaughter'
     case 'friend':
-      return 'Friend'
+      return kinWord(p) ?? 'Friend'
     case 'bestFriend':
       return 'Best Friend'
     case 'enemy':

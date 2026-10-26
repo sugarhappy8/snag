@@ -9,14 +9,17 @@
 //   personality  the stats of the person's data as one word each, at most PEOPLE_CAPS.personality, and one row for the rest
 //   notes        the last six lines of shared history, as the old sheet listed them
 //
-// Cards that come later go in the marked places, in this file and in this lane: the connections card (R4-U9, from people-web.ts), the memory lines at
-// the top of the notes card (R4-U10, from people-memory.ts), and the reputation card, whose place is kept empty for R5 (D.7, X45).
+//   connections "How you're connected" (R4-U9, connectionsOf of people-web.ts): at most six known rows, from today's data, after the personality card
+//
+// Cards that come later go in the marked places, in this file and in this lane: the memory lines at the top of the notes card (R4-U10, from
+// people-memory.ts), and the reputation card, whose place is kept empty for R5 (D.7, X45).
 //
 // Pure: the rows are the answer of personFacts for this game and this person, which draws nothing and writes nothing, so the same page twice in a
 // year. A person the builder refuses (the mode or the flag changed under an open sheet) gets the hero alone until PersonSheet draws today's sheet
 // again. The file imports PersonHero.tsx and never PersonSheet.tsx: see the first lines of PersonHero.tsx for why.
 import type { ReactElement } from 'react'
 import { personFacts, type FactRow as FactData } from '../../game/hubs/people-facts'
+import { connectionsOf } from '../../game/hubs/people-web'
 import type { GameState, Person } from '../../game/types'
 import { FactRow } from './FactRow'
 import { PersonHero } from './PersonHero'
@@ -39,6 +42,7 @@ export function PersonProfile({ g, person }: PersonProfileProps): ReactElement {
   const lines = [...inSection('facts'), ...traits.filter((r) => r.state !== 'known')]
   const personality = inSection('personality')
   const notes = inSection('notes')
+  const connections = connectionsOf(g, person)
 
   return (
     <>
@@ -71,7 +75,18 @@ export function PersonProfile({ g, person }: PersonProfileProps): ReactElement {
         </div>
       ) : null}
 
-      {/* connections: the card of R4-U9 goes here. rep: reserved for R5 (D.7), draws nothing. */}
+      {connections.length > 0 ? (
+        <div className="person-section">
+          <div className="menu-heading">How you&apos;re connected</div>
+          <div className="card person-facts">
+            {connections.map((r) => (
+              <FactRow key={r.id} row={r} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* rep: reserved for R5 (D.7), draws nothing. */}
 
       {notes.length > 0 ? (
         <div className="person-section">
