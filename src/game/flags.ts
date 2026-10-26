@@ -4,9 +4,9 @@
 // only decides whether the inbox code exists in the build).
 //
 // Rules for every track:
-// - These eight keys are the complete R1 set; R3 adds a ninth, yearCard (below). Nobody else adds, renames or flips a key;
-//   only the lead's release commit changes a default, together with the package.json version (test/flags.test.ts fails on
-//   either half).
+// - These eight keys are the complete R1 set; R3 adds a ninth, yearCard, and R4 adds social and peopleProfile (all below).
+//   Nobody else adds, renames or flips a key; only the lead's release commit changes a default, together with the
+//   package.json version (test/flags.test.ts fails on either half).
 // - Production code reads FLAGS.key or flagOn('key') at the place of use. Never keep one in a module-level const.
 // - Tests use withFlags, or setFlags plus resetFlags. Never a module mock and never an assignment to FLAGS.
 // - R1 flags change presentation only. A flag that changes simulation output must be stamped into the save when
@@ -45,6 +45,15 @@ export const FLAG_DEFS = {
   // budgets the unrequested choices, when Quiet Mode is on too. Headless ageUp is never touched. On since 5.1.0: the release commit
   // flipped it together with the version.
   yearCard: { default: true, ships: '5.1.0' },
+  // The social web of R4 (X6): edges between people, acts, kin and estates, debts. It changes simulation output, so it is stamped
+  // into the save at life creation (createNewLife writes the world shard `social` when this key is on) and is NEVER read from FLAGS
+  // at run time: everything after creation asks socialOn(g). A v5.2.0 save, an unstamped life and the heirs of one keep v5.2.0
+  // behaviour byte for byte. Off until the release commit flips it together with the version.
+  social: { default: false, ships: '5.3.0' },
+  // The People profile, the staff and CEO reads and the cockpit tiles of R4 (X8). Presentation only, so it is read at the place of
+  // use and applies to every life, stamped or not. It stays off until the exit-gate walk passes; if the walk fails, the release
+  // commit leaves it at `ships: '5.4.0'` and `default: false`.
+  peopleProfile: { default: false, ships: '5.3.0' },
 } as const satisfies Record<string, FlagDef>
 
 export type FlagKey = keyof typeof FLAG_DEFS
