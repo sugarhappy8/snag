@@ -1052,7 +1052,7 @@ function expel(g: GameState, reason: string): void {
   count(g, 'expelled')
   addStat(g, 'happiness', -15)
   remember(g, `Expelled from ${cur.school} for ${reason}.`)
-  for (const p of parents(g)) addRelationship(p, -15)
+  for (const p of parents(g)) addRelationship(g, p, -15)
   if (isK12(cur.level) && c.age < sys.dropOutAge) {
     // Too young to be out of school: your parents find you a new one.
     const old = cur.school
@@ -1743,8 +1743,8 @@ function yearlySchoolEvents(g: GameState, cur: Enrollment): void {
       { emoji: band === 'bad' ? '\u{1F4C9}' : '\u{1F4DD}', tone: band === 'bad' ? 'bad' : band === 'great' ? 'good' : 'neutral' },
     )
     const ps = parents(g)
-    if (band === 'great') for (const p of ps) addRelationship(p, 3)
-    if (band === 'bad') for (const p of ps) addRelationship(p, -4)
+    if (band === 'great') for (const p of ps) addRelationship(g, p, 3)
+    if (band === 'bad') for (const p of ps) addRelationship(g, p, -4)
   }
   // Troublemakers get into trouble (a different kind each time).
   if (cliqueOf(cur) === 'troublemakers' && chance(g, 0.25)) {
@@ -1830,7 +1830,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     const school = cur.school
     leaveSchool(g, 'graduated')
     addStat(g, 'happiness', 8)
-    for (const p of parents(g)) addRelationship(p, 5)
+    for (const p of parents(g)) addRelationship(g, p, 5)
     remember(g, `Graduated from ${school}${valedictorian ? (valedictorianWord ? ' as valedictorian' : ' at the top of the class') : honors ? ' with honors' : ''}.`)
     log(g, `I graduated from ${school}${honors ? ' with honors' : ''}.`, 'good')
     const extra = valedictorian
@@ -1889,7 +1889,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     leaveSchool(g, 'graduated')
     addStat(g, 'happiness', 10)
     addStat(g, 'smarts', randInt(g, 2, 5))
-    for (const p of parents(g)) addRelationship(p, 6)
+    for (const p of parents(g)) addRelationship(g, p, 6)
     remember(g, `Earned a bachelor's degree in ${major} from ${school}${honors ? ' with honors' : ''}.`)
     log(g, `I graduated from ${school} with a degree in ${major}${honors ? (VALEDICTORIAN_COUNTRIES.has(c.countryId) ? ' (summa cum laude)' : ' (with distinction)') : ''}.`, 'good')
     const greekLine = greek ? ` Your ${greek} brothers and sisters threw a party you will never remember.` : ''
@@ -1918,7 +1918,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     leaveSchool(g, 'graduated')
     addStat(g, 'happiness', 10)
     addStat(g, 'smarts', randInt(g, 2, 6))
-    for (const p of parents(g)) addRelationship(p, 6)
+    for (const p of parents(g)) addRelationship(g, p, 6)
     const doctor = ['md', 'dds', 'dvm', 'pharmd', 'doctorate'].includes(info.kind)
     remember(g, `Graduated from ${school} with a ${info.degreeName(major)}.`)
     log(g, `I graduated from ${school}.`, 'good')
@@ -2095,7 +2095,7 @@ const SELECTIVE_EXAM = defineScript('school.selectiveExam', (g, choice, data) =>
   leaveSchool(g, 'transfer')
   enrollIn(g, level, { school, year, totalYears, grades: Math.max(0, grades - 3), quiet: true })
   addStat(g, 'happiness', randInt(g, 5, 10))
-  for (const p of parents(g)) addRelationship(p, 5)
+  for (const p of parents(g)) addRelationship(g, p, 5)
   remember(g, `Passed ${exam} and got into ${school}.`)
   log(g, `I passed ${exam} and moved to ${school}.`, 'good')
   notice(g, 'You Got In!', `You passed ${exam} and earned a place at ${school} — ${rankLabel(r)}. Your parents told everyone, including the mail carrier.`, { emoji: TIER_EMOJI[r.tier], tone: 'good' })
@@ -2736,7 +2736,7 @@ const TUITION = defineScript('school.tuition', (g, choice, data) => {
       if (parent && chance(g, p)) {
         billParents(g, a.tuition)
         finishEnrollment(g, a, 'parents')
-        addRelationship(parent, 3)
+        addRelationship(g, parent, 3)
         notice(g, 'Tuition', pickSite(g, [`Your ${word} agreed to pay your tuition at ${a.school}! They also reminded you about it at dinner. Twice.`, `Your parents are paying for ${a.school}. They're proud of you, and also quietly crying over their savings account.`], 0x01eaa961), {
           emoji: '\u{1F46A}',
           tone: 'good',
@@ -2744,7 +2744,7 @@ const TUITION = defineScript('school.tuition', (g, choice, data) => {
         log(g, `My parents agreed to pay for my tuition at ${a.school}.`, 'good')
         return
       }
-      if (parent) addRelationship(parent, -2)
+      if (parent) addRelationship(g, parent, -2)
       const refusals = [`Your ${word} said they can't afford to pay for ${a.school}.`, `Your ${word} told you it's time to learn about "financial independence."`]
       refusals.push(STUDENT_LOAN_COUNTRIES.has(c.countryId) ? `Your ${word} laughed and said they're still paying off their own student loans.` : `Your ${word} laughed and asked if you think money grows on trees.`)
       notice(g, 'Tuition', pick(g, refusals), { emoji: '\u{1F62C}', tone: 'bad' })
@@ -3000,7 +3000,7 @@ function skipSchool(g: GameState): void {
   const strict = num(cur.data.strictness, 50) / 100
   const caughtChance = isK12(cur.level) ? 0.15 + strict * 0.35 : 0.05
   if (chance(g, caughtChance)) {
-    for (const p of parents(g)) addRelationship(p, -5)
+    for (const p of parents(g)) addRelationship(g, p, -5)
     addStat(g, 'happiness', -4)
     if (isK12(cur.level)) {
       log(g, `I got caught skipping school.`, 'bad')
@@ -3026,7 +3026,7 @@ function dropOut(g: GameState): void {
   if (!cur) return
   if (isK12(cur.level) && c.age < 18 && parents(g).length > 0 && chance(g, 0.35)) {
     const p = pick(g, parents(g))
-    addRelationship(p, -5)
+    addRelationship(g, p, -5)
     notice(g, 'Drop Out', `Your ${p.gender === 'male' ? 'father' : 'mother'} found out and absolutely refused to let you drop out of ${cur.school}.`, { emoji: '\u{1F620}', tone: 'bad' })
     log(g, 'My parents refused to let me drop out of school.', 'bad')
     return
@@ -3035,7 +3035,7 @@ function dropOut(g: GameState): void {
   c.education.droppedOut.push(cur.level)
   const k12 = isK12(cur.level)
   leaveSchool(g, 'dropped')
-  for (const p of parents(g)) addRelationship(p, k12 ? -12 : -6)
+  for (const p of parents(g)) addRelationship(g, p, k12 ? -12 : -6)
   addStat(g, 'happiness', k12 ? 4 : -2)
   remember(g, `Dropped out of ${school}.`)
   log(g, `I dropped out of ${school}.`, 'bad')
@@ -3193,7 +3193,7 @@ function randomLastNameSafe(g: GameState): string {
 }
 
 function adjustCliqueMates(g: GameState, cur: Enrollment, cliqueId: string, delta: number): void {
-  for (const p of schoolPeople(g, cur, 'classmate')) if (p.data.clique === cliqueId) addRelationship(p, delta)
+  for (const p of schoolPeople(g, cur, 'classmate')) if (p.data.clique === cliqueId) addRelationship(g, p, delta)
 }
 
 function leaveClique(g: GameState): void {
@@ -3227,7 +3227,7 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
         return
       }
       addGrades(cur, randInt(g, 2, 6))
-      addRelationship(t, randInt(g, 2, 6))
+      addRelationship(g, t, randInt(g, 2, 6))
       if (chance(g, 0.3)) addStat(g, 'smarts', 1)
       notePerson(t, 'Asked for extra help in class.')
       log(g, `I asked ${name} for extra help.`, 'good')
@@ -3238,7 +3238,7 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       return
     }
     case 'compliment': {
-      addRelationship(t, randInt(g, 3, 8))
+      addRelationship(g, t, randInt(g, 3, 8))
       log(g, `I complimented ${name}.`, 'neutral')
       notice(g, name, pickSite(g, [`You told ${name} that ${pr.his} class is your favorite. ${pr.He} pretended not to be flattered.`, `You complimented ${name}'s tie. ${pr.He} has worn it every day since.`, `You told ${name} ${pr.he} is a great teacher. ${pr.He} blushed and gave the class a pop quiz anyway.`], 0x83eb43eb), {
         emoji: '\u{1F60A}',
@@ -3250,19 +3250,19 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       const apple = isUS(g) && isK12(cur.level)
       const gift = apple ? 'an apple' : pickLine(g, ['a box of chocolates', 'a bunch of flowers', 'a handmade card'])
       if (chance(g, 0.15)) {
-        addRelationship(t, -5)
+        addRelationship(g, t, -5)
         notice(g, name, `You left ${gift} on ${name}'s desk. ${pr.He} returned it, explaining that ${pr.he} can't accept gifts from students.`, { emoji: apple ? '\u{1F34E}' : '\u{1F381}' })
         if (num(cur.data.strictness, 50) > 70) schoolWarning(g, 'trying to bribe a teacher')
         return
       }
-      addRelationship(t, randInt(g, 6, 12))
+      addRelationship(g, t, randInt(g, 6, 12))
       if (chance(g, 0.3)) addGrades(cur, 2)
       log(g, apple ? `I gave ${name} a shiny apple.` : `I gave ${name} ${gift}.`, 'good')
       notice(g, name, pick(g, [apple ? `You gave ${name} a shiny red apple. Classic. ${pr.He} loved it.` : `You gave ${name} ${gift}. ${pr.He} pretended it wasn't necessary and kept it anyway.`, `You gave ${name} a coffee mug that says "World's Okayest Teacher." ${pr.He} laughed for a full minute.`]), { emoji: apple ? '\u{1F34E}' : '\u{1F381}', tone: 'good' })
       return
     }
     case 'insult': {
-      addRelationship(t, -randInt(g, 10, 20))
+      addRelationship(g, t, -randInt(g, 10, 20))
       addHidden(g, 'karma', -2)
       count(g, 'insults')
       log(g, `I insulted ${name}.`, 'bad')
@@ -3273,12 +3273,12 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
     case 'report': {
       const who = principalTitle(g, cur)
       if (chance(g, 0.4)) {
-        addRelationship(t, -25)
+        addRelationship(g, t, -25)
         notePerson(t, `Was reported to the ${isK12(cur.level) ? systemFor(g).principal.toLowerCase() : 'dean'} by the player.`)
         log(g, `I complained to ${who} about ${name}, who got reprimanded.`, 'neutral')
         notice(g, officeTitle(g, cur), `You complained to ${who} about ${name}. ${pr.He} got a stern talking-to. ${pr.His} glare at you the next day could melt steel.`, { emoji: '\u{1F4CB}' })
       } else {
-        addRelationship(t, -10)
+        addRelationship(g, t, -10)
         notice(g, officeTitle(g, cur), `You complained to ${who} about ${name}. ${who} nodded politely and did absolutely nothing.`, { emoji: '\u{1F4CB}' })
       }
       return
@@ -3394,10 +3394,10 @@ const PROM = defineScript('school.prom', (g, choice) => {
       const odds = isPartner ? 0.95 : clamp(0.2 + (c.stats.looks - 50) / 120 + (popularity(cur) - 50) / 150 + p.relationship / 250, 0.05, 0.9)
       if (chance(g, odds)) {
         date = p
-        addRelationship(p, randInt(g, 5, 12))
+        addRelationship(g, p, randInt(g, 5, 12))
         notePerson(p, `Went to ${dance.the} with the player.`)
       } else {
-        addRelationship(p, -5)
+        addRelationship(g, p, -5)
         addStat(g, 'happiness', -8)
         log(g, `${fullName(p)} turned down my invitation to ${dance.the}.`, 'bad')
         notice(g, dance.title, pickSite(g, [`${p.firstName} said no. Ouch. You went to ${dance.the} by yourself.`, `${p.firstName} already had a date. You went alone and danced like nobody was watching (nobody was).`], 0xa64753f3), { emoji: '\u{1F494}', tone: 'bad' })

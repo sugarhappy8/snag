@@ -698,7 +698,7 @@ function parentTrade(g: GameState, st: MoneyState, p: Person, premium: number, c
 function parentFindsTrades(g: GameState, p: Person, loss: number, profit: number): string {
   const rel = relationLabel(p).toLowerCase()
   const his = p.gender === 'male' ? 'his' : 'her'
-  addRelationship(p, -randInt(g, 10, 20))
+  addRelationship(g, p, -randInt(g, 10, 20))
   let repay = ''
   if (loss > 0) {
     const paid = Math.min(dollars(g.character.money), dollars(loss))

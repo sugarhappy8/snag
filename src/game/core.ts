@@ -56,7 +56,7 @@ export function addPersonStat(p: Person, key: StatKey, delta: number): void {
   p.stats[key] = Math.round(clamp(p.stats[key] + delta))
 }
 
-export function addRelationship(p: Person, delta: number): void {
+export function addRelationship(_g: GameState, p: Person, delta: number): void {
   if (!Number.isFinite(p.relationship) || !Number.isFinite(delta)) return
   p.relationship = Math.round(clamp(p.relationship + delta))
 }

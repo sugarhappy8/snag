@@ -145,7 +145,7 @@ export const ELDER_EVENTS = defineEvents([
           const fee = Math.min(Math.max(0, g.character.money), 10)
           return say(g, null, 'Neighbor kid', `You paid the neighbor kid ${money(fee)} to close the popup. It took four seconds.`, 'I paid a neighbor kid to fix my computer.', { money: -fee, happiness: 2 })
         }
-        addRelationship(young, 4)
+        addRelationship(g, young, 4)
         say(g, null, 'Family IT department', `You called ${young.firstName}, who sighed loudly and walked you through closing the popup. Three times.`, `My ${relWord(young)} ${young.firstName} helped me with a computer scam popup.`, { happiness: 2 }, 'good', '🧒')
       },
       troll: (g) => say(g, null, ['Scambaiter', 'Revenge'], 'You kept the scammer on the phone for two hours pretending you could not find the "any" key. He eventually hung up crying.', 'I wasted a scammer’s time for two hours.', { happiness: 8, karma: 2 }, 'good', '😈'),
@@ -493,7 +493,7 @@ export const ELDER_EVENTS = defineEvents([
       },
       juicy: (g) => {
         const fam = [...kids(g), ...grandkids(g)].filter((p) => p.age >= 12)
-        for (const p of fam) addRelationship(p, -randInt(g, 3, 8))
+        for (const p of fam) addRelationship(g, p, -randInt(g, 3, 8))
         say(g, null, 'Tell-all', `You wrote a tell-all memoir. ${fam.length ? 'Several relatives are no longer speaking to you, but it was a page-turner.' : 'It was a page-turner.'}`, 'I wrote a tell-all memoir about my family.', { happiness: 6, fame: 2, karma: -3 }, 'neutral', '🫢')
       },
       no: (g) => say(g, null, 'Mystery', 'You decided your secrets are going to the grave with you.', null, {}),

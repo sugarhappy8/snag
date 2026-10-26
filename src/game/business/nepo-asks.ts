@@ -372,14 +372,14 @@ function decline(g: GameState, a: Asset, b: BizState, k: Asker, fair: boolean): 
     real.data.nepoSelfMade = g.year
     addEntitlement(real, -8)
     real.stats.smarts = clampN(real.stats.smarts + 2, 0, 100)
-    addRelationship(real, fair ? 4 : 2)
+    addRelationship(g, real, fair ? 4 : 2)
     if (real.age >= 18 && !/\bat\b/.test(real.occupation)) real.occupation = randomOccupation(g, Math.max(23, real.age))
     notePerson(real, `Turned down for a job at ${a.name}; earned ${real.gender === 'male' ? 'his' : 'her'} own way instead.`)
     log(g, `${real.firstName} found ${real.gender === 'male' ? 'his' : 'her'} own way after I said no.`, 'good')
     return `${he} found something on ${real.gender === 'male' ? 'his' : 'her'} own, and respects you for it.`
   }
   const ent = entitlement(real)
-  addRelationship(real, -Math.round((fair ? 3 : 6 + ent / 8) + (trait(real, 'ambitious') ? 3 : 0)))
+  addRelationship(g, real, -Math.round((fair ? 3 : 6 + ent / 8) + (trait(real, 'ambitious') ? 3 : 0)))
   if (ent >= 50 || !fair) real.data.nepoGrudge = g.year
   void b
   return fair ? `${he} took it fairly well.` : `${he} took it badly.`

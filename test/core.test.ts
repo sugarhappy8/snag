@@ -142,7 +142,7 @@ describe('core helpers', () => {
     addStat(g, 'health', Number.NaN)
     addHidden(g, 'karma', Number.POSITIVE_INFINITY)
     addPersonStat(p, 'smarts', Number.NEGATIVE_INFINITY)
-    addRelationship(p, Number.NaN)
+    addRelationship(g, p, Number.NaN)
     expect({ stats: g.character.stats, hidden: g.character.hidden, person: p.stats, relationship: p.relationship }).toEqual(before)
   })
   it('logs into the current age', () => {

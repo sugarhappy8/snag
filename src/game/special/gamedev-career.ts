@@ -410,7 +410,7 @@ const CRUNCH = defineScript('gamedev.job.crunch', (g, choice) => {
     p.burnout = Math.round(clampN(p.burnout + 22, 0, 100))
     p.crunchYears += 1
     const partner = currentPartner(g)
-    if (partner) addRelationship(partner, -randInt(g, 3, 7))
+    if (partner) addRelationship(g, partner, -randInt(g, 3, 7))
     writeJobData(job, d)
     log(g, `I crunched for months on ${proj ? `"${proj.title}"` : 'the game'}.`, 'bad')
     say(g, 'Crunch Mode', `You slept under your desk, lived on vending-machine noodles and forgot what your ${partner ? 'partner' : 'apartment'} looks like. The milestone shipped. Your lead called you "a machine." Your doctor would use different words.`, '\u{1F35C}', 'bad')

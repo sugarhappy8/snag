@@ -230,7 +230,7 @@ export type RelKindName = 'affection' | 'offence' | 'decay'
  * the game and the kind, and changes the call here to `addRelationship(...a)` and nothing else. The social-mutation test finds the
  * delta and the person by their types, so it does not care which list the call takes.
  */
-export const applyDelta = (...a: [g: GameState, p: Person, delta: number, kind?: RelKindName]): void => addRelationship(a[1], a[2])
+export const applyDelta = (...a: [g: GameState, p: Person, delta: number, kind?: RelKindName]): void => addRelationship(a[0], a[1], a[2])
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Comparing

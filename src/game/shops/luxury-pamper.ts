@@ -254,7 +254,7 @@ export function attendLuxuryExperience(g: GameState, id: LuxuryExperienceId): bo
 
   if (id === 'familyRetreat') {
     const family = retreatFamily(g)
-    for (const person of family) addRelationship(person, randInt(g, 4, 8))
+    for (const person of family) addRelationship(g, person, randInt(g, 4, 8))
     addStat(g, 'happiness', randInt(g, 6, 10))
     count(g, 'familyRetreats')
     log(g, `I took ${family.length} family member${family.length === 1 ? '' : 's'} on a private retreat.`, 'good')
@@ -264,7 +264,7 @@ export function attendLuxuryExperience(g: GameState, id: LuxuryExperienceId): bo
 
   if (id === 'patronSalon') {
     const existing = g.people.filter((person) => person.alive && (person.relation === 'friend' || person.relation === 'bestFriend'))
-    for (const friend of existing.slice(0, 8)) addRelationship(friend, randInt(g, 2, 5))
+    for (const friend of existing.slice(0, 8)) addRelationship(g, friend, randInt(g, 2, 5))
     const guest = createPerson(g, {
       relation: 'friend',
       age: Math.max(18, Math.min(75, g.character.age + randInt(g, -10, 10))),

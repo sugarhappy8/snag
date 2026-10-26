@@ -215,8 +215,8 @@ export function setAllowance(g: GameState, p: Person, amount: number): void {
     return
   }
   const ratio = amt / Math.max(1, allowanceNorm(g, p))
-  if (amt > before) addRelationship(p, Math.min(8, 2 + Math.round(Math.log2(1 + (amt - before) / Math.max(1, allowanceNorm(g, p))) * 2)))
-  else addRelationship(p, -Math.min(10, 2 + Math.round(((before - amt) / Math.max(1, before)) * 8)))
+  if (amt > before) addRelationship(g, p, Math.min(8, 2 + Math.round(Math.log2(1 + (amt - before) / Math.max(1, allowanceNorm(g, p))) * 2)))
+  else addRelationship(g, p, -Math.min(10, 2 + Math.round(((before - amt) / Math.max(1, before)) * 8)))
   if (isDescendant(p) && p.age < 30 && ratio > 2) addEntitlement(p, Math.min(8, Math.round(Math.log2(ratio) * 2)))
   if (amt === 0) {
     log(g, `I stopped ${myOf(p)}'s ${word}.`)

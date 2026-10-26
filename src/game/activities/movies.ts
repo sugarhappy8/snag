@@ -266,7 +266,7 @@ function watchMovie(g: GameState, genre: GenreDef, companionId: string | null): 
   }
   let withLine = ''
   if (companion) {
-    addRelationship(companion, randInt(g, 4, 10))
+    addRelationship(g, companion, randInt(g, 4, 10))
     notePerson(companion, `Saw "${title}" at the movies with the player.`)
     withLine = `\n\nYou and ${companion.firstName} had a great time together.`
   }
@@ -372,7 +372,7 @@ function zooVisit(g: GameState, companionId: string | null): void {
   count(g, 'zooVisits')
   addStat(g, 'happiness', randInt(g, 3, 8))
   if (companion) {
-    addRelationship(companion, randInt(g, 4, 10))
+    addRelationship(g, companion, randInt(g, 4, 10))
     notePerson(companion, 'Went to the zoo with the player.')
   }
   log(g, companion ? `I went to the zoo with ${companion.firstName}.` : 'I went to the zoo.', 'good')

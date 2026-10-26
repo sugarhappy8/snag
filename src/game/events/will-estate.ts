@@ -541,8 +541,8 @@ export function settleReading(n: GameState, plan: EstatePlan, old: Character, he
   for (const c of plan.cutOut) {
     const p = n.people.find((x) => x.id === c.id)
     if (!p || p.id === heirId) continue
-    if (heirCut) addRelationship(p, 5)
-    else addRelationship(p, -Math.round(c.anger / 8))
+    if (heirCut) addRelationship(n, p, 5)
+    else addRelationship(n, p, -Math.round(c.anger / 8))
   }
   out.push(...readingLines(n, plan, old, heirId))
 
@@ -557,16 +557,16 @@ export function settleReading(n: GameState, plan: EstatePlan, old: Character, he
       if (mood === 'guilt' && s.money > 0) {
         const amt = Math.min(Math.round(s.money), Math.max(1, Math.round(s.money * randFloat(n, 0.2, 0.5))))
         moveCash(n, wholePurse(s), askedPurse(n), amt, 'gift')
-        addRelationship(s, 8)
+        addRelationship(n, s, 8)
         log(n, `${s.firstName} felt guilty and shared ${formatMoney(amt)} of the inheritance with me.`, 'good')
         out.push(`${s.firstName} pulled you aside, red-eyed, and pressed ${formatMoney(amt)} into your hands. "It isn't fair. Take it."`)
       } else if (mood === 'gloat') {
-        addRelationship(s, -12)
+        addRelationship(n, s, -12)
         addStat(n, 'happiness', -4)
         log(n, `${s.firstName} gloated about getting the inheritance.`, 'bad')
         out.push(`${s.firstName} didn't try very hard to hide a smile. You will remember that smile.`)
       } else {
-        addRelationship(s, -3)
+        addRelationship(n, s, -3)
         out.push(`${s.firstName} stared at the carpet and said nothing at all.`)
       }
     }
@@ -635,7 +635,7 @@ defineScript(S_ASK, (g, choice, data) => {
     updateWl(g, p, (w) => {
       w.hard = Math.min(3, w.hard + 1)
     })
-    addRelationship(p, -10)
+    addRelationship(g, p, -10)
     log(g, `I kept my whole inheritance when ${p.firstName} asked for a share.`, 'bad')
     notice(g, 'Fair Is Fair', `You kept it all. ${p.firstName} nodded slowly, the way people do when they've decided something about you.`, { emoji: EMOJI, tone: 'bad' })
     return
@@ -644,7 +644,7 @@ defineScript(S_ASK, (g, choice, data) => {
   if (amt <= 0) return
   moveCash(g, askedPurse(g), wholePurse(p), amt, 'gift')
   noteCashGift(g, p, amt)
-  addRelationship(p, choice === 'half' ? 22 : 10)
+  addRelationship(g, p, choice === 'half' ? 22 : 10)
   addStat(g, 'happiness', choice === 'half' ? 4 : 2)
   log(g, `I shared ${formatMoney(amt)} of my inheritance with ${p.firstName}.`, 'good')
   notice(g, 'Fair Is Fair', `You gave ${p.firstName} ${formatMoney(amt)}. ${choice === 'half' ? 'It cost you half. It bought you a sibling.' : 'It was not nothing. It was not everything.'}`, { emoji: EMOJI, tone: 'good' })
@@ -663,7 +663,7 @@ defineScript(S_HEIR, (g, choice, data) => {
     }
     addMoney(g, -fee, 'legal')
     writePot(g, { ...pot, year: g.year + randInt(g, 1, 3) })
-    for (const s of siblings) addRelationship(s, -randInt(g, 6, 12))
+    for (const s of siblings) addRelationship(g, s, -randInt(g, 6, 12))
     log(g, `I took my ${g.character.gender === 'male' ? 'father' : 'mother'}'s will to court.`)
     notice(g, 'See You in Court', `Your lawyer filed the papers and billed you ${formatMoney(fee)} for the privilege. The court will decide in a year or three. The next family get-together will be interesting.`, { emoji: '\u{2696}\u{FE0F}' })
     return
@@ -675,14 +675,14 @@ defineScript(S_HEIR, (g, choice, data) => {
     if (given > 0) addMoney(g, given, 'inheritance')
     refund(g, { ...pot, claim: pot.claim - given })
     writePot(g, null)
-    for (const s of siblings) addRelationship(s, agreed ? 3 : -2)
+    for (const s of siblings) addRelationship(g, s, agreed ? 3 : -2)
     log(g, agreed ? `My family agreed to give me ${formatMoney(given)} of the estate.` : 'I asked my family to be fair about the will. It went nowhere.', agreed ? 'good' : 'neutral')
     notice(g, 'A Family Conversation', agreed ? `After a long, awkward talk, the family agreed to give you ${formatMoney(given)}. No lawyers. Some forgiveness.` : 'You asked nicely. The answer was a polite, immovable no.', { emoji: EMOJI, tone: agreed ? 'good' : undefined })
     return
   }
   refund(g, pot)
   writePot(g, null)
-  for (const s of siblings) addRelationship(s, 2)
+  for (const s of siblings) addRelationship(g, s, 2)
   log(g, 'I let the will stand.')
 })
 
@@ -705,13 +705,13 @@ export function yearlyEstateTail(g: GameState): void {
     if (win) {
       addMoney(g, pot.claim, 'inheritance')
       writePot(g, null)
-      for (const s of siblings) addRelationship(s, -5)
+      for (const s of siblings) addRelationship(g, s, -5)
       log(g, `The court gave me ${formatMoney(pot.claim)} of the estate.`, 'good')
       notice(g, 'The Court Rules', `The judge found for you. ${formatMoney(pot.claim)} is yours. It cost more than money to get, and your relatives have noticed that too.`, { emoji: '\u{2696}\u{FE0F}', tone: 'good' })
     } else {
       refund(g, pot)
       writePot(g, null)
-      for (const s of siblings) addRelationship(s, -3)
+      for (const s of siblings) addRelationship(g, s, -3)
       addStat(g, 'happiness', -3)
       log(g, 'The court upheld the will. I got nothing and a bill.', 'bad')
       notice(g, 'The Court Rules', 'The judge upheld the will. You got nothing, and the fees were already spent. At least the relatives are no longer your opponents; they are merely people who testified against you.', { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })

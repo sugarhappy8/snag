@@ -164,7 +164,7 @@ export const FAMILY_ASKS: AskDef[] = [
         emoji: '\u{1F3E1}',
         run: (g, _a, p) => {
           if (!p) return
-          addRelationship(p, randInt(g, 4, 8))
+          addRelationship(g, p, randInt(g, 4, 8))
           notice(g, 'More Room', `You promised ${p.firstName} you'd look at bigger places together. The listings are under Assets › Real Estate. ${cap(pr(p).he)} has already bookmarked twelve.`, { emoji: '\u{1F3E1}', tone: 'good' })
         },
       },
@@ -225,11 +225,11 @@ export const FAMILY_ASKS: AskDef[] = [
           const yes = chance(g, Math.max(0.15, Math.min(0.8, p.relationship / 120)))
           if (yes) {
             p.data.prenup = true
-            addRelationship(p, -randInt(g, 4, 9))
+            addRelationship(g, p, -randInt(g, 4, 9))
             notePerson(p, 'Signed a postnup.')
             notice(g, 'Postnup', `${p.firstName} signed it, slowly, while maintaining eye contact. Your assets are protected. Dinner will be quiet for a while.`, { emoji: '\u{1F4DC}' })
           } else {
-            addRelationship(p, -randInt(g, 12, 20))
+            addRelationship(g, p, -randInt(g, 12, 20))
             notice(g, 'Postnup', `${p.firstName} read the first page and asked if you were planning to leave. You were not, until about four minutes ago. ${cap(pr(p).he)} refused to sign.`, { emoji: '\u{1F4DC}', tone: 'bad' })
           }
         },
@@ -239,7 +239,7 @@ export const FAMILY_ASKS: AskDef[] = [
         label: () => 'Tell the accountant you trust your spouse',
         emoji: '\u{1F91D}',
         run: (g, _a, p) => {
-          if (p) addRelationship(p, randInt(g, 1, 3))
+          if (p) addRelationship(g, p, randInt(g, 1, 3))
           notice(g, 'Postnup', 'You told your accountant you trust your spouse completely. Your accountant made a small note in a file labeled "Later."', { emoji: '\u{1F91D}' })
         },
       },
@@ -301,7 +301,7 @@ export const FAMILY_ASKS: AskDef[] = [
             t.adultOk = true
             t.missed = 0
           })
-          addRelationship(p, randInt(g, 8, 14))
+          addRelationship(g, p, randInt(g, 8, 14))
           notice(g, 'Retirement', `You set up ${money(yearly)} a year for ${p.firstName}, paid automatically. ${cap(pr(p).he)} cried a little and then asked if it's adjusted for inflation.`, { emoji: '\u{1F4C6}', tone: 'good' })
         },
       },
@@ -511,12 +511,12 @@ export const FAMILY_ASKS: AskDef[] = [
     },
     onGive: (g, a) => {
       const sp = typeof a.x?.spouseId === 'string' ? g.people.find((q) => q.id === a.x?.spouseId && q.alive) : undefined
-      if (sp) addRelationship(sp, randInt(g, 6, 12))
+      if (sp) addRelationship(g, sp, randInt(g, 6, 12))
       return sp ? `${sp.firstName} kissed you in front of everyone. Your in-law called you "the good one."` : ''
     },
     onNo: (g, a) => {
       const sp = typeof a.x?.spouseId === 'string' ? g.people.find((q) => q.id === a.x?.spouseId && q.alive) : undefined
-      if (sp) addRelationship(sp, -randInt(g, 5, 10))
+      if (sp) addRelationship(g, sp, -randInt(g, 5, 10))
       return sp ? `${sp.firstName} will be bringing this up at every holiday until one of you dies.` : ''
     },
     thanks: 0,

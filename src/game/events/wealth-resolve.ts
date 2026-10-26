@@ -225,7 +225,7 @@ export function giveFor(g: GameState, a: Ask, amount: number, kind: GiveKind): v
   if (!def || !ok) return gone(g, a)
   const amt = Math.max(0, Math.round(amount))
   if (amt <= 0 || !payAsk(g, def, p, amt, 'gift')) {
-    if (p) bumpRelationship(p, -1)
+    if (p) bumpRelationship(g, p, -1)
     notice(g, a.title, `You don't have ${money(amt)} in cash right now, so that settles that. ${p ? `${p.firstName} took it well, mostly.` : ''}`.trim(), { emoji: '\u{1F4B8}' })
     return
   }
@@ -243,7 +243,7 @@ export function giveFor(g: GameState, a: Ask, amount: number, kind: GiveKind): v
     const thanks = def.thanks ?? 8
     rel = kind === 'full' ? gratitude(p, thanks) : kind === 'alt' ? gratitude(p, thanks * 0.6) : share < 0.25 ? -randInt(g, 1, 3) : gratitude(p, thanks * share)
     if (kind === 'alt' && entitlement(p) >= 60) rel = -randInt(g, 1, 4)
-    bumpRelationship(p, rel)
+    bumpRelationship(g, p, rel)
     if (isDescendant(p) && p.age < 35 && def.spoil) addEntitlement(p, Math.round(def.spoil * (kind === 'full' ? 1 : kind === 'alt' ? 0.5 : share * 0.7)))
   }
   if (def.need) addHidden(g, 'karma', full ? 2 : 1)
@@ -270,7 +270,7 @@ function lend(g: GameState, a: Ask): void {
     t.owes += a.amt
   })
   recordAsk(g, p, a.what, 'lend', a.amt)
-  bumpRelationship(p, gratitude(p, (def.thanks ?? 8) * 0.6))
+  bumpRelationship(g, p, gratitude(p, (def.thanks ?? 8) * 0.6))
   count(g, 'wealthLoans')
   log(g, fillSlots(pickLine(g, LENT_LINES), { who: myOf(p), money: money(a.amt), what: a.what }))
   const promise = pickLine(g, ['by the end of the year', 'as soon as things pick up', 'with interest, probably', '"soon"'])
@@ -299,7 +299,7 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
         t.bound = g.year + 5
       })
       const cost = entitlement(p) >= 60 ? refusalCost(g, a, def, p) : Math.round(refusalCost(g, a, def, p) * 0.5)
-      bumpRelationship(p, -cost)
+      bumpRelationship(g, p, -cost)
       if (isDescendant(p)) addEntitlement(p, -8)
       addStat(g, 'happiness', randInt(g, 0, 2))
       const atm = common(g, 'atm') ? 'an ATM' : 'a bank'
@@ -307,12 +307,12 @@ function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
       parts.push(entitlement(p) >= 60 ? `${p.firstName} did not take it well.` : `${p.firstName} was hurt, then quiet, then (eventually) okay.`)
       log(g, fillSlots(pickLine(g, BOUNDARY_LINES), { who: myOf(p) }))
     } else if (respect) {
-      bumpRelationship(p, randInt(g, 1, 3))
+      bumpRelationship(g, p, randInt(g, 1, 3))
       if (isDescendant(p)) addEntitlement(p, -4)
       parts.push(`You told ${p.firstName} no. ${p.gender === 'male' ? 'He' : 'She'} sulked for a day, then admitted you had a point. Secretly, ${p.gender === 'male' ? 'he' : 'she'} respects it.`)
       log(g, fillSlots(pickLine(g, REFUSED_LINES), { who: myOf(p), what: askedFor(a) }))
     } else {
-      bumpRelationship(p, -refusalCost(g, a, def, p))
+      bumpRelationship(g, p, -refusalCost(g, a, def, p))
       if (isDescendant(p)) addEntitlement(p, -3)
       parts.push(`You told ${p.firstName} no.`)
       parts.push(
@@ -439,7 +439,7 @@ defineScript(BUNDLE_SCRIPT, (g, choice, data) => {
           t.given += a.amt
         })
         recordAsk(g, p, a.what, 'yes', a.amt)
-        bumpRelationship(p, gratitude(p, Math.max(2, (def?.thanks ?? 6) * 0.6)))
+        bumpRelationship(g, p, gratitude(p, Math.max(2, (def?.thanks ?? 6) * 0.6)))
         if (isDescendant(p) && p.age < 35 && def?.spoil) addEntitlement(p, Math.max(1, Math.round(def.spoil * 0.7)))
       }
       if (def?.onGive) def.onGive(g, a, p, a.amt, true)
@@ -449,7 +449,7 @@ defineScript(BUNDLE_SCRIPT, (g, choice, data) => {
       if (p) {
         touch(g, p)
         recordAsk(g, p, a.what, 'no', a.amt)
-        bumpRelationship(p, -Math.max(1, Math.round(sting(p, (def?.hurt ?? 4) * 0.5))))
+        bumpRelationship(g, p, -Math.max(1, Math.round(sting(p, (def?.hurt ?? 4) * 0.5))))
         if (isDescendant(p)) addEntitlement(p, -1)
       }
       // Life goes on without your money (a friend's wedding still happens).
@@ -470,7 +470,7 @@ defineScript(ADULT_SCRIPT, (g, choice, data) => {
       updateTies(g, p, (t) => {
         t.adultOk = true
       })
-      bumpRelationship(p, randInt(g, 2, 5))
+      bumpRelationship(g, p, randInt(g, 2, 5))
     }
     notice(g, 'All Grown Up', `You'll keep supporting ${names}. ${people.length > 1 ? 'They' : people[0].gender === 'male' ? 'He' : 'She'} promised to "figure it out eventually."`, { emoji: '\u{1F393}' })
     return
@@ -480,7 +480,7 @@ defineScript(ADULT_SCRIPT, (g, choice, data) => {
       t.allowance = 0
       t.adultOk = false
     })
-    bumpRelationship(p, -randInt(g, 1, 4))
+    bumpRelationship(g, p, -randInt(g, 1, 4))
     addEntitlement(p, -6)
   }
   log(g, `I stopped paying ${names} an allowance now that they're adults.`)

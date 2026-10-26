@@ -63,7 +63,7 @@ export function applyEffects(g: GameState, eff: GameEffects): string[] {
     const p = getPerson(g, r.personId)
     const d = num(r.delta)
     if (!p || !p.alive || d === undefined) continue
-    addRelationship(p, clamp(d, -40, 40))
+    addRelationship(g, p, clamp(d, -40, 40))
   }
 
   if (eff.newPerson) {

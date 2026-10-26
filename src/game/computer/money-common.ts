@@ -540,7 +540,7 @@ export function parentsCatch(g: GameState, what: string, lockYears: number, relH
   g.flags.computerLockedUntil = prev > until ? prev : until
   const who = ps.length === 1 ? `Your ${relationLabel(ps[0]).toLowerCase()}` : ps.length ? 'Your parents' : 'Your guardian'
   g.flags.computerLockedBy = who
-  for (const p of ps) addRelationship(p, -randInt(g, relHit, relHit + 8))
+  for (const p of ps) addRelationship(g, p, -randInt(g, relHit, relHit + 8))
   addStat(g, 'happiness', -randInt(g, 4, 9))
   count(g, 'computerConfiscated')
   log(g, `${who.replace(/^Your/, 'My')} found out I was ${what}. I was grounded and lost my computer.`, 'bad')

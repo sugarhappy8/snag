@@ -413,7 +413,7 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
 
   // Little kids get a lecture, not a trial.
   if (c.age < 10) {
-    for (const p of parents(g)) addRelationship(p, -randInt(g, 3, 8))
+    for (const p of parents(g)) addRelationship(g, p, -randInt(g, 3, 8))
     log(g, `The police caught me ${name === 'Disorderly Conduct' ? 'causing trouble' : `doing something I shouldn't (${name.toLowerCase()})`} and drove me home.`, 'bad')
     // No case, no conviction: whatever was held for it comes straight back.
     if (refund > 0) addMoney(g, refund, 'legal')
@@ -1401,7 +1401,7 @@ const DELINQUENCY_SCRIPT = defineScript('crime.delinquency', (g, choice, data) =
     partnerName = partner.firstName
     const yes = chance(g, clamp(partner.relationship / 120 + 0.1 + (partner.traits.includes('rebellious') ? 0.2 : 0) - (partner.traits.includes('honest') ? 0.2 : 0), 0.05, 0.9))
     if (!yes) {
-      addRelationship(partner, -randInt(g, 2, 6))
+      addRelationship(g, partner, -randInt(g, 2, 6))
       log(g, `My ${relationLabel(partner).toLowerCase()} ${partner.firstName} refused to join my mischief.`, 'neutral')
       notice(g, 'Not Interested', pickSite(g, [`${partner.firstName} looked at you like you'd lost your mind and said no.`, `${partner.firstName} refused and gave you a ten-minute lecture about responsibility.`], 0x613692a7), { emoji: '\u{1F645}' })
       return
@@ -1412,7 +1412,7 @@ const DELINQUENCY_SCRIPT = defineScript('crime.delinquency', (g, choice, data) =
   const idx = commitCrime(g, act.crime, { karma: 2, notoriety: 2, heat: 0.05 })
   if (chance(g, risk)) {
     if (partner) {
-      addRelationship(partner, -randInt(g, 5, 12))
+      addRelationship(g, partner, -randInt(g, 5, 12))
       notePerson(partner, `Got caught with me doing something stupid (${act.label.toLowerCase()}).`)
     }
     arrestPlayer(g, act.crime, 1, { recordIndex: idx, evidence: 0.75, context: `Security caught you${withText} trying to ${act.label.toLowerCase()}.` })
@@ -1420,7 +1420,7 @@ const DELINQUENCY_SCRIPT = defineScript('crime.delinquency', (g, choice, data) =
   }
   addStat(g, 'happiness', randInt(g, 3, 8))
   if (partner) {
-    addRelationship(partner, randInt(g, 4, 10))
+    addRelationship(g, partner, randInt(g, 4, 10))
     notePerson(partner, `We did something wild together: ${act.label.toLowerCase()}.`)
   }
   let money = 0
@@ -2674,13 +2674,13 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
   } else if (hack.id === 'social') {
     addStat(g, 'happiness', randInt(g, 3, 8))
     if (person) {
-      addRelationship(person, -randInt(g, 5, 15))
+      addRelationship(g, person, -randInt(g, 5, 15))
       addPersonStat(person, 'happiness', -randInt(g, 5, 15))
     }
     text = `You got into ${target}'s account and posted ${pickLine(g, ['a love letter to a lamppost', 'twelve photos of feet', 'that pineapple belongs on pizza', 'a public apology to a pigeon'])}. Chaos ensued.`
   } else if (hack.id === 'leak') {
     if (person) {
-      addRelationship(person, -randInt(g, 5, 15))
+      addRelationship(g, person, -randInt(g, 5, 15))
       addPersonStat(person, 'happiness', -randInt(g, 10, 20))
     }
     addStat(g, 'happiness', randInt(g, 2, 6))

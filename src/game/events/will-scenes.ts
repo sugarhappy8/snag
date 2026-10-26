@@ -183,7 +183,7 @@ defineScript(S_CONFRONT, (g, choice, data) => {
         x.anger -= relief
         if (!x.explained) x.explained = 'kind'
       })
-      addRelationship(p, 2)
+      addRelationship(g, p, 2)
       addStat(g, 'happiness', -1)
       log(g, `I explained my will to ${myWho(p)}.`)
       say(g, `You explained your reasons, slowly, without raising your voice. ${p.firstName} did not agree, but ${pronouns(p.gender).he} listened. ${nowAngry(g, p)}`)
@@ -202,7 +202,7 @@ defineScript(S_CONFRONT, (g, choice, data) => {
         x.anger += bump
         x.hard = Math.min(3, x.hard + 1)
       })
-      addRelationship(p, -5)
+      addRelationship(g, p, -5)
       log(g, `I told ${myWho(p)} it was my money and my decision.`)
       say(g, `"It's my money, and it's my decision." The silence that followed was longer than the conversation. ${nowAngry(g, p)}`, 'bad')
       return
@@ -216,7 +216,7 @@ defineScript(S_CONFRONT, (g, choice, data) => {
         x.anger += bump
         x.hard = Math.min(3, x.hard + 1)
       })
-      addRelationship(p, -10)
+      addRelationship(g, p, -10)
       addEntitlement(p, -3)
       log(g, `I cut off ${myWho(p)}'s allowance on top of everything else.`, 'bad')
       say(g, `You stopped ${p.firstName}'s allowance as well. ${pronouns(p.gender).He} had planned a whole life around it. ${nowAngry(g, p)}`, 'bad')
@@ -227,7 +227,7 @@ defineScript(S_CONFRONT, (g, choice, data) => {
         x.anger += 4
         x.hard = Math.min(3, x.hard + 1)
       })
-      addRelationship(p, -2)
+      addRelationship(g, p, -2)
       log(g, `I refused to discuss my will with ${myWho(p)}.`)
       say(g, `"I'm not discussing this." You shut the door, politely. ${p.firstName} stood on the other side of it for a while. ${nowAngry(g, p)}`, 'bad')
       return
@@ -283,7 +283,7 @@ export function payOff(g: GameState, p: Person, amt: number): string | null {
     x.buys += 1
     x.buyY = g.year
   })
-  addRelationship(p, Math.min(5, Math.round(eased / 6)))
+  addRelationship(g, p, Math.min(5, Math.round(eased / 6)))
   log(g, `I wrote ${myWho(p)} a check for ${formatMoney(amt)} to smooth things over.`)
   const verdict = relief >= 15 ? `${p.firstName} took it, and some of the anger went with it.` : relief >= 5 ? `${p.firstName} took it, and said thank you in a tone that did not mean "thank you".` : `${p.firstName} took the money and still looked at you like you owed ${pronouns(p.gender).him} an apology.`
   return `You wrote ${p.firstName} a check for ${formatMoney(amt)}. ${verdict} ${nowAngry(g, p)}`
@@ -366,7 +366,7 @@ defineScript(S_SPOUSE, (g, choice, data) => {
       x.buyY = g.year
       x.threatY = 0
     })
-    addRelationship(p, Math.min(6, Math.round(relief / 5)))
+    addRelationship(g, p, Math.min(6, Math.round(relief / 5)))
     log(g, `I paid ${p.firstName} ${formatMoney(offer)} to settle the will dispute.`)
     say(g, `Your lawyers drew up a settlement worth ${formatMoney(offer)} to ${p.firstName}, paid now. ${relief >= 15 ? 'It took the edge off.' : 'It helped less than you hoped.'} ${nowAngry(g, p)}`)
     return
@@ -390,7 +390,7 @@ defineScript(S_SPOUSE, (g, choice, data) => {
     x.anger += 8
     x.hard = Math.min(3, x.hard + 1)
   })
-  addRelationship(p, -8)
+  addRelationship(g, p, -8)
   log(g, `I called ${p.firstName}'s bluff over the will.`, 'bad')
   say(g, `"Go ahead and leave, then." ${p.firstName} did not blink. ${p.data.prenup === true ? 'The prenup may hold. It may not.' : 'There is no prenup to hide behind.'} ${nowAngry(g, p)}`, 'bad')
 })
@@ -469,14 +469,14 @@ defineScript(S_GRANDKIDS, (g, choice, data) => {
   const gc = typeof gid === 'string' ? getPerson(g, gid) : undefined
   if (!gc || !gc.alive) return
   if (choice === 'love') {
-    addRelationship(gc, 4)
+    addRelationship(g, gc, 4)
     notePerson(gc, 'Was kept out of the family feud by the player.')
     log(g, `I told ${myWho(gc)} I love the whole family, no matter what.`, 'good')
     notice(g, 'Caught in the Middle', `"I love you both, and this isn't your fault." ${gc.firstName} hugged you very hard. Kids know more than they let on.`, { emoji: '\u{1F496}', tone: 'good' })
     return
   }
   if (choice === 'blame') {
-    addRelationship(gc, -2)
+    addRelationship(g, gc, -2)
     if (parent) {
       updateWl(g, parent, (w) => {
         w.anger += 8
@@ -487,7 +487,7 @@ defineScript(S_GRANDKIDS, (g, choice, data) => {
     notice(g, 'Caught in the Middle', `You said ${parent ? parent.firstName : 'their parent'} was being unreasonable. ${gc.firstName} repeated it at home that night, word for word. ${parent ? `${nowAngry(g, parent)}` : ''}`, { emoji: '\u{1F612}', tone: 'bad' })
     return
   }
-  addRelationship(gc, -2)
+  addRelationship(g, gc, -2)
   addStat(g, 'happiness', -1)
   log(g, `I told ${myWho(gc)} it was grown-up business.`)
   notice(g, 'Caught in the Middle', `"Grown-up business." ${gc.firstName} nodded in the way kids nod when they have decided you don't know either.`, { emoji: '\u{1F64A}' })

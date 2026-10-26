@@ -1172,10 +1172,10 @@ function honorWish(g: GameState, p: Person, choice: string, wish: string, family
   if (!wish || choice === 'skip') return ''
   if (choice === wish) {
     addHidden(g, 'karma', 3)
-    for (const f of family) addRelationship(f, randInt(g, 2, 5))
+    for (const f of family) addRelationship(g, f, randInt(g, 2, 5))
     return ` It's exactly what ${p.firstName} wanted.`
   }
-  for (const f of family) addRelationship(f, -randInt(g, 1, 4))
+  for (const f of family) addRelationship(g, f, -randInt(g, 1, 4))
   return ` It's not what ${p.firstName} wanted, and a few relatives made sure you knew it.`
 }
 
@@ -1197,13 +1197,13 @@ defineScript('rel.funeral', (g, choice, data) => {
     const wishNote = honorWish(g, p, choice, wish, family)
     if (choice === 'burial') {
       addHidden(g, 'karma', 2)
-      for (const f of family) addRelationship(f, randInt(g, 1, 4))
+      for (const f of family) addRelationship(g, f, randInt(g, 1, 4))
       log(g, `I buried ${myRel(p)}.`)
       notice(g, 'Funeral', `You held a beautiful funeral and buried ${name} for ${money(cost)}. ${pickSite(g, ['Everyone shared their favorite stories.', 'Half the town showed up.', `Even the ${clergy(g, p)} cried.`, 'The eulogy got a standing ovation, which was confusing.'], 0x45ba827d)}${wishNote}`, { emoji: '\u{26B0}\u{FE0F}' })
     } else if (choice === 'taxidermy') {
       if (wish !== 'taxidermy') {
         addHidden(g, 'karma', -2)
-        for (const f of family) addRelationship(f, -randInt(g, 3, 8))
+        for (const f of family) addRelationship(g, f, -randInt(g, 3, 8))
       }
       log(g, `I had ${myRel(p)} taxidermied.`)
       notice(g, 'Funeral', `You paid ${money(cost)} to have ${name} stuffed and mounted in the living room. ${pickSite(g, ['Visitors have stopped coming over.', 'The likeness is... unsettling.', `${pr(p).He} has never looked more relaxed.`, 'The dog barks at the corner of the room now.'], 0x65df09ab)}${wishNote}`, { emoji: '\u{1F98C}' })
@@ -1232,7 +1232,7 @@ defineScript('rel.funeral', (g, choice, data) => {
     notice(g, 'Funeral', `You donated ${name}'s body to science. Somewhere, a medical student is very grateful.${wishNote}`, { emoji: '\u{1F52C}' })
   } else {
     addHidden(g, 'karma', -5)
-    for (const f of family) addRelationship(f, -randInt(g, 4, 10))
+    for (const f of family) addRelationship(g, f, -randInt(g, 4, 10))
     log(g, `I skipped ${myRel(p)}'s funeral.`, 'bad')
     notice(g, 'Funeral', `You skipped ${name}'s funeral. The rest of the family will be talking about this for years.`, { emoji: '\u{1F6B6}', tone: 'bad' })
   }
@@ -1257,7 +1257,7 @@ defineScript('rel.funeral.ashes', (g, choice, data) => {
     notice(g, 'Ashes', `You buried ${name}'s urn in a quiet corner of the cemetery. Now you have somewhere to visit.`, { emoji: '\u{1FAA6}' })
   } else {
     addHidden(g, 'karma', -8)
-    for (const f of g.people.filter((x) => x.alive && isFamily(x))) addRelationship(f, -randInt(g, 8, 15))
+    for (const f of g.people.filter((x) => x.alive && isFamily(x))) addRelationship(g, f, -randInt(g, 8, 15))
     log(g, `I threw ${myRel(p)}'s ashes in the trash.`, 'bad')
     notice(g, 'Ashes', `You threw ${name}'s ashes in the trash. The garbage truck came the next morning. The family will never forgive you.`, { emoji: '\u{1F5D1}\u{FE0F}', tone: 'bad' })
   }
@@ -1274,7 +1274,7 @@ function checkGuardian(g: GameState): void {
   if (guardian) {
     g.flags.guardianId = guardian.id
     guardian.livesWithPlayer = true
-    addRelationship(guardian, 10)
+    addRelationship(g, guardian, 10)
     log(g, `${cap(myRel(guardian))} took me in.`)
     notice(g, 'New Home', `With no parents left, ${yourRel(guardian)} took you in. ${pickLine(g, ['The house smells like cookies and mothballs.', "You get your own room. It's tiny, but it's yours.", 'House rules are posted on the fridge. There are forty of them.'])}`, { emoji: '\u{1F3E0}' })
   } else {
@@ -1522,7 +1522,7 @@ export function driftRelationships(g: GameState): void {
   for (const p of g.people) {
     if (!p.alive || p.data.disowned === true) continue
     if (p.relation === 'enemy') {
-      addRelationship(p, randInt(g, 0, 3))
+      addRelationship(g, p, randInt(g, 0, 3))
       continue
     }
     if (pNum(p, 'bornAge', -1) === c.age) continue
@@ -1538,7 +1538,7 @@ export function driftRelationships(g: GameState): void {
     if (c.age < 6 && (PARENTS.includes(p.relation) || p.relation === 'grandparent')) d *= 0.3
     if (prison && p.relation !== 'cellmate') d *= 1.5
     if ((FAMILY.includes(p.relation) || p.relation === 'partner' || p.relation === 'friend') && p.relationship > 20) d -= routine
-    addRelationship(p, -Math.round(d))
+    addRelationship(g, p, -Math.round(d))
   }
 }
 
@@ -1651,12 +1651,12 @@ defineScript('rel.partner.cheated', (g, choice, data) => {
   notePerson(p, `Cheated on the player with ${name}.`)
   if (choice === 'forgive') {
     addHidden(g, 'karma', 3)
-    addRelationship(p, randInt(g, 3, 8))
+    addRelationship(g, p, randInt(g, 3, 8))
     addStat(g, 'happiness', -randInt(g, 3, 7))
     log(g, `I forgave ${fullName(p)} for cheating on me.`)
     notice(g, 'Forgiven', `You forgave ${p.firstName}. ${pr(p).He} swore it will never happen again. ${pick(g, ['You want to believe it.', ...(common(g, 'smartphone') ? ["You've changed your phone password anyway."] : []), 'Fool me once...'])}`, { emoji: '\u{1F54A}\u{FE0F}' })
   } else if (choice === 'yell') {
-    addRelationship(p, -randInt(g, 10, 20))
+    addRelationship(g, p, -randInt(g, 10, 20))
     addStat(g, 'happiness', -randInt(g, 2, 5))
     log(g, `I yelled at ${fullName(p)} for cheating on me.`, 'bad')
     notice(g, 'Cheater!', `You screamed at ${p.firstName} until the neighbors called to check on you. ${pr(p).He} slept on the couch.`, { emoji: '\u{1F620}' })
@@ -1672,7 +1672,7 @@ defineScript('rel.fiance.pressure', (g, choice, data) => {
   if (choice === 'plan') planWedding(g, p)
   else if (choice === 'cancel') cancelEngagement(g, p, 'player')
   else {
-    addRelationship(p, -randInt(g, 8, 15))
+    addRelationship(g, p, -randInt(g, 8, 15))
     if (g.character.age - pNum(p, 'engagedAge', g.character.age) >= 5 && chance(g, 0.4)) breakUp(g, p, 'them', 'got tired of waiting to get married')
     else notice(g, 'Wedding Plans', `${p.firstName} agreed to wait a little longer. ${pr(p).He} is not happy about it.`, { emoji: '\u{23F3}' })
   }
@@ -1684,18 +1684,18 @@ defineScript('rel.spouse.money', (g, choice, data) => {
   const amount = dNum(data, 'amount')
   touch(g, p)
   if (choice === 'ignore') {
-    addRelationship(p, randInt(g, 1, 3))
+    addRelationship(g, p, randInt(g, 1, 3))
     notice(g, 'Missing Money', `You let it go. ${money(amount)} is a small price for peace and quiet.`, { emoji: '\u{1F937}' })
   } else if (choice === 'demand') {
     if (chance(g, 0.55) && p.money >= amount) {
       moveCash(g, personPurse(p), playerPurse(g), amount, 'support')
       notice(g, 'Missing Money', `${p.firstName} grumbled but paid you back ${money(amount)}.`, { emoji: '\u{1F4B5}' })
     } else {
-      addRelationship(p, -randInt(g, 4, 8))
+      addRelationship(g, p, -randInt(g, 4, 8))
       notice(g, 'Missing Money', `${p.firstName} says the money is "already spent". It is not coming back.`, { emoji: '\u{1F4B8}' })
     }
   } else if (choice === 'argue') {
-    addRelationship(p, -randInt(g, 10, 15))
+    addRelationship(g, p, -randInt(g, 10, 15))
     addStat(g, 'happiness', -randInt(g, 2, 5))
     notice(g, 'Missing Money', `You and ${p.firstName} had a huge fight about money. Nobody won.`, { emoji: '\u{1F620}' })
   } else {
@@ -1918,12 +1918,12 @@ function exoticAttack(g: GameState, pet: Person): void {
   }
   const dmg = randInt(g, 12, 35)
   addStat(g, 'health', -dmg)
-  addRelationship(pet, -randInt(g, 3, 8))
+  addRelationship(g, pet, -randInt(g, 3, 8))
   log(g, `My ${labelOf(pet)} ${pet.firstName} attacked me.`, 'bad')
   const partner = currentPartner(g)
   let text = `${the(pet)} attacked you out of nowhere! You needed ${randInt(g, 8, 60)} stitches.`
   if (partner && chance(g, 0.5)) {
-    addRelationship(partner, -randInt(g, 6, 12))
+    addRelationship(g, partner, -randInt(g, 6, 12))
     text += ` ${partner.firstName} wants that animal gone.`
   }
   notice(g, 'Attacked!', text, { emoji: '\u{1F43E}', tone: 'bad' })
@@ -1935,23 +1935,23 @@ defineScript('rel.child.misbehave', (g, choice, data) => {
   touch(g, k)
   const behavior = pNum(k, 'behavior', 50)
   if (choice === 'yell') {
-    addRelationship(k, -randInt(g, 5, 10))
+    addRelationship(g, k, -randInt(g, 5, 10))
     k.data.behavior = clamp(behavior + randInt(g, 0, 6))
     notice(g, 'Misbehaving', `You yelled at ${k.firstName}. ${pickSite(g, [`${pr(k).He} cried for an hour.`, `${pr(k).He} stomped off and slammed the door.`, `${pr(k).He} yelled back. Where did ${pr(k).he} learn that?`], 0x6737d6e9)}`, { emoji: '\u{1F620}' })
   } else if (choice === 'ground') {
-    addRelationship(k, -randInt(g, 3, 6))
+    addRelationship(g, k, -randInt(g, 3, 6))
     k.data.behavior = clamp(behavior + randInt(g, 3, 8))
     notice(g, 'Misbehaving', `You grounded ${k.firstName} for two weeks. No screens, no dessert, no fun.`, { emoji: '\u{1F6AB}' })
   } else if (choice === 'talk') {
     if (chance(g, 0.6)) {
-      addRelationship(k, randInt(g, 2, 6))
+      addRelationship(g, k, randInt(g, 2, 6))
       k.data.behavior = clamp(behavior + randInt(g, 4, 10))
       notice(g, 'Misbehaving', `You had a calm talk with ${k.firstName}. ${pr(k).He} apologized and promised to never do it again.`, { emoji: '\u{1F5E3}\u{FE0F}', tone: 'good' })
     } else {
       notice(g, 'Misbehaving', `You tried to have a talk with ${k.firstName}, but ${pr(k).he} just stared at you and said "okay boomer".`, { emoji: '\u{1F5E3}\u{FE0F}' })
     }
   } else {
-    addRelationship(k, 1)
+    addRelationship(g, k, 1)
     k.data.behavior = clamp(behavior - randInt(g, 3, 8))
     notice(g, 'Misbehaving', `You let it slide. ${k.firstName} will probably do it again. Bigger.`, { emoji: '\u{1F937}' })
   }
@@ -1965,8 +1965,8 @@ defineScript('rel.sibling.fight', (g, choice, data) => {
   else if (choice === 'tell') {
     const par = g.people.find((p) => p.alive && PARENTS.includes(p.relation))
     touch(g, s)
-    addRelationship(s, -randInt(g, 5, 10))
-    if (par) addRelationship(par, randInt(g, 0, 2))
+    addRelationship(g, s, -randInt(g, 5, 10))
+    if (par) addRelationship(g, par, randInt(g, 0, 2))
     notice(g, 'Sibling Rivalry', `You told ${par ? yourRel(par) : 'on them'}. ${s.firstName} got in trouble and is now plotting revenge.`, { emoji: '\u{1F5E3}\u{FE0F}' })
   } else {
     addHidden(g, 'karma', 1)
@@ -1980,12 +1980,12 @@ defineScript('rel.parent.invite', (g, choice, data) => {
   touch(g, par)
   if (choice === 'yes') {
     const d = randInt(g, 5, 11)
-    addRelationship(par, d)
+    addRelationship(g, par, d)
     addStat(g, 'happiness', randInt(g, 3, 7))
     log(g, `I ${dStr(data, 'act', 'spent time')} with ${myRel(par)}.`, 'good')
     notice(g, 'Family Time', `You ${dStr(data, 'act', 'spent time')} with ${yourRel(par)}. ${fill(pickLine(g, SPEND_GOOD), par)}`, { emoji: '\u{1F46A}', tone: 'good' })
   } else {
-    addRelationship(par, -randInt(g, 3, 6))
+    addRelationship(g, par, -randInt(g, 3, 6))
     notice(g, 'Family Time', `You told ${par.firstName} you were busy. ${pr(par).He} looked a little hurt.`, { emoji: '\u{1F614}' })
   }
 })
@@ -2003,12 +2003,12 @@ defineScript('rel.child.tuition', (g, choice, data) => {
   if (choice === 'pay' && spend(g, tuition, 'tuition')) {
     k.occupation = 'University Student'
     k.data.collegePaid = true
-    addRelationship(k, randInt(g, 15, 25))
+    addRelationship(g, k, randInt(g, 15, 25))
     log(g, `I paid ${money(tuition)} for ${myRel(k)}'s ${g.character.countryId === 'us' ? 'college tuition' : 'university costs'}.`, 'good')
     notice(g, tuitionTitle(g), `You paid ${k.firstName}'s ${getCountry(g.character.countryId).freeUniversity ? 'living costs' : 'tuition'}. ${pr(k).He} promised to study hard (and to only party a medium amount).`, { emoji: '\u{1F393}', tone: 'good' })
     return
   }
-  addRelationship(k, -randInt(g, 10, 20))
+  addRelationship(g, k, -randInt(g, 10, 20))
   const free = getCountry(g.character.countryId).freeUniversity
   log(g, `I refused to pay for ${myRel(k)}'s ${g.character.countryId === 'us' ? 'college' : 'university'}.`, 'bad')
   notice(g, tuitionTitle(g), choice === 'pay' ? (free ? `You couldn't afford it. ${k.firstName} will be working nights at a café.` : `You couldn't afford the tuition. ${k.firstName} will be taking out student loans.`) : free ? `You told ${k.firstName} to get a part-time job like everyone else.` : `You told ${k.firstName} to take out student loans like everyone else. ${pr(k).He} will remember this.`, { emoji: '\u{1F393}' })
@@ -2019,15 +2019,15 @@ defineScript('rel.child.comingOut', (g, choice, data) => {
   if (!k || !k.alive) return
   touch(g, k)
   if (choice === 'support') {
-    addRelationship(k, randInt(g, 15, 25))
+    addRelationship(g, k, randInt(g, 15, 25))
     addHidden(g, 'karma', 3)
     log(g, `${cap(myRel(k))} came out to me and I told ${pr(k).him} I love ${pr(k).him}.`, 'good')
     notice(g, 'Coming Out', `You hugged ${k.firstName} and told ${pr(k).him} you love ${pr(k).him} no matter what. ${pr(k).He} cried happy tears.`, { emoji: '\u{1F917}', tone: 'good' })
   } else if (choice === 'time') {
-    addRelationship(k, -randInt(g, 3, 8))
+    addRelationship(g, k, -randInt(g, 3, 8))
     notice(g, 'Coming Out', `You told ${k.firstName} you need some time to process. ${pr(k).He} said ${pr(k).he} understands, but looked disappointed.`, { emoji: '\u{1F914}' })
   } else {
-    addRelationship(k, -randInt(g, 30, 45))
+    addRelationship(g, k, -randInt(g, 30, 45))
     addHidden(g, 'karma', -10)
     log(g, `${cap(myRel(k))} came out to me and I reacted badly.`, 'bad')
     notice(g, 'Coming Out', `You reacted badly. ${k.firstName} left the house in tears. This will take a long time to repair.`, { emoji: '\u{1F494}', tone: 'bad' })
@@ -2040,7 +2040,7 @@ defineScript('rel.friend.bff', (g, choice, data) => {
   touch(g, f)
   if (choice === 'yes') makeBestFriend(g, f)
   else {
-    addRelationship(f, -randInt(g, 4, 8))
+    addRelationship(g, f, -randInt(g, 4, 8))
     notice(g, 'Best Friends?', `You turned ${f.firstName} down. ${pr(f).He} said "Cool, cool, cool" and left very quickly.`, { emoji: '\u{1F645}' })
   }
 })
@@ -2050,7 +2050,7 @@ defineScript('rel.friend.pranked', (g, choice, data) => {
   if (!f || !f.alive) return
   touch(g, f)
   if (choice === 'laugh') {
-    addRelationship(f, randInt(g, 3, 7))
+    addRelationship(g, f, randInt(g, 3, 7))
     addStat(g, 'happiness', randInt(g, 1, 4))
     notice(g, 'Pranked!', `You laughed it off. ${f.firstName} respects a good sport.`, { emoji: '\u{1F602}' })
   } else if (choice === 'insult') doInsult(g, f)
@@ -2063,12 +2063,12 @@ defineScript('rel.parent.disapproves', (g, choice, data) => {
   if (!par || !par.alive) return
   touch(g, par)
   if (choice === 'defend') {
-    addRelationship(par, -randInt(g, 4, 9))
-    if (partner) addRelationship(partner, randInt(g, 3, 7))
+    addRelationship(g, par, -randInt(g, 4, 9))
+    if (partner) addRelationship(g, partner, randInt(g, 3, 7))
     notice(g, 'Disapproval', `You stood up for ${partner?.firstName ?? 'your partner'}. ${par.firstName} rolled ${pr(par).his} eyes so hard you heard it.`, { emoji: '\u{1F6E1}\u{FE0F}' })
   } else if (choice === 'agree') {
-    addRelationship(par, randInt(g, 3, 7))
-    if (partner) addRelationship(partner, -randInt(g, 10, 18))
+    addRelationship(g, par, randInt(g, 3, 7))
+    if (partner) addRelationship(g, partner, -randInt(g, 10, 18))
     notice(g, 'Disapproval', `You agreed with ${par.firstName}. Somehow ${partner?.firstName ?? 'your partner'} found out within the hour.`, { emoji: '\u{1F64B}' })
   } else {
     notice(g, 'Disapproval', 'You nodded, said "mm-hmm", and changed nothing.', { emoji: '\u{1F937}' })
@@ -2081,18 +2081,18 @@ defineScript('rel.pet.misbehave', (g, choice, data) => {
   touch(g, pet)
   const crazy = pNum(pet, 'craziness', 30)
   if (choice === 'yell') {
-    addRelationship(pet, -randInt(g, 4, 8))
+    addRelationship(g, pet, -randInt(g, 4, 8))
     if (crazy > 70 && chance(g, 0.35)) {
       addStat(g, 'health', -randInt(g, 3, 10))
       notice(g, 'Bad Pet!', `You yelled at ${pet.firstName}. ${pr(pet).He} attacked you!`, { emoji: '\u{1F43E}', tone: 'bad' })
     } else notice(g, 'Bad Pet!', `You yelled at ${pet.firstName}. ${pr(pet).He} looked at you with sad, sad eyes.`, { emoji: '\u{1F43E}' })
   } else if (choice === 'train') {
     pet.data.craziness = clamp(crazy - randInt(g, 3, 10))
-    addRelationship(pet, randInt(g, 0, 3))
+    addRelationship(g, pet, randInt(g, 0, 3))
     notice(g, 'Bad Pet!', `You spent a week training ${pet.firstName}. ${chance(g, 0.6) ? 'It seems to be working!' : `${pr(pet).He} learned nothing, but enjoyed the treats.`}`, { emoji: '\u{1F393}' })
   } else if (choice === 'reward') {
     pet.data.craziness = clamp(crazy + randInt(g, 3, 8))
-    addRelationship(pet, randInt(g, 3, 6))
+    addRelationship(g, pet, randInt(g, 3, 6))
     notice(g, 'Bad Pet!', `You gave ${pet.firstName} a treat. ${pr(pet).He} has learned that crime pays.`, { emoji: '\u{1F356}' })
   } else {
     notice(g, 'Bad Pet!', `You ignored it. ${pet.firstName} is already planning the next incident.`, { emoji: '\u{1F937}' })
@@ -2106,7 +2106,7 @@ defineScript('rel.pet.escape', (g, choice, data) => {
   const found = choice === 'search' ? roll < 0.6 : roll < 0.25
   const dead = choice === 'search' && !found && roll < 0.75
   if (found) {
-    addRelationship(pet, randInt(g, 3, 8))
+    addRelationship(g, pet, randInt(g, 3, 8))
     notice(g, 'Missing Pet', choice === 'search' ? `You found ${pet.firstName} ${pickLine(g, ['hiding under a neighbor\'s porch', 'at the park, eating a sandwich that was not theirs', 'two streets away, living their best life'])}!` : `A kind stranger brought ${pet.firstName} home!`, { emoji: '\u{1F43E}', tone: 'good' })
   } else if (dead) {
     pet.alive = false
@@ -2261,7 +2261,7 @@ function spendTime(g: GameState, p: Person): void {
   touch(g, p)
   count(g, 'timeSpent')
   if (p.relationship < 25 && chance(g, 0.5)) {
-    addRelationship(p, -randInt(g, 1, 3))
+    addRelationship(g, p, -randInt(g, 1, 3))
     notice(g, 'Spend Time', `${the(p)} didn't want to spend time with you. "${pickLine(g, ['I\'m busy.', 'Maybe some other time.', 'Hard pass.', 'I have to wash my hair. All year.'])}"`, {
       emoji: '\u{1F645}',
     })
@@ -2271,7 +2271,7 @@ function spendTime(g: GameState, p: Person): void {
   if (chance(g, mood(p) + 0.1)) {
     const d = randInt(g, 5, 12)
     const h = randInt(g, 3, 7)
-    addRelationship(p, d)
+    addRelationship(g, p, d)
     addStat(g, 'happiness', h)
     log(g, `I ${act} with ${myRel(p)}.`, 'good')
     notice(g, 'Spend Time', `You ${act} with ${yourRel(p)}. ${fill(pickLine(g, SPEND_GOOD), p)}`, {
@@ -2280,7 +2280,7 @@ function spendTime(g: GameState, p: Person): void {
     })
   } else {
     const d = randInt(g, -2, 2)
-    addRelationship(p, d)
+    addRelationship(g, p, d)
     log(g, `I ${act} with ${myRel(p)}.`)
     notice(g, 'Spend Time', `You ${act} with ${yourRel(p)}. ${fill(eraPick(g, SPEND_MEH), p)}`, {
       emoji: '\u{1F46B}',
@@ -2302,7 +2302,7 @@ function conversation(g: GameState, p: Person): void {
   count(g, 'conversations')
   const phone = inPrison(g) && p.relation !== 'cellmate'
   if (p.relationship < 20 && chance(g, 0.4)) {
-    addRelationship(p, -randInt(g, 1, 4))
+    addRelationship(g, p, -randInt(g, 1, 4))
     notice(g, 'Conversation', `${the(p)} walked away while you were talking. Rude.`, {
       emoji: '\u{1F6B6}',
     })
@@ -2313,7 +2313,7 @@ function conversation(g: GameState, p: Person): void {
   if (p.age < 3) disagree = 0
   const opener = phone ? (prisonPhone(g) ? 'had a phone call from prison with' : 'traded letters from prison with') : pickLine(g, OPENERS)
   if (chance(g, disagree)) {
-    addRelationship(p, -randInt(g, 2, 5))
+    addRelationship(g, p, -randInt(g, 2, 5))
     const mom = g.people.find((x) => x.alive && x.relation === 'parent' && x.gender === 'female')
     const canComplain = SIBLINGS.includes(p.relation) && g.character.age < 18 && !!mom
     scriptChoice(
@@ -2334,7 +2334,7 @@ function conversation(g: GameState, p: Person): void {
   }
   const d = randInt(g, 3, 8)
   const h = randInt(g, 1, 4)
-  addRelationship(p, d)
+  addRelationship(g, p, d)
   addStat(g, 'happiness', h)
   log(g, `I talked with ${myRel(p)} about ${topic}.`)
   notice(g, 'Conversation', `You ${opener} ${yourRel(p)} about ${topic}. ${fill(pickLine(g, ['{He} enjoyed it.', 'It was a great chat.', '{He} had a lot to say about it.', 'You both learned something.', '{He} laughed the whole time.']), p)}`, {
@@ -2347,21 +2347,21 @@ defineScript('rel.convo.argue', (g, choice, data) => {
   if (!p || !p.alive) return
   if (choice === 'apologize') {
     if (chance(g, 0.7)) {
-      addRelationship(p, randInt(g, 1, 4))
+      addRelationship(g, p, randInt(g, 1, 4))
       notice(g, 'Disagreement', `You apologized. ${p.firstName} accepted your apology.`, { emoji: '\u{1F64F}' })
     } else {
-      addRelationship(p, -1)
+      addRelationship(g, p, -1)
       notice(g, 'Disagreement', `You apologized. ${p.firstName} said "whatever" and left.`, { emoji: '\u{1F64F}' })
     }
   } else if (choice === 'agree') {
-    addRelationship(p, -randInt(g, 0, 3))
+    addRelationship(g, p, -randInt(g, 0, 3))
     notice(g, 'Disagreement', 'You agreed to disagree. Nobody won. Nobody ever wins.', { emoji: '\u{1F91D}' })
   } else if (choice === 'insult') doInsult(g, p, true)
   else if (choice === 'assault') startAssault(g, p)
   else {
     const mom = g.people.find((x) => x.alive && x.relation === 'parent' && x.gender === 'female')
-    addRelationship(p, -randInt(g, 5, 10))
-    if (mom) addRelationship(mom, randInt(g, 0, 2))
+    addRelationship(g, p, -randInt(g, 5, 10))
+    if (mom) addRelationship(g, mom, randInt(g, 0, 2))
     notice(g, 'Disagreement', `You complained to Mom. ${p.firstName} got a lecture and you got a smug feeling.`, { emoji: '\u{1F469}' })
   }
 })
@@ -2375,7 +2375,7 @@ function compliment(g: GameState, p: Person): void {
   const comp = pick(g, compliments)
   const said = `You told ${yourRel(p)} that ${x.he} is ${comp}.`
   if (p.relation === 'boss') {
-    for (const cw of g.people.filter((q) => q.alive && q.relation === 'coworker' && q.contextId === p.contextId)) addRelationship(cw, -randInt(g, 1, 3))
+    for (const cw of g.people.filter((q) => q.alive && q.relation === 'coworker' && q.contextId === p.contextId)) addRelationship(g, cw, -randInt(g, 1, 3))
   }
   if (chance(g, mood(p) + 0.1)) {
     let d = randInt(g, 3, 8)
@@ -2385,17 +2385,17 @@ function compliment(g: GameState, p: Person): void {
       addStat(g, 'happiness', 8)
       text += `\n\nIt's mutual! ${p.firstName} told you that you are ${pick(g, compliments.filter((c2) => c2 !== comp))}.`
     }
-    addRelationship(p, d)
+    addRelationship(g, p, d)
     if (p.relation === 'boss') text += '\n\nYour coworkers noticed you sucking up.'
     notice(g, 'Compliment', text, { emoji: '\u{1F60A}', tone: 'good' })
   } else if (p.relation === 'teacher' && chance(g, 0.5)) {
-    addRelationship(p, -randInt(g, 1, 3))
+    addRelationship(g, p, -randInt(g, 1, 3))
     notice(g, 'Compliment', `${said} ${x.He} said that's an inappropriate thing to say to a teacher.`, { emoji: '\u{1F928}' })
   } else if (p.relationship < 35 && chance(g, 0.5)) {
-    addRelationship(p, -randInt(g, 3, 6))
+    addRelationship(g, p, -randInt(g, 3, 6))
     notice(g, 'Compliment', `${said} ${x.He} told you to get lost.`, { emoji: '\u{1F612}' })
   } else {
-    addRelationship(p, -randInt(g, 1, 3))
+    addRelationship(g, p, -randInt(g, 1, 3))
     notice(g, 'Compliment', `${said} ${x.He} ignored you.`, { emoji: '\u{1F610}' })
   }
 }
@@ -2433,7 +2433,7 @@ function giveGift(g: GameState, p: Person, gift: Gift): void {
   count(g, 'gifts')
   const x = pr(p)
   if (p.relationship < 20 && chance(g, 0.4)) {
-    addRelationship(p, -randInt(g, 1, 3))
+    addRelationship(g, p, -randInt(g, 1, 3))
     notice(g, 'Gift', `You tried to give ${yourRel(p)} ${gift.name}. ${x.He} refused to accept it.`, { emoji: '\u{1F645}' })
     return
   }
@@ -2450,12 +2450,12 @@ function giveGift(g: GameState, p: Person, gift: Gift): void {
   else if (appreciation >= 40) [d, reaction] = [randInt(g, 1, 3), pickLine(g, ['{He} said thanks.', '{He} said "Oh. Neat."'])]
   else if (appreciation >= 20) [d, reaction] = [-randInt(g, 2, 5), pickLine(g, ['{He} faked a smile.', '{He} will be regifting it.'])]
   else [d, reaction] = [-randInt(g, 6, 12), pickLine(g, ['{He} hated it.', '{He} asked if this was a joke.', '{He} was insulted.'])]
-  addRelationship(p, d)
+  addRelationship(g, p, d)
   log(g, `I gave ${myRel(p)} ${gift.name}.`)
   let text = `You gave ${yourRel(p)} ${gift.name}. ${fill(reaction, p)}\n\nAppreciation: ${appreciation}%`
   const partner = currentPartner(g)
   if ((p.relation === 'ex' || p.relation === 'exSpouse') && partner && chance(g, 0.3)) {
-    addRelationship(partner, -randInt(g, 6, 12))
+    addRelationship(g, partner, -randInt(g, 6, 12))
     text += `\n\n${partner.firstName} found out you're giving gifts to your ex and is not amused.`
   }
   notice(g, 'Gift', text, { emoji: '\u{1F381}', tone: d > 0 ? 'good' : 'bad' })
@@ -2473,17 +2473,17 @@ function doInsult(g: GameState, p: Person, fromArgument = false): void {
   const hot = has(p, 'hot-headed', 'dramatic', 'arrogant') ? 0.12 : 0
   const roll = rand(g)
   if (roll < 0.1) {
-    addRelationship(p, -randInt(g, 1, 3))
+    addRelationship(g, p, -randInt(g, 1, 3))
     notice(g, 'Insult', `${said} ${x.He} laughed it off. "Is that the best you've got?"`, { emoji: '\u{1F602}' })
   } else if (roll < 0.5 - hot) {
-    addRelationship(p, -randInt(g, 8, 15))
+    addRelationship(g, p, -randInt(g, 8, 15))
     notice(g, 'Insult', `${said} ${fill(pickLine(g, ['{He} burst into tears.', '{He} looked crushed.', '{He} went quiet and walked away.']), p)}`, { emoji: '\u{1F622}' })
   } else if (roll < 0.85 || p.age < 6 || p.relation === 'pet') {
-    addRelationship(p, -randInt(g, 5, 10))
+    addRelationship(g, p, -randInt(g, 5, 10))
     addStat(g, 'happiness', -randInt(g, 1, 4))
     notice(g, 'Insult', `${said} ${x.He} called you ${pick(g, insults.filter((i) => i !== ins))} right back.`, { emoji: '\u{1F620}' })
   } else {
-    addRelationship(p, -randInt(g, 10, 15))
+    addRelationship(g, p, -randInt(g, 10, 15))
     addStat(g, 'health', -randInt(g, 2, 8))
     count(g, 'fights')
     notice(g, 'Insult', `${said} ${x.He} ${pickLine(g, ['slapped you across the face!', 'shoved you into a wall!', 'threw a drink in your face!', 'punched you in the arm. Hard.'])}`, { emoji: '\u{1F44B}', tone: 'bad' })
@@ -2497,15 +2497,15 @@ function argue(g: GameState, p: Person): void {
   const { topic } = pickTopic(g, p)
   const roll = rand(g)
   if (roll < 0.35) {
-    addRelationship(p, -randInt(g, 6, 12))
+    addRelationship(g, p, -randInt(g, 6, 12))
     addStat(g, 'happiness', randInt(g, 1, 3))
     notice(g, 'Argue', `You argued with ${yourRel(p)} about ${topic}. You won! ${p.firstName} stormed off.`, { emoji: '\u{1F3C6}' })
   } else if (roll < 0.75) {
-    addRelationship(p, -randInt(g, 5, 10))
+    addRelationship(g, p, -randInt(g, 5, 10))
     addStat(g, 'happiness', -randInt(g, 2, 5))
     notice(g, 'Argue', `You argued with ${yourRel(p)} about ${topic}. ${p.firstName} destroyed you with facts and logic.`, { emoji: '\u{1F620}' })
   } else {
-    addRelationship(p, -randInt(g, 4, 8))
+    addRelationship(g, p, -randInt(g, 4, 8))
     notice(g, 'Argue', `You argued with ${yourRel(p)} about ${topic} for three hours. Nobody remembers how it started.`, { emoji: '\u{1F5EF}\u{FE0F}' })
   }
 }
@@ -2520,16 +2520,16 @@ function prank(g: GameState, p: Person): void {
   const retaliate = 0.12 + (has(p, 'hot-headed', 'grumpy') ? 0.15 : 0)
   const roll = rand(g)
   if (roll < likes) {
-    addRelationship(p, randInt(g, 3, 8))
+    addRelationship(g, p, randInt(g, 3, 8))
     addStat(g, 'happiness', randInt(g, 2, 5))
     notice(g, 'Prank', `${what} ${x.He} thought it was hilarious!`, { emoji: '\u{1F602}', tone: 'good' })
   } else if (roll < likes + retaliate && p.age >= 6) {
-    addRelationship(p, -randInt(g, 8, 15))
+    addRelationship(g, p, -randInt(g, 8, 15))
     addStat(g, 'health', -randInt(g, 2, 8))
     count(g, 'fights')
     notice(g, 'Prank', `${what} ${x.He} did not think it was funny and ${pickLine(g, ['tackled you', 'chased you around the block', 'threw a shoe at your head'])}.`, { emoji: '\u{1F620}', tone: 'bad' })
   } else {
-    addRelationship(p, -randInt(g, 3, 9))
+    addRelationship(g, p, -randInt(g, 3, 9))
     notice(g, 'Prank', `${what} ${x.He} was ${pickLine(g, ['annoyed', 'not amused', 'furious', 'deeply unimpressed'])}.`, { emoji: '\u{1F612}' })
   }
 }
@@ -2595,7 +2595,7 @@ function performAssault(g: GameState, p: Person, first: (typeof ATTACKS)[number]
   for (let i = 0; i < extra; i++) hits.push(attackLine(g, p, pick(g, ATTACKS)))
   const total = clamp(hits.reduce((s, h) => s + h.dmg, 0) * (c.hidden.athleticism >= 60 ? 1.2 : 1))
   addPersonStat(p, 'health', -Math.round(total / 3))
-  addRelationship(p, -randInt(g, 25, 45))
+  addRelationship(g, p, -randInt(g, 25, 45))
   let text = `You ${hits[0].line}!`
   if (hits.length > 1) text += ` Then you ${hits.slice(1).map((h) => h.line).join(' and ')}!`
   text += `\n\nDamage: ${Math.round(total)}%`
@@ -2642,7 +2642,7 @@ function hug(g: GameState, p: Person): void {
     notice(g, 'Hug', `You tried to hug ${p.firstName}. ${x.He} squirmed away. "Ew, not in public!"`, { emoji: '\u{1F62C}' })
     return
   }
-  addRelationship(p, randInt(g, 2, 6))
+  addRelationship(g, p, randInt(g, 2, 6))
   addStat(g, 'happiness', randInt(g, 1, 3))
   notice(g, 'Hug', `You hugged ${yourRel(p)}. ${fill(pickLine(g, ['{He} hugged you back!', '{He} gave the best bear hug.', '{He} said you give great hugs.', '{He} held on for a long time.']), p)}`, { emoji: '\u{1F917}', tone: 'good' })
 }
@@ -2650,7 +2650,7 @@ function hug(g: GameState, p: Person): void {
 function readStory(g: GameState, p: Person): void {
   if (!limit(g, p, 'story', 2, 'Read a Story')) return
   touch(g, p)
-  addRelationship(p, randInt(g, 3, 8))
+  addRelationship(g, p, randInt(g, 3, 8))
   addPersonStat(p, 'smarts', randInt(g, 1, 3))
   addStat(g, 'happiness', randInt(g, 1, 4))
   notice(g, 'Read a Story', `You read "${eraPick(g, STORIES)}" to ${p.firstName}. ${fill(pickLine(g, ['{He} fell asleep halfway through.', '{He} made you read it three more times.', '{He} asked a lot of questions about the plot holes.', '{He} did all the voices with you.']), p)}`, { emoji: '\u{1F4D6}', tone: 'good' })
@@ -2668,12 +2668,12 @@ function movie(g: GameState, p: Person): void {
   const film = eraPick(g, MOVIES)
   if (chance(g, mood(p) + 0.1)) {
     const d = randInt(g, 4, 10)
-    addRelationship(p, d)
+    addRelationship(g, p, d)
     addStat(g, 'happiness', randInt(g, 3, 6))
     log(g, `I watched ${film} with ${myRel(p)}.`, 'good')
     notice(g, 'Movie Theater', `You saw "${film}" with ${yourRel(p)}${cost ? ` (${money(cost)})` : ''}. ${fill(eraPick(g, ['You both loved it.', '{He} cried at the end. So did you.', '@1930 You shared a bucket of popcorn the size of a trash can.', '@-1928 The piano player down front was the real star.']), p)}`, { emoji: '\u{1F3AC}', tone: 'good' })
   } else {
-    addRelationship(p, randInt(g, -1, 2))
+    addRelationship(g, p, randInt(g, -1, 2))
     notice(g, 'Movie Theater', `You saw "${film}" with ${yourRel(p)}${cost ? ` (${money(cost)})` : ''}. ${fill(pickLine(g, ['{He} fell asleep.', 'It was terrible. You both agreed on that, at least.', '{He} talked through the whole thing.']), p)}`, { emoji: '\u{1F3AC}' })
   }
 }
@@ -2709,7 +2709,7 @@ defineScript('rel.vacation.pick', (g, choice, data) => {
   touch(g, p)
   count(g, 'vacations')
   const d = randInt(g, 10, 20)
-  addRelationship(p, d)
+  addRelationship(g, p, d)
   addStat(g, 'happiness', randInt(g, 8, 15))
   addStat(g, 'health', randInt(g, 1, 4))
   log(g, `I went on vacation to ${place} with ${myRel(p)}.`, 'good')
@@ -2727,7 +2727,7 @@ function askForMoney(g: GameState, p: Person): void {
   if (c.age >= 30 && PARENTS.includes(p.relation)) refuse += 0.15
   if (chance(g, clamp(refuse, 0.05, 0.95))) {
     count(g, 'moneyRefused')
-    addRelationship(p, -randInt(g, 2, 5))
+    addRelationship(g, p, -randInt(g, 2, 5))
     notice(g, 'Ask for Money', `${the(p)} refused to give you money. "${pick(g, ["Money doesn't grow on trees!", 'Get a job.', 'What happened to the last money I gave you?', ...(common(g, 'atm') ? ['I am not an ATM.'] : ["I'm not made of money."]), 'Ask me again when pigs fly.'])}"`, { emoji: '\u{1F645}' })
     return
   }
@@ -2761,7 +2761,7 @@ function giveMoney(g: GameState, p: Person, input?: string): void {
   // Counted in Money Matters; a big handout spoils a kid (events/wealth-core.ts).
   noteCashGift(g, p, amount)
   const d = Math.round(clamp(Math.log10(amount) * 4 - 4, 0, 25))
-  addRelationship(p, d)
+  addRelationship(g, p, d)
   log(g, `I gave ${myRel(p)} ${money(amount)}.`)
   const reaction = d >= 12 ? '{He} was speechless.' : d >= 6 ? '{He} was very grateful.' : d >= 2 ? '{He} said thanks.' : '{He} looked at it and said "...thanks?"'
   notice(g, 'Give Money', `You gave ${yourRel(p)} ${money(amount)}. ${fill(reaction, p)}`, { emoji: '\u{1F4B5}', tone: 'good' })
@@ -2773,7 +2773,7 @@ function askHomeworkHelp(g: GameState, p: Person): void {
   if (chance(g, 0.3 + p.stats.smarts / 150)) {
     const s = randInt(g, 1, 3)
     addStat(g, 'smarts', s)
-    addRelationship(p, randInt(g, 1, 4))
+    addRelationship(g, p, randInt(g, 1, 4))
     notice(g, 'Homework Help', `${the(p)} helped you with your homework. ${pickLine(g, ['You finally understand fractions.', 'You learned something!', 'It only took four hours and two tantrums.'])}`, { emoji: '\u{1F4DA}', tone: 'good' })
   } else {
     notice(g, 'Homework Help', `${the(p)} tried to help with your homework, but had no idea what ${pr(p).he} was doing either.`, { emoji: '\u{1F937}' })
@@ -2783,7 +2783,7 @@ function askHomeworkHelp(g: GameState, p: Person): void {
 function doSquabble(g: GameState, p: Person): void {
   touch(g, p)
   count(g, 'arguments')
-  addRelationship(p, -randInt(g, 4, 10))
+  addRelationship(g, p, -randInt(g, 4, 10))
   const topic = pick(g, squabbleTopics(g))
   notice(g, 'Squabble', `You and ${p.firstName} squabbled over ${topic}. ${pickSite(g, ['Mom had to separate you.', 'You both got sent to your rooms.', 'You won. Barely.', `${p.firstName} won. You demand a rematch.`], 0x6e82262d)}`, { emoji: '\u{1F5EF}\u{FE0F}' })
 }
@@ -2798,13 +2798,13 @@ function befriend(g: GameState, p: Person): void {
   if (chance(g, clamp(odds, 0.05, 0.95))) {
     p.data.formerRelation = p.relation
     p.relation = 'friend'
-    addRelationship(p, randInt(g, 5, 10))
+    addRelationship(g, p, randInt(g, 5, 10))
     count(g, 'friendsMade')
     log(g, `I became friends with ${fullName(p)}.`, 'good')
     notePerson(p, `Became friends with the player at age ${g.character.age}.`)
     notice(g, 'Befriend', `${p.firstName} accepted your friendship! \u{1F91D}`, { emoji: '\u{1F91D}', tone: 'good' })
   } else {
-    addRelationship(p, -randInt(g, 2, 6))
+    addRelationship(g, p, -randInt(g, 2, 6))
     const warn = p.relation === 'teacher' ? ' and warned you to keep things professional' : p.relation === 'boss' ? ' and said they prefer not to mix work and friendship' : ''
     notice(g, 'Befriend', `${p.firstName} rejected your friendship${warn}.`, { emoji: '\u{1F645}' })
   }
@@ -2813,10 +2813,10 @@ function befriend(g: GameState, p: Person): void {
 function makeBestFriend(g: GameState, p: Person): void {
   for (const old of g.people.filter((x) => x.alive && x.relation === 'bestFriend' && x.id !== p.id)) {
     old.relation = 'friend'
-    addRelationship(old, -randInt(g, 5, 10))
+    addRelationship(g, old, -randInt(g, 5, 10))
   }
   p.relation = 'bestFriend'
-  addRelationship(p, randInt(g, 5, 10))
+  addRelationship(g, p, randInt(g, 5, 10))
   log(g, `${fullName(p)} became my best friend.`, 'good')
   notice(g, 'Best Friends', `You and ${p.firstName} are now best friends! \u{1F46F}`, { emoji: '\u{1F46F}', tone: 'good' })
 }
@@ -2826,7 +2826,7 @@ function askBestFriend(g: GameState, p: Person): void {
   touch(g, p)
   if (chance(g, clamp((p.relationship - 30) / 70, 0.05, 0.95))) makeBestFriend(g, p)
   else {
-    addRelationship(p, -randInt(g, 2, 5))
+    addRelationship(g, p, -randInt(g, 2, 5))
     notice(g, 'Best Friend', `${p.firstName} said ${pr(p).he} isn't ready for that kind of commitment.`, { emoji: '\u{1F645}' })
   }
 }
@@ -2837,10 +2837,10 @@ function rumor(g: GameState, p: Person): void {
   count(g, 'rumors')
   addHidden(g, 'karma', -3)
   const r = fill(eraPick(g, RUMORS), p)
-  addRelationship(p, -randInt(g, 8, 15))
+  addRelationship(g, p, -randInt(g, 8, 15))
   let text = `You started a rumor that ${p.firstName} ${r}. It spread like wildfire.`
   if (chance(g, 0.35)) {
-    addRelationship(p, -randInt(g, 8, 15))
+    addRelationship(g, p, -randInt(g, 8, 15))
     if (has(p, 'hot-headed') || chance(g, 0.3)) {
       addStat(g, 'health', -randInt(g, 3, 9))
       count(g, 'fights')
@@ -2859,12 +2859,12 @@ function party(g: GameState, p: Person): void {
   touch(g, p)
   const c = g.character
   if (p.relationship < 30 && chance(g, 0.5)) {
-    addRelationship(p, -randInt(g, 1, 3))
+    addRelationship(g, p, -randInt(g, 1, 3))
     notice(g, 'Party', `${p.firstName} didn't want to party with you.`, { emoji: '\u{1F645}' })
     return
   }
   const where = pick(g, localParties(g, c.age >= 18 && p.age >= 18 && chance(g, 0.6)))
-  addRelationship(p, randInt(g, 5, 10))
+  addRelationship(g, p, randInt(g, 5, 10))
   addStat(g, 'happiness', randInt(g, 5, 10))
   count(g, 'parties')
   let text = `You went to ${where} with ${yourRel(p)}. ${pick(g, ['It was legendary.', 'You danced until your feet hurt.', 'You made three new friends and forgot all their names.', 'Someone fell into the pool. It was you.', ...(prohibition(g) ? ['Someone brought bootleg gin in a hot water bottle.'] : [])])}`
@@ -2888,7 +2888,7 @@ function concert(g: GameState, p: Person): void {
   }
   touch(g, p)
   const band = bandName(g)
-  addRelationship(p, randInt(g, 5, 11))
+  addRelationship(g, p, randInt(g, 5, 11))
   addStat(g, 'happiness', randInt(g, 5, 10))
   log(g, `I saw ${band} in concert with ${myRel(p)}.`, 'good')
   notice(g, 'Concert', `You saw ${band} live with ${yourRel(p)} (${money(cost)}). ${eraPick(g, ['You lost your voice from screaming.', 'The lead singer pointed at you. Probably.', '@smartphone You spent the whole show filming it on your phone.', '@-1960 You bought the sheet music on the way out.', 'It was the best night of the year.'])}`, { emoji: '\u{1F3B8}', tone: 'good' })
@@ -2914,11 +2914,11 @@ function watchVideos(g: GameState, p: Person): void {
   const ch = m === 'videos' ? `videos of ${pickLine(g, CHANNELS)}` : m === 'tv' ? showName(g) : m === 'radio' ? radioShow(g) : 'the comic strips in the Sunday paper'
   const verb = m === 'radio' ? 'listened to' : m === 'comics' ? 'read' : 'watched'
   if (chance(g, mood(p) + 0.15)) {
-    addRelationship(p, randInt(g, 3, 7))
+    addRelationship(g, p, randInt(g, 3, 7))
     addStat(g, 'happiness', randInt(g, 2, 4))
     notice(g, title, `You ${verb} ${ch} with ${yourRel(p)}. You both lost track of time.`, { emoji: SCREEN_EMOJI[m], tone: 'good' })
   } else {
-    addRelationship(p, -1)
+    addRelationship(g, p, -1)
     notice(g, title, m === 'videos' ? `You tried to show ${p.firstName} ${ch}. ${pr(p).He} did not get it.` : `You ${verb} ${ch} with ${p.firstName}. ${pr(p).He} did not get it.`, { emoji: SCREEN_EMOJI[m] })
   }
 }
@@ -2941,12 +2941,12 @@ function dateNight(g: GameState, p: Person): void {
   touch(g, p)
   if (chance(g, mood(p) + 0.15)) {
     const d = randInt(g, 6, 12)
-    addRelationship(p, d)
+    addRelationship(g, p, d)
     addStat(g, 'happiness', randInt(g, 4, 8))
     log(g, `${p.firstName} and I ${text}.`, 'good')
     notice(g, 'Date Night', `You and ${p.firstName} ${text}${cost ? ` (${money(cost)})` : ''}. ${fill(pickLine(g, ['It was magical.', '{He} held your hand the whole time.', 'You talked for hours.', '{He} said it was the best date ever.']), p)}`, { emoji: '\u{1F377}', tone: 'good' })
   } else {
-    addRelationship(p, randInt(g, -3, 1))
+    addRelationship(g, p, randInt(g, -3, 1))
     notice(g, 'Date Night', `You and ${p.firstName} ${text}${cost ? ` (${money(cost)})` : ''}. ${fill(eraPick(g, ['@smartphone {He} was on {his} phone most of the night.', '@!smartphone {He} kept glancing at the clock.', 'You ran out of things to say by the appetizers.', '{He} spent the whole time talking about {his} ex.']), p)}`, { emoji: '\u{1F377}' })
   }
 }
@@ -2975,11 +2975,11 @@ function flirt(g: GameState, p: Person): void {
   if (isRomantic(p) || p.relation === 'lover') {
     if (chance(g, mood(p) + 0.15)) {
       const d = randInt(g, 3, 8)
-      addRelationship(p, d)
+      addRelationship(g, p, d)
       addStat(g, 'happiness', randInt(g, 1, 4))
       notice(g, 'Flirt', `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pickLine(g, ['{He} blushed and kissed you.', '{He} giggled like it was your first date.', '{He} flirted right back.', '{He} groaned at the line, but {he} was smiling.']), p)}`, { emoji: '\u{1F60F}', tone: 'good' })
     } else {
-      addRelationship(p, randInt(g, -1, 1))
+      addRelationship(g, p, randInt(g, -1, 1))
       notice(g, 'Flirt', `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pick(g, ['{He} rolled {his} eyes.', common(g, 'tv') ? '{He} said "Not now, I\'m watching my show."' : '{He} said "Not now, I\'m reading."', '{He} patted you on the head like a puppy.']), p)}`, { emoji: '\u{1F644}' })
     }
     return
@@ -2990,11 +2990,11 @@ function flirt(g: GameState, p: Person): void {
   if (p.data.married === true) odds -= 0.2
   const partner = currentPartner(g)
   if (chance(g, clamp(odds, 0.05, 0.9))) {
-    addRelationship(p, randInt(g, 4, 9))
+    addRelationship(g, p, randInt(g, 4, 9))
     addStat(g, 'happiness', randInt(g, 2, 5))
     let text = `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pickLine(g, ['{He} flirted back!', '{He} laughed and touched your arm.', '{He} said "Smooth." and meant it.', '{He} turned bright red.']), p)}`
     if (partner && chance(g, 0.15)) {
-      addRelationship(partner, -randInt(g, 5, 12))
+      addRelationship(g, partner, -randInt(g, 5, 12))
       text += `\n\n${partner.firstName} saw the whole thing and is not happy.`
     }
     notice(g, 'Flirt', text, { emoji: '\u{1F60F}', tone: 'good' })
@@ -3006,7 +3006,7 @@ function flirt(g: GameState, p: Person): void {
     }
     return
   }
-  addRelationship(p, -randInt(g, 3, 8))
+  addRelationship(g, p, -randInt(g, 3, 8))
   addStat(g, 'happiness', -randInt(g, 1, 3))
   let text = `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pickLine(g, ['{He} looked at you like you had two heads.', '{He} said "Please never say that to me again."', '{He} pretended not to hear you.', '{He} laughed. At you, not with you.']), p)}`
   const job = c.job?.company === p.contextId ? c.job : c.partTimeJob?.company === p.contextId ? c.partTimeJob : null
@@ -3031,7 +3031,7 @@ defineScript('rel.flirt.askedOut', (g, choice, data) => {
     addStat(g, 'happiness', randInt(g, 5, 10))
     notice(g, 'Asked Out', `You said yes! You and ${p.firstName} are dating now.`, { emoji: '\u{1F496}', tone: 'good' })
   } else {
-    addRelationship(p, -randInt(g, 5, 12))
+    addRelationship(g, p, -randInt(g, 5, 12))
     notice(g, 'Asked Out', `You turned ${p.firstName} down. ${pr(p).He} said "${pickLine(g, ['Your loss.', 'Cool. Cool cool cool.', 'I was joking anyway.'])}"`, { emoji: '\u{1F645}' })
   }
 })
@@ -3053,7 +3053,7 @@ function getBackTogether(g: GameState, p: Person): void {
     addStat(g, 'happiness', randInt(g, 5, 10))
     notice(g, 'Get Back Together', `${p.firstName} said yes! You two are dating${wasFling ? ' for real now' : ' again'}.`, { emoji: '\u{1F496}', tone: 'good' })
   } else {
-    addRelationship(p, -randInt(g, 5, 10))
+    addRelationship(g, p, -randInt(g, 5, 10))
     addStat(g, 'happiness', -randInt(g, 3, 8))
     notice(g, 'Get Back Together', `${p.firstName} said there's a reason you two didn't work out.`, { emoji: '\u{1F494}', tone: 'bad' })
   }
@@ -3069,7 +3069,7 @@ function makePeace(g: GameState, p: Person): void {
     log(g, `I made peace with ${fullName(p)}.`, 'good')
     notice(g, 'Make Peace', `You offered ${p.firstName} an olive branch and ${pr(p).he} took it. You're friends now!`, { emoji: '\u{1F54A}\u{FE0F}', tone: 'good' })
   } else {
-    addRelationship(p, -randInt(g, 1, 4))
+    addRelationship(g, p, -randInt(g, 1, 4))
     notice(g, 'Make Peace', `${p.firstName} told you to get lost.`, { emoji: '\u{1F595}' })
   }
 }
@@ -3089,7 +3089,7 @@ function petPlay(g: GameState, p: Person): void {
     Hamster: ['set up an obstacle course for {name}', 'watched {name} run a wheel marathon'],
   }
   const act = fill(pick(g, acts[s] ?? ['played with {name}', 'cuddled with {name}']), p)
-  addRelationship(p, randInt(g, 4, 10))
+  addRelationship(g, p, randInt(g, 4, 10))
   addPersonStat(p, 'happiness', randInt(g, 3, 8))
   addStat(g, 'happiness', randInt(g, 2, 5))
   notice(g, 'Play', `You ${act}. ${pickSite(g, ['Best day ever (for both of you).', `${p.firstName} looked very pleased.`, 'Pure joy.'], 0x28fc1ee2)}`, { emoji: '\u{1F43E}', tone: 'good' })
@@ -3098,7 +3098,7 @@ function petPlay(g: GameState, p: Person): void {
 function petWalk(g: GameState, p: Person): void {
   if (!limit(g, p, 'walk', 3, 'Walk')) return
   touch(g, p)
-  addRelationship(p, randInt(g, 3, 8))
+  addRelationship(g, p, randInt(g, 3, 8))
   addPersonStat(p, 'health', randInt(g, 1, 3))
   addStat(g, 'health', randInt(g, 1, 2))
   addStat(g, 'happiness', randInt(g, 1, 3))
@@ -3108,7 +3108,7 @@ function petWalk(g: GameState, p: Person): void {
 function petTreat(g: GameState, p: Person): void {
   if (!limit(g, p, 'treat', 3, 'Treat')) return
   touch(g, p)
-  addRelationship(p, randInt(g, 3, 7))
+  addRelationship(g, p, randInt(g, 3, 7))
   addPersonStat(p, 'happiness', randInt(g, 3, 6))
   notice(g, 'Treat', `You gave ${p.firstName} a treat. ${pickSite(g, ['It was gone in 0.3 seconds.', `${p.firstName} looked at you like you hung the moon.`, `${p.firstName} immediately asked for another one.`], 0x0b45c924)}`, { emoji: '\u{1F9B4}', tone: 'good' })
 }
@@ -3118,15 +3118,15 @@ function petBathe(g: GameState, p: Person): void {
   touch(g, p)
   const crazy = pNum(p, 'craziness', 30)
   if (chance(g, 0.55 + p.relationship / 400 - crazy / 300)) {
-    addRelationship(p, randInt(g, 2, 5))
+    addRelationship(g, p, randInt(g, 2, 5))
     addPersonStat(p, 'health', randInt(g, 1, 3))
     notice(g, 'Bathe', `You gave ${p.firstName} a bath. ${pr(p).He} looks (and smells) fantastic.`, { emoji: '\u{1F6C1}', tone: 'good' })
   } else if (crazy > 60 && chance(g, 0.5)) {
-    addRelationship(p, -randInt(g, 4, 8))
+    addRelationship(g, p, -randInt(g, 4, 8))
     addStat(g, 'health', -randInt(g, 2, 6))
     notice(g, 'Bathe', `You tried to give ${p.firstName} a bath. ${pr(p).He} scratched and bit you, then escaped dripping wet across the house.`, { emoji: '\u{1F6C1}', tone: 'bad' })
   } else {
-    addRelationship(p, -randInt(g, 2, 6))
+    addRelationship(g, p, -randInt(g, 2, 6))
     notice(g, 'Bathe', `You gave ${p.firstName} a bath. ${pr(p).He} hated every second of it.`, { emoji: '\u{1F6C1}' })
   }
 }
@@ -3139,7 +3139,7 @@ function petRide(g: GameState, p: Person): void {
     notice(g, 'Ride', `${p.firstName} got spooked and threw you off! You landed in a very undignified position.`, { emoji: '\u{1F40E}', tone: 'bad' })
     return
   }
-  addRelationship(p, randInt(g, 3, 8))
+  addRelationship(g, p, randInt(g, 3, 8))
   addStat(g, 'happiness', randInt(g, 5, 10))
   addStat(g, 'health', randInt(g, 1, 3))
   notice(g, 'Ride', `You went for a ride on ${p.firstName} ${pickLine(g, ['through the countryside', 'along the river', 'through the forest', 'across an open field at sunset'])}.`, { emoji: '\u{1F40E}', tone: 'good' })
@@ -3171,7 +3171,7 @@ function petVet(g: GameState, p: Person): void {
   if (chance(g, 0.75)) {
     delete p.data.sick
     addPersonStat(p, 'health', randInt(g, 10, 25))
-    addRelationship(p, randInt(g, 2, 5))
+    addRelationship(g, p, randInt(g, 2, 5))
     notice(g, 'Veterinarian', `${who} ${p.firstName} to the vet${cost ? ` (${money(cost)})` : ''}. The vet treated ${pr(p).him} for ${sick}. ${pr(p).He}'s feeling much better!`, { emoji: '\u{1FA7A}', tone: 'good' })
   } else {
     notice(g, 'Veterinarian', `${who} ${p.firstName} to the vet${cost ? ` (${money(cost)})` : ''}. The vet diagnosed ${sick}, but the treatment didn't work. Try again next year.`, { emoji: '\u{1FA7A}', tone: 'bad' })
@@ -3413,7 +3413,7 @@ const D = {
     run: (g, p) => {
       p.relation = 'ex'
       p.data.fling = true
-      addRelationship(p, -randInt(g, 15, 25))
+      addRelationship(g, p, -randInt(g, 15, 25))
       log(g, `I ended my affair with ${fullName(p)}.`)
       notice(g, 'End the Affair', `You told ${p.firstName} it's over. ${pr(p).He} ${pick(g, ['threatened to tell everyone.', cars(g) ? 'cried in the parking lot.' : 'cried all the way down the street.', 'said "your loss."'])}`, { emoji: '\u{1F6AA}' })
     },
@@ -3453,7 +3453,7 @@ const D = {
       addHidden(g, 'karma', -8)
       addStat(g, 'happiness', -randInt(g, 3, 8))
       const other = getPerson(g, p.otherParentId)
-      if (other && other.alive && isRomantic(other)) addRelationship(other, -randInt(g, 8, 15))
+      if (other && other.alive && isRomantic(other)) addRelationship(g, other, -randInt(g, 8, 15))
       log(g, `I disowned ${myRel(p)}.`, 'bad')
       notice(g, 'Disowned', `You disowned ${p.firstName}. ${common(g, 'smartphone') ? 'The family group chat has gone silent.' : 'Family dinners have gone very quiet.'}`, { emoji: '\u{1F6AB}', tone: 'bad' })
     },

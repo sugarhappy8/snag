@@ -121,7 +121,7 @@ export function learn(g: GameState, p: Person, how: Learn, by?: Person): string 
     if (how === 'blunt') w.explained = 'blunt'
     w.anger = Math.max(w.anger, a)
   })
-  if (dent > 0) addRelationship(p, -dent)
+  if (dent > 0) addRelationship(g, p, -dent)
   notePerson(p, 'Found out they were cut out of the player’s will.')
   const react = reactionClause(p, a)
   const who = nm(p)
@@ -157,7 +157,7 @@ function learnAdded(g: GameState, p: Person): string | null {
     x.adds += 1
     x.addY = g.year
   })
-  if (fresh) addRelationship(p, 3)
+  if (fresh) addRelationship(g, p, 3)
   notePerson(p, 'Was named in the player’s will.')
   return fresh ? `${yourWho(p)} found out ${pronouns(p.gender).he}'s in your will. ${nm(p)} was touched.` : null
 }
@@ -204,7 +204,7 @@ function restore(g: GameState, p: Person): string | null {
       if (pct >= 100) x.cold = false
     }
   })
-  if (gain > 0) addRelationship(p, gain)
+  if (gain > 0) addRelationship(g, p, gain)
   if (!w.known) return null
   notePerson(p, 'Was put back in the player’s will.')
   const left = readWl(g, p).anger

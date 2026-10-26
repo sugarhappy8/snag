@@ -685,7 +685,7 @@ export function askParentsForComputer(g: GameState): void {
   if (budget >= price * 4 && score >= 0.55) {
     // A parent buys it: the retail pool is paid, and the rounding is the line's own.
     personCash(g, payer, Math.round(payer.money - price) - payer.money, 'purchase')
-    addRelationship(payer, 2)
+    addRelationship(g, payer, 2)
     giveComputer(g, model.displayName, price, 100, { gift: 'parents' })
     g.flags.devParentLaptopAge = c.age
     addStat(g, 'happiness', randInt(g, 8, 14))
@@ -705,7 +705,7 @@ export function askParentsForComputer(g: GameState): void {
   const oldOnesExist = computersExist(g, g.year - 6)
   if (oldOnesExist && budget >= price * 0.25 && score >= 0.35) {
     const condition = randInt(g, 30, 55)
-    addRelationship(payer, 1)
+    addRelationship(g, payer, 1)
     giveComputer(g, modern ? 'Hand-Me-Down Laptop' : 'Hand-Me-Down Computer', Math.round(price * 0.2), condition, { gift: 'parents', handMeDown: true })
     // Old computers die young: they'll consider another one in about three years.
     g.flags.devParentLaptopAge = c.age - 2

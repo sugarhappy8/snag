@@ -362,7 +362,7 @@ const photoScript = defineScript('special.fame.photo', (g, choice, data) => {
   if (offer.kind === 'swimsuit' && chance(g, 0.35)) {
     const critic = spouse(g) ?? parents(g)[0]
     if (critic) {
-      addRelationship(critic, -randInt(g, 5, 12))
+      addRelationship(g, critic, -randInt(g, 5, 12))
       extra = ` Your ${critic.relation === 'spouse' ? 'spouse' : critic.gender === 'male' ? 'father' : 'mother'} ${critic.firstName} saw the issue and thinks you showed way too much skin.`
     }
   }
