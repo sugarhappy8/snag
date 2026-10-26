@@ -11,6 +11,10 @@
 // pools of the text kit share them: a track of this kind declares at most PACE.maxFamilies of its own (test/pace.test.ts and
 // test/pace-families.test.ts count them), which leaves the rest for text.
 //
+// R4-E9 (X41): the memory keeps 160 families and PACE.maxFamilies is 80, raised once for the whole release. A fifth engine, `kin`, holds
+// the three families the family acts use, a closed list (KIN_FAMILIES): a falling out, a lender who calls and a secret that leaks.
+// 63 of the 80 are declared, 17 are left for R5 and R6 to share.
+//
 // Every reader is pure (no g.rng draw, no write, nothing after g.year). notePopup is the one writer, and the engine calls it where
 // it presents. Layer L1: it imports the memory and a type, nothing else.
 import type { GameState } from '../types'
@@ -25,21 +29,29 @@ export const PACE = Object.freeze({
   askGap: 4,
   /** Times an ask family may be offered in a life (a storyline too): the roadmap's "a popup family at most 6 times a life". Under the 12 years the record keeps. */
   askLife: 6,
-  /** Families the pace engines declare in all (the text memory holds 120, pools and families together). */
-  maxFamilies: 60,
+  /** Families the pace engines declare in all (the text memory holds 160, pools and families together). R4 raised it from 60 (X41). */
+  maxFamilies: 80,
 } as const)
 
-export type PaceEngine = 'ev' | 'ask' | 'biz' | 'kit'
+export type PaceEngine = 'ev' | 'ask' | 'biz' | 'kit' | 'kin'
 
-const ENGINES: ReadonlySet<string> = new Set<PaceEngine>(['ev', 'ask', 'biz', 'kit'])
+/**
+ * The families of the `kin` engine, a closed list (R4-E9, X41): `feud` (E12, a falling out), `lender` (E10b, a lender calls) and `leak`
+ * (E11, a secret leaks). paceKey('kin', ...) throws for any other name, and notePopup ignores a kin key that is not one of the three.
+ * A fourth is a decision of its own, with a row in the families count (test/pace.test.ts) and in docs/QUIET.md.
+ */
+export const KIN_FAMILIES: readonly string[] = Object.freeze(['feud', 'lender', 'leak'])
+
+const ENGINES: ReadonlySet<string> = new Set<PaceEngine>(['ev', 'ask', 'biz', 'kit', 'kin'])
 /** A family: a lower case letter, then letters, digits and dots, 40 characters at most, so 'pop.ev.' and it fit a memory key (48). */
 const FAMILY_RE = /^[a-z][a-zA-Z0-9.]{0,39}$/
-const KEY_RE = /^pop\.(?:ev|ask|biz|kit)\.[a-z][a-zA-Z0-9.]{0,39}$/
+const KEY_RE = /^pop\.(?:(?:ev|ask|biz|kit)\.[a-z][a-zA-Z0-9.]{0,39}|kin\.(?:feud|lender|leak))$/
 
 /** The memory key of a family: 'pop.ev.scam'. A bad engine or family throws, so a typo in a table fails when the table loads. */
 export function paceKey(engine: PaceEngine, family: string): string {
   if (!ENGINES.has(engine)) throw new Error(`pace: unknown engine "${String(engine)}"`)
   if (typeof family !== 'string' || !FAMILY_RE.test(family)) throw new Error(`pace: bad family "${String(family)}" (a lower case letter, then letters, digits and dots, 40 at most)`)
+  if (engine === 'kin' && !KIN_FAMILIES.includes(family)) throw new Error(`pace: unknown kin family "${family}" (one of ${KIN_FAMILIES.join(', ')})`)
   return `pop.${engine}.${family}`
 }
 
