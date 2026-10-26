@@ -1,9 +1,11 @@
 # People: the registry freeze note
 
-The note R5 and R6 code against (R4, v5.3.0). It starts here with the sid, the latent person and the inventory of the eight
-parallel named-person shapes (R4-S3). R4-S4 adds the Met store (section 5), R4-S7 adds promotion and demotion, R4-E6a adds the edge
-model, and R4-S11 completes it. Until a section below says otherwise, `docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md`
-section 3.1 is the authority for every name and signature. Plain hyphens only: no long dashes anywhere in this file.
+The note R5 and R6 code against (R4, v5.3.0). It is complete as of R4-S11: the sid and the latent person (sections 1 and 2), the caps
+and the rules for writers (3), the inventory of the eight parallel named-person shapes (4), the Met store (5), the edge model (6), the
+persona (7), the Person bridge (8) and the contract itself, the signatures, the promises and the figures of the acceptance (9).
+`docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md` section 3.1 is where the names were first fixed; this file is what the
+code has. Plain hyphens only: no long dashes anywhere in this file. `test/registry-acceptance.test.ts` checks that it names the eight
+shapes, that every line it cites exists and that every name of section 9 is exported by the file it is listed under.
 
 The one idea: a person who is not in `g.people` yet is a **slot** `(kind, place, cohort, ord)`. The text of a slot is the
 person's **sid**. The person of a slot is a pure function of the family seed and the slot (`latent`), so nothing is stored for a
@@ -137,7 +139,7 @@ of the 18 fits, the name R6 appends is a working name.
 | Shape | Type and path:line | Built by | Saved? | Kind for R6 |
 |---|---|---|---|---|
 | dating `Candidate` | `Candidate`, `love.ts:251` | `makeCandidate`, `love.ts:285`, from `dateCandidate`, the hookup and the memberships; draws `g.rng` (age, looks, stats, names, traits) | only inside the data of the pending popup (`candidate` in `showDateCandidate`) until the player chooses; then `personFromCandidate` makes a Person with `createPerson` | `dat` |
-| `strangerName` | `strangerName`, `events/helpers.ts:454`; the result is `{ first, last, gender }` | called at 36 sites in nine files of `events/`; draws `g.rng` (`crime.ts:243` has a second, local function of the same name that returns one string) | no: the name lives in the log line or the popup text, and the person is not added to the contacts | none fits a one-off passer-by; R6 decides (`frn` or `cow` by the scene, or a kind it appends) |
+| `strangerName` | `strangerName`, `events/helpers.ts:454`; the result is `{ first, last, gender }` | called at 36 sites in nine files of `events/`; draws `g.rng` (`crime.ts:244` has a second, local function of the same name that returns one string) | no: the name lives in the log line or the popup text, and the person is not added to the contacts | none fits a one-off passer-by; R6 decides (`frn` or `cow` by the scene, or a kind it appends) |
 | election opponent | `opponent: string` of the `Campaign` state, `special/politics.ts:583` | `opponentName`, `special/politics.ts:594`, called when the campaign is launched (`:681`); draws `g.rng` | only in the data of the three campaign popups (`trailChoice`, `:777`; read back at `:868`); afterwards it is a log line | `pol` |
 | `CareerRival` | `CareerRival`, `special/kit/rivals.ts:32` (the roadmap's `Me.rivals`) | `rosterAt`, derived from the family seed with `seeded()`, never stored; draws no `g.rng`; the id `<career>.<country>.<cohort>.<i>` is already a sid | no: only the career record's memory rows, keyed by the rival id | the career id: `actor`, `model`, `music`, `astronaut` today (`author`, `gamedev`, `sport` for the specs R6 adds); a career outside the seven needs a kind R6 appends |
 | `Director` | `Director`, `business/board-state.ts:22` | `makeDirector`, `business/board-state.ts:374`, seeded from the life id, the asset and a key; draws no `g.rng` | yes, in the board state `members` of the company (names stored, read back by `readDirector`) | `dir` |
@@ -251,13 +253,6 @@ Letting go:
   `lodSweep`) is let go as `evictMet` does. It is a fixed point of the year, and it returns how many records left the list (dropped or
   turned into tombstones), which `lodSweep` adds to `lod.demoted`.
 
-## 6. What the next tasks add here
-
-- R4-S4: done, see section 5.
-- R4-S7: done, see section 5 (touch, mark, evict, tombstone, sweep, the protector and salience contract).
-- R4-E6a: the edge model (`Edge`, `EdgeKey`, `MEMORY_KINDS`).
-- R4-S11: completes this note (the acceptance figures, the scans, the closing caps).
-
 ## 6. The edge model and its caps (R4-E6a)
 
 How people feel about each other is an **edge** `first end > second end` in the keyed map `g.world.edges` (R4-E6a, pure code in
@@ -278,3 +273,171 @@ section is the freeze note for R5 and R6 (cross-check section 3.1, "Edge model, 
 - A strife edge written by Life (C12) sets `s` always and a feud rung `q` only while `liveFeuds(g)` is under 12; the normalizer would
   strip the surplus rung silently.
 - Every read is pure: no `g.rng`, no write, no `g.world` created. A writer replaces the shard root and never edits it in place.
+
+## 7. The persona (`world/axes.ts`, `world/persona-me.ts`, `npc-state.ts`; R4-S2, S9, S10)
+
+Five axes describe a person in numbers: `AXIS_IDS` is `ambition, honesty, empathy, risk, steadiness`, always in that order, which is the
+order of a stored tuple (`MetRecord.a`). They are whole numbers 0 to 100 with 50 neutral. The one exception is the player's ambition,
+`ambitionOf(g)`, which has two decimals.
+
+- `axesFromTraits(traits)` turns the words of a person into axes: each word is a delta around 50 (`TRAIT_AXES`: the 30 words of `TRAITS`
+  and `spoiled`), and a person is 50 plus the deltas of their words, cut to 5..95. `labelsFromAxes(a, n = 2)` is the way back, the
+  words a set of axes wears, so a person made from a slot has words that every old reader already understands (`temper`, `driveOf`,
+  `integrityFor`, `styleFor`). `axesFromStaff(traitId)` does the same for the 13 staff traits (`STAFF_AXES`).
+- `VOICES` are the six narrator voices `warm, blunt, dry, anxious, grand, sly`. Each has a prototype in axis space
+  (`VOICE_PROTOTYPES`) and `voiceOf(axes)` returns the nearest. R5's composer picks a voice with it.
+- `TRAIT_SETS`, `DRIVE_TRAITS` and `INTEGRITY_TRAITS` are the tables of the four readers that used to keep their own (will feuds, the
+  nepo model, succession and the nepo job), moved here word for word. The readers keep their signatures (they take no `g`).
+  `axesOfPerson(g, p)` in `npc-state.ts` is the reader that has the game: the Met axes for a person with a record, else the axes of the
+  words with the person's `NpcLife` ambition. It is the one name the Edges track calls.
+- The player has an inferred persona. `inferAxes(g)` reads honesty and empathy from karma and the lifetime counts of crimes, thefts,
+  cheating, murders, fights, insults and sabotage (lowering them) and of donating and saving lives (raising them); risk from craziness,
+  lottery tickets and fights; steadiness from discipline, willpower and the absence of craziness. Every count is cut to a cap first, so a
+  counter of 1e9 moves nothing past its cap. `personaOf(g)` is `inferAxes` plus the nudges, cut to 0..100.
+- `nudgePersona(g, axis, by, why)` leans one axis a little and answers what it added (0 when nothing changed). `by` is cut to a whole
+  number within +-`NUDGE_STEP` (3); the axis is one of `honesty, empathy, risk, steadiness` (ambition is `ambitionOf`, never a nudge);
+  `why` is a short lower-case word; a second call for the same (axis, reason, year) is refused; all the nudges of an axis add up to
+  `NUDGE_MAX` (15) at most, either way; the record keeps `AT_MAX` (40) year stamps. The record is `flags['persona.me']`, personal and
+  owner-stamped (an heir starts clean, another life's record reads as the defaults), created on the first nudge, and removed when it is
+  empty. A life that never nudged has no `persona.me` key.
+- `effort.you` stays where it is: the ambition axis reads `ambitionOf`. `Manager.integrity` and `KeyStaff.trait` stay stored; R5 names the
+  owner of moving them onto axes.
+- Nothing in a played life calls `inferAxes`, `personaOf`, `nudgePersona` or `axesFromStaff` in R4 (X18). The player-facing half of the
+  persona (inferred feedback, narrator pools, guilt costs, how NPCs read the player) is R5's, and R5's composer is their first caller.
+
+## 8. The Person bridge (`src/game/materialize.ts`, R4-S8)
+
+`materializePerson(g, sid, opts)` makes the Person of a sid, or returns the one that already holds it. It touches the Met store
+(`touchMet`: the record's own identity when there is one, `latent` and the name registry on a first sight, a tombstone wakes with its
+stored names) and builds the Person with `createPerson`, given every field, so `g.rng` does not move and `g.nextId` moves by one (for
+a new Person only). A field the caller leaves out comes from a fixed default (the occupation by age, relationship 50, money 0, not
+living with the player); the stats and the skin tone come from `latent`, the traits from the record's axes, the name, gender, birth
+year and country from the record. It returns null for a text that is not a sid of the strict grammar, a relation outside
+`SID_RELATIONS`, or a touch the registry refuses (every held record is protected and the store is full).
+
+- `SID_RELATIONS` is every relation except `child`, `stepchild`, `grandchild` and `pet`. A child, a stepchild or a grandchild is what
+  the hand-over spreads into the heir, so a sid on one would rename the heir's account; a pet has no account of a stranger.
+  `heirUnsafe(p)` (defined in `kernel/person-ref.ts`, re-exported here) is the test for that shape.
+- `personOfSid(g, sid)` is the Person whose `personKey` is the sid, or undefined. Pure.
+- The opening `money` is the literal that `docs/LEDGER.md` rule 6 exempts: it is the balance of a new Person and is never booked.
+- `data.sid` has two writers in the whole game, this function and the heir-spouse rebuild of `continueAsChild` (R4-L9, in
+  `modules/heirs.ts`), and `test/registry-money-scan.test.ts` scans all of `src/game` for a third.
+
+## 9. The contract: what R5 and R6 may rely on (R4-S11)
+
+### 9.1 Signatures
+
+```ts
+// kernel/person-ref.ts (layer 0)
+validSid(x: unknown): string | null          // text that parses as 'person:' + x; 's77', 's9' and 's-42' stay valid
+personKey(p: Pick<Person, 'id' | 'data'>): string          // validSid(p.data.sid) ?? p.id
+personEntity(p: Pick<Person, 'id' | 'data'>): EntityRef     // 'person:' + personKey(p), or 'pool:other' for an id that is no name
+heirUnsafe(p: Pick<Person, 'relation' | 'data'>): boolean   // a valid sid on a child, stepchild or grandchild
+// world/sid.ts (layer 2)
+SID_KINDS; SidKind; Slot { kind; place; cohort; ord }; SID_LIMITS
+makeSid(slot: Slot): string      // throws RangeError, for code only
+parseSid(x: unknown): Slot | null; isSid(x: unknown): x is string
+// world/latent.ts
+LATENT_V = 1; FACET; KIND_AGE; STAT_RANGE; LatentPerson; SeededIdentity
+latent(familySeed: string, slot: Slot, home?: string): LatentPerson
+fromSeeded(seed: SeededIdentity, familySeed: string): LatentPerson
+latentUnit(familySeed: string, sid: string, n: number): number
+nameDraw(familySeed, sid, k, gender, born, country): { first: string; last: string }
+// world/met.ts, world/caps.ts
+MetRecord; Tomb; MetShard; MET_LIMITS; MET_CAPS
+normalizeMet(raw: unknown): MetShard; readMet(g): Readonly<MetShard>; metRecord(g, key); metTomb(g, key); isTomb(x)
+metKinds(g): Readonly<Record<string, number>>; metProblems(raw, people?): string[]; writeMet(g, next): void
+packGb(born, g): number; unpackGb(gb): { born; g }
+// world/met-names.ts
+takenNames(g): Set<string>; nameFree(g, first, last): boolean; resolveName(g, lat): { first; last; k }; BRAND_PAIRS
+// world/met-ops.ts
+STAKE; MET_RULES; MetPatch
+touchMet(g, key, patch?, home?, identity?): boolean       markMet(g, key, stake): boolean
+evictMet(g, key, why): 'dropped' | 'tomb' | 'kept' | 'absent'      tombstoneMet(g, key, stake?): boolean
+sweepMet(g): number          isProtected(g, key): boolean          salienceOf(g, key): number
+registerProtector(id, fn: (g) => Iterable<string>): void           registerSalience(id, fn: (g, key) => number): void
+// materialize.ts (layer 3)
+MaterializeOpts; SID_RELATIONS; heirUnsafe
+materializePerson(g, sid, opts): Person | null          personOfSid(g, sid): Person | undefined
+// world/axes.ts, npc-state.ts
+AXIS_IDS; Axes; AxisTuple; TRAIT_AXES; TRAIT_SETS; STAFF_AXES; VOICES; VOICE_PROTOTYPES; DRIVE_TRAITS; INTEGRITY_TRAITS
+axesFromTraits(traits): Axes; labelsFromAxes(a, n = 2): string[]; axesFromStaff(traitId): Axes; voiceOf(a: Axes): VoiceId
+axesOfPerson(g: Pick<GameState, 'world'>, p: Person): Axes
+// world/persona-me.ts
+PERSONA_KEY = 'persona.me'; NUDGE_MAX = 15; NUDGE_STEP = 3; NUDGE_SLOTS = 4; AT_MAX = 40; NudgeAxis; PersonaMe
+inferAxes(g): Axes; personaOf(g): Axes; readPersona(g): PersonaMe; writePersona(g, p): void
+nudgePersona(g, axis: NudgeAxis, by: number, why: string): number
+```
+
+### 9.2 Rules for writers
+
+1. **Touch only in an action or in a yearly step that is idempotent by a year stamp, never in a read.** The writers are `touchMet`,
+   `markMet`, `evictMet`, `tombstoneMet`, `sweepMet` (called by `lodSweep` inside its year stamp), `writeMet`, `materializePerson`,
+   `nudgePersona` and `writePersona`. Every other name of section 9.1 is a read: pure on a deep-frozen state, with no `g.rng`, no
+   write and no `g.nextId`.
+2. **A sid goes on new persons only.** Never on an existing Person, a child, a stepchild, a grandchild, a pet or the former player. The
+   two writers are `materializePerson` and L9's heir-spouse rebuild. Kin sids are `kin.<country>.<year>.<ord>`, minted by Life with
+   the builder returning null outside 1850 to 2400; no code calls the throwing `makeSid` with saved data.
+3. **A protector registers at module load**, with `registerProtector(id, fn)`; the same id with another function throws; protectors run
+   in id order, return `personKey` values (a legacy person is protected by its id), and one that throws protects nothing. A salience
+   returns the edge part only (`f + s + abs(o)` of the edge person>player): Met adds the role weight itself.
+4. **Stake bits** (`fl`): 1 debt, 2 spouse, 4 heir, 8 company, 16 feud, 32 will. Life writes bits 2 and 4 with `markMet`, and only for a
+   person a living or recently dead Person links (`kinProblems` names a record that carries either bit with no link); Edges write none and
+   protect through a protector. `gr` and `ob` are written by `tombstoneMet` and by synthetic tests only.
+5. **New luck comes from named streams only** (`outcomeStream`, `streamKey`, `streamUnit`). The registry draws from no stream: `latent`
+   is a hash of the family seed and the sid. A new `stream(` tag gets its rows in `test/stream-tap.ts` and
+   `test/stream-isolation.test.ts`.
+6. **Every dollar goes through the ledger.** The registry books none; the one money literal is the opening balance that
+   `materializePerson` hands to `createPerson`. A person who leaves the record list has the account `person:<key>` folded into the
+   household pool of the person's own country, which is a relabel and books nothing.
+7. **Every new saved field is optional, validated by its own reader, and bounded.** A writer replaces the shard root and never edits it
+   in place. The new behaviour runs only on a life the `social` flag stamped (X6); nothing in the registry reads a flag.
+
+### 9.3 What R5 and R6 may rely on
+
+- The sid grammar, `SID_KINDS` (append-only: R6 and R7 append, nobody renames), the facet numbers and `KIND_AGE` (frozen by
+  `test/fixtures/latent-golden.json`), `AXIS_IDS` and `VOICES`. A changed value needs a `RECORD_REASON`, a row in `moved-tests.md` and
+  the lead's OK.
+- The same name for the same person: a Met record stores the identity it resolved the day it was first met, a tombstone keeps the
+  names, and a record that was dropped comes back through the name registry with the same name while nobody has taken it. The same
+  seed gives the same Met keys and names after a replay, a clone, a reload, a hand-over and a Time Machine fork (a fork may differ only
+  in people met after its snapshot).
+- A record held by a stake, an obligation, a grudge of 20 or more, a Person, a holder or a protector is never lost, by idleness or by
+  the cap: one held by a Person, a holder or a protector stays a record, and one held only by its own stake becomes a tombstone that
+  keeps what is owed. A tombstone goes only when nothing holds it and it is 20 years old, and the cap on tombstones never drops an
+  obligation.
+- The shard is at most 10,401 nodes (400 records of 22, 200 tombstones of 8 and the map root), whatever is touched: 40,000 touches or a
+  hostile save of 40,000 entries leave the same bounded shard (`met-caps`, a row of `test/ceiling-list.json`). The persona record is at
+  most about 50 nodes and its nudges stay within 15 (`persona-nudge`).
+- An old save has no `met` key and no `persona.me` key, and a life that no writer touched never gets one. A save from v5.3.0 on may
+  hold the shard, and it loads and saves again byte for byte.
+- `r` (a role tag) and `j` (a job or firm ref) of a record are reserved for R6, sanitized and written by nobody in R4. Facet 15 (`path`)
+  is reserved. `LinkKind`, `MEMORY_KINDS` and `SID_KINDS` are append-only.
+
+### 9.4 What R5 and R6 may not rely on
+
+- A live writer. Nothing in a played life calls the registry in R4 until Life's L4 (NPC weddings and babies) and L9 (the heir's spouse),
+  and those run only on a stamped life. Classmates, coworkers, the dating pool, strangers, directors, key staff, managers and the nepo
+  outsider wait for R6 D.6. The banker met in 2031 who is the minister in 2040 needs those writers and R7's politics slots; R4 delivers
+  and proves the mechanism (the same name after eviction), with kin and the heir's spouse as the first users.
+- Name order. Of two people who collide the first promoted keeps the pure name, so the order of promotion is the one thing a name
+  depends on beyond the seed. A career rival of `rosterAt` and a Met person may share a name until R6 D.6. `BRAND_PAIRS` is a copy of
+  data (7 names today): a brand added later fails `test/world-met-names.test.ts` until the copy is updated.
+- The persona. It is unwired. `personaOf`, `nudgePersona`, `inferAxes` and `axesFromStaff` have no caller in R4, and the numbers of the
+  inference are tuned to read as 50 for a mean life, not to be right.
+- `Person.relationship`, `Manager.integrity` and `KeyStaff.trait` still hold their numbers; the axes do not replace them in R4.
+
+### 9.5 How it is proven (R4-S11)
+
+- `test/registry-acceptance.test.ts`: a 120-year probe of a life found with `findSeed` (born 1930, alive at 50), played one year at a
+  time through two hand-overs, with a scripted caller that touches three slots a year, puts and clears stakes, leaves tombstones, makes
+  a person every ten years, nudges the persona and floods the store with 450 people twice. After every year the world has no problem,
+  the books hold, the Met store is inside its caps, every number is finite, no Person with a sid is a child, every stake and debt the
+  caller left is still in the store, the persona is inside its bounds and the world is inside its budget. Then the same names for the
+  same seed (a rerun, a clone and a JSON reload of year 60, an heir, a Time Machine fork), the banker mechanism through a played life
+  from 1990, every old fixture by the rule of its release, twelve hostile mets played through the whole game, pure reads on a
+  deep-frozen state, and this file.
+- `test/registry-money-scan.test.ts`: the registry files book no dollar and draw no luck, call no stream with an unlisted tag, and
+  `Person.data.sid` is written by `materialize.ts` and `modules/heirs.ts` only.
+- `test/ceiling-list.json` and `test/ceiling-kit.ts`: `met-caps` (touches and tombstones at 100 times the caps, a hostile shard of
+  40,000 entries, the sweep) and `persona-nudge` (10,000 nudges, counters of 1e9).

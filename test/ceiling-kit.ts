@@ -42,11 +42,15 @@ import type { GameState } from '../src/game/types'
 import { COUNTRIES } from '../src/game/world'
 import { readFirms } from '../src/game/world/firms'
 import { readHomes } from '../src/game/world/homes'
-import { FRONTIER_CAPS } from '../src/game/world/caps'
+import { FRONTIER_CAPS, MET_CAPS } from '../src/game/world/caps'
 import { applyDisclosure, frontierLead, frontierRows, readFrontier } from '../src/game/world/frontier'
 import { FIELD_IDS, FIELDS, fieldOfKind } from '../src/game/world/frontier-fields'
 import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod'
+import { isTomb, normalizeMet, readMet } from '../src/game/world/met'
+import { markMet, STAKE, sweepMet, tombstoneMet, touchMet } from '../src/game/world/met-ops'
+import { AT_MAX, NUDGE_AXES, NUDGE_MAX, nudgePersona, personaOf, readPersona } from '../src/game/world/persona-me'
 import { readPeople } from '../src/game/world/people'
+import { makeSid } from '../src/game/world/sid'
 import { APPROACHES, MAX_OVERTIME_BUILDS, buildLimit, resolveBuild } from '../src/game/workshop/build'
 import { catalogIdea, type Level } from '../src/game/workshop/catalog'
 import { HELPER_CENTRE_MAX, WORKSHOP_TOOLS_MAX, buildNumbers } from '../src/game/workshop/effort'
@@ -478,6 +482,33 @@ function lodFlood(kind: LodKind, count: number): { read: number; after: number }
   return { read, after: READERS[kind](g).rows.length }
 }
 
+/** Every value is one node, the way the save loader counts (save-schema.ts finiteJsonTree). */
+function jsonNodes(value: unknown): number {
+  let n = 0
+  const stack: unknown[] = [value]
+  while (stack.length > 0) {
+    const item = stack.pop()
+    n++
+    if (item !== null && typeof item === 'object') for (const kid of Array.isArray(item) ? item : Object.values(item)) stack.push(kid)
+  }
+  return n
+}
+
+/** The nodes of a Met record at its fullest (itself, 12 fields, the axes list and five axes, the died year, the role tag and the job ref) and of a tombstone (the list and seven). */
+const MET_RECORD_NODES = 22
+const MET_TOMB_NODES = 8
+/** The worst case of the whole shard: 400 full records, 200 tombstones and the map root (world/caps.ts MET_CAPS, docs/PEOPLE.md). */
+const MET_SHARD_NODES = MET_CAPS.records * MET_RECORD_NODES + MET_CAPS.tombs * MET_TOMB_NODES + 1
+
+/** The i-th person of a flood: a sid for every i, different for each up to a million people (the cohort cycles every 100, the ord counts the cycles). */
+const floodSid = (i: number): string => makeSid({ kind: i % 2 === 0 ? 'cls' : 'cow', place: 'us', cohort: 1900 + (i % 100), ord: Math.floor(i / 100) % 10_000 })
+
+/** The raw shard of a hostile save: `count` full records of fields far outside their ranges, keyed in code-unit order. */
+function hostileMet(count: number): Record<string, unknown> {
+  const rows = Array.from({ length: count }, (_, i): [string, unknown] => [floodSid(i), { f: `F${i}`, l: `L${i}`, g: 1, b: 1e300, c: 'us', k: 99, a: [1e9, -1e9, 50, 50, 50], y: -5, s: 1e300, w: 1e9, fl: 1e9, gr: -1e9, ob: 1e300, d: 1e300, r: 'x'.repeat(100), j: 'y'.repeat(100) }])
+  return Object.fromEntries(rows.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)))
+}
+
 const WORLD_ROWS: readonly CeilingProbe[] = [
   sinkRow(
     'mint-caps',
@@ -614,6 +645,83 @@ const WORLD_ROWS: readonly CeilingProbe[] = [
           t.add((readFrontier(g).f[f]?.pub ?? 0) / 10, FRONTIER_CAPS.spillPoints, `${f} public research after ${i + 1} years`)
           t.add(frontierRows(g, f).length, rowsMax, `${f} rows after ${i + 1} years`)
         })
+      }
+      return t.result()
+    },
+  },
+  {
+    id: 'met-caps',
+    cap: 'the Met store keeps at most 400 records and 200 tombstones, 24 nodes in a record and 10,401 in all, however many people are touched, so 40,000 touches leave the same bounded shard and a held record is never the one dropped (R4-S11)',
+    // `200 x scale` people are touched and made tombstones (20,000 asked for 200 places at 100 times); then `400 x scale` more are touched in
+    // the same year, three of them with a debt on them (40,000, and the cap turns most away); a hostile shard of `400 x scale` entries is
+    // read, and the sweep runs for 30 years. The shard is read against its caps after each step, and the three held people must still
+    // have an entry: a record, or a tombstone that keeps what they are owed.
+    run: (scale) => {
+      const t = tightest()
+      const g = lifeIn('us', 2030)
+      const held: string[] = []
+      const read = (at: string): void => {
+        const shard = readMet(g)
+        const keys = Object.keys(shard)
+        const records = keys.filter((k) => !isTomb(shard[k]))
+        t.add(records.length, MET_CAPS.records, `${at}: records`)
+        t.add(keys.length - records.length, MET_CAPS.tombs, `${at}: tombstones`)
+        t.add(jsonNodes(shard), MET_SHARD_NODES, `${at}: nodes of the shard`)
+        for (const k of records) t.add(jsonNodes(shard[k]), MET_CAPS.nodes, `${at}: nodes of one record`)
+        for (const k of held) if (!Object.prototype.hasOwnProperty.call(shard, k)) t.add(1, 0, `${at}: the held person ${k} has no entry`)
+      }
+      const owed = MET_CAPS.tombs * scale
+      for (let j = 0; j < owed; j++) {
+        const sid = floodSid(j)
+        if (touchMet(g, sid)) tombstoneMet(g, sid, { ob: 5, gr: 30 })
+      }
+      read(`${owed} tombstones asked for`)
+      const touches = MET_CAPS.records * scale
+      for (let i = 0; i < touches; i++) {
+        const sid = floodSid(owed + i)
+        touchMet(g, sid, { w: i % 10 })
+        if (held.length < 3 && i % 50 === 0 && markMet(g, sid, { fl: STAKE.debt })) held.push(sid)
+      }
+      read(`${touches} touches`)
+      // The reader looks at 5,000 entries and no more, so a hostile shard past 100 times the cap adds nothing but memory: it stops at 40,000.
+      const hostile = Math.min(touches, MET_CAPS.records * 100)
+      const raw = normalizeMet(hostileMet(hostile))
+      t.add(Object.keys(raw).length, MET_CAPS.records + MET_CAPS.tombs, `a hostile shard of ${hostile} entries, as the reader keeps it`)
+      t.add(jsonNodes(raw), MET_SHARD_NODES, `a hostile shard of ${hostile} entries, nodes as the reader keeps it`)
+      for (let y = 1; y <= 30; y++) {
+        g.year += 1
+        sweepMet(g)
+      }
+      read('30 yearly sweeps on')
+      return t.result()
+    },
+  },
+  {
+    id: 'persona-nudge',
+    cap: "the player's nudges add up to at most 15 points an axis either way and the record keeps at most 40 year stamps, however many nudges are made, and no axis leaves 0 to 100 (R4-S11)",
+    // `100 x scale` nudges (10,000 at 100 times) of +3, then of -3, spread over the four axes and over up to 100 years (a nudge is once for
+    // an axis, a reason and a year), with every lifetime counter at `1e9 x scale` or minus that. After each year every axis of the nudges
+    // is read against 15, the stamps against 40, the stored record against its nodes, and the persona against 0 and 100.
+    run: (scale) => {
+      const t = tightest()
+      const recordNodes = 3 + (1 + NUDGE_AXES.length) + (1 + AT_MAX)
+      for (const sign of [1, -1]) {
+        const g = lifeIn('us', 2030)
+        for (const id of ['crimes', 'thefts', 'cheated', 'murders', 'fights', 'insults', 'sabotage', 'donated', 'livesSaved', 'lotteryTickets']) g.counters[id] = sign * 1e9 * scale
+        const batches = Math.max(1, Math.min(scale, 100))
+        for (let b = 0; b < batches; b++) {
+          g.year = 2030 + b
+          for (let i = 0; i < 100 * Math.ceil(scale / batches); i++) nudgePersona(g, NUDGE_AXES[i % NUDGE_AXES.length]!, sign * 3, `r${i}`)
+          const rec = readPersona(g)
+          for (const axis of NUDGE_AXES) t.add(Math.abs(rec.n[axis] ?? 0), NUDGE_MAX, `${sign > 0 ? 'plus' : 'minus'} 3 nudges, ${axis}, batch ${b + 1}`)
+          t.add(Object.keys(rec.at).length, AT_MAX, `year stamps after batch ${b + 1}`)
+          t.add(jsonNodes(g.flags['persona.me']), recordNodes, `nodes of the stored record after batch ${b + 1}`)
+          const axes = personaOf(g)
+          for (const [axis, v] of Object.entries(axes)) {
+            t.add(v, 100, `the ${axis} axis with counters of ${g.counters.crimes}`)
+            t.add(100 - v, 100, `the ${axis} axis (distance from 0) with counters of ${g.counters.crimes}`)
+          }
+        }
       }
       return t.result()
     },
