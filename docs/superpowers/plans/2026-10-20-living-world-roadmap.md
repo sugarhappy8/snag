@@ -2,6 +2,8 @@
 
 > **For agentic workers:** this is the programme roadmap, not a task list. Each release gets its own spec and plan when it starts (part E). Release R0 (part C) and release R1 (part D) are detailed enough to start now: use superpowers:subagent-driven-development (or superpowers:executing-plans when you run the tasks inline). Steps use checkbox (`- [ ]`) syntax.
 
+> **Status (2026-10-26).** R0 to R3 shipped as v4.0.3, v4.1.0, v5.0.0 and v5.1.0. A change outside this programme, "Where the money went", shipped as v5.2.0, so the version numbers of R4 to R11 are each one higher than first planned: R4 v5.3.0, R5 v5.4.0, R6 v5.5.0, R7 v5.6.0, R8 v5.7.0, R9 v5.8.0, R10 v5.9.0, R11 v5.10.0. R12 stays v6.0.0. The R4 plan is in `docs/superpowers/plans/2026-10-26-r4-v5.3.0/` (start with `00-crosscheck.md`); plans for later releases are written when they start (part E).
+
 **Goal:** turn AnotherLife from a game where the player is the only entity into one where everything is accounted for: money, goods, people, homes and jobs exist once and are conserved; research of every kind runs on one effort engine fed by staff quality, ambition, labor and money; the player knows only what they have researched; wars, news, relationships, shows and every special job have the depth business has. First fix the bugs and exploits in today's game, then give Profit and Loss real graphics, then build the foundations, then the features, then gate the whole thing on the depth rubric.
 
 **Architecture:** thirteen releases in four phases. Phase 1, fixes: R0 (v4.0.3) patches fourteen verified defects and probes four more. Phase 2, foundations: R1 (v4.1.0) ships what the player can see (a chart kit, Profit and Loss graphics, search, a notice digest, the text picker) while the test platform and guards are laid underneath, and R2 (v5.0.0) ships the world kernel (one money ledger, `g.world`, save v3, RNG streams). Phase 3, features: R3 to R11 build the Effort Engine, the Knowledge System, the Society layer, the Paper, Careers kit v2, wars and the UN, the Show Circuit, the living population and the remaining careers on that kernel. Phase 4, the gate: R12 (v6.0.0) turns the depth rubric into a CI gate. Every release is a train of parallel tracks merged on a release branch, as v4.0.0 was.
@@ -53,14 +55,14 @@ Sizes are planned source lines, then test lines (ratio per area in A.6), then ag
 | R1 | v4.1.0 | See it | Profit and Loss waterfall and 30-year book charts, cash walk, rank ladders, search and pins, one OK for a run of notices, Quiet Mode inbox, keyboard and focus fixes, saves in IndexedDB | 14,400 | 10,486 | 59 | 4 | 17.8 |
 | R2 | v5.0.0 | Every dollar has a counterparty | Exact cash walk, 88% cheaper taps, smaller saves, text that stops repeating | 19,600 | 22,578 | 80 | 4 | 24.1 |
 | R3 | v5.1.0 | Effort, fog and quiet years | Odds with named reasons, burnout and posture, estimates with chips and "Look closer" research, one year card of 8 lines | 24,700 | 28,720 | 101 | 6 | 20.5 |
-| R4 | v5.2.0 | People who remember | Recurring named people, memories that change dialogue and odds, favors, feuds, real in-laws, heirs who inherit friends and feuds | 16,900 | 20,024 | 69 | 4 | 21.1 |
-| R5 | v5.3.0 | The Paper | A newspaper with outlets and bias, offers and exposes, composed dialogue with memory, gossip, a 35% smaller first download | 16,900 | 18,252 | 69 | 4 | 20.7 |
-| R6 | v5.4.0 | Careers kit v2 | Contract ledgers with real payers, agents and teams, awards, exits; Author and Game Employee at business depth; real job vacancies; thesis and PhD | 23,200 | 24,624 | 95 | 5 | 22.7 |
-| R7 | v5.5.0 | The President's war loop | Ultimatum to peace as President, treaties, UN votes with shown odds, fictional leaders, war record, fog of war, 2027+ conflicts | 15,100 | 17,864 | 62 | 4 | 18.6 |
-| R8 | v5.6.0 | War economy and uniformed careers | Bonds, rationing, refugees, defense sector, general, journalist, spy, Politician and Military at business depth, landlords and depositors, weapons secrecy | 23,300 | 26,460 | 96 | 6 | 19.2 |
-| R9 | v5.7.0 | The Show Circuit and every trade | About 90 fairs with booths, keynotes and rivals in the room; 17 more trades with an Operations Desk; inventions in medicine, software, finance, art, sport; goods flows | 27,900 | 29,500 | 114 | 8 | 17.4 |
-| R10 | v5.8.0 | Population, Underworld, Sports | Real jobs, homes and firms for strangers; Underworld with crews and heat; league clubs, drafts, franchise ownership | 26,500 | 27,900 | 109 | 5 | 26.0 |
-| R11 | v5.9.0 | Creators and the rest | Influencer and fame, finished actor, astronaut, model, musician, journalist, scientist, intelligence careers | 19,000 | 19,500 | 78 | 5 | 19.0 |
+| R4 | v5.3.0 | People who remember | Recurring named people, memories that change dialogue and odds, favors, feuds, real in-laws, heirs who inherit friends and feuds | 16,900 | 20,024 | 69 | 4 | 21.1 |
+| R5 | v5.4.0 | The Paper | A newspaper with outlets and bias, offers and exposes, composed dialogue with memory, gossip, a 35% smaller first download | 16,900 | 18,252 | 69 | 4 | 20.7 |
+| R6 | v5.5.0 | Careers kit v2 | Contract ledgers with real payers, agents and teams, awards, exits; Author and Game Employee at business depth; real job vacancies; thesis and PhD | 23,200 | 24,624 | 95 | 5 | 22.7 |
+| R7 | v5.6.0 | The President's war loop | Ultimatum to peace as President, treaties, UN votes with shown odds, fictional leaders, war record, fog of war, 2027+ conflicts | 15,100 | 17,864 | 62 | 4 | 18.6 |
+| R8 | v5.7.0 | War economy and uniformed careers | Bonds, rationing, refugees, defense sector, general, journalist, spy, Politician and Military at business depth, landlords and depositors, weapons secrecy | 23,300 | 26,460 | 96 | 6 | 19.2 |
+| R9 | v5.8.0 | The Show Circuit and every trade | About 90 fairs with booths, keynotes and rivals in the room; 17 more trades with an Operations Desk; inventions in medicine, software, finance, art, sport; goods flows | 27,900 | 29,500 | 114 | 8 | 17.4 |
+| R10 | v5.9.0 | Population, Underworld, Sports | Real jobs, homes and firms for strangers; Underworld with crews and heat; league clubs, drafts, franchise ownership | 26,500 | 27,900 | 109 | 5 | 26.0 |
+| R11 | v5.10.0 | Creators and the rest | Influencer and fame, finished actor, astronaut, model, musician, journalist, scientist, intelligence careers | 19,000 | 19,500 | 78 | 5 | 19.0 |
 | R12 | v6.0.0 | The depth gate | Rubric passes in CI for business and all 11 careers; nightly 160-year probes; optional desktop two-pane | 4,300 | 4,168 | 18 | 2 | 11.3 |
 | | | **Total** | | **232,490** | **251,696** | **964** | | **245** |
 
@@ -241,7 +243,7 @@ Total 24,700. Order: core, knowledge and quiet years first; migration and fog af
 **Risks.** 207 hint sites: change the helpers, not the sites. Fog frustration: defaults are words and research pays visibly. The fog, ambition and Exact-mode decisions (D11, D13, D15) are needed first (part G).
 **Exit gate.** Acceptance green; a 3-life human playthrough (research, a hire, a market) read by the owner.
 
-## R4 v5.2.0 People who remember
+## R4 v5.3.0 People who remember
 
 **Goal.** People exist once, remember, and carry across heirs.
 **Needs.** R1 (G.8); R2 (A.K2, K.6, A.K1); R3 (H.1).
@@ -268,7 +270,7 @@ Total 16,900. Golden tests of relationships, love, wealth, will and nepo land be
 **Risks.** The shim touches 374 call sites and 131,000 test lines, so golden tests come first. Eviction and heir switches are the likeliest places to lose a debt. Popup budgets across four yearly hooks (wealth 3, nepo 2, will 1) must become one.
 **Exit gate.** Acceptance green; the old-save matrix (v4.0.2 fixture, a life with 20 exes, a life with a family firm) migrates.
 
-## R5 v5.3.0 The Paper
+## R5 v5.4.0 The Paper
 
 **Goal.** News is facts rendered through outlets; text is composed with memory; the first download shrinks.
 **Needs.** R2 (E.T3, K.3, A.K1); R3 (H.1, H.3, C.6); R4 (D.3).
@@ -294,7 +296,7 @@ Total 16,900.
 **Risks.** Changed text draws shift about 31 test files that mention `pick` (one draw per pick, one family per PR). Async data packs break synchronous assumptions in tests and the Time Machine (tests preload). Folding can hide something important: review the weight-3 list.
 **Exit gate.** Acceptance green; async data packs pass the Time Machine and test-preload checks.
 
-## R6 v5.4.0 Careers kit v2
+## R6 v5.5.0 Careers kit v2
 
 **Goal.** The shared kit gets what business has (ledger with real payers, team, peers, awards, exits, legacy, news, fog, text, showcase stub, pace, automation); Author and Game Employee prove it.
 **Needs.** R2 (A.K1); R3 (E.D2, H.1, C.1); R4 (D.1, D.3).
@@ -322,7 +324,7 @@ Total 23,200. Kit v2 and Author start together; the rest wait for the kit interf
 **Risks.** Each career moves its own RNG stream. Kit modules must stay free of `g.rng` in reads. A kit interface that moves after the freeze makes four tracks rework.
 **Exit gate.** Acceptance green; a human playthrough of an author life and a studio life.
 
-## R7 v5.5.0 The President's war loop
+## R7 v5.6.0 The President's war loop
 
 **Goal.** One conflict ledger replaces six restatements of the same wars; a President can run the whole ladder from ultimatum to peace.
 **Needs.** R2 (A.K1, A.K2, K.3); R3 (H.1); R4 (D.1); R5 (E.N1).
@@ -349,7 +351,7 @@ Total 15,100. Opus candidates: B.3, B.4.
 **Risks.** Taste and safety: aggregates only, no atrocity button, no real living leaders. Moving war facts from six places into one can change headlines, so the parity table gates it.
 **Exit gate.** Acceptance green; the owner plays a President through one scripted war and one procedural one.
 
-## R8 v5.6.0 War economy and uniformed careers
+## R8 v5.7.0 War economy and uniformed careers
 
 **Goal.** War costs money and changes industries; Military and Politician reach business depth; property and banks get real counterparties.
 **Needs.** R3 (C.1, C.6, H.1); R4 (D.1, D.3); R6 (I.Kit2); R7 (B.4, B.5).
@@ -378,7 +380,7 @@ Total 23,300.
 **Risks.** Military and Politician share `special/kit` merges. Property conservation across the 150-home cap. Depositor accounting for player banks (segregated books today).
 **Exit gate.** Acceptance green; a human playthrough of a general, a minister and a landlord.
 
-## R9 v5.7.0 The Show Circuit and every trade
+## R9 v5.8.0 The Show Circuit and every trade
 
 **Goal.** Showing off a product is a calendar, a score and consequences; every trade gets depth; inventions cover more than products.
 **Needs.** R1 (G.4); R3 (H.4, C.6); R4 (D.4); R5 (E.N1, E.T4); R6 (I.Kit2); R7 (B.5).
@@ -410,7 +412,7 @@ Total 27,900. The largest train: run it only after R6 and R7 prove 6-track merge
 **Risks.** Eight tracks on 4 CPUs. Pump-and-dump, spend-to-win and intel-farming loops. Real-brand naming rules. Each family moves its trade's RNG stream, so that trade's seeded tests are re-baselined with a written reason (digest J).
 **Exit gate.** Acceptance green; the owner runs a food trade and a studio through a show.
 
-## R10 v5.8.0 Population, Underworld, Sports
+## R10 v5.9.0 Population, Underworld, Sports
 
 **Goal.** Strangers get jobs, homes and firms; two large careers stand on top.
 **Needs.** R2 (K.6); R4 (D.1, D.3); R6 (I.Kit2); R9 (F.1, J.5).
@@ -438,7 +440,7 @@ Total 26,500. Opus candidate: A.K5.
 **Risks.** Storage, not CPU, is the limit: 100,000 light entities cost 3 to 9 ms a year but 15 MB at 150 bytes each, so only touched strangers persist and pools stay statistical. Sports ownership is the new money loop.
 **Exit gate.** Acceptance green; 50-year probes in three strategies per career.
 
-## R11 v5.9.0 Creators and the rest
+## R11 v5.10.0 Creators and the rest
 
 **Goal.** The remaining careers reach the bar.
 **Needs.** R3 (H.2); R5 (E.N1); R6 (I.Kit2); R9 (F.8).
