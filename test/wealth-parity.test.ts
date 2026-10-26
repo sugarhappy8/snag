@@ -50,12 +50,16 @@ import {
 import { setAllowance } from '../src/game/events/wealth-kids'
 import { askChoices, presentAsk, readAsk } from '../src/game/events/wealth-resolve'
 import { runScript } from '../src/game/scripts'
+import { familyLive } from '../src/game/society/contract'
 import type { ChoiceModal, GameState, InputModal, ModalItem, Person } from '../src/game/types'
+import { socialOn } from '../src/game/world/social'
 import { deepFreeze } from './fuzz-kit'
 import {
+  compareRows,
   expectRows,
   isRecording,
   oracle,
+  readRows,
   recordRows,
   scene,
   snapshot,
@@ -568,6 +572,12 @@ function familyOf(money: number, tuple: Tuple): Scene {
 /** Counts per year of the unanswered lives, for the budget checks below. */
 const POPUPS: Record<number, number[]> = {}
 
+/**
+ * R4-E9: the first year of the answered life in which the family was live when the year began (a loan that is out is a debt on an edge, and a
+ * debt is a live stake, so the shared budget holds one choice back from the wealth asks). Only a stamped life can be: null on the plain pass.
+ */
+let answeredLiveFrom: number | null = null
+
 function popupRows(): ParityRow[] {
   const rows: ParityRow[] = []
   for (const tier of [2, 3, 4]) {
@@ -588,8 +598,10 @@ function popupRows(): ParityRow[] {
   // One life answered: a different option every year, the sliders at their middle. The asks change the people, and the people the asks.
   const s = familyOf(POP_MONEY[3]!, [30, 2026])
   const kids = [s.who.kid16!, s.who.kid9!, s.who.kid22!]
+  answeredLiveFrom = null
   for (let y = 1; y <= POP_YEARS; y++) {
     s.step(`pop|answered|${String(y).padStart(2, '0')}`, (g) => {
+      if (answeredLiveFrom === null && socialOn(g) && familyLive(g)) answeredLiveFrom = y
       wealthYear(g)
       for (let guard = 0; g.queue.length > 0 && guard < 60; guard++) {
         const m = g.queue.shift()!
@@ -639,7 +651,16 @@ describe('the wealth oracle', () => {
       seenAsks.clear()
       for (const id of met) seenAsks.add(id)
     }
-    expectRows(ORACLE, rows)
+    // R4-E9: every row is the recorded one, up to the first year of the answered life in which the family is live. From there the shared
+    // budget keeps one choice back from the wealth asks, so that life asks one less and takes another road (the rng, the ids and the cash
+    // move with it). The recorded rows are the plain engine's, and the plain pass above is still compared to the last digit.
+    const cut = answeredLiveFrom
+    const answeredYear = (label: string): number => (label.startsWith('pop|answered|') ? Number(label.slice('pop|answered|'.length)) : 0)
+    const kept = (r: ParityRow): boolean => cut === null || answeredYear(r.label) < cut
+    const report = compareRows(readRows(ORACLE).rows.filter(kept), rows.filter(kept))
+    expect(report.lines.join('\n'), 'the stamped pass moved a row it should not').toBe('')
+    expect(cut === null || cut > 5, `the family is live from year ${String(cut)} of the answered life: too early to be a replay`).toBe(true)
+    if (cut !== null) expect(rows.filter((r) => !kept(r)).length, 'the rows left out are the answered life from the live year on').toBe(POP_YEARS - cut + 1)
     expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
     expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
   })

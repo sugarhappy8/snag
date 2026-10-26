@@ -21,6 +21,7 @@ import { pickLine } from '../text/pick'
 import { AVOIDING_LINES, VENTURE_LOST_LINES } from '../text/pools'
 import { fillSlots, stateLine } from '../text/state'
 import { logStateLine } from '../text/state-log'
+import { familyRoom, useFamilyAct } from '../society/contract'
 import { askIsStoryline, askPaceKey } from './ask-families'
 import { askDefs } from './wealth-catalog'
 import { askedPurse, wholePurse } from './purses'
@@ -71,11 +72,17 @@ export function yearlyWealth(g: GameState): void {
   if (tier >= 1 && budget > 0) queueRequests(g, tier, budget)
 }
 
-/** Most request popups this year: by tier, never more than WEALTH_POPUP_CAP, one letter in prison. */
+/**
+ * Most request popups this year: by tier, never more than WEALTH_POPUP_CAP, one letter in prison. On a life the social stamp marks the
+ * family choices share three a year (society/budget.ts), so the old cap sits inside what the budget has left for wealth: min(old, room),
+ * where room is 3 less the reserve and less what wealth and the luxury choice have spent (R4-E9, X40). A life that is not stamped has
+ * no room limit and gets the old number to the digit. This is a number, not a spend: the spend is made where a choice is queued.
+ */
 export function popupBudget(g: GameState, tier: number): number {
   if (tier <= 0) return 0
   const cap0 = Math.min(WEALTH_POPUP_CAP, TIER_POPUP_CAP[Math.min(tier, TIER_POPUP_CAP.length - 1)] ?? WEALTH_POPUP_CAP)
-  return g.character.prison ? Math.min(1, cap0) : cap0
+  const old = g.character.prison ? Math.min(1, cap0) : cap0
+  return Math.min(old, familyRoom(g, 'wealth'))
 }
 
 // ---------------------------------------------------------------------------
@@ -273,6 +280,8 @@ function kidsYear(g: GameState): void {
 function askAboutGrownKids(g: GameState): number {
   const grown = g.people.filter((p) => p.alive && isDescendant(p) && p.age >= 18 && !readTies(g, p).adultOk && readTies(g, p).allowance > 0)
   if (!grown.length) return 0
+  // a choice of the family: it takes one of the year's three, and a stamped life with none left does not get the question this year
+  if (!useFamilyAct(g, 'wealth')) return 0
   const names = grown.map((p) => p.firstName).join(' and ')
   const total = grown.reduce((s, p) => s + readTies(g, p).allowance, 0)
   scriptChoice(
@@ -373,13 +382,19 @@ function queueRequests(g: GameState, tier: number, budget: number): void {
     else big.push(a)
   }
   // Every ask that is presented notes its family, whether it is a popup, a part of a bundle or sent to a secretary's inbox.
+  // The shared budget is spent here, before presentAsk and presentBundle can hand an ask to a secretary's approval inbox, so an inbox ask
+  // takes a slot as well (that only tightens the budget; it never lets it pass three). One spend for each big ask, one for the bundle (or
+  // the one small ask): a choice that finds no slot is dropped, not kept for next year (R4-E9, X40, C13).
   for (const a of big) {
+    if (!useFamilyAct(g, 'wealth')) continue
     noteAsk(g, a)
     presentAsk(g, a)
   }
-  for (const a of small) noteAsk(g, a)
-  if (small.length === 1) presentAsk(g, small[0])
-  else if (small.length > 1) presentBundle(g, small)
+  if (small.length > 0 && useFamilyAct(g, 'wealth')) {
+    for (const a of small) noteAsk(g, a)
+    if (small.length === 1) presentAsk(g, small[0])
+    else presentBundle(g, small)
+  }
 }
 
 /**

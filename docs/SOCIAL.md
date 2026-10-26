@@ -317,6 +317,64 @@ switch); `q` and `k` stay only for a link kind in `HEIR_KEEP_KINDS` (`kin`, X28)
 old number. The answer goes back through `normalizeEdges`: a hostile map copies to a valid one and 100 times any cap comes out inside
 `EDGE_CAPS`.
 
-## 12. What the next tasks add here
+## 12. The family-act budget (R4-E9, X40, X41, C13, C14, C15)
 
-- R4-E9 to E16: the family-act budget, the acts, loans, secrets, feuds, staff.
+A life the social stamp marks shares three family choices a year. Before R4 each source counted for itself: the wealth asks 3, the
+luxury choice 1, nepo 2 and the will 1, so a rich family life could be put 3 + 1 + 2 + 1 times in a year. The shared counter is
+`g.yearActions['fam.act']`, reset with the other year actions (`aging.ts`, and the hand-over in `life.ts`), and the old caps stay
+inside it as `min(old, room)`. A life that is not stamped has no counter: `useFamilyAct` is true and writes nothing, so every v5.2.0
+save and every heir of one keeps today's numbers. The code is `society/budget.ts`; other domains reach it through `society/contract.ts`.
+
+**The unit is a choice.** A notice is not counted (notices keep the year close's own budget of 5). So the one outcome notice of the
+family company spends its local `nepo.pop` cap and no shared slot. A choice that finds no slot is dropped, not deferred: the year
+close keeps these scripts and counts them first, `DEFERRABLE_SCRIPTS` is the three literals it was, and a family choice that waits
+a year changes the thing it asks about.
+
+**The calls.**
+- `useFamilyAct(g, source)` spends one slot for a choice about to be queued, `source` one of `wealth`, `use`, `nepo`, `will`, `social`;
+  false when none is left, and then the caller drops the choice.
+- `familyRoom(g, source)` is the pure look before the spend: how many more choices that source may queue now (Infinity when the life is
+  not stamped). `popupBudget` and `useChoicePopup` use it, because they must not let a local cap go before the shared one has said yes.
+- `familyLive(g)` is pure and reads only the world (edges, `edge-legacy`, `holdings`, `firms`), `core` and the kernel. It is true when
+  someone is cut out of the will (the ego's `data.wl` record says `cut`, or the edge to the player carries a `cut_from_will` memory that
+  no `restored_to_will` has answered, for a living person), when `liveFeuds(g) > 0` or `openDebts(g) > 0`, or when a living relative's
+  raw job key `data.nepo` (a plain object with a non-empty text `assetId`) names a firm that the firms index lists and the holdings
+  table gives the player a share of. The index is the frame the last year closed on, so a firm hired into this year counts from next year.
+
+**The reserve.** When `familyLive(g)`, one of the three is held back from the two sources that run before `nepo` in the money phase,
+`wealth` (money 70) and `use` (the luxury choice, money 80): between them they may spend at most 3 less the reserve, counted in
+`g.yearActions['fam.early']`. So `nepo` (90), `will` (100) and `social` (the close) can still take the third. Without that rule the
+luxury choice would take it first and the reserve would protect nothing. A life with none of the three stakes has no reserve and
+draws exactly the wealth popups it always had; a test holds that against the recorded E3 rows, year by year.
+
+**Where it is spent** (each only where a choice is queued):
+
+| Source | Place | One spend for |
+|---|---|---|
+| `wealth` | `events/wealth.ts queueRequests` | each big ask, and one for the bundle (or the one small ask), made before `presentAsk` and `presentBundle` can hand the ask to a secretary's inbox, so an inbox ask takes a slot too |
+| `wealth` | `events/wealth.ts askAboutGrownKids` | the "All Grown Up" popup |
+| `use` | `shops/luxury-family.ts yearlyFamilyUse` | the year's one decision (a crash, a pawned watch, a party), just before it runs |
+| `nepo` | `business/nepo-year.ts useChoicePopup` | the ask (`nepo-asks.ts`), the life event (`nepo-life.ts`) and the baton prompt |
+| `will` | `events/will-feud.ts tryScene` | the scene, together with `will.scene` |
+| `social` | the close | the acts of R4-E10b, E11 and E12 (a lender calls, a secret leaks, a falling out) |
+
+`usePopup` keeps meaning the local `nepo.pop` cap. `useChoicePopup` checks the room, spends the local cap, then the shared key. The
+baton prompt spends before it marks `handYear`, so a prompt the budget refuses leaves the year alone and the question comes next year.
+A falling out (E12) needs both a slot and `will.scene` unspent, so there is one scene a year across the two ladders.
+
+**The pace engine `kin`.** `PaceEngine` gains `kin`, a closed list `KIN_FAMILIES` of three: `pop.kin.feud`, `pop.kin.lender` and
+`pop.kin.leak`. `PACE.maxFamilies` goes from 60 to 80 and `TEXT_MEM_LIMITS.families` from 120 to 160, once for the release (X41): 63 of
+the 80 are declared, 17 are left for R5 and R6. At 160 families a full text memory is 725 JSON nodes, so the ceilings in
+`test/text-memory.test.ts` and `test/notice-acceptance.test.ts` are 740. `docs/QUIET.md` has the rule for adding a family.
+
+**Proof.** `test/family-budget.test.ts`: the counter and its bounds; `familyLive` clause by clause; each spend point alone; a scripted
+saturated year in which every source is eligible at once (exactly 3 queued, counted by script id; wealth and use at most 2 together;
+the reserved slot to nepo, will or social; every later call false; the outcome notice not counted; a falling out and `will.scene`
+never both), then each of nepo, will and social alone; 30 years of the tier-4 household against the E3 rows; 40 years through
+`ageUp` with a second run of each yearly entry. The whole-life canaries (`golden-digest`, `kernel-parity`, `r2-codemod-parity`) pass
+unchanged, which is the proof that an unstamped life does not move.
+
+## 13. What the next tasks add here
+
+- R4-E10a to E16: the acts, loans, secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
+  (`social` at the close) and adds its export line to `society/contract.ts`.

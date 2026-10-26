@@ -29,6 +29,7 @@ import { addHeat, insuredNow, revealAuth, showOffFame } from './luxury-brands-de
 import { authOf, claimPayout, deductibleOf, isFake, marketValue, syncValue } from './luxury-brands-value'
 import { field, num, obj, str, strList } from './luxury-common'
 import { staffRoster } from './luxury-staff'
+import { useFamilyAct } from '../society/contract'
 
 // ---------------------------------------------------------------------------
 // Who and what
@@ -661,5 +662,7 @@ export function yearlyFamilyUse(g: GameState): void {
   } else if (calm.length) {
     log(g, pickLine(g, ['My family enjoyed my things this year.', 'My family made good use of my things this year.']), 'good')
   }
-  if (decision) decision()
+  // The one decision of the year (a crash, a quietly pawned watch, a party gone wrong) is a choice of the family: on a stamped life it takes
+  // one of the year's three, and the reserve keeps wealth and this choice to two between them. A loser is dropped with its effects, not kept (R4-E9)
+  if (decision && useFamilyAct(g, 'use')) decision()
 }

@@ -16,7 +16,7 @@ import { readJob, readPast } from './nepo-job'
 import { driveOf, outlookFor, outlookText } from './nepo-model'
 import { materialize, pseudoId, planHire, planProposal, hireRelative, rollOutsider, CUSHY_PAY_MULT, type HireOpts, type Outsider } from './nepo-actions'
 import { familyOf, hireBlock, isRelative, kinWord, readFamily } from './nepo-state'
-import { popupRoom, usePopup } from './nepo-year'
+import { popupRoom, useChoicePopup } from './nepo-year'
 import { bizOf, businessAssets, findBusiness, stakeValue, type BizState } from './state'
 import { clampN, money, num, rec, str } from './util'
 
@@ -460,7 +460,7 @@ export function askRound(g: GameState): void {
   if (g.year - fam.askYear < 2) return
   const askers = rollAskers(g, top.b)
   if (askers.length === 0) return
-  if (!usePopup(g)) return
+  if (!useChoicePopup(g)) return
   familyOf(top.b).askYear = g.year
   for (const k of askers) {
     if (k.pid) {
