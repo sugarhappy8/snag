@@ -27,6 +27,8 @@
 import './economy/slice'
 // The Met shard's entity slice (R4-S5): `world.met` in the chunk `entities`, a tap that touches one person writes one chunk.
 import './world/met-slice'
+// The edge map's entity slice (R4-E6b): `world.edges` in the chunk `entities`, the same pattern as the Met store's.
+import './world/edges-slice'
 import { normalizeLedger } from './kernel/ledger'
 import { defineSlice } from './kernel/slices'
 // The world's registration hub, for its effect: normalizeWorld keeps a shard only when it is registered, so a process that reads a

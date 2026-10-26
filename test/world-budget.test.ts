@@ -10,12 +10,14 @@ import { checkLedger, LEDGER_CAPS, peekLedger } from '../src/game/kernel/ledger'
 import { REASONS } from '../src/game/kernel/reasons'
 import type { GameState } from '../src/game/types'
 import { WORLD_BUDGET, budgetReport, resetBudgetReport, timed, worldBudget } from '../src/game/world/budget'
-import { FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS, MET_CAPS, WORLD_ALLOTMENT, WORLD_DROP_FIRST, WORLD_KEEP_LAST, WORLD_NODE_CAP } from '../src/game/world/caps'
+import { EDGE_CAPS, FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS, MET_CAPS, WORLD_ALLOTMENT, WORLD_DROP_FIRST, WORLD_KEEP_LAST, WORLD_NODE_CAP } from '../src/game/world/caps'
+import { normalizeEdges } from '../src/game/world/edges'
 import { FIELD_IDS, FIELDS } from '../src/game/world/frontier-fields'
 import { normalizeFrontier } from '../src/game/world/frontier'
 import { worldProblems } from '../src/game/world/invariants'
 import { normalizeMet } from '../src/game/world/met'
 import '../src/game/world/shards'
+import { normalizeSocial } from '../src/game/world/social'
 import { normalizeWorld, readWorld, registerShard } from '../src/game/world/state'
 import { yearlyWorld } from '../src/game/world/yearly'
 import { K_ID, loadSources } from './scan-kit'
@@ -326,10 +328,10 @@ describe('a synthetic world at every cap', () => {
 // ---------------------------------------------------------------------------------------------------------------------------
 // R4-P2 (X47): the world at the caps of the whole of R4
 //
-// `met` is the real shard since R4-S4: `metAtCaps` builds it at MET_CAPS, 400 records and 200 tombstones, and the reader keeps all of
-// it. `edges` and `social` (E6b, E7) are not registered shards yet, so a reader would drop them; the budget meter reads the raw world
-// and counts them. Until those tasks land, stand-ins at the node counts of the plans' own caps carry the measurement; E6b replaces
-// each stand-in with the real builder at its caps (EDGE_CAPS) and keeps the assertions.
+// `met` is the real shard since R4-S4 (`metAtCaps`), and `edges` and `social` are the real shards since R4-E6b (`edgesAtCaps`,
+// `socialAtCaps`): each builder holds its shard at its caps, valid, so its reader returns it as itself and nothing in the group is
+// a stand-in any more. The R2 `maximalWorld` builder is unchanged on purpose (S4 left it alone for the same reason: its "keep only the
+// books" case would otherwise change); `r4Worst` is the builder that holds every cap at once.
 
 /** Real-length names, so the bytes are a real figure and not a minimum. */
 const FIRST = ['Maribel', 'Okonkwo', 'Takeshi', 'Ingrid', 'Rashid', 'Bao', 'Odalys', 'Lennart']
@@ -354,33 +356,50 @@ function metAtCaps(year: number): Record<string, unknown> {
 }
 
 /**
- * `edges` at its caps: 1,200 edges of 8 nodes (7 numbers and the edge), 1,200 memory arrays, 4,000 memories in all, `n` and `d` on 120
- * edges (16 nodes each), 12 feuds, 40 debts, and the 40 secrets that live in the same map (13 nodes each): about 17,500. `social`: 16
- * nodes. Both are stand-ins until E6b.
+ * The real edge map at its caps (R4-E6b): 1,200 edges of 8 nodes (an edge and its seven numbers), 1,200 memory arrays with 4,000 memories
+ * in all, `n` and `d` on the 120 most salient edges (16 nodes each), 12 feuds, 40 debts, and the 40 secrets that live in the same map
+ * (13 nodes each): 17,529 nodes. This is the model of the plan's allotment; the larger worst case, with a link kind and a call-in stamp
+ * on every edge, is 19,929 and is counted in test/world-edges.test.ts and test/world-edge-slice.test.ts. Keys ascend, so `normalizeEdges`
+ * returns it as itself.
  */
-function r4StandIns(year: number): Record<string, unknown> {
-  const edges: Record<string, unknown> = {}
-  for (let i = 0; i < 1_200; i++) {
+function edgesAtCaps(year: number): Record<string, unknown> {
+  const kinds = ['gift_given', 'loan_given', 'told_gently', 'kept_secret']
+  const entries: [string, unknown][] = []
+  for (let i = 0; i < EDGE_CAPS.edges; i++) {
+    const strong = i < EDGE_CAPS.talkEdges
     const e: Record<string, unknown> = {
-      t: 55, f: 62, r: 48, s: 12, o: -5, y: year - 20, l: year,
-      m: Array.from({ length: i < 1_000 ? 4 : 0 }, (_, k) => `betrayal.${year - k}.7.t`),
+      t: 55,
+      f: strong ? 100 : 40 + (i % 60),
+      r: 48,
+      s: strong ? 100 : i % 7,
+      o: (i % 21) - 10,
+      y: year - 20,
+      l: year,
+      m: Array.from({ length: i < 400 ? 4 : 3 }, (_, j) => `${kinds[j]}.${year - 40 + j * 2}.1.e`),
     }
-    if (i < 120) {
-      e.n = Array.from({ length: 6 }, (_, k) => `cb.${k}${i}`)
+    if (strong) {
+      e.n = Array.from({ length: 6 }, (_, k) => `cb${k}`)
       e.d = Array.from({ length: 8 }, (_, k) => k + 1)
     }
-    if (i < 12) e.q = [2, year - 3, 5]
-    else if (i < 52) e.dv = [12_000, 5, year - 2, 0, 3_000]
-    edges[`person:p${pad(i, 4)}>person:p${pad((i + 1) % 1_200, 4)}`] = e
+    if (i < EDGE_CAPS.feuds) e.q = [1 + (i % 4), year - 3, 5]
+    if (i < EDGE_CAPS.debts) e.dv = [12_000 + i, 5, year - 2, i % 2, 3_000]
+    entries.push([`person:p${pad(i, 4)}>person:p${pad((i + 1) % EDGE_CAPS.edges, 4)}`, e])
   }
-  for (let i = 0; i < 40; i++) edges[`secret:${i}`] = { a: `person:p${pad(i, 4)}`, k: 'debt', v: `person:p${pad(i + 1, 4)}`, h: Array.from({ length: 6 }, (_, k) => `person:p${pad(k, 4)}`), y: year, p: 1 }
-
-  const ms: Record<string, number> = {}
-  for (let i = 0; i < 12; i++) ms[`m${i}`] = 100 + i
-  return { met: metAtCaps(year), edges, social: { s: 1, ay: year, ms } }
+  for (let i = 0; i < EDGE_CAPS.secrets; i++) entries.push([`secret:${i}`, { a: `person:p${pad(i, 4)}`, k: i % 2 === 0 ? 'debt' : 'affair', v: 1 + (i % 5), h: Array.from({ length: EDGE_CAPS.holders }, (_, k) => `person:p${pad(k, 4)}`), y: year - 5, p: year - 1 }])
+  entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+  return Object.fromEntries(entries)
 }
 
-/** The worst case of the whole of R4: the R2 maximal world, the frontier, the facts and the lod shard of R3, the real `met` and the stand-ins. */
+/** The real social stamp at its caps (R4-E6b): v, on, y, fy, ay, and three mentor pairs: 16 nodes. */
+function socialAtCaps(year: number): Record<string, unknown> {
+  return { v: 1, on: 1, y: year, fy: year - 30, ay: year, ms: [['person:p0001', 41.5], ['person:p0002', 55], ['person:p0003', 63.25]] }
+}
+
+function r4StandIns(year: number): Record<string, unknown> {
+  return { met: metAtCaps(year), edges: edgesAtCaps(year), social: socialAtCaps(year) }
+}
+
+/** The worst case of the whole of R4: the R2 maximal world, the frontier, the facts and the lod shard of R3, and the real `met`, `edges` and `social` at their caps. */
 function r4Worst(year: number): Record<string, unknown> {
   const frontier: { v: 1; y: number; f: Record<string, unknown> } = { v: 1, y: 2035, f: {} }
   for (const id of FIELD_IDS) {
@@ -411,11 +430,10 @@ describe('the world at the caps of R4 (R4-P2, X47)', () => {
     return worldBudget(g)
   }
 
-  it('has met at its caps (10,401 nodes, the real shard) and the stand-ins at the node counts of the plans: edges and secrets about 17,500, social 16', () => {
+  it('has met at its caps (10,401 nodes), edges and secrets at theirs (17,529) and social at its own (16): the real shards, no stand-in', () => {
     const b = measured()
     expect(b.nodes.met).toBe(10_401)
-    expect(b.nodes.edges).toBeGreaterThan(17_000)
-    expect(b.nodes.edges).toBeLessThan(18_000)
+    expect(b.nodes.edges).toBe(17_529)
     expect(b.nodes.social).toBe(16)
   })
 
@@ -443,12 +461,14 @@ describe('the world at the caps of R4 (R4-P2, X47)', () => {
     expect(b.total).toBeGreaterThan(40_000)
   })
 
-  it('is read whole by the shards that exist: the frontier, the facts, the lod shard and met come back as themselves', () => {
+  it('is read whole by the shards that exist: the frontier, the facts, the lod shard, met, edges and social come back as themselves', () => {
     const raw = r4Worst(2030)
     expect(normalizeFrontier(raw.frontier)).toBe(raw.frontier)
     expect(normalizeMet(raw.met)).toBe(raw.met)
+    expect(normalizeEdges(raw.edges)).toBe(raw.edges)
+    expect(normalizeSocial(raw.social)).toBe(raw.social)
     const out = normalizeWorld(JSON.parse(json(raw)))
-    for (const name of ['ledger', 'people', 'firms', 'homes', 'holdings', 'lod', 'facts', 'frontier', 'met']) expect(out[name], name).toEqual(raw[name])
+    for (const name of ['ledger', 'people', 'firms', 'homes', 'holdings', 'lod', 'facts', 'frontier', 'met', 'edges', 'social']) expect(out[name], name).toEqual(raw[name])
   })
 
   it('puts every shard of v5.2.0 in a class of the over-cap order', () => {
@@ -484,6 +504,33 @@ describe('the real met shard over the cap (R4-S4, X47)', () => {
     const fits = normalizeWorld({ ...maximalWorld(2030), met })
     expect(Object.keys(fits).sort()).toEqual(['firms', 'holdings', 'homes', 'ledger', 'met', 'people', 'v', 'y'])
     expect(fits.met).toBe(met)
+  })
+})
+
+describe('the real edges and social shards over the cap (R4-E6b, X47)', () => {
+  it('go with the books and the holdings, never with the stray shard nor the indexes: they come through whole at their caps', () => {
+    registerShard('stray', STRAY)
+    const edges = edgesAtCaps(2030)
+    const social = socialAtCaps(2030)
+    const world: Record<string, unknown> = { ...maximalWorld(2030), edges, social, stray: Array.from({ length: WORLD_NODE_CAP }, () => 1) }
+    const out = normalizeWorld(world)
+    expect(Object.keys(out).sort()).toEqual(['edges', 'holdings', 'ledger', 'social', 'v', 'y'])
+    expect(out.edges).toBe(edges)
+    expect(out.social).toBe(social)
+    // With the stray gone and the indexes kept, the world fits, and both shards are still all there.
+    const fits = normalizeWorld({ ...maximalWorld(2030), edges, social })
+    expect(Object.keys(fits).sort()).toEqual(['edges', 'firms', 'holdings', 'homes', 'ledger', 'people', 'social', 'v', 'y'])
+    expect(fits.edges).toBe(edges)
+    expect(fits.social).toBe(social)
+  })
+
+  it('stay under the budget with met beside them, and the meter finds nothing over', () => {
+    const g = makeTestGame(7, { age: 40, money: 50_000 })
+    setWorld(g, { ...maximalWorld(g.year), met: metAtCaps(g.year), edges: edgesAtCaps(g.year), social: socialAtCaps(g.year) })
+    const b = worldBudget(g)
+    expect(b.over).toEqual([])
+    expect(b.nodes.edges).toBe(17_529)
+    expect(b.total).toBeLessThan(WORLD_BUDGET.nodes)
   })
 })
 

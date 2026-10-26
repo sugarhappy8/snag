@@ -6,8 +6,9 @@ stamp and the slice; R4-E7 the mirror and the yearly step; the later tasks of th
 section below says otherwise, `docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md` section 3.1 is the authority for every
 name and signature. Plain hyphens only: no long dashes anywhere in this file.
 
-Nothing in this part is stored or written yet. `world/edges.ts` and `world/edge-memory.ts` are pure code in layer 2 (`world/`): no
-`g.rng`, no clock, no write, no shard registered. A life is not touched by them.
+Sections 1 to 5 are pure code: `world/edges.ts` and `world/edge-memory.ts` are in layer 2 (`world/`) and draw no number, read no clock
+and write nothing. Sections 6 to 8 (R4-E6b) are the writer, the stamp and the slice: `world/edge-write.ts`, `world/social.ts` and
+`world/edges-slice.ts`. Nothing in the game calls the writers yet, so a life is not touched by them until R4-E7 stamps new lives.
 
 ## 1. The edge
 
@@ -90,7 +91,8 @@ widens the predicate to `isBound` with the person-level cases.
 `edgeProblems(raw, people?, ego?)` names every fault of a stored map in one line each (60 lines at most, then a count of the rest):
 shape, ranges, empty or over-long lists, unknown or malformed memories, keys out of order, a bad feud, debt or secret, and every cap.
 It is empty exactly when `normalizeEdges` gives the map back as itself. With `people` and `ego` it also names an edge `person>ego`
-of a person who is not a pet whose `f` differs from `Person.relationship`. E6b wires it into the world invariant.
+of a person who is not a pet whose `f` differs from `Person.relationship`. `worldProblems` (`world/invariants.ts`) prints each line as
+`edges: ...`.
 
 ## 4. The reads
 
@@ -129,8 +131,75 @@ the full 25, and every row moves something. A row is read from the first end's s
 memory. The table is written for the usual direction of each kind, and `by` does not flip it. The values are in the source; after R4
 a changed value needs a `RECORD_REASON`, a row in `moved-tests.md` and the lead's OK (cross-check section 3.3, X57).
 
-## 6. What the next tasks add here
+## 6. The writer (R4-E6b)
 
-- R4-E6b: the writer `putEdge` and `remember`, the `social` stamp and the `world.edges` entity slice.
+`world/edge-write.ts` is the one place `g.world.edges` is written. It is layer 2, draws no number and books no dollar.
+
+**`putEdge(g, key, patch)`** merges the patch into the edge under `key`, or removes the edge for `null`. It returns true when the map
+holds the edge as asked (written, already so, or nothing to remove) and false when the write was refused and nothing was written.
+
+- The key must be an edge key: both ends parse, 140 characters at most, exactly one `>`. A secret key is no edge key.
+- The patch must be a plain object. A new edge needs all seven of `t f r s o y l`; an edge that is there keeps the fields the patch
+  leaves out. The merged edge is read back through the normalizer, so a number out of range is cut, a field that is not valid is
+  dropped, an unknown key is ignored and `undefined` clears an optional field. A required field that cannot be read refuses the write.
+- Nothing is written when the edge comes out as it was.
+- The root is replaced, never edited. Keys stay ascending (a sorted insert), every entry that is not touched is the same object, and
+  what is stored is frozen: the root, the new edge and its lists. A list the caller passed is copied, never frozen in place. A stray
+  in-place write on a stored root is a `TypeError`, which is the alarm the Save track relies on.
+- A new edge in a map of 1,200 evicts the lowest-salience edge that is not bound (`edgeLocalBound`; among equals the highest key, as the
+  normalizer cuts). The edge being written is kept. If all 1,200 are bound, the write is refused.
+- A feud on a 13th edge, a debt on a 41st, the dialogue store (`n`, `d`) on a 121st are refused, not cut: a cut would take the field
+  from an edge the caller did not name. Memories are kept at 4,000 by eviction, as the normalizer does it: the oldest unpinned memory
+  of the lowest-salience edge goes first, and a pinned one only when no unpinned memory is left anywhere.
+- A root this file wrote is known to be valid and is not read again; any other root (a load, a clone, a hostile save) is normalized
+  once before it is trusted.
+
+**`remember(g, who, kind, o)`** makes a memory and applies what the kind does, once. `who` is a Person (named by `personEntity`) or an
+`EntityRef`; the edge is `who > (o.with ?? the player)`. `o.w` is 1 (the default), 2 or 3 and `o.by` is `'ego'` (the default) or `'them'`.
+
+- It does nothing, and returns false, unless `socialOn(g)`. It also does nothing for an unknown kind, a weight or side that is not
+  allowed, an end that is not a ref, a person with no name (`pool:other`) and a year that is not a year.
+- It writes the memory string `kind.year.weight.by` (in year order) and applies `MEMORY_FX[kind]` once to `t`, `r`, `s` and `o`,
+  scaled by weight / 3, cut to the field ranges and rounded to hundredths so a stored number stays short.
+- A second call of the same kind on the same edge in the same year writes nothing: no second memory and no second effect.
+- An edge it makes starts at `t` 50, `r` 50, `s` 0, `o` 0, with `y` and `l` this year. Its `f` is the Person's relationship when the
+  edge points at the player (the affection invariant), else 50. An edge that is there keeps its `f` and `y`; `l` becomes this year.
+- 8 memories an edge (the oldest unpinned first) and 4,000 in all.
+
+## 7. The stamp (R4-E6b, X6)
+
+A life plays the social track when `g.world.social` is there. The shard is `{ v: 1, on: 1, y, fy }` with two optional fields: `ay`,
+the year `society.acts` last ran, and `ms`, the mentor baseline, at most 3 `[person ref, skill]` pairs with a skill of 0 to 100.
+`y` is the year the yearly edge step last ran and `fy` the year of the stamp. It is 5 nodes, 16 with a full baseline, and a derived
+row of the `world` chunk (it changes once a year, with the world).
+
+`world/social.ts`:
+
+| Name | What it does |
+|---|---|
+| `stampSocial(g)` | writes the shard for this year, once; a life that has it keeps its very shard. `createNewLife` calls it when the build key `social` is on (R4-E7). Every v5.2.0 save, every unstamped life and every heir of one has no `social` key and keeps v5.2.0 behaviour (X6) |
+| `socialOn(g)` | true when the stamp is there and valid. Pure and total on any world |
+| `readSocial(g)` | the shard through its reader, or null |
+| `patchSocial(g, patch)` | the one writer of `y`, `ay` and `ms`: replaces the root, keeps a value that did not change by identity, writes nothing for an unchanged patch, and cannot make the stamp or change `v`, `on` or `fy`. A year that is not a year refuses the whole patch |
+| `normalizeSocial`, `socialProblems` | the reader (total, a valid shard comes back as itself) and every way a stored shard is wrong, printed by `worldProblems` as `social: ...` |
+
+The reader is strict about the stamp: a value that is not a plain object, or whose `v` or `on` is not 1, is no shard and the world
+drops it. A damaged year is repaired from the other one when one is good and the shard is dropped when neither is. Fields are read off
+the object itself, never off its prototype.
+
+## 8. The slice (R4-E6b)
+
+`g.world.edges` is the second entity slice of the game (`world/edges-slice.ts`, the pattern of the Met store in `docs/SAVE.md`): version
+1, chunk `entities`, `entities: { kind: 'edge', shards: 8 }`, `write: 'replace'`, caps of 24,000 nodes and 420,000 characters for all
+eight records together. The codec cuts the map into `e.edge.0` to `e.edge.7` by a hash of the key, so a tap that changes one edge
+writes one chunk and the head, and never the `world` chunk. Eviction can touch a second chunk (the one the victim sits in), and so can
+the 4,000-memory cap. The secrets live in the same map and share its chunks.
+
+The worst case the model can reach is 19,929 nodes and about 310,000 characters, so the row has room. The hash is FNV-1a modulo 8,
+which reads only the low three bits of every character: keys that differ in a few characters can fall unevenly (a test with 1,200
+keys that share a long prefix put about 600 in each of two chunks). Keys of real lives, which differ in a whole id, spread better.
+
+## 9. What the next tasks add here
+
 - R4-E7: the mirror of `Person.relationship`, the yearly step (resentment x0.9, memory decay, orphans) and the stamp in `createNewLife`.
 - R4-E8 to E16: memory writers and odds, the family-act budget, the acts, loans, secrets, feuds, staff.

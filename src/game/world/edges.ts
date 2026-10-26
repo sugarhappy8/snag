@@ -1,5 +1,6 @@
-// The Edge model (R4-E6a, D.3): who feels what about whom, as pure code. Nothing is stored and nothing is written here; E6b adds the
-// writer (world/edge-write.ts), the `social` stamp and the `world.edges` entity slice on top.
+// The Edge model (R4-E6a, D.3): who feels what about whom, as pure code. Nothing is written here; E6b adds the writer
+// (world/edge-write.ts), the `social` stamp (world/social.ts) and the `world.edges` entity slice (world/edges-slice.ts) on top, and
+// the one line at the end of this file that registers the shard, so importing the file is what makes the world keep `edges`.
 //
 // An edge is `first end > second end` and says what the first end feels about the second: trust, affection (it equals
 // Person.relationship for the ego's people, E7 makes that true), respect, resentment, obligation, up to 8 memories, and optionally a
@@ -10,11 +11,11 @@
 //   normalizeEdges(raw)   TOTAL: any value in, a valid map out, never a throw. A map that is already valid comes back as itself.
 //   edgeKey / readEdge / edgesOf / memoriesOf / salience / liveFeuds / openDebts   the pure reads.
 //   edgeLocalBound(e)     bound by the edge alone: a link kind, an unpaid debt, a feud or a pinned memory.
-//   edgeProblems(raw, people?, ego?)   every fault of a stored map, named, for the world invariant (E6b wires it).
+//   edgeProblems(raw, people?, ego?)   every fault of a stored map, named, for the world invariant (world/invariants.ts wires it).
 //
 // The reads take the raw `readWorld(g).edges` and run normalizeEdges on it, cached by the identity of the root (a shard root is
-// replaced, never edited in place, as world/state.ts worldShard assumes), so they work before any shard is registered and E6b's
-// registration changes none of their results. Reads never create g.world, never draw a number and never write.
+// replaced, never edited in place, as world/state.ts worldShard assumes), so they work before the shard is registered and the
+// registration at the end of this file changes none of their results. Reads never create g.world, never draw a number and never write.
 //
 // The caps are EDGE_CAPS (world/caps.ts). The order in which the normalizer enforces them is the one that keeps `edgeLocalBound`
 // true to the stored fields: fields first (each clamped or dropped), then 8 memories an edge, 6 `n` and 8 `d`, then `n` and `d` on
@@ -29,7 +30,7 @@ import type { GameState, Person } from '../types'
 import { EDGE_CAPS } from './caps'
 import { isMemoryKind, isPinnedKind, parseMemory, type Memory } from './edge-memory'
 import { SEEN_MAX, SEEN_MIN, isPlain } from './rows'
-import { readWorld } from './state'
+import { readWorld, registerShard } from './state'
 
 /** What ties two people beyond how they feel. Structural: such an edge is exempt from eviction while the link stands. Append-only (R6 appends); an unknown value is dropped. */
 export const LINK_KINDS = Object.freeze(['kin', 'rival', 'company', 'staff', 'pair'] as const)
@@ -751,3 +752,5 @@ export function edgeProblems(raw: unknown, people?: readonly Person[], ego?: Ent
   }
   return problems.done()
 }
+
+registerShard('edges', { normalize: (raw) => normalizeEdges(raw) })
