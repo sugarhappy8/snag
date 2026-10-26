@@ -222,8 +222,10 @@ describe('a sibling with $3M, a spouse and two kids dies', () => {
     expect(json(g)).toBe(next)
   })
 
+  // The life is scripted: every person below is cast with every field given, so the seed only names the family (X30, as kin-records does).
+  const SCRIPTED_SEED = 17
   it('pays nothing again after a real save and load', () => {
-    const g = socialLife({ seed: 17, year: 1990, countryId: 'us' })
+    const g = socialLife({ seed: SCRIPTED_SEED, year: 1990, countryId: 'us' })
     const dead = withLife(cast(g, 60, 'sibling', { age: 45, gender: 'female', firstName: 'Lena', lastName: g.character.lastName }))
     married(g, dead, 'Ana Ruiz')
     adoptSpouse(g, dead, { gender: 'male' })
