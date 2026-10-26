@@ -61,7 +61,7 @@ An `Estimate` is `{ key, mid, lo, hi, sd, conf, y, src, exact, asOf?, words }`. 
 the relative sd it was built from, `conf` is 3 for an sd of .06 or less, 2 up to .15, 1 up to .30 and 0 above, `y` and `src` are the year
 and source of the reading (`'passive'`, a source id, or `'exact'`), and `exact` is true in Exact mode, for an `own:` key and for a truth
 that cannot be fogged: the caller keeps its old text. `EstimateOpts` is `{ unit?, exp?, ladder?, scale?, talent? }`: `unit` overrides the
-rule row (a `hint:` key has none), `exp` is exposure from 0 to 1 (the player's own presence cuts the passive sd by up to 40%), `ladder`
+rule row (a `hint:` key has none), `exp` is exposure from 0 to 1 (the player's own presence cuts the passive sd by up to 40%; two readers pass it, see the note under the sources), `ladder`
 is the caller's own words for a rough guess (a `Ladder` is a list of `[upper bound, word]`), `scale` is what a signed amount is measured
 against, and `talent` names the talent that sharpens a `hint:` key.
 
@@ -120,13 +120,26 @@ yearly drift of the truth. Later tracks add rows, they never edit these.
 | `peer.*` | score | .25 | .15 | Acting, Modeling |
 | `eco.*` | pct | .05 | .02 | none |
 | `pol.*` | score | .25 | .25 | none |
+| `ppl.looks` | score | .12 | .02 | none |
+| `ppl.health` | score | .22 | .15 | none |
+| `ppl.happiness` | score | .28 | .30 | none |
+| `ppl.smarts` | score | .32 | .03 | none |
+| `ppl.cash` | money | .50 | .25 | none |
+| `ppl.skill` | score | .30 | .08 | none |
+| `ppl.worth` | money | .55 | .20 | none |
 | `ppl.*` | score | .45 | .20 | none |
+| `stf.skill` | score | .20 | .05 | Business |
 | `war.*` | score | .30 | .25 | none |
 | `story.*` | score | .30 | .25 | none |
 | `show.*` | score | .30 | .25 | none |
 
-`ppl`, `war`, `story` and `show` are reserved for R4 to R9 with their numbers already set. A key whose kind has no row is not fogged. An
-`own:` key needs no row and is always exact. A `hint:` key carries no unit of its own: the caller passes `unit` and the talent.
+`war`, `story` and `show` are still reserved for later releases with their numbers already set. R4 (v5.3.0) gave people their rows. What is
+seen every day reads tighter than what is inferred: a face (`ppl.looks`) .12, health .22, a mood .28, a mind (`ppl.smarts`) .32; a private
+number reads wide (`ppl.cash` .50, `ppl.worth` .55); an NPC's craft (`ppl.skill`) is .30. `ppl.*` stays .45 for the rest: traits, the fifteen
+personality stats and ambition. `stf.skill` is the skill of a hired key staff member or a CEO, a key of the form `stf:<asset>:<id>:skill`; it is
+.20 and not tighter, so that an interview reading carried to the sheet (sd .18) is still the sharper one in the year of the hire. A key whose
+kind has no row is not fogged. An `own:` key needs no row and is always exact. A `hint:` key carries no unit of its own: the caller passes `unit`
+and the talent.
 
 ## The record
 
@@ -166,11 +179,13 @@ refused, so nothing averages the noise away, and a different source helps only t
 | `desk` | standing orders only | .14 | .10 | .6 x analyst | as analyst |
 | `lab` | research results only, free | .20 | .15 | 0 | riv, mkt, cmp |
 
-- **Not wired in v5.1.0.** Two parts of the engine have tests and no screen that uses them. `ingestSignal`, the free `news` source, has no
-  caller in the game: no news item yet says something about a key. Exposure (`exp` in `EstimateOpts`, the player's own presence cutting the
-  passive sd by up to 40%) is passed by no screen: no company's presence yet tells more about a rival. Both are a design choice (which item
-  says what about which key, how much presence tells), so they are a follow-up, and `test/knowledge-unwired.test.ts` fails the day a
-  screen uses one, so this note changes with it.
+- **Not wired in v5.1.0.** `ingestSignal`, the free `news` source, has no caller in the game: no news item yet says something about a key,
+  so it is wired by no screen. Exposure (`exp` in `EstimateOpts`, the player's own presence cutting the passive sd by up to 40%) is wired by
+  two readers, the person profile and the hired-staff and CEO reads, and by no screen beyond them. The two readers are
+  `src/game/people-fog.ts` (how long and how well you know someone) and `src/game/business/leader-fog.ts` (tenure). Anything else is a
+  design choice (which item says what about which key, how much presence tells about a rival), so it is a follow-up, and
+  `test/knowledge-unwired.test.ts` lists those two files and fails the day a third one passes `exp:` or a screen calls `ingestSignal`, so
+  this note changes with it.
 - **Price** is `round100(base x [1, 2.2, 4.5][tier - 1] x (1 + .25 (countries - 1)) x clamp(country wealth, .3, 1.5))`: the scope of the
   keys and the wealth of the country read, never the buyer's cash. A hundred times the money pays the same fee. A key kind says its scope
   (tier 1 a business or a street, 2 a country, 3 the world, how many countries, the deal size for diligence). The deal size is for a
@@ -202,11 +217,19 @@ or not. `hazardOf(g)` is the pure read, `settleHazard(g)` the yearly step, idemp
 `knowledgeModule` (`knowledge/module.ts`, id `knowledge.core`, listed first in `modules/index.ts`) adds three things.
 
 - A yearly entry in the aging seam, phase close, order 20. `yearlyKnowledge` returns at once for the dead and for a life with no record; it
-  prunes what can no longer be read, runs the standing orders and settles the heat. A lapse (no cash) logs once and charges nothing.
+  prunes what can no longer be read, forgets the rows of a subject that has left (below), runs the standing orders and settles the heat. A
+  lapse (no cash) logs once and charges nothing.
 - A menu row in the slot `assets.money` at order 45, between the Money Team and Banking: the Intelligence Briefing (`intelBriefingMenu`,
   id `intel.briefing`).
 - A sink bound to the Effort track's reveal hook at load. When research finishes, `applyReveals` gives a `lab` reading to each stored row
   whose key kind lists the researched field in `revealedBy`, at most 12 rows a call, never in Exact mode, once a year per key. The game's own kinds that name research: `riv` (a rival's quality, technology and lines: the `rd.<family>` of each family it sells, the `dt.<trade>` of a deep-tech trade, `studio.engine` for a studio) and `mkt` (a market's size and shares: the same fields over the families sold in it). The other kinds (`scn`, `val`, `sec`, `odds`) have no research that bears on them, so no `revealedBy`.
+
+### Forgetting what left
+
+A key kind may carry a `gone(g, key)` hook: true when the subject of the key has left (a person who is no longer in the book, a staff member
+who was let go). The yearly step calls it for the stored rows, the stalest first, and forgets the rows that answer true, at most 12 a step
+(`FORGET_ROWS`); a kind with no hook keeps its rows and a hook that throws reads as false. A second call in the year changes nothing. The
+`ppl` kind answers true when no person has the key.
 
 ### Standing orders
 
@@ -220,10 +243,12 @@ A key kind is a family of hidden numbers and the one owner who can say what they
 
 1. **Pick the kind and the row.** The kind is a lower case word of at most 12 letters (`mkt`, `riv`). If the kind has a row in the rule table
    already, use it. If not, add one row to `RULES` in `knowledge/keys.ts` (unit, sd0, drift, talents) and a line to the table above.
-2. **Register the owner at module load.** `registerKeyKind({ kind, label, truth, scope?, scale?, revealedBy? })`. `label(g, key)` is the words
+2. **Register the owner at module load.** `registerKeyKind({ kind, label, truth, scope?, scale?, revealedBy?, gone? })`. `label(g, key)` is the words
    a menu prints; `truth(g, key)` is the real value today, or null when there is nothing to read (a rival that left); `scope(g, key)` is the
    `Scope` that prices a source; `scale(g, key)` is what a signed amount is measured against; `revealedBy(g, key)` lists the Effort research
-   fields whose results sharpen the key. The same def twice is fine; a different def for a taken kind throws. A `KeyKind` holds code, not the
+   fields whose results sharpen the key; `gone(g, key)` is true when the subject has left, and the yearly step then forgets what was
+   researched about it. A kind whose keys name a person or a thing with an id checks the key with `parseKey` before it reads anything: a
+   key the contract refuses has no truth, and a screen shows nothing for it, never the exact number. The same def twice is fine; a different def for a taken kind throws. A `KeyKind` holds code, not the
    game, so nothing here is saved.
 3. **Keep the truth honest.** `truth` is a plain read of this year's state: it never draws, never reads a year after `g.year`, and never
    reaches the Investing gut or any market reader (`test/knowledge-fence.test.ts` scans this folder).
@@ -247,7 +272,8 @@ of the folder; an import of `knowledge/mode.ts` or `knowledge/estimate.ts` from 
 - the mode: `infoMode`, `isExact`, `setInfoOverride`, `withInfoMode` and the type `InfoMode`;
 - the record: `KNOW_FLAG`, `KNOW_LIMITS`, `readKnow`, `storedEstimates`, `learn`, `widen`, `forget` and the type `KnowRec`;
 - the sources: `buyIntel`, `takeReading`, `ingestSignal`, `offersFor` and the types `Offer`, `Scope` and `SourceId`;
-- the owners: `registerKeyKind` and the type `KeyKind`;
+- the owners: `registerKeyKind`, the type `KeyKind` and `parseKey` (the grammar of a key, so an owner outside this folder refuses a key
+  that does not parse and does not copy the rule);
 - the screens: `lookCloser` and `intelBriefingMenu`.
 
 ## Guards
@@ -259,6 +285,7 @@ of the folder; an import of `knowledge/mode.ts` or `knowledge/estimate.ts` from 
 | `test/knowledge-sources.test.ts`, `test/knowledge-intel.test.ts` | the floors, the prices, the fees booked once, the repeat refused, the heat |
 | `test/knowledge-hub.test.ts`, `test/knowledge-yearly.test.ts` | Look closer, the hub, the standing orders, the module and the reveal sink |
 | `test/knowledge-fence.test.ts` | no file here reaches the market or the Investing gut; the gut stays behind the talent |
+| `test/people-fog.test.ts`, `test/knowledge-unwired.test.ts` | the people rows, exposure, the `ppl` owner and `gone`; exposure is passed by two files only |
 | `test/knowledge-acceptance.test.ts` | the sweep: coverage of 10,000 draws, the same number twice, a frozen fog life, no year after `g.year`, the books, a 100 year run, the mode never read, these docs |
 | `test/info-mode.test.ts`, `test/info-settings.test.ts` | the mode, Exact through `setupFiles`, the Settings card |
 | `test/ceiling-list.json` rows `intel-floors`, `intel-price`, `know-keys` | a floor, a price scope and the 120 rows, each with a 100x probe |

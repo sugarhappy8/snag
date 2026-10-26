@@ -524,7 +524,8 @@ describe('conf follows the sd', () => {
     // passive .25 beats a row of .4: still conf 1
     expect(rowAt(0.4).conf).toBe(1)
     expect(inFog(() => know(fogGame(60), 'riv:r1:cash', 4e6)).conf).toBe(0) // sd0 .60
-    expect(inFog(() => know(fogGame(60), 'ppl:a:smarts', 50)).conf).toBe(0) // sd0 .45
+    expect(inFog(() => know(fogGame(60), 'ppl:a:smarts', 50)).conf).toBe(0) // sd0 .32 (ppl.smarts)
+    expect(inFog(() => know(fogGame(60), 'ppl:a:kindness', 50)).conf).toBe(0) // sd0 .45 (ppl.*)
   })
 
   it('asOf is the row year, only once the reading is 2 or more years old', () => {
@@ -562,7 +563,16 @@ describe('the rule table', () => {
     ['peer.*', 'score', 0.25, 0.15, ['Acting', 'Modeling']],
     ['eco.*', 'pct', 0.05, 0.02, []],
     ['pol.*', 'score', 0.25, 0.25, []],
+    // R4-U2 (X44): a person's face, health, mood, mind, purse, craft and net worth, and a hired skill; ppl.* stays for the rest
+    ['ppl.looks', 'score', 0.12, 0.02, []],
+    ['ppl.health', 'score', 0.22, 0.15, []],
+    ['ppl.happiness', 'score', 0.28, 0.3, []],
+    ['ppl.smarts', 'score', 0.32, 0.03, []],
+    ['ppl.cash', 'money', 0.5, 0.25, []],
+    ['ppl.skill', 'score', 0.3, 0.08, []],
+    ['ppl.worth', 'money', 0.55, 0.2, []],
     ['ppl.*', 'score', 0.45, 0.2, []],
+    ['stf.skill', 'score', 0.2, 0.05, ['Business']],
     ['war.*', 'score', 0.3, 0.25, []],
     ['story.*', 'score', 0.3, 0.25, []],
     ['show.*', 'score', 0.3, 0.25, []],
