@@ -167,8 +167,10 @@ cd <scratch>/v500 && node_modules/.bin/esbuild scripts/save-fixtures.ts --bundle
 node <worktree>/../bin/slot.mjs heavy -- node <scratch>/fx500.mjs heavy test/fixtures/save-v5.0.0-heavy.json.gz
 ```
 
-The modes are `v402`, `heavy`, `tm` and `idb`. `test/save-v3-schema.test.ts` loads every fixture, brings it up and plays five
-years, in CI every release. The next release adds one fixture and one line there.
+The modes are `v402`, `heavy`, `tm`, `idb` and `social` (R4-E1: a 30-year life with a family, a family firm, a will that cuts a
+child out, a loan and 22 exes, `test/fixtures/save-v5.2.0-social.json.gz`; `test/social-fixture.test.ts` pins what it holds).
+`test/save-v3-schema.test.ts` loads every fixture, brings it up and plays five years, in CI every release. The next release adds one
+fixture and one line there.
 
 ## Adding saved state
 
