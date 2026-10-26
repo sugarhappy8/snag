@@ -89,6 +89,7 @@
     "shops->events": 9,
     "shops->life": 30,
     "shops->special": 4,
+    "society->life": 2,
     "special->activities": 9,
     "special->business": 10,
     "special->charts": 1,

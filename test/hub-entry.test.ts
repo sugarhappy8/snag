@@ -58,6 +58,7 @@ const HUBS: readonly (readonly [string, () => Promise<object>])[] = [
   ['world/edges', () => import('../src/game/world/edges')],
   ['world/social', () => import('../src/game/world/social')],
   ['world/edge-step', () => import('../src/game/world/edge-step')],
+  ['society/module', () => import('../src/game/society/module')],
   ['modules/kin-years', () => import('../src/game/modules/kin-years')],
 ]
 

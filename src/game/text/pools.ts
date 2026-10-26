@@ -247,6 +247,38 @@ export const DONATED_LINES = defineLines('charity.donated', [
   'I pledged {money} to {charity} and paid it.',
 ])
 
+// R4-E10a (D.4): the log lines of the favor acts (society/favor.ts). Each names the person, so a favor reads as someone's. {who} is
+// "my friend Kay" (the one who was asked), {third} the person the word was put in with, {whom} the relative the peace is made with.
+// A line never opens on a slot, because {who} starts with "my". The acts pick a line with their own roll (their plan is pure).
+/** A favor done: {who}. */
+export const FAVOR_DONE_LINES = defineLines('social.favorDone', [
+  'I asked {who} for a favor and got it.',
+  'I called in a favor with {who}, and it was done.',
+  'When I asked, {who} came through.',
+  'I turned to {who} for a favor and got what I needed.',
+])
+/** A favor refused: {who}. */
+export const FAVOR_REFUSED_LINES = defineLines('social.favorRefused', [
+  'I asked {who} for a favor. The answer was no.',
+  'When I asked for help, {who} said no.',
+  "I asked {who} for a hand and didn't get one.",
+  "This time {who} couldn't help me.",
+])
+/** A word put in for the player: {who} spoke up with {third}. */
+export const VOUCH_LINES = defineLines('social.vouch', [
+  'I had {who} put in a word for me with {third}.',
+  'I asked {who} to speak up for me with {third}.',
+  'With {third}, {who} vouched for me.',
+  'I got {who} to vouch for me to {third}.',
+])
+/** A peace brokered: {who} went between the player and {whom}. */
+export const BROKER_LINES = defineLines('social.broker', [
+  'I asked {who} to speak for me to {whom}.',
+  'I sent word to {whom} through {who}.',
+  'Through {who}, I put out a hand to {whom}.',
+  'I had {who} talk to {whom} on my behalf.',
+])
+
 /** A close relative loses a spouse: {who} is "my sister Fatima", {spouse} is the first name of the one who died. Said once, on a stamped life (R4-L4). */
 export const KIN_WIDOWED = defineLines('life.kinWidowed', [
   '{spouse} died this year, and {who} is on their own now.',

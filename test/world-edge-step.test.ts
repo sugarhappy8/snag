@@ -83,14 +83,16 @@ describe('the module world.edges', () => {
     expect(edgesModule.yearly).toEqual([{ seam: 'aging', phase: 'close', order: 5, run: stepEdges }])
   })
 
-  it('is registered in id order, between menus.core and world.facts, and runs right before milestones', () => {
+  it('is registered in id order, between menus.core and world.facts, and runs two entries before milestones (society.acts is between)', () => {
     const ids = MODULES.map((m) => m.id)
     expect(ids).toContain('world.edges')
     expect(ids.indexOf('world.edges')).toBeGreaterThan(ids.indexOf('menus.core'))
     expect(ids.indexOf('world.edges')).toBeLessThan(ids.indexOf('world.facts'))
     expect([...ids].sort(cmp)).toEqual(ids)
     const aging = yearlyEntries('aging').map((e) => e.id)
-    expect(aging[aging.indexOf('yearly.milestones') - 1]).toBe('world.edges')
+    // R4-E10a: the acts (society.acts, close 6) sit between the edge step (close 5) and the milestones (close 10)
+    expect(aging[aging.indexOf('yearly.milestones') - 1]).toBe('society.acts')
+    expect(aging[aging.indexOf('society.acts') - 1]).toBe('world.edges')
     expect(aging.indexOf('world.edges')).toBeGreaterThan(aging.indexOf('yearly.advisors'))
     // the pins of test/kernel-aging.test.ts stay: the first two entries, effort.you after household, knowledge.core after milestones
     expect(aging[0]).toBe('world.frontier')

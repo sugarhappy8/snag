@@ -32,6 +32,12 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   `since`, only the years after the last one seen. A Time Machine jump re-rolls the year it lands in and keeps the finished years.
   Its row in `STREAM_SLICES` is `driven`: no played life holds a kin record until L4 steps with it. Facet 15 of the latent person
   stays reserved and unused.
+- The tag `social` (R4, `society/acts.ts`) is drawn with `outcomeStream` in one place: `actRoll(g, act, key, year = g.year)` is
+  `outcomeStream(g, 'social', year, '<act>|<edge key>')`, and the roll of an act (`ActCtx.roll`) is that generator. The first value
+  decides whether a giver says yes to a favor and the second picks the log line, so a plan stays a pure function of the state. A Time
+  Machine jump re-rolls the year it lands in. `actRoll` does not look at the social stamp. Its row in `STREAM_SLICES` is `driven`: the
+  acts do nothing on the golden lives until the stamp is flipped (E16), so the test calls `actRoll` itself. Code outside `society/` that
+  needs the same luck (E13's staff loyalty) calls `outcomeStream` with the same literal tag.
 - The tag `soc.kin` (R4, `kin.ts`) is not a stream either. `keyedSpouse` reads `streamKey(worldSeed(g), 'soc.kin', year, anchorKey)` with
   `streamUnit(key, facet)`: facet 0 says whether a kin spouse is of the opposite gender (92 percent) and facet 1 is the spouse's birth
   year relative to the anchor's, a whole number from -4 to 4. Facets 2 to 15 are reserved and unused. There is no generator, no `g`,

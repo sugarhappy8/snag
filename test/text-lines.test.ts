@@ -17,9 +17,12 @@ import { STATE_TABLE, type StateSpec } from '../src/game/text/state-table'
 import {
   AIR_RAID_LINES,
   AVOIDING_LINES,
+  BROKER_LINES,
   CHILD_UNCURED_LINES,
   DONATED_LINES,
   ENDORSE_RENEWED_LINES,
+  FAVOR_DONE_LINES,
+  FAVOR_REFUSED_LINES,
   GAVE_LINES,
   HOME_BOUGHT_LINES,
   HOMELESS_LINES,
@@ -29,6 +32,7 @@ import {
   REFUSED_LINES,
   RESIGN_LINES,
   VENTURE_LOST_LINES,
+  VOUCH_LINES,
 } from '../src/game/text/pools'
 
 const EM_DASH = String.fromCharCode(0x2014)
@@ -272,6 +276,11 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'history.airRaid', lines: AIR_RAID_LINES, role: 'log', slots: [] },
   { id: 'health.childUncured', lines: CHILD_UNCURED_LINES, role: 'log', slots: ['label', 'who'] },
   { id: 'finance.homeless', lines: HOMELESS_LINES, role: 'log', slots: [] },
+  // R4-E10a: the favor acts name the person (the giver, and the third person or the relative where there is one).
+  { id: 'social.favorDone', lines: FAVOR_DONE_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.favorRefused', lines: FAVOR_REFUSED_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.vouch', lines: VOUCH_LINES, role: 'log', slots: ['third', 'who'] },
+  { id: 'social.broker', lines: BROKER_LINES, role: 'log', slots: ['who', 'whom'] },
   // R4-L4: a close relative is widowed ({who} is "my sister Fatima", {spouse} the first name of the one who died).
   { id: 'life.kinWidowed', lines: KIN_WIDOWED, role: 'log', slots: ['spouse', 'who'] },
 ]

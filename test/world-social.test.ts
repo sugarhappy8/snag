@@ -402,7 +402,7 @@ describe('socialProblems and the invariants', () => {
 })
 
 describe('a stamped life', () => {
-  it('keeps the stamp through three played years, a clone and a JSON reload, and has no problem (y follows the years)', () => {
+  it('keeps the stamp through three played years, a clone and a JSON reload, and has no problem (y and ay follow the years)', () => {
     const g = createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR })
     expect(socialOn(g)).toBe(false)
     expect(g.world === undefined || !('social' in (g.world as object))).toBe(true)
@@ -414,8 +414,9 @@ describe('a stamped life', () => {
       g.character.conditions = []
       ageUp(g)
     }
-    // R4-E7: the yearly edge step is the writer of `y` (patchSocial), so it follows the calendar; the stamp itself (v, on, fy) never moves
-    const stamp = json({ v: 1, on: 1, y: BIRTH_YEAR + 3, fy: BIRTH_YEAR })
+    // R4-E7: the yearly edge step is the writer of `y` (patchSocial), so it follows the calendar; the stamp itself (v, on, fy) never moves.
+    // R4-E10a: the yearly entry of the acts (society.acts) is the writer of `ay`, the year it last ran, which follows the calendar too
+    const stamp = json({ v: 1, on: 1, y: BIRTH_YEAR + 3, fy: BIRTH_YEAR, ay: BIRTH_YEAR + 3 })
     expect(socialOn(g)).toBe(true)
     expect(json(shardOf(g))).toBe(stamp)
     expect(worldProblems(g).filter((p) => !p.startsWith('ledger: '))).toEqual([])

@@ -11,6 +11,7 @@ import '../fog/hint/lens' // binds the port talents.hintLens (R3-G11); nothing i
 import { effortModule } from '../effort/module'
 import { registerModules, type ModuleDef } from '../kernel/registry'
 import { knowledgeModule } from '../knowledge/module'
+import { societyModule } from '../society/module'
 import { edgesModule } from '../world/edge-step'
 import { factsModule } from '../world/facts'
 import { frontierModule } from '../world/frontier-step'
@@ -23,6 +24,7 @@ export const MODULES: readonly ModuleDef[] = [
   knowledgeModule, // R3-H5: the Intelligence Briefing and the yearly standing orders (ids ascend: effort.you, knowledge.core, then menus.core)
   kinModule, // R4-L4: the yearly step of the kin records, life phase order 37 ('life.kin' sorts between 'knowledge.core' and 'menus.core')
   ...MENU_MODULES, // the rows of the Assets, Shopping and Activities menus (menus.ts imports this file for them)
+  societyModule, // R4-E10a: the yearly entry of the social acts, close phase order 6 ('menus.core' sorts before 'society.acts', which sorts before 'world.edges')
   edgesModule, // R4-E7: the yearly edge step, close phase order 5 ('world.edges' sorts before 'world.facts')
   factsModule,
   frontierModule,

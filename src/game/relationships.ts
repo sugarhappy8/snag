@@ -91,6 +91,7 @@ import { lookCloser } from './knowledge/contract'
 import { lookKeysOf, peopleFog, readPerson, usesProfile } from './people-fog'
 import { holdsFamilyJob, nepoPersonNodes } from './business/nepo'
 import { willPersonNodes } from './events/will-amends'
+import { socialNodes } from './society/contract'
 import { isEstranged, keptAwayBy } from './events/will-core'
 import { familyUseNodes } from './shops/luxury-family'
 import { noteCashGift } from './events/wealth-core'
@@ -3712,6 +3713,9 @@ export function personActions(g: GameState, person: Person): MenuNode[] {
   if (!away) nodes.push(...wealthNodes(g, p, peopleFog() ? fogWords : undefined))
   // Their job at your company (business/nepo.ts) and which of your luxury things they may use (shops/luxury-family.ts).
   if (!away) nodes.push(...nepoPersonNodes(g, p), ...familyUseNodes(g, p))
+  // Favors you can ask and the way back through someone who speaks for you (society/menu.ts); nothing on a life the social stamp doesn't mark.
+  // Before the will's rows, so the way back shows for an estranged person too.
+  nodes.push(...socialNodes(g, p))
   // Their feelings about your will and the ways to make up (events/will-amends.ts).
   nodes.push(...willPersonNodes(g, p))
   // Look closer (R4-U5): pay a private investigator for a sharper read of their smarts, health, mood, cash and craft. Only where the
