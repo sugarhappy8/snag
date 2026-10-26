@@ -16,14 +16,15 @@ import { addRelationship, clamp, formatMoney, netWorth, relationLabel, shortMone
 import { carPriceMult, goodsMult, housingMult, localGoodsMult, nicePrice } from '../assets'
 import { marketOf } from '../data/markets'
 import { realWealthFactor } from '../history/events-people'
-import { getCountry } from '../world'
+import { countryWealth, typicalIncome } from '../world/typical-income'
 import type { GameState, Json, Person, RelationKind } from '../types'
 
 // ---------------------------------------------------------------------------
 // Wealth tiers
 
-/** A typical full-time yearly income in the US today (careers pay US salary x country wealth). */
-export const US_TYPICAL_INCOME = 45_000
+// The typical income lives in the world layer (world/typical-income.ts) so society/ can use it without reaching into events/;
+// these three names stay importable from here.
+export { US_TYPICAL_INCOME, countryWealth, typicalIncome } from '../world/typical-income'
 
 /** Net worth / typical income at which each tier starts: comfortable, rich, very rich, ultra rich. */
 export const TIER_AT: readonly number[] = [25, 80, 400, 4_000]
@@ -44,16 +45,6 @@ export const TIER_MULT: readonly number[] = [1, 1, 2.2, 5, 12]
 
 /** Entitlement at which someone shows the 'spoiled' trait. */
 export const ENTITLED_AT = 60
-
-export function countryWealth(countryId: string): number {
-  const w = getCountry(countryId).wealth
-  return typeof w === 'number' && Number.isFinite(w) ? Math.max(0.08, w) : 1
-}
-
-/** A typical yearly income where the character lives, in this year's real terms (constant dollars). */
-export function typicalIncome(g: GameState, countryId = g.character.countryId, year = g.year): number {
-  return Math.max(1_000, Math.round(US_TYPICAL_INCOME * Math.min(1.6, countryWealth(countryId)) * realWealthFactor(year)))
-}
 
 /**
  * How much richer you look than you are because of what you flash: the watch at the party, the
