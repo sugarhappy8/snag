@@ -1,14 +1,21 @@
 // A person's profile (family, friends, partners, pets, coworkers...) with their stats and
 // the interactions from personActions().
-import { fullName, personAvatar, relationLabel, shortMoney } from '../../game/core'
+//
+// R4-U4: a living person who is not a pet, read in Realistic with `peopleProfile` on (usesProfile of people-fog.ts), gets the profile of
+// PersonProfile.tsx, a lazy chunk (src/ui/people/lazy.tsx). While it loads, and if it fails to load, the sheet is the hero alone: the old bars
+// would print the true stats. Exact, a life with the flag off, a pet and the dead keep today's markup below, unchanged.
+import { personAvatar, shortMoney } from '../../game/core'
 import { FLAGS } from '../../game/flags'
+import { usesProfile } from '../../game/people-fog'
 import { personActions } from '../../game/relationships'
 import type { GameState, MenuNode, Person } from '../../game/types'
 import { Breadcrumbs, crumbsOf } from '../nav/Breadcrumbs'
 import { recentFromSpot } from '../nav/place'
 import { recordRecent } from '../nav/prefs'
+import { PersonProfileLazy } from '../people/lazy'
 import { useApp } from '../store'
 import { groupChildren, groupHeader, MenuRows, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape, type MenuSpot } from './MenuList'
+import { PersonHero, personName, personSubtitle } from './PersonHero'
 import { Sheet } from './Sheet'
 import { StatBar } from './StatBar'
 
@@ -23,21 +30,8 @@ export interface PersonSheetProps {
   onLeave?: (spot: MenuSpot) => void
 }
 
-/** Display name: pets and people without a last name use the first name only. */
-export function personName(p: Person): string {
-  return p.relation === 'pet' || !p.lastName ? p.firstName : fullName(p)
-}
-
-function ageText(age: number): string {
-  return age === 1 ? '1 year old' : `${age} years old`
-}
-
-/** "Mother · 45 years old" / "Dog · 3 years old" / "Father · Deceased (age 71)" */
-export function personSubtitle(p: Person): string {
-  const rel = relationLabel(p)
-  if (!p.alive) return `${rel} · Deceased (age ${p.age})`
-  return `${rel} · ${ageText(p.age)}`
-}
+// The name and the subtitle live in PersonHero.tsx (the lazy profile draws the same hero and must not import this file: see there).
+export { personName, personSubtitle }
 
 export function safeActions(g: GameState, p: Person): MenuNode[] {
   try {
@@ -69,6 +63,7 @@ const DATA_STATS: [string, string, string][] = [
 
 export function PersonDetails({ g, person }: { g: GameState; person: Person }) {
   const p = person
+  if (usesProfile(p)) return <PersonProfileLazy g={g} person={p} fallback={<PersonHero person={p} />} />
   const pet = p.relation === 'pet'
   const chips: string[] = []
   if (p.livesWithPlayer && p.alive) chips.push('🏠 Lives with you')
