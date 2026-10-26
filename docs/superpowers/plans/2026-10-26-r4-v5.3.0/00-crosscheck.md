@@ -1090,7 +1090,7 @@ Every plan: a new banner and a closing section "Cross-check amendments". Inline 
 
 ## Appendix A. The graph check (run for section 1.6)
 
-Run with `node graph.mjs`. Rows are `[id, track, lane, dependsOn, sourceLines, testLines]` from section 1.2. It checks duplicate ids, missing dependencies, a cycle (Kahn's algorithm: every node must be reached), lane order (each task of a lane must reach the one before it, directly or through other tasks), and prints the waves, the longest chain by count and by lines, and the totals. Output of the run for this file, after the review: 56 tasks (50 planner, 6 lead), `acyclic: true`, no missing or duplicate id, no lane problem, longest chain 17 tasks (P1 S1 S2 S3 S4 S5 E6 E7 E8 E10 L6 L9 L10 L11 L12 E16 P6), 14,105 source and 26,280 test lines (planner 14,055 and 26,130; lead 50 and 150), the largest task 850 source lines (E10), the largest unordered set 12 tasks, 14 planner lanes. Before the review the same script gave 14,005 and 25,590 and a largest task of 840.
+Run with `node graph.mjs`. Rows are `[id, track, lane, dependsOn, sourceLines, testLines]` from section 1.2. It checks duplicate ids, missing dependencies, a cycle (Kahn's algorithm: every node must be reached), lane order (each task of a lane must reach the one before it, directly or through other tasks), and prints the waves, the longest chain by count and by lines, and the totals. Output of the run for this file, after the second pass (the script below was extracted from this file and run for real): 59 tasks (52 planner, 7 lead), `acyclic: true`, no missing or duplicate id, no lane problem, longest chain 18 tasks (P1 S1 S2 S3 S4 S5 E6b E7 E8 E10a E10b L6 L9 L10 L11 L12 E16 P6), 14,135 source and 26,383 test lines (planner 14,055 and 26,170; lead 80 and 213), the largest task 670 source lines (E11), the largest unordered set 12 tasks, 14 planner lanes. By track (tasks, source, test): platform 7, 80, 213; registry 11, 3,020, 5,140; edges 18, 5,480, 10,570; life 12, 3,270, 6,320; ui 11, 2,285, 4,140. The waves it prints are the table of section 1.3. Before the second pass the same script gave 56 tasks, longest chain 17, 14,105 and 26,280 lines and a largest task of 850 (E10); before the review it gave 14,005 and 25,590 and a largest task of 840.
 
 ```js
 // R4 task graph check: ids exist, acyclic, waves, longest chains, lane order, totals.
@@ -1100,9 +1100,10 @@ const T = [
   ['R4-P1','platform','lead',[],0,0],
   ['R4-P2','platform','lead',['R4-P1','R4-P5'],40,130],
   ['R4-P3','platform','lead',['R4-P1','R4-P5'],10,20],
-  ['R4-P4','platform','lead',[],0,0],
+  ['R4-P4','platform','lead',[],0,3],
   ['R4-P5','platform','lead',[],0,0],
   ['R4-P6','platform','lead',['R4-E16'],0,0],
+  ['R4-P7','platform','lead',['R4-P1','R4-E5'],30,60],
   // registry-persona
   ['R4-S1','registry','main',['R4-P1'],120,520],
   ['R4-S2','registry','main',['R4-S1'],330,420],
@@ -1121,28 +1122,30 @@ const T = [
   ['R4-E3','edges','gold',['R4-E1'],0,900],
   ['R4-E4','edges','side',['R4-E1','R4-P5'],0,900],
   ['R4-E5','edges','main',['R4-E2','R4-E3','R4-E4','R4-L1','R4-S1','R4-U1'],330,190],
-  ['R4-E6','edges','main',['R4-E5','R4-P2','R4-S5'],830,790],
-  ['R4-E7','edges','main',['R4-E6','R4-P3'],540,730],
+  ['R4-E6a','edges','main',['R4-E5'],480,450],
+  ['R4-E6b','edges','main',['R4-E6a','R4-P2','R4-S5'],350,340],
+  ['R4-E7','edges','main',['R4-E6b','R4-P3'],540,730],
   ['R4-E8','edges','main',['R4-E7'],420,520],
   ['R4-E9','edges','acts',['R4-E7'],300,560],
-  ['R4-E10','edges','acts',['R4-E8','R4-E9','R4-S10'],850,840],
-  ['R4-E11','edges','acts',['R4-E10'],670,710],
-  ['R4-E12','edges','acts',['R4-E11'],530,660],
-  ['R4-E13','edges','side',['R4-E8','R4-E4','R4-E10','R4-U6'],400,470],
-  ['R4-E14','edges','main',['R4-E8','R4-E10','R4-S7'],310,420],
-  ['R4-E15','edges','main',['R4-E12','R4-E13','R4-E14'],150,990],
+  ['R4-E10a','edges','acts',['R4-E8','R4-E9','R4-S10'],430,420],
+  ['R4-E10b','edges','acts',['R4-E10a','R4-P7'],420,420],
+  ['R4-E11','edges','acts',['R4-E10b'],670,710],
+  ['R4-E12','edges','acts',['R4-E11','R4-P7'],530,660],
+  ['R4-E13','edges','side',['R4-E8','R4-E4','R4-E10a','R4-U6'],400,470],
+  ['R4-E14','edges','main',['R4-E8','R4-E10b','R4-S7'],310,420],
+  ['R4-E15','edges','main',['R4-E12','R4-E13','R4-E14'],150,1030],
   ['R4-E16','edges','main',['R4-E15','R4-S11','R4-L12','R4-U11'],150,200],
   // life-heirs
   ['R4-L1','life','main',['R4-E1'],0,640],
   ['R4-L2','life','main',['R4-L1','R4-E5'],240,430],
   ['R4-L3','life','main',['R4-L2','R4-S1','R4-S3','R4-S4'],300,460],
-  ['R4-L4','life','main',['R4-L3','R4-S7','R4-E6','R4-E7'],470,600],
+  ['R4-L4','life','main',['R4-L3','R4-S7','R4-E6b','R4-E7'],470,600],
   ['R4-L5','life','main',['R4-L4','R4-S8'],330,490],
-  ['R4-L6','life','estate',['R4-L1','R4-E5','R4-E7','R4-E10'],360,520],
-  ['R4-L7','life','estate',['R4-L6','R4-E6','R4-E10'],300,470],
+  ['R4-L6','life','estate',['R4-L1','R4-E5','R4-E7','R4-E10b'],360,520],
+  ['R4-L7','life','estate',['R4-L6','R4-E6b','R4-E10b'],300,470],
   ['R4-L8','life','main',['R4-L5','R4-L1','R4-E7'],150,380],
   ['R4-L9','life','heirs',['R4-L4','R4-L5','R4-L6','R4-E8','R4-E14','R4-S8'],550,780],
-  ['R4-L10','life','heirs',['R4-L9','R4-E6','R4-E9'],250,380],
+  ['R4-L10','life','heirs',['R4-L9','R4-E6b','R4-E9'],250,380],
   ['R4-L11','life','heirs',['R4-L10','R4-L9'],190,330],
   ['R4-L12','life','main',['R4-L8','R4-L7','R4-L11'],130,840],
   // people-ui-fog
@@ -1155,7 +1158,7 @@ const T = [
   ['R4-U7','ui','staff',['R4-U6'],330,380],
   ['R4-U8','ui','cockpit',['R4-U1','R4-P3'],230,300],
   ['R4-U9','ui','main',['R4-U4'],215,300],
-  ['R4-U10','ui','main',['R4-U9','R4-E6','R4-E8','R4-S1'],130,200],
+  ['R4-U10','ui','main',['R4-U9','R4-E6b','R4-E8','R4-S1'],130,200],
   ['R4-U11','ui','main',['R4-U4','R4-U5','R4-U7','R4-U8','R4-U9','R4-U10'],90,660],
 ]
 const ids = new Map(T.map(t => [t[0], t]))
@@ -1209,6 +1212,63 @@ console.log('topo', order.join(' '))
   for (let u = 0; u < n; u++) if (aug(u, Array(n).fill(false))) matched++
   console.log('largest unordered set', n - matched, 'planner lanes', new Set(T.filter(t => t[1] !== 'platform').map(t => t[1] + '/' + t[2])).size, 'largest task (source lines)', Math.max(...T.map(t => t[4])))
 }
+```
+
+A second script reads the rows `T` from the first (run it in the same folder as `node graph-extra.mjs`). Its output after the second pass: the longest chain is 18 and the critical path holds 5,260 source lines; without the edge S5 to E6b (the pattern edge, X10) the longest chain is 16 (E1 E2 E5 E6a E6b E7 E8 E10a E10b L6 L9 L10 L11 L12 E16 P6); the weighted two-agent list schedule has 27,140 weighted units of planner work (source lines plus half the test lines), a makespan of 13,880 and a utilisation of 0.978, with E6b at 3,140 to 3,660, E11 at 7,760 to 8,785, L9 at 8,555 to 9,495 and E15 at 12,145 to 12,810 (so E11 and L9 overlap for a while: if both need an Opus fallback the lead serialises them, X5). The schedule is a heuristic for the shape of the work and not a plan; its agent lists are printed by the script and not copied here.
+
+```js
+// R4 graph extras: the longest chain with and without the pattern edge, the source lines on the critical path, and a weighted two-agent list schedule.
+// It reads the rows T from graph.mjs (the first script), so run it in the same folder: node graph-extra.mjs
+import fs from 'node:fs'
+const src = fs.readFileSync('graph.mjs', 'utf8')
+const T = new Function(src.slice(src.indexOf('const T = ['), src.indexOf('const ids = new Map')) + '; return T')()
+const ids = new Map(T.map((t) => [t[0], t]))
+const depsOf = (id) => ids.get(id)[3]
+function longest(rows) {
+  const m = new Map(rows.map((t) => [t[0], t])), memo = new Map()
+  const len = (id) => { if (memo.has(id)) return memo.get(id); let b = 0, p = null; for (const d of m.get(id)[3]) { const [l] = len(d); if (l > b) { b = l; p = d } } const r = [b + 1, p]; memo.set(id, r); return r }
+  let best = null
+  for (const t of rows) { const [l] = len(t[0]); if (!best || l > best[0]) best = [l, t[0]] }
+  const path = []
+  for (let c = best[1]; c; c = len(c)[1]) path.unshift(c)
+  return { length: best[0], path }
+}
+const full = longest(T)
+console.log('longest chain', full.length, full.path.join(' '))
+console.log('critical path source lines', full.path.reduce((s, id) => s + ids.get(id)[4], 0))
+const cut = longest(T.map((t) => (t[0] === 'R4-E6b' ? [t[0], t[1], t[2], t[3].filter((d) => d !== 'R4-S5'), t[4], t[5]] : t)))
+console.log('without the S5 -> E6b edge', cut.length, cut.path.join(' '))
+// weighted list schedule: two agents, weight = source lines + half the test lines, merges instant, lead tasks take no agent time,
+// the ready task with the longest remaining weighted path first
+const W = (t) => t[4] + t[5] / 2
+const lead = new Set(T.filter((t) => t[1] === 'platform').map((t) => t[0]))
+const succ = new Map(T.map((t) => [t[0], []]))
+for (const t of T) for (const d of t[3]) succ.get(d).push(t[0])
+const rem = new Map()
+const remOf = (id) => { if (rem.has(id)) return rem.get(id); const v = (lead.has(id) ? 0 : W(ids.get(id))) + Math.max(0, ...succ.get(id).map(remOf)); rem.set(id, v); return v }
+T.forEach((t) => remOf(t[0]))
+const done = new Map()
+const leadPending = new Set(lead)
+const settleLead = () => { for (let again = true; again;) { again = false; for (const id of [...leadPending]) if (depsOf(id).every((d) => done.has(d))) { done.set(id, Math.max(0, ...depsOf(id).map((d) => done.get(d)))); leadPending.delete(id); again = true } } }
+settleLead()
+const pending = new Set(T.filter((t) => !lead.has(t[0])).map((t) => t[0]))
+const agents = [{ free: 0, tasks: [] }, { free: 0, tasks: [] }]
+while (pending.size) {
+  agents.sort((a, b) => a.free - b.free)
+  const a = agents[0]
+  const ready = [...pending].filter((id) => depsOf(id).every((d) => done.has(d)))
+  const at = (id) => Math.max(a.free, ...depsOf(id).map((d) => done.get(d)))
+  ready.sort((x, y) => at(x) - at(y) || remOf(y) - remOf(x))
+  const t0 = at(ready[0])
+  const id = ready.filter((x) => at(x) === t0).sort((x, y) => remOf(y) - remOf(x))[0]
+  a.tasks.push(id); a.free = t0 + W(ids.get(id)); done.set(id, a.free); pending.delete(id)
+  settleLead()
+}
+const total = T.filter((t) => !lead.has(t[0])).reduce((s, t) => s + W(t), 0)
+const makespan = Math.max(...agents.map((a) => a.free))
+console.log('planner work', total, 'makespan', makespan, 'utilisation', (total / (2 * makespan)).toFixed(3))
+agents.sort((a, b) => (a.tasks[0] < b.tasks[0] ? -1 : 1)).forEach((a, i) => console.log('agent', i + 1, a.tasks.map((x) => x.replace('R4-', '')).join(' ')))
+for (const id of ['R4-E6b', 'R4-E11', 'R4-L9', 'R4-E15']) console.log(id, 'runs', Math.round(done.get(id) - W(ids.get(id))), 'to', Math.round(done.get(id)))
 ```
 
 ## Review amendments (2026-10-26)
