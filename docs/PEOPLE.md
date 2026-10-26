@@ -77,7 +77,17 @@ no row in `test/stream-tap.ts` and nothing to carry. `LATENT_V` is 1.
 
 Units 16 and up: the name alternates. `nameDraw(familySeed, sid, k, gender, born, country)` with `k = 0` is the latent name (facets 2
 and 3); `k = 1..7` use units `16 + 2(k-1)` and one above it (up to 28 and 29). The hyphenated `k = 8` belongs to the name registry
-(R4-S6). Units 30 and up are free: a task that takes one records the number here. `latentUnit(familySeed, sid, n)` reads a unit.
+(R4-S6, `world/met-names.ts`). Unit 30 is taken: it sets the start of the walk over the second last names of that surname (the pool
+of the home country, from `floor(unit x length)`, each last name once). Units 31 and up are free: a task that takes one records the
+number here. `latentUnit(familySeed, sid, n)` reads a unit.
+
+Names are held one to a person (R4-S6): `resolveName(g, lat)` gives the first `k` in 0 to 7 whose `nameDraw` nobody holds (the
+player, every Person of `g.people` alive or dead, every Met record and tombstone, and `BRAND_PAIRS`), else the `k = 8` surname. It is
+pure and draws nothing, and the Met record stores the answer with its `k`, so a name never changes after the first sight. Of two
+people who collide the first promoted keeps the pure name, so the order of promotion is the one thing a name depends on beyond the
+seed. `BRAND_PAIRS` is a copied constant of the 7 brand names the pools can spell (4 of them within one pool); the module imports
+neither `data/brands` nor `data/locales` (R5 makes them lazy), and `test/world-met-names.test.ts` recomputes the list from
+`allBrands()`, so a brand added later fails it until the copy is updated.
 
 The home country is the one given for an entity-placed slot (a firm id as the place), else the place when it is a country id, else
 `us`. `fromSeeded(seed, familySeed)` returns a `LatentPerson` for a name the caller already has (a `rosterAt` rival) and never
