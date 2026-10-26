@@ -10,8 +10,9 @@
 //   syncPeople(g)     the writer: idempotent, and it replaces the shard root only when the index changed
 //
 // readPeople reads through the registered reader, so a caller imports world/shards for its effect (world/sync.ts does).
-import { parseRef, type EntityRef } from '../kernel/ids'
+import type { EntityRef } from '../kernel/ids'
 import { playerAcct } from '../kernel/ledger'
+import { personEntity } from '../kernel/person-ref'
 import type { GameState, Person } from '../types'
 import { LOD_CAPS } from './caps'
 import { commitShard, isPlain, mergeRows, normalizeIndex, refOfKind, seenOf } from './rows'
@@ -20,16 +21,12 @@ import type { PeopleShard, PersonRow } from './types'
 
 const EMPTY: Readonly<PeopleShard> = Object.freeze({ v: 1, rows: Object.freeze([]) as unknown as PersonRow[], over: 0 })
 
-/** `kind:key` when that is a valid name, else null. A bad name would make the ledger refuse the booking, so it is not a ref here either. */
-function named(kind: string, key: unknown): EntityRef | null {
-  if (typeof key !== 'string') return null
-  const r = `${kind}:${key}`
-  return parseRef(r) !== null ? (r as EntityRef) : null
-}
-
-/** person:<sid> for a person with a text `sid` in its data, else person:<id>; pool:other for a person whose id is no name at all (never a person row). */
+/**
+ * person:<sid> for a person with a text `sid` in its data, else person:<id>; pool:other for a person whose id is no name at all (never a
+ * person row). The rule is kernel/person-ref.ts personEntity, which the ledger uses too; this keeps its name for the callers it has.
+ */
 export function personRef(p: Pick<Person, 'id' | 'data'>): EntityRef {
-  return named('person', p.data?.sid) ?? named('person', p.id) ?? 'pool:other'
+  return personEntity(p)
 }
 
 /** The player's account as a ref: person:<character id>. An heir keeps the id of the child, so the history is already under it. */

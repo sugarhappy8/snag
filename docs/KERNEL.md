@@ -141,6 +141,7 @@ One line each. A track that adds a file here adds its line; `test/kernel-accepta
 - `src/game/kernel/ids.ts` - entity ids such as `person:p42` and `firm:a7`: `EntityRef`, `ref`, `isRef`, `parseRef`.
 - `src/game/kernel/ledger-types.ts` - the saved shape of the ledger, types only.
 - `src/game/kernel/ledger.ts` - the ledger: `book`, `bookMint`, `bookBurn`, `checkLedger`, `flowsOf`; every dollar is an entry between two accounts.
+- `src/game/kernel/person-ref.ts` - the one rule for a person's key: validSid, personKey, personEntity, heirUnsafe.
 - `src/game/kernel/ports.ts` - `definePort` and `portStatus`: how one domain calls another without importing it.
 - `src/game/kernel/reasons.ts` - the reason table: why money moved, who is on the other side, and the closed lists of mints and burns with their yearly caps.
 - `src/game/kernel/registry.ts` - the module registry: `ModuleDef`, `registerModule`, `YEARLY_PHASES` and the sorted lists.
