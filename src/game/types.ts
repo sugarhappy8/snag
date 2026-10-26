@@ -414,7 +414,10 @@ export interface Person {
   livesWithPlayer: boolean
   /** Short notes about shared history with this person (the profile's "Shared history"). */
   notes: string[]
-  /** Free-form data (e.g. 'metAt', 'engagementRing', 'cheating'). */
+  /**
+   * Free-form data (e.g. 'metAt', 'engagementRing', 'cheating'). `sid` names a person who began as a slot (world/sid.ts): it is written
+   * on a NEW person only, because the ledger account is person:<sid> and a sid added later would rename it (kernel/person-ref.ts).
+   */
   data: Record<string, Json>
 }
 
