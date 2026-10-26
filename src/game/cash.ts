@@ -14,6 +14,7 @@
 import { canAfford } from './core'
 import { book, bookAcct, bookBurn, bookMint, playerAcct, roomFor, tokenSeen, type AcctRef, type Why } from './kernel/ledger'
 import { parseRef } from './kernel/ids'
+import { personEntity } from './kernel/person-ref'
 import { counterparty, type PoolName, type Reason } from './kernel/reasons'
 import { addTally, liveTally, TALLY_OPERATING, type Tally } from './kernel/tally'
 import type { GameState, Person } from './types'
@@ -71,18 +72,14 @@ function named(kind: string, key: unknown): AcctRef | null {
   return typeof key === 'string' && parseRef(`${kind}:${key}`) !== null ? (`${kind}:${key}` as AcctRef) : null
 }
 
-/** person:<sid> for a stranger with a text `sid`, else person:<id>; pool:other for a person whose id is no account name at all. */
-function personAcct(p: Person): AcctRef {
-  return named('person', p.data?.sid) ?? named('person', p.id) ?? 'pool:other'
-}
-
 /**
- * A person's money. The account is person:<sid> for a stranger that has a text `sid` in its data, else person:<id>. `floor` clamps
+ * A person's money. The account is person:<sid> for a stranger that has a text `sid` in its data, else person:<id> (the one rule is
+ * kernel/person-ref.ts, which the people index uses too); pool:other for a person whose id is no account name at all. `floor` clamps
  * the record (0 for money that can never go below zero); with none it can go negative. Nothing is rounded.
  */
 export function personPurse(p: Person, floor?: number): Purse {
   return {
-    acct: personAcct(p),
+    acct: personEntity(p),
     add(delta) {
       const before = p.money
       if (!finite(before) || !finite(delta)) return 0
