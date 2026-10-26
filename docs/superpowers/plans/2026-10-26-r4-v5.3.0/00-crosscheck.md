@@ -1273,7 +1273,7 @@ for (const id of ['R4-E6b', 'R4-E11', 'R4-L9', 'R4-E15']) console.log(id, 'runs'
 
 ## Review amendments (2026-10-26)
 
-The adversarial review (21 confirmed findings, 20 unverified minors, 3 refuted) was applied to this file and to the four plans, in place; where a finding named a line, the line was re-read in the code first (section 11, "Anchors checked while applying the review"). Nothing under `src/` or `test/` was edited and nothing was added to git. All text uses plain hyphens. After the edits the task graph was re-run (appendix A): 56 tasks, acyclic, every dependency id exists, lane order holds, longest chain 17, largest task 850 source lines (E10), largest unordered set 12; totals are 14,105 source and 26,280 test lines (planner 14,055 and 26,130; lead 50 and 150), against 14,005 and 25,590 before. Dependencies added by the review: S10 after S4; E13 after E10 and U6; P2, P3 and E4 after P5.
+The adversarial review (21 confirmed findings, 20 unverified minors, 3 refuted) was applied to this file and to the four plans, in place; where a finding named a line, the line was re-read in the code first (section 11, "Anchors checked while applying the review"). Nothing under `src/` or `test/` was edited and nothing was added to git. All text uses plain hyphens. After the edits the task graph was re-run (appendix A): 56 tasks, acyclic, every dependency id exists, lane order holds, longest chain 17, largest task 850 source lines (E10), largest unordered set 12; totals are 14,105 source and 26,280 test lines (planner 14,055 and 26,130; lead 50 and 150), against 14,005 and 25,590 before. Dependencies added by the review: S10 after S4; E13 after E10 and U6; P2, P3 and E4 after P5. (History: the task names and figures in this section are those of the review. After the second pass E6 reads E6a plus E6b, E10 reads E10a plus E10b, and the graph has 59 tasks with a longest chain of 18; see the next section.)
 
 ### Applied: confirmed findings
 
@@ -1336,6 +1336,6 @@ The adversarial review (21 confirmed findings, 20 unverified minors, 3 refuted) 
 
 ### Observed while applying (not review findings; recorded, no task edited beyond the notes above)
 
-- `typicalIncome` is `events/wealth-core.ts:54`, domain `events`; E10's loan cap and E12's fee need it, and a direct import adds a `society->events` pair that X26 does not approve. Noted in E10's Risks: the seam must take it without that pair (a layer-2 copy held equal by a test, or the lead lifts the function), to be decided at the first `layers.test.ts` run.
+- `typicalIncome` is `events/wealth-core.ts:54`, domain `events`; E10's loan cap and E12's fee need it, and a direct import adds a `society->events` pair that X26 does not approve. Noted in E10's Risks: the seam must take it without that pair (a layer-2 copy held equal by a test, or the lead lifts the function), to be decided at the first `layers.test.ts` run. (Closed in the second pass: the lead lifts it in P7, X54.)
 - The `fam.early` rule (finding 13) is a small design addition to E9, needed so the reserve protects `nepo`, `will` and `social` from the luxury choice; the lead should confirm it with the other E9 decisions.
 - The nepo outcome notice, `A Lender Calls` and `A Falling Out` interplay in the saturated year follows the hook order wealth (money 70), use (80), nepo (90), will (100), social (close).
