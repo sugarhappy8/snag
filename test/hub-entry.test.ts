@@ -58,6 +58,7 @@ const HUBS: readonly (readonly [string, () => Promise<object>])[] = [
   ['world/edges', () => import('../src/game/world/edges')],
   ['world/social', () => import('../src/game/world/social')],
   ['world/edge-step', () => import('../src/game/world/edge-step')],
+  ['modules/kin-years', () => import('../src/game/modules/kin-years')],
 ]
 
 /** A hub that legitimately exports undefined today: path -> the names, with the reason. None yet. */

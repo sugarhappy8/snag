@@ -23,6 +23,7 @@ import {
   GAVE_LINES,
   HOME_BOUGHT_LINES,
   HOMELESS_LINES,
+  KIN_WIDOWED,
   LENT_LINES,
   NOTEBOOK_FULL_LINES,
   REFUSED_LINES,
@@ -271,6 +272,8 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'history.airRaid', lines: AIR_RAID_LINES, role: 'log', slots: [] },
   { id: 'health.childUncured', lines: CHILD_UNCURED_LINES, role: 'log', slots: ['label', 'who'] },
   { id: 'finance.homeless', lines: HOMELESS_LINES, role: 'log', slots: [] },
+  // R4-L4: a close relative is widowed ({who} is "my sister Fatima", {spouse} the first name of the one who died).
+  { id: 'life.kinWidowed', lines: KIN_WIDOWED, role: 'log', slots: ['spouse', 'who'] },
 ]
 
 describe('the pools of R2-P10', () => {

@@ -32,6 +32,11 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   `since`, only the years after the last one seen. A Time Machine jump re-rolls the year it lands in and keeps the finished years.
   Its row in `STREAM_SLICES` is `driven`: no played life holds a kin record until L4 steps with it. Facet 15 of the latent person
   stays reserved and unused.
+- The tag `soc.kin` (R4, `kin.ts`) is not a stream either. `keyedSpouse` reads `streamKey(worldSeed(g), 'soc.kin', year, anchorKey)` with
+  `streamUnit(key, facet)`: facet 0 says whether a kin spouse is of the opposite gender (92 percent) and facet 1 is the spouse's birth
+  year relative to the anchor's, a whole number from -4 to 4. Facets 2 to 15 are reserved and unused. There is no generator, no `g`,
+  no row in `test/stream-tap.ts`; the values are the frozen table `KIN_IDENTITY` and a kin record's face never changes, so a changed value
+  after R4 takes a `RECORD_REASON` and a row in `moved-tests.md` (`docs/KIN.md`).
 
 ## Words: `pickLine` and `pick`
 

@@ -3,14 +3,16 @@
 The note for the kin links of R4 (v5.3.0). A sibling, a child or a parent of the player marries and has babies. Before R4 that was
 three fields on the relative (`married`, `spouseName`, `kids`) and a log line. R4 adds the people behind those fields as Met records
 (`docs/PEOPLE.md`, section 5), so their faces never change, and links the relative to them. This file is the saved shape of the
-links, the caps, the pure readers and the problems list (R4-L3, `src/game/world/kin.ts`). Later tasks add their sections: the
-writers (R4-L4), the estate (R4-L5), the hand-over (R4-L9) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
+links, the caps, the pure readers and the problems list (R4-L3, `src/game/world/kin.ts`), and, from section 9, the writers, the
+yearly step and the frozen table of the face (R4-L4, `src/game/kin.ts`). Later tasks add their sections: the estate (R4-L5), the
+hand-over (R4-L9) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
 
 ## 1. The rules
 
 - **New behaviour runs only on a stamped life** (X6). A life made before the `social` flag, and every heir of one, keeps `married`,
-  `spouseName` and `kids` as they were, gets no link and no Met record. This task writes nothing at all: it is the shape and the
-  readers, and a played life does not call them yet.
+  `spouseName` and `kids` as they were, gets no link and no Met record. The readers of sections 1 to 8 write nothing; the only
+  writers are `adoptSpouse`, `adoptChild`, `unlinkSpouse` and `syncKin` of section 9, and they return at once on a life that is not
+  stamped.
 - **The legacy fields stay authoritative** (X22). The links mirror them; `kinProblems` names a drift, and a writer that clears
   `married` is caught the next year, not the same one.
 - **A read is pure.** No `g.rng`, no stream, no `g.nextId`, no write; each reader returns new objects and works on a deep-frozen
@@ -93,8 +95,8 @@ part of the signature and decides nothing.
 
 ## 6. What `kinProblems` names
 
-One line each, prefixed `kin: ` by `worldProblems`. The design's invariant 10 is "one spouse, mutual"; this task checks the link half
-and R4-L4 adds the pair and kin edges once edges exist.
+One line each, prefixed `kin: ` by `worldProblems`. The design's invariant 10 is "one spouse, mutual"; the link half is checked on every life, the edge
+half (R4-L4) on a stamped life only.
 
 - a link to a sid that is neither a Person of `g.people` nor a Met record (a tombstone is not a record);
 - more than 6 kids; a `spouseSid` or a kid that is no sid; `kidSids` that is no list;
@@ -126,3 +128,84 @@ not meet, because a materialized relative is a `friend`.
 | `kinHeirIds` | `business/dynasty-ownership.ts` (R4-L5): the stake heirs of an NPC with a family |
 | `kinPending`, `kinHeirIds` | `modules/kin-estates.ts` (R4-L5): who inherits |
 | `kinProblems` | `worldProblems`, the fuzz harness, the 120-year probe (R4-L12) |
+
+## 9. The writers (R4-L4, `src/game/kin.ts`)
+
+Legacy fields stay the authority (X22): an NPC's `married`, `spouseName` and `kids` are written on four lines and read on about a
+dozen, and one reader moves money (`npc-lives.ts`, expenses read `kids`). The records MIRROR them, the way the Edge mirrors
+`Person.relationship`: when a relative marries or has a baby, the same name, gender and year become a Met record, so the face never
+changes, linked from the relative (the anchor) and joined to it by edges. Nothing here runs on a life the `social` flag did not stamp
+(X6): an unstamped life, every v5.2.0 save and every heir of one gets no key, no record and no edge, and keeps its draws and its ids.
+
+| Call | What it does |
+|---|---|
+| `adoptSpouse(g, anchor, identity?)` | The anchor is alive, married, has no spouse link, and is not a spouse, partner, fiance or pet. `spouseName` is split at the first space (`Juan Carlos de Cuba` is `Juan` and `Carlos de Cuba`, so the joined name is unchanged); the gender is `identity.gender` (the legacy caller passes the one it drew) or a keyed draw; the birth year is the anchor's plus a keyed offset, 18 or more at the wedding. Makes the record (weight 6, stake flag 2), `spouseSid`, the two `pair` edges and the fact `life.wed`. Returns the sid, or null |
+| `adoptChild(g, anchor, identity)` | A baby of an anchor that is not a child or a stepchild (those get a real grandchild Person): name, surname and gender are the legacy draws, born this year, weight 4, stake flag 4, appended to `kidSids` (at most 6), the two `kin` edges, the fact `life.birth`. Returns the sid, or null |
+| `unlinkSpouse(g, anchor)` | The link ends: `spouseSid` is removed, flag 2 is cleared on the record or tombstone, both pair edges go. The record stays and is evictable. `married` and `spouseName` are not touched |
+| `syncKin(g)` | The yearly step, the module `life.kin` (aging seam, `life` phase, order 37, after `effort.you` and before `relationships`; group `people`) |
+
+Every refusal returns null with nothing written. The checks run before the first write: the sid, the 160-record cap, the room in the
+edge map for two bound edges. The one write that can still fail (the record is read back and must equal the face given, and the
+edges must land) is undone.
+
+### The sid
+
+`kin.<country>.<year>.<ord>` (X16, C38). The country is the anchor's own `data.countryId` when that is text, else the player's, and
+must be a valid place (`[A-Za-z0-9_-]{1,12}`); the year is `g.year`, 1850 to 2400; the ord is one above the highest ord among the Met
+keys and tombstones with that prefix (0 when there is none), at most 9999. The builder returns null for anything else and never calls
+the throwing `makeSid` with saved data. A hostile year, a hostile country, a full Met, 160 kin records already, or a full edge map
+makes `adoptSpouse` and `adoptChild` return null and leave no half link.
+
+### The frozen table `KIN_IDENTITY` (X57)
+
+| Value | Meaning |
+|---|---|
+| `spouseBornOffset` `[-4, 4]` | the spouse's birth year less the anchor's, a keyed whole number, all nine values equally likely |
+| `minWedAge` 18 | the spouse is 18 or more on the day of the wedding (the offset is cut down to it) |
+| `oppositeGender` 0.92 | the keyed draw mirrors the legacy `chance(g, 0.92)`; the legacy caller passes its own gender |
+| `tag` `soc.kin`, `facet` `spouseGender` 0, `spouseOffset` 1 | `streamUnit(streamKey(worldSeed(g), 'soc.kin', year, anchorKey), facet)`; facets 2 to 15 are reserved and unused |
+
+The baby's name, surname and gender are the legacy draws, so the table holds no baby number. A kin record's face comes only from these
+values and never changes, so the table freezes at its first recording: after R4 a changed value needs a `RECORD_REASON`, a row in
+`moved-tests.md` and the lead's OK. The keyed values are hashes, not streams: no generator, no stream-table row (`docs/STREAMS.md`).
+
+### The edges
+
+Each link has two edges, anchor > relative and relative > anchor, kind `pair` (spouses, first numbers t 70, f 70, r 70 both ways) or
+`kin` (a parent and a baby: t 80, f 80, r 70 one way, t 70, f 80, r 70 the other). The kind alone binds the edge (`edgeLocalBound`), so
+the edge map never evicts one while the link stands and the orphan rule of the edge step keeps it. `kinProblems` names a link whose
+edge is missing in either direction (invariant 10, the edge half). The edges are written and removed with the link, never separately.
+
+### The step (`syncKin`)
+
+Once a year per anchor, stamped by the anchor's `kinY` (a second call in the same year changes nothing; a `kinY` from the future is
+stepped once and put right):
+
+1. a married anchor with no spouse link adopts (the three other writers of a wedding, `wealth-family.ts` and `wealth-kids.ts`, and a
+   wedding the cap refused);
+2. a spouse link on an anchor that is no longer married ends (an NPC divorce, `npc-lives.ts`): flag cleared, pair edges removed;
+3. a spouse or a child that `ageTo` says is dead (it scans the years after `kinY`, or after the year the record was made, to this
+   year, never past it) has the death year written into its record. A spouse's death widows the anchor: `married` false, `widowed`
+   true, a line in their history, one line for the player when they are close (relationship 55 or more, or they live with the player;
+   the `npc.news` budget of 3 a year), the fact `life.death`, and the link ends. A child's death ends the child's link and says the
+   fact. A link to a record that is nowhere is dropped without a word;
+4. every linked record is kept fresh (its last-seen year stamped when it is 3 years old), so the Met sweep, which turns a record not
+   seen for 6 years into a tombstone, never takes a spouse or an heir;
+5. the orphan sweep: the flags 2 and 4 of a kin record that no living anchor, and no anchor dead for under 10 years, links are
+   cleared, and so are its `pair` and `kin` edges, so an anchor that left the game leaves no bound edge behind.
+
+A widowed anchor is `married = false`, so the marriage and baby rolls of `familyLifeCycle` treat it as single from then on (a stamped
+life only: those rolls draw from `g.rng`). A record that is no longer linked is an ordinary Met record and is dropped by the sweep
+after 6 idle years; its name was told once and the legacy fields keep the story.
+
+The step draws nothing from `g.rng` and its only id is the one log line. It reads no year after `g.year` (no foresight): `ageTo` is
+asked about `g.year` and never later. The facts `life.wed`, `life.birth` and `life.death` stop at 8 a year across Life
+(`g.yearActions['life.facts']`, shared with R4-L5) and are declared by the module.
+
+### Limits
+
+- A relative's baby becomes a record only when the legacy code rolls it, and only for an anchor that is not a child or a stepchild.
+- At most 160 kin records at once. Past that `adoptSpouse` returns null and the step tries a wedding again next year; a baby is not
+  retried.
+- A record is not stepped: it has an age, a spouse, children, an illness and a death by `ageTo`, and nothing else until R4-L5 makes a
+  Person of it.
