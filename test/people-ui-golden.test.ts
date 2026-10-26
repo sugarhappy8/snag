@@ -19,6 +19,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { withFlags } from '../src/game/flags'
 import { checkReason } from './golden-cli'
 import {
   FIXTURE_FILE,
@@ -52,11 +53,16 @@ function readFixture(): Recorded {
 }
 
 const memo = new Map<RowGroup, Row[]>()
-/** What the kit builds today for a group, once for this file. Building it already builds every row twice and compares. */
+/**
+ * What the kit builds today for a group, once for this file. Building it already builds every row twice and compares.
+ * The cockpit group (the People cockpit, the person badges and the Needs You rows that list them) is built with `peopleProfile` off
+ * (R4-U8): the tiles and the Estranged and Owes you badges read the flag and not the mode, so they would reach Exact the day the
+ * flag flips. That is a wrapper and not a re-record: the rows of the file stay byte for byte what v5.2.0 printed.
+ */
 function today(group: RowGroup): Row[] {
   let rows = memo.get(group)
   if (!rows) {
-    rows = buildGroup(group)
+    rows = group === 'cockpit' ? withFlags({ peopleProfile: false }, () => buildGroup(group)) : buildGroup(group)
     memo.set(group, rows)
   }
   return rows

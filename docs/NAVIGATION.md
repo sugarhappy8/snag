@@ -16,6 +16,11 @@ use it, never in a module-level const, and set it in tests with `withFlags` or `
 `test/nav-release.test.ts` runs the aggregate checks with all three on. It also checks that the legacy path (all three off)
 still equals v4.0.2.
 
+A fourth build flag, `peopleProfile` (R4, off until the release commit flips it), gates the People tiles of the Relationships
+cockpit and the badge words `Estranged` and `Owes you`, and nothing else on these screens. It reads the flag and not the mode, so it
+works the same in Exact and Realistic. With it off the Relationships tab is what the three flags above made it. A test of the
+People cockpit or badges names the flag with `withFlags`, on or off, and never leans on the default.
+
 ## 1. The data-order rule
 
 The menu data never changes order. `activitiesMenu`, `assetsMenu` and `occupationMenu` are the lists v4.0.2 had, and five
@@ -44,6 +49,11 @@ count the ids of a path that are not `hub.` tiles (the path itself keeps them, t
 
 A badge is a short word or a count (12 characters at most, `99+` over 99) that marks a row with something waiting. It is a pure
 read of the committed state, run for every row on every render, so it never opens a menu, never draws, never reads a hint.
+
+A person row (`personGroup` in `src/game/hubs/people.ts`) takes its word from `personBadge(g, p)`: `Estranged` when they cut
+contact over the will, else `Owes you` when a loan of yours is still out, else `Drifting` (a living parent, partner, spouse, fiance,
+child or best friend under 25). The first two need `peopleProfile`; with it off only `Drifting` shows, as in v4.1.0. All three are
+facts the player can already see on the person's sheet, and none is saved.
 
 To add one, call `registerBadge(id, fn)` for one row or `registerBadgePrefix(prefix, fn)` for a family of rows
 (`src/game/hubs/needs.ts`), or put `badge: (g) => ...` on the node. `fn` returns a string, a number or null. Don't touch the
@@ -88,10 +98,16 @@ rule in `src/ui/charts/`; cockpit code reaches it through `src/ui/nav/kit.ts`.
 ## 7. Cockpits
 
 `cockpitOf(tab, g)` (`src/game/hubs/cockpit.ts`) gives a small model: a summary line, tiles, a net-worth chart and one card per
-company from `companyCards(g)` (twelve at most). Occupation shows the job or the school, Assets the wealth view, and
-Relationships and Activities stay thin until the full People and World cockpits arrive. Every number is one a screen already
-prints, a number that isn't finite is 0 and never `NaN`, and nothing reads a year after `g.year`.
-`test/nav-cockpit.test.ts` and `test/nav-company.test.ts` hold the shapes, including hostile and old histories.
+company from `companyCards(g)` (twelve at most). Occupation shows the job or the school, Assets the wealth view. Activities
+stays thin until the full World cockpit arrives: a summary line and no tiles. Relationships gets four tiles behind
+`peopleProfile`, built from facts the player already has: Closest (the person with the highest relationship bar, who opens on
+tap), Drifting (how many people the Drifting rule flags, the same rule as the badge, opening the one with the lowest bar), Owed
+to you (what the living still owe you) and Estranged (how many have cut contact). A tile with nothing to say is left out, so
+there are four at most; a tie goes to the lower person id, and the order of the list never matters. No tile shows an estimate, a
+hidden stat, a trait or a person's cash. With the flag off the cockpit is the summary line and no tiles. Every number is one a
+screen already prints, a number that isn't finite is 0 and never `NaN`, and nothing reads a year after `g.year`.
+`test/nav-cockpit.test.ts` and `test/nav-company.test.ts` hold the shapes, including hostile and old histories, and
+`test/people-cockpit.test.ts` holds the People tiles and badges.
 
 ## 8. Rules for every nav file
 
