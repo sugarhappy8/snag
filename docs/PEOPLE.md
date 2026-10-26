@@ -202,3 +202,24 @@ What the code gives (R4-S4; behaviour is S6 and S7):
 - R4-S7: `touchMet`, `markMet`, `evictMet`, `tombstoneMet`, `sweepMet`, the protector and salience contract.
 - R4-E6a: the edge model (`Edge`, `EdgeKey`, `MEMORY_KINDS`).
 - R4-S11: completes this note (the acceptance figures, the scans, the closing caps).
+
+## 6. The edge model and its caps (R4-E6a)
+
+How people feel about each other is an **edge** `first end > second end` in the keyed map `g.world.edges` (R4-E6a, pure code in
+`world/edges.ts` and `world/edge-memory.ts`; nothing is stored until R4-E6b registers the shard, and a life is stamped by the
+`social` flag before any of it runs, X6). The full model, the normalizer rules and the 40 memory kinds are in `docs/SOCIAL.md`; this
+section is the freeze note for R5 and R6 (cross-check section 3.1, "Edge model, memory and stamp").
+
+- An edge key is `<ref>><ref>`, for example `person:p12>person:p3` or `person:cls.us.2004.12>person:you`: the first end is named by
+  `personEntity(p)` (a person with a sid is found under `person:<sid>`), the second is the ego. At most 140 characters, both ends pass
+  `parseRef`, keys ascend by code unit, and there is no `v` key.
+- An edge holds trust `t`, affection `f` (the mirror of `Person.relationship`), respect `r`, resentment `s`, obligation `o`, since `y`
+  and last touched `l`, and optionally memories `m`, the dialogue store `n` and `d` (reserved for R5, written by nobody in R4, X27),
+  a feud `q`, a debt `dv`, a favor stamp `c` and a link kind `k`. `Edge.d` and `Edge.n` are the store; `p.data.said` is not created (C22).
+- Caps (`EDGE_CAPS`, `world/caps.ts`): 1,200 edges, 8 memories an edge and 4,000 in all, `n` and `d` on 120 edges, 12 feuds, 40 debts,
+  40 secrets of 6 holders. Over a cap the normalizer cuts by salience and an edge that is bound goes last. The worst case is 19,409 nodes.
+- Two lists are append-only and frozen at the merge of E6a: `MEMORY_KINDS` (the 40 ids; R6 appends after the 40th and U10 adds a
+  phrase in the same commit) and `LINK_KINDS` (R6 appends). `MEMORY_FX` is a frozen table the lead reads before the merge (section 3.3).
+- A strife edge written by Life (C12) sets `s` always and a feud rung `q` only while `liveFeuds(g)` is under 12; the normalizer would
+  strip the surplus rung silently.
+- Every read is pure: no `g.rng`, no write, no `g.world` created. A writer replaces the shard root and never edits it in place.
