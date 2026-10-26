@@ -36,7 +36,7 @@ export function chooseWorkApproach(g: GameState, approach: WorkApproach): boolea
   if (approach === 'speed') addStat(g, 'happiness', 2)
   if (approach === 'people') {
     const boss = getPerson(g, context.job.bossId)
-    if (boss?.alive) addRelationship(boss, 1)
+    if (boss?.alive) addRelationship(g, boss, 1)
   }
   const pack = workFamilyDef(context.family)
   const choice = pack.approaches[approach]
@@ -56,7 +56,7 @@ export function prepareWorkPlan(g: GameState): boolean {
   saveCareerTrack(g, context.family, track)
   saveWorkplaceState(context.job, state)
   const boss = getPerson(g, context.job.bossId)
-  if (boss?.alive) addRelationship(boss, 1)
+  if (boss?.alive) addRelationship(g, boss, 1)
   addStat(g, 'happiness', -2)
   notice(g, 'Prepared', `You reviewed the difficult parts of ${state.plan.title.toLowerCase()}, asked for feedback, and raised readiness to ${state.plan.preparation}/30.`, { emoji: '📚' })
   return true

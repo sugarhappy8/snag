@@ -7,10 +7,12 @@
 //   addRelationship(p, d) the calls with exactly two arguments, the shape of v5.2.0 (src/ and test/); R4-E5 gives every
 //                         call a game argument and drives this count to 0, and a two-argument call in a new test is counted
 //   bumpRelationship(     every call, in src/ and in test/        (wealth-core.ts has one, activities/common.ts another)
-//   .relationship =  +=  -=  *=  /=  ++  --     raw writes, in src/ only (a test sets up a value by hand and that is fine)
+//   .relationship =  +=  -=  *=  /=  ++  --     raw writes, in src/ only (a test sets up a value by hand and that is fine), except
+//                         in the two files of the door itself (core.ts and kernel/relations.ts, R4-E5), which are not counted
 //
 // The rules: a count above the file's entry in test/relationship-ratchet.json fails, and so does a nonzero count in a file with no
-// entry. The baseline only goes down. A test that needs a relationship change goes through the parity kit's applyDelta
+// entry. The baseline only goes down. Since R4-E5 the baseline holds no raw write and no two-argument call: every write to
+// Person.relationship goes through addRelationship or setRelationship (both take the game), and one of the cases below says so. A test that needs a relationship change goes through the parity kit's applyDelta
 // (test/social-parity-kit.ts), the one place an oracle file calls addRelationship.
 //
 // To lower the baseline after sites are migrated (it refuses to raise or add):
@@ -49,6 +51,8 @@ interface Baseline {
 }
 
 const CALLS = new Set<string>(['addRelationship', 'bumpRelationship'])
+/** The two files that hold the one write: setRelationship and addRelationship wrap the primitives of the second (R4-E5). */
+const DOOR_FILES: ReadonlySet<string> = new Set(['src/game/core.ts', 'src/game/kernel/relations.ts'])
 const RAW_OPS = new Set<string>(['=', '+=', '-=', '*=', '/=', '++', '--'])
 
 /** One place the scan looked at. */
@@ -58,6 +62,8 @@ interface Site {
 }
 
 const isSrc = (path: string): boolean => path.startsWith('src/')
+/** Raw writes are counted in src/ outside the door. */
+const countsRaw = (path: string): boolean => isSrc(path) && !DOOR_FILES.has(path)
 
 /** Every call and raw write of one file, in source order. Raw writes count in src/ only. */
 function scan(src: SourceFile): Site[] {
@@ -71,7 +77,7 @@ function scan(src: SourceFile): Site[] {
         const close = closeParen(toks, i + 1)
         if (close > 0 && splitArgs(toks, i + 1, close).length === 2) out.push({ key: 'addRelationship(p, d)', line: lineOf(text, t.p) })
       }
-    } else if (t.k === K_PUNCT && RAW_OPS.has(t.v) && isSrc(src.path) && isId(toks[i - 1], 'relationship') && isPunct(toks[i - 2], '.')) {
+    } else if (t.k === K_PUNCT && RAW_OPS.has(t.v) && countsRaw(src.path) && isId(toks[i - 1], 'relationship') && isPunct(toks[i - 2], '.')) {
       out.push({ key: `.relationship ${t.v}` as Key, line: lineOf(text, toks[i - 1]!.p) })
     }
   }
@@ -181,10 +187,20 @@ describe('relationship ratchet: the real tree', () => {
     expect(sum(current, 'bumpRelationship(')).toBeGreaterThan(5)
   })
 
-  it('scans test/ as well as src/: the one test caller of v5.2.0 is counted', () => {
+  it('scans test/ as well as src/: the test callers are counted, and since R4-E5 none has two arguments', () => {
     const current = countAll(real())
     expect(current['test/core.test.ts']?.['addRelationship(']).toBeGreaterThanOrEqual(1)
-    expect(current['test/core.test.ts']?.['addRelationship(p, d)']).toBeGreaterThanOrEqual(1)
+    expect(current['test/core.test.ts']?.['addRelationship(p, d)']).toBeUndefined()
+    expect(current['test/social-parity-kit.ts']?.['addRelationship(']).toBe(1)
+  })
+
+  it('leaves no raw write and no two-argument call: every change goes through the shim (R4-E5)', () => {
+    const current = countAll(real())
+    const raw = KEYS.filter((k) => k.startsWith('.relationship'))
+    const rawLeft = Object.entries(current).flatMap(([file, c]) => raw.filter((k) => c[k]).map((k) => `${file}: ${k} ${c[k]}`))
+    expect(rawLeft).toEqual([])
+    expect(sum(current, 'addRelationship(p, d)')).toBe(0)
+    expect(sum(current, 'addRelationship(')).toBeGreaterThan(300)
   })
 
   it('counts raw writes in src/ only', () => {
@@ -211,6 +227,13 @@ describe('relationship ratchet: what counts', () => {
     expect(countsOf('const f = addRelationship')).toEqual({})
     expect(countsOf('const s = "addRelationship(p, 1)"; const t = `bumpRelationship(p, 1)`')).toEqual({})
     expect(countsOf('// addRelationship(p, 1)\n/* bumpRelationship(p, 1) */')).toEqual({})
+  })
+
+  it('does not count a raw write in the two files of the door', () => {
+    expect(countsOf('p.relationship = Math.round(x)', 'src/game/core.ts')).toEqual({})
+    expect(countsOf('p.relationship = value; q.relationship += 1', 'src/game/kernel/relations.ts')).toEqual({})
+    expect(countsOf('p.relationship = 1', 'src/game/kernel/other.ts')).toEqual({ '.relationship =': 1 })
+    expect(countsOf('addRelationship(g, p, 1)', 'src/game/core.ts')).toEqual({ 'addRelationship(': 1 })
   })
 
   it('counts a raw write of .relationship in src/, by its operator', () => {

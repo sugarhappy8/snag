@@ -9,7 +9,7 @@
 //   - Nothing here pays or takes money; gifts and settlements are in will-amends.ts / will-scenes.ts.
 //   - Putting someone back earns a bounded, shrinking amount of trust (never more than the cut
 //     cost), so toggling the will can't farm relationship points.
-import { addRelationship, clamp, log, pronouns } from '../core'
+import { addRelationship, clamp, log, pronouns, setRelationship } from '../core'
 import { notePerson } from '../people'
 import { chance } from '../rng'
 import type { GameState, Person } from '../types'
@@ -121,7 +121,7 @@ export function learn(g: GameState, p: Person, how: Learn, by?: Person): string 
     if (how === 'blunt') w.explained = 'blunt'
     w.anger = Math.max(w.anger, a)
   })
-  if (dent > 0) addRelationship(p, -dent)
+  if (dent > 0) addRelationship(g, p, -dent)
   notePerson(p, 'Found out they were cut out of the player’s will.')
   const react = reactionClause(p, a)
   const who = nm(p)
@@ -157,7 +157,7 @@ function learnAdded(g: GameState, p: Person): string | null {
     x.adds += 1
     x.addY = g.year
   })
-  if (fresh) addRelationship(p, 3)
+  if (fresh) addRelationship(g, p, 3)
   notePerson(p, 'Was named in the player’s will.')
   return fresh ? `${yourWho(p)} found out ${pronouns(p.gender).he}'s in your will. ${nm(p)} was touched.` : null
 }
@@ -204,7 +204,7 @@ function restore(g: GameState, p: Person): string | null {
       if (pct >= 100) x.cold = false
     }
   })
-  if (gain > 0) addRelationship(p, gain)
+  if (gain > 0) addRelationship(g, p, gain)
   if (!w.known) return null
   notePerson(p, 'Was put back in the player’s will.')
   const left = readWl(g, p).anger
@@ -309,7 +309,7 @@ export function estrange(g: GameState, p: Person): string {
     w.cold = true
   })
   p.livesWithPlayer = false
-  p.relationship = Math.min(p.relationship, 12)
+  setRelationship(g, p, Math.min(p.relationship, 12))
   updateTies(g, p, (t) => {
     t.allowance = 0
     t.bound = Math.max(t.bound, g.year + 8)
@@ -324,7 +324,7 @@ export function estrange(g: GameState, p: Person): string {
     if (!gc.alive || gc.relation !== 'grandchild') continue
     if (gc.data.parentId !== p.id && gc.data.childOf !== p.id && gc.otherParentId !== p.id) continue
     gc.livesWithPlayer = false
-    gc.relationship = Math.max(0, gc.relationship - 15)
+    setRelationship(g, gc, Math.max(0, gc.relationship - 15))
   }
   notePerson(p, 'Cut off contact with the player over the will.')
   log(g, `${cap(myWho(p))} cut off all contact with me.`, 'bad')
@@ -340,7 +340,7 @@ export function reconcile(g: GameState, p: Person): void {
     w.anger = Math.min(w.anger, 18)
     w.hard = 0
   })
-  p.relationship = Math.max(p.relationship, 35)
+  setRelationship(g, p, Math.max(p.relationship, 35))
   updateTies(g, p, (t) => {
     t.bound = Math.min(t.bound, g.year)
   })

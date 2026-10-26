@@ -570,6 +570,6 @@ export function repayOdds(p: Person, owes: number): number {
   return Math.max(0.03, Math.min(0.75, o))
 }
 
-export function bumpRelationship(p: Person, delta: number): void {
-  if (Number.isFinite(delta) && delta !== 0) addRelationship(p, delta)
+export function bumpRelationship(g: GameState, p: Person, delta: number): void {
+  if (Number.isFinite(delta) && delta !== 0) addRelationship(g, p, delta)
 }

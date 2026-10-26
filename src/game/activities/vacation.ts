@@ -590,7 +590,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
   addStat(g, 'happiness', joy)
   addStat(g, 'health', randInt(g, 0, 2))
   for (const p of companions) {
-    addRelationship(p, randInt(g, 6, 14))
+    addRelationship(g, p, randInt(g, 6, 14))
     notePerson(p, `Went on ${dest.cruise ? 'the ' + dest.name : 'vacation to ' + dest.name} with the player.`)
   }
   const companionLine = companions.length === 0

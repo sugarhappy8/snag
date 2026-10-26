@@ -200,7 +200,7 @@ export function hireRelative(g: GameState, a: Asset, b: BizState, p: Person, o: 
   if (block) return { ok: false, reason: block }
   const proposal = planProposal(p, plan)
   if (needsVote(g, a, b, proposal) && !boardAllows(g, a, b, proposal)) {
-    addRelationship(p, -randInt(g, 1, 4))
+    addRelationship(g, p, -randInt(g, 1, 4))
     return { ok: false, voted: true, reason: 'The board turned it down.' }
   }
   const job: FamilyJob = {
@@ -230,7 +230,7 @@ export function hireRelative(g: GameState, a: Asset, b: BizState, p: Person, o: 
   setOccupation(p, job, a)
   const fam = familyOf(b)
   fam.hires += 1
-  addRelationship(p, randInt(g, 5, 10))
+  addRelationship(g, p, randInt(g, 5, 10))
   p.stats.happiness = clampN(p.stats.happiness + 5, 0, 100)
   // A made-up job spoils; a real job that is too big spoils a little; earning a place at the bottom does not.
   if (plan.kind === 'cushy') addEntitlement(p, randInt(g, 6, 12))
@@ -292,7 +292,7 @@ export function promote(g: GameState, a: Asset, b: BizState, p: Person): HireRes
   if (age) return { ok: false, reason: age }
   const proposal = movePlanProposal(p, m)
   if (needsVote(g, a, b, proposal) && !boardAllows(g, a, b, proposal)) {
-    addRelationship(p, -randInt(g, 1, 3))
+    addRelationship(g, p, -randInt(g, 1, 3))
     job.mood = clampN(job.mood - 8, 0, 100)
     writeJob(p, job)
     return { ok: false, voted: true, reason: 'The board turned it down.' }
@@ -307,7 +307,7 @@ export function promote(g: GameState, a: Asset, b: BizState, p: Person): HireRes
   job.perf = Math.round(expectedRating(job.skill, job.rank, job.mood))
   writeJob(p, job)
   setOccupation(p, job, a)
-  addRelationship(p, randInt(g, 3, 6))
+  addRelationship(g, p, randInt(g, 3, 6))
   if (fitOf(job.skill, job.rank) < -10) addEntitlement(p, randInt(g, 1, 3))
   const reaction = staffReaction(g, a, b, p, job, 'promoted')
   notePerson(p, `Promoted to ${m.title} at ${a.name} (age ${p.age}).`)
@@ -332,7 +332,7 @@ export function demote(g: GameState, a: Asset, b: BizState, p: Person): HireResu
   job.perf = Math.round(expectedRating(job.skill, job.rank, job.mood))
   writeJob(p, job)
   setOccupation(p, job, a)
-  addRelationship(p, -(entitled ? 14 : 7))
+  addRelationship(g, p, -(entitled ? 14 : 7))
   const fam = familyOf(b)
   fam.resent = Math.round(clampN(fam.resent - 6, 0, 100))
   if (job.groom) clearIf(b, p)
@@ -439,7 +439,7 @@ export function fire(g: GameState, a: Asset, b: BizState, p: Person): HireResult
   fam.resent = Math.round(clampN(fam.resent - 4, 0, 100))
   const kid = p.relation === 'child' || p.relation === 'stepchild' || p.relation === 'grandchild'
   const entitled = entitlement(p) >= 60
-  addRelationship(p, -randInt(g, kid ? 22 : 16, kid ? 38 : 30) - (entitled ? 6 : 0))
+  addRelationship(g, p, -randInt(g, kid ? 22 : 16, kid ? 38 : 30) - (entitled ? 6 : 0))
   p.data.nepoGrudge = g.year
   p.stats.happiness = clampN(p.stats.happiness - 12, 0, 100)
   if (kid) addStat(g, 'happiness', -5)
@@ -508,7 +508,7 @@ export function makeCeo(g: GameState, a: Asset, b: BizState, p: Person): HireRes
   if (needsVote(g, a, b, proposal) && !boardAllows(g, a, b, proposal)) {
     job.mood = clampN(job.mood - 10, 0, 100)
     writeJob(p, job)
-    addRelationship(p, -randInt(g, 2, 6))
+    addRelationship(g, p, -randInt(g, 2, 6))
     return { ok: false, voted: true, reason: 'The board turned it down.' }
   }
   const m = managerFromPerson(g, p, { ...job }, pay)
@@ -529,7 +529,7 @@ export function makeCeo(g: GameState, a: Asset, b: BizState, p: Person): HireRes
     fam.resent = Math.round(clampN(fam.resent + gap * 18, 0, 100))
     b.morale = clampN(b.morale - Math.round(gap * 5), 0, 100)
   }
-  addRelationship(p, randInt(g, 8, 14))
+  addRelationship(g, p, randInt(g, 8, 14))
   p.stats.happiness = clampN(p.stats.happiness + 10, 0, 100)
   notePerson(p, `Became CEO of ${a.name} (age ${p.age}).`)
   count(g, 'familyCeos')
@@ -563,7 +563,7 @@ export function settleReplacedCeo(g: GameState, a: Asset, b: BizState, p: Person
   if (!job) return false
   job.mood = clampN(job.mood - 25, 0, 100)
   writeJob(p, job)
-  addRelationship(p, -randInt(g, 4, 9))
+  addRelationship(g, p, -randInt(g, 4, 9))
   log(g, `${p.firstName} is no longer CEO of ${a.name}.`, 'neutral')
   return true
 }
@@ -589,7 +589,7 @@ function stepDownCeo(g: GameState, a: Asset, b: BizState, p: Person): HireResult
     cur.mood = clampN(cur.mood - 25, 0, 100)
     writeJob(p, cur)
   }
-  addRelationship(p, -randInt(g, 10, 18))
+  addRelationship(g, p, -randInt(g, 10, 18))
   notePerson(p, `Stepped down as CEO of ${a.name} at ${p.age}.`)
   log(g, `I replaced ${myKin(p)} as CEO of ${a.name} with an outside manager.`, 'neutral')
   notice(g, 'Stepping Down', `${p.firstName} is out as CEO of ${a.name} and back to ${cur?.title ?? 'the team'}. ${b.manager ? `${b.manager.firstName} ${b.manager.lastName} (skill ${b.manager.skill}) is running the company now.` : ''} ${p.gender === 'male' ? 'He' : 'She'} will remember this at the next family dinner.`, { emoji: '\u{1FA91}', tone: 'bad' })
@@ -630,13 +630,13 @@ export function designateSuccessor(g: GameState, a: Asset, b: BizState, p: Perso
       pj.mood = clampN(pj.mood - 12, 0, 100)
       writeJob(prev, pj)
     }
-    addRelationship(prev, -randInt(g, 4, 9))
+    addRelationship(g, prev, -randInt(g, 4, 9))
   }
   fam.succ = { kind: 'person', id: p.id }
   job.groom = true
   job.mood = clampN(job.mood + 8, 0, 100)
   writeJob(p, job)
-  addRelationship(p, randInt(g, 3, 7))
+  addRelationship(g, p, randInt(g, 3, 7))
   // The others who work here and were not chosen notice.
   for (const q of g.people) {
     if (!q.alive || q.id === p.id) continue
@@ -702,7 +702,7 @@ export function handOverToSuccessor(g: GameState, a: Asset, b: BizState): HireRe
   if (formerFamilyCeo && formerFamilyCeo.id !== p?.id) settleReplacedCeo(g, a, b, formerFamilyCeo)
   afterSuccession(g, a, b, m)
   if (p) {
-    addRelationship(p, randInt(g, 6, 12))
+    addRelationship(g, p, randInt(g, 6, 12))
     const fam = familyOf(b)
     const gap = clampN((85 - m.skill) / 85, 0, 1)
     fam.label = Math.round(clampN(fam.label + 8 + gap * 25, 0, 100))

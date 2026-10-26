@@ -4,7 +4,7 @@
 // ask for more and thank you less; see wealth-core entitlement.
 import { notePerson } from '../people'
 import { personCash } from '../cash'
-import { addRelationship, log, notice, pronouns, scriptInput } from '../core'
+import { addRelationship, log, notice, pronouns, scriptInput, setRelationship } from '../core'
 import { chance, pick, randInt, uid } from '../rng'
 import { pickLine, pickSite } from '../text/pick'
 import { getCountry, randomFirstName, randomLastName } from '../world'
@@ -215,8 +215,8 @@ export function setAllowance(g: GameState, p: Person, amount: number): void {
     return
   }
   const ratio = amt / Math.max(1, allowanceNorm(g, p))
-  if (amt > before) addRelationship(p, Math.min(8, 2 + Math.round(Math.log2(1 + (amt - before) / Math.max(1, allowanceNorm(g, p))) * 2)))
-  else addRelationship(p, -Math.min(10, 2 + Math.round(((before - amt) / Math.max(1, before)) * 8)))
+  if (amt > before) addRelationship(g, p, Math.min(8, 2 + Math.round(Math.log2(1 + (amt - before) / Math.max(1, allowanceNorm(g, p))) * 2)))
+  else addRelationship(g, p, -Math.min(10, 2 + Math.round(((before - amt) / Math.max(1, before)) * 8)))
   if (isDescendant(p) && p.age < 30 && ratio > 2) addEntitlement(p, Math.min(8, Math.round(Math.log2(ratio) * 2)))
   if (amt === 0) {
     log(g, `I stopped ${myOf(p)}'s ${word}.`)
@@ -881,7 +881,7 @@ export const KID_ASKS: AskDef[] = [
         emoji: '\u{2696}\u{FE0F}',
         run: (g, _a, p) => {
           g.character.willBeneficiaries = []
-          for (const q of g.people) if (q.alive && isKid(q)) q.relationship = Math.max(0, Math.min(100, q.relationship + (p && q.id === p.id ? -6 : 3)))
+          for (const q of g.people) if (q.alive && isKid(q)) setRelationship(g, q, Math.max(0, Math.min(100, q.relationship + (p && q.id === p.id ? -6 : 3))))
           willNotice(g, 'You told them everything will be split evenly. The lawyer named Chad was disappointed.')
         },
       },
@@ -899,7 +899,7 @@ export const KID_ASKS: AskDef[] = [
         label: () => '"I\'m spending it all first"',
         emoji: '\u{1F6E5}\u{FE0F}',
         run: (g) => {
-          for (const q of g.people) if (q.alive && isKid(q)) q.relationship = Math.max(0, q.relationship - 3)
+          for (const q of g.people) if (q.alive && isKid(q)) setRelationship(g, q, Math.max(0, q.relationship - 3))
           g.character.stats.happiness = Math.min(100, g.character.stats.happiness + 4)
           willNotice(g, 'You announced you plan to spend every last cent before you go. The fighting stopped. The worrying began.')
         },

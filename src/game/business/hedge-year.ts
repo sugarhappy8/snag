@@ -64,7 +64,7 @@ function bookFund(g: GameState, a: Asset, f: HedgeFund): Booked | null {
   if (lapsed) Object.assign(f, { strategy: 'longShort', call: 'flat', lev: 1 })
   if (y.net <= COOLING_AT) {
     const living = f.holders.map((h) => g.people.find((p) => p.id === h.id && p.alive)).filter((p) => p !== undefined)
-    for (const p of living) addRelationship(p, -COOLING_BY)
+    for (const p of living) addRelationship(g, p, -COOLING_BY)
     if (living.length) log(g, `Relatives in the ${a.name} lost money.`, 'bad')
   }
   saveFund(a, f)

@@ -329,9 +329,9 @@ export function applyFx(g: GameState, ctx: Ctx | null, fx: Fx): void {
     if (fx.money > 0) addMoney(g, fx.money, 'luck')
     else addMoney(g, -Math.min(Math.max(0, c.money), -fx.money), 'luck')
   }
-  if (fx.rel && x?.p) addRelationship(x.p, fx.rel)
-  if (fx.rel2 && x?.q) addRelationship(x.q, fx.rel2)
-  for (const r of fx.rels ?? []) if (r.p && r.p.alive) addRelationship(r.p, r.d)
+  if (fx.rel && x?.p) addRelationship(g, x.p, fx.rel)
+  if (fx.rel2 && x?.q) addRelationship(g, x.q, fx.rel2)
+  for (const r of fx.rels ?? []) if (r.p && r.p.alive) addRelationship(g, r.p, r.d)
   if (fx.note && x?.p) notePerson(x.p, fx.note)
   if (fx.perf) {
     const slot = x?.data.workSlot === 'partTimeJob' ? 'partTimeJob' : x?.data.workSlot === 'job' ? 'job' : null

@@ -235,7 +235,7 @@ function heartToHeart(g: GameState, p: Person): void {
       y.anger -= relief
       y.hard = Math.max(0, y.hard - 1)
     })
-    addRelationship(p, Math.min(4, 1 + Math.round(relief / 10)))
+    addRelationship(g, p, Math.min(4, 1 + Math.round(relief / 10)))
     log(g, `I had an honest talk with ${p.firstName} about my will.`, 'good')
     if (w.estr) reconcile(g, p)
     const left = readWl(g, p)
@@ -248,7 +248,7 @@ function heartToHeart(g: GameState, p: Person): void {
       y.anger += bump
     })
   }
-  addRelationship(p, -1)
+  addRelationship(g, p, -1)
   log(g, `I tried to talk to ${p.firstName} about my will. It didn't land.`)
   notice(g, 'The Talk', `${p.firstName} heard you out and shook ${x.his} head. "Sorry isn't a share." Maybe next year.`, { emoji: '\u{1F54A}\u{FE0F}' })
 }
@@ -263,7 +263,7 @@ function explainReasons(g: GameState, p: Person): void {
     x.anger -= relief
     x.explained = 'kind'
   })
-  addRelationship(p, 2)
+  addRelationship(g, p, 2)
   addStat(g, 'happiness', -1)
   log(g, `I explained my will to ${p.firstName}.`)
   const left = readWl(g, p)

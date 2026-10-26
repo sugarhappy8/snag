@@ -64,15 +64,15 @@ function familyReactions(g: GameState, topic: string): string {
     const religious = p.traits.includes('religious')
     const roll = randInt(g, 1, 100) + (religious ? 30 : 0) - Math.round(p.relationship / 5)
     if (roll < 55) {
-      addRelationship(p, randInt(g, 2, 6))
+      addRelationship(g, p, randInt(g, 2, 6))
       notePerson(p, `Was supportive when the player shared their ${topic}.`)
       lines.push(pickSite(g, [`Your ${word} hugged you and said they love you no matter what.`, `Your ${word} said they're proud of you for being yourself.`, `Your ${word} shrugged and asked what you wanted for dinner. Total acceptance.`], 0x993e3be8))
     } else if (roll < 85) {
-      addRelationship(p, -randInt(g, 3, 8))
+      addRelationship(g, p, -randInt(g, 3, 8))
       notePerson(p, `Needed time to process the player's ${topic}.`)
       lines.push(pickSite(g, [`Your ${word} said they need some time to process.`, `Your ${word} went quiet and changed the subject.`], 0x6c4b0f37))
     } else {
-      addRelationship(p, -randInt(g, 10, 20))
+      addRelationship(g, p, -randInt(g, 10, 20))
       notePerson(p, `Reacted badly to the player's ${topic}.`)
       lines.push(pickSite(g, [`Your ${word} did not take it well and you two had a big argument.`, `Your ${word} said some hurtful things. You hope they come around.`], 0x2980bc56))
     }
@@ -195,7 +195,7 @@ const LAST = defineScript('act.identity.last', (g, value, data) => {
   log(g, `I legally changed my name from ${oldFull} to ${first} ${last}.`, 'event')
   const upset = parentsAtHome(g).filter((p) => p.traits.includes('religious') || chance(g, 0.15))
   for (const p of upset) {
-    addRelationship(p, -randInt(g, 5, 15))
+    addRelationship(g, p, -randInt(g, 5, 15))
     notePerson(p, `Was upset the player changed their name to ${first} ${last}.`)
   }
   const reaction = upset.length

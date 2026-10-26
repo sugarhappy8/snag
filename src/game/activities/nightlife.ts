@@ -486,7 +486,7 @@ const FLIRT2 = defineScript('act.night.flirt2', (g, choice, data) => {
     p.data.affairWith = partner.id
     log(g, `I cheated on ${partner.firstName} with ${p.firstName}, who I met at ${venue}.`, 'bad')
     if (chance(g, 0.25)) {
-      addRelationship(partner, -randInt(g, 25, 40))
+      addRelationship(g, partner, -randInt(g, 25, 40))
       notePerson(partner, `Caught the player cheating with ${p.firstName}.`)
       remember(g, `${partner.firstName} caught me cheating with ${p.firstName}.`)
       notice(g, 'Busted!', `${partner.firstName} found out you went home with ${p.firstName}. ${partner.firstName} is absolutely furious.`, { emoji: '\u{1F494}', tone: 'bad' })
@@ -844,7 +844,7 @@ function goToParty(g: GameState): void {
   addStat(g, 'happiness', randInt(g, 2, 5))
   const host = partyHost(g)
   if (host) {
-    addRelationship(host, randInt(g, 3, 8))
+    addRelationship(g, host, randInt(g, 3, 8))
     notePerson(host, 'Invited the player to a house party.')
   }
   const intro = host

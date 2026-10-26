@@ -369,15 +369,15 @@ const SPOTLIGHT = defineScript('mcs.spotlight', (g, choice, data) => {
   const f = getPerson(g, id)
   if (!f || !f.alive) return
   if (choice === 'share') {
-    addRelationship(f, 4)
+    addRelationship(g, f, 4)
     addStat(g, 'happiness', 1)
     log(g, `I handed the spotlight back to ${f.firstName}. It felt strange. In a good way.`, 'good')
   } else if (choice === 'steal') {
-    addRelationship(f, -4)
+    addRelationship(g, f, -4)
     addStat(g, 'happiness', 3)
     log(g, `I took the spotlight from ${f.firstName}. It fit perfectly. ${f.firstName} noticed.`, 'neutral')
   } else {
-    addRelationship(f, 1)
+    addRelationship(g, f, 1)
     addStat(g, 'happiness', 2)
     log(g, `I made a joke about being the main character. ${f.firstName} laughed. Mostly.`, 'neutral')
   }
@@ -403,7 +403,7 @@ export function yearlyMainCharacter(g: GameState): void {
   if (chance(g, 0.12)) {
     const f = pick(g, friends)
     rec.momentAge = c.age
-    addRelationship(f, -randInt(g, 1, 3))
+    addRelationship(g, f, -randInt(g, 1, 3))
     addStat(g, 'happiness', 1)
     log(g, `${pickLine(g, FLAVOR_EYES)} (${f.firstName} still loves me. Mostly.)`, 'neutral')
   } else if (c.age >= 12 && chance(g, 0.06)) {

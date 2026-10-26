@@ -1,6 +1,6 @@
 // School & university events: bullies, class clowns, cheating requests, school plays,
 // science fairs, pep rallies, dances, prom, all-nighters and roommates.
-import { preferredGender } from '../core'
+import { preferredGender, setRelationship } from '../core'
 import { applyEffects } from '../effects'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
@@ -54,7 +54,7 @@ function classmateData(c: ReturnType<typeof classmate>) {
 /** Turn the event's classmate into an enemy (existing contact or a new one). */
 function makeEnemy(g: GameState, x: Ctx): Person {
   if (x.p) {
-    x.p.relationship = Math.min(x.p.relationship, 15)
+    setRelationship(g, x.p, Math.min(x.p.relationship, 15))
     if (x.p.relation === 'classmate') x.p.relation = 'enemy'
     return x.p
   }

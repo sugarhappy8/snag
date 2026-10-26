@@ -70,6 +70,7 @@ The rule of the roadmap stands: a seeded test that moves is explained, never sil
 
 | Test | Task | Was | Now | Why | Commit |
 |---|---|---|---|---|---|
+| `test/relationship-ratchet.json` and `test/relationship-ratchet.test.ts` (the real-tree cases: the baseline, and "scans test/ as well as src/"; a new case "leaves no raw write and no two-argument call") | R4-E5 | the baseline held 373 two-argument `addRelationship(p, d)` calls and 43 raw writes in 14 files (plus the definition's write in `core.ts`); the scans case wanted a two-argument call in `test/core.test.ts` | no `addRelationship(p, d)` key and no raw write in the baseline; `core.ts` and `kernel/relations.ts` are the door and their raw writes are not counted; a new case asserts zero of both; the scans case wants none in `test/core.test.ts` and exactly one call in the kit | E5 gives every call the game and moves every raw write behind `setRelationship` (X22), as the E1 header said it would; the recorded parity rows, `golden-digests.json`, `r2-parity.json` and `kernel-parity.json` are byte for byte unchanged | f473402 |
 
 ## life-heirs
 

@@ -515,7 +515,7 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
       const partner = currentPartner(g)
       let text = pickLine(g, ['The recipe said 30 minutes. It took 90. It was delicious.', 'You burned the garlic, salvaged the sauce and plated it like a TV chef.', 'You learned what "julienne" means. Your fingers survived.'])
       if (partner && chance(g, 0.6)) {
-        addRelationship(partner, randInt(g, 2, 5))
+        addRelationship(g, partner, randInt(g, 2, 5))
         text += ` You cooked it with ${partner.firstName}, who only criticized your knife skills twice.`
       }
       return { title: 'Dinner Is Served', text, log: 'I cooked a meal kit dinner.' }
@@ -533,7 +533,7 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
         addStat(g, 'happiness', r(1, 2))
       }
       if (tier.id === 'family') {
-        for (const p of g.people.filter((x) => x.alive && (x.relation === 'child' || x.relation === 'spouse' || x.relation === 'partner')).slice(0, 4)) addRelationship(p, randInt(g, 2, 4))
+        for (const p of g.people.filter((x) => x.alive && (x.relation === 'child' || x.relation === 'spouse' || x.relation === 'partner')).slice(0, 4)) addRelationship(g, p, randInt(g, 2, 4))
       }
       count(g, zoo ? 'zooVisits' : 'museumVisits')
       return zoo

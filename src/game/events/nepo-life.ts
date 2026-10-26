@@ -203,7 +203,7 @@ function resolve(g: GameState, p: Person, kind: string, choice: string): void {
     addMoney(g, -cost, 'tuition')
     p.data.nepoCraft = (typeof p.data.nepoCraft === 'number' ? p.data.nepoCraft : 0) + 1
     p.stats.happiness = Math.min(100, p.stats.happiness + 4)
-    addRelationship(p, 4)
+    addRelationship(g, p, 4)
     notePerson(p, 'Took acting and music lessons you paid for.')
     log(g, `I paid for ${p.firstName}'s acting and music lessons.`, 'good')
     notice(g, 'Lessons', `${p.firstName} took the lessons seriously for a whole season. The teacher says there is something there. "Something" is not a compliment or an insult.`, { emoji: '\u{1F3AD}', tone: 'good' })
@@ -214,13 +214,13 @@ function resolve(g: GameState, p: Person, kind: string, choice: string): void {
       p.data.nepoSelfMade = g.year
       addEntitlement(p, -6)
       p.stats.smarts = Math.min(100, p.stats.smarts + 2)
-      addRelationship(p, 4)
+      addRelationship(g, p, 4)
       personCash(g, p, Math.round(p.money + wage(g, p, k === 'summer' ? 0.08 : 0.25)) - p.money, 'wage')
       notePerson(p, `Found work alone at ${p.age} when ${p.gender === 'male' ? 'he' : 'she'} could have used your name.`)
       log(g, `${p.firstName} found ${p.gender === 'male' ? 'his' : 'her'} own job without using my name.`, 'good')
       notice(g, 'On Their Own', `${p.firstName} found something alone. It is smaller than the one you could have arranged and entirely ${p.gender === 'male' ? 'his' : 'hers'}. ${p.gender === 'male' ? 'He' : 'She'} mentioned it at dinner four times.`, { emoji: '\u{1F4AA}', tone: 'good' })
     } else {
-      addRelationship(p, -1)
+      addRelationship(g, p, -1)
       log(g, `${p.firstName} spent the time looking for a job and did not find one.`)
       notice(g, 'No Luck', `${p.firstName} sent out applications and heard back from nobody. It was a character-building season, if you like that kind of thing.`, { emoji: '\u{1F4EC}' })
     }
@@ -230,7 +230,7 @@ function resolve(g: GameState, p: Person, kind: string, choice: string): void {
   const works = chance(g, callOdds(g, p, k))
   spendFavor(g)
   if (!works) {
-    addRelationship(p, -1)
+    addRelationship(g, p, -1)
     log(g, `The favor I called in for ${p.firstName} did not come through.`, 'bad')
     notice(g, 'No Dice', k === 'screen' ? `The casting director took the meeting, smiled, and passed. Your name opened the door; it did not do the audition.` : `Your friend was very sorry: "the position was just filled." Both of you knew what that meant.`, { emoji: '\u{1F4DE}', tone: 'bad' })
     return
@@ -242,8 +242,8 @@ function resolve(g: GameState, p: Person, kind: string, choice: string): void {
   personCash(g, p, Math.round(p.money + wage(g, p, k === 'screen' ? 0.6 : k === 'summer' ? 0.1 : 0.3)) - p.money, 'wage')
   if (shines) {
     p.stats.smarts = Math.min(100, p.stats.smarts + 1)
-    addRelationship(p, 6)
-  } else addRelationship(p, 3)
+    addRelationship(g, p, 6)
+  } else addRelationship(g, p, 3)
   p.stats.happiness = Math.min(100, p.stats.happiness + 5)
   notePerson(p, k === 'screen' ? `Got ${stage(g)} through your name (age ${p.age}).` : `Got a job through your friend (age ${p.age}).`)
   log(g, k === 'screen' ? `My name got ${p.firstName} in front of a casting director.` : `I called in a favor to get ${p.firstName} a job.`, 'neutral')

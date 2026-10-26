@@ -255,7 +255,7 @@ function markSued(g: GameState, d: Defendant, person: Person | undefined): void 
   if (d.kind === 'surgeon') markSurgeonSued(g, d.name)
   if (person) {
     person.data.sued = true
-    addRelationship(person, -40)
+    addRelationship(g, person, -40)
     notePerson(person, 'Got sued by the player.')
   }
 }

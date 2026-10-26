@@ -557,7 +557,7 @@ const costarsAction: MenuAction = {
     const roll = rand(g)
     let text: string
     if (conceited && roll < 0.6) {
-      addRelationship(co, -randInt(g, 5, 15))
+      addRelationship(g, co, -randInt(g, 5, 15))
       addStat(g, 'happiness', -4)
       text = pickSite(g, [
         `${fullName(co)} spent the whole evening talking about their skincare routine and calling you "the new kid".`,
@@ -565,10 +565,10 @@ const costarsAction: MenuAction = {
         `${fullName(co)} asked the director to cut your best scene.`,
       ], 0xb8355409)
     } else if (roll < 0.15) {
-      addRelationship(co, -10)
+      addRelationship(g, co, -10)
       text = `You and ${fullName(co)} argued about who gets the better trailer. The crew picked sides.`
     } else {
-      addRelationship(co, randInt(g, 8, 18))
+      addRelationship(g, co, randInt(g, 8, 18))
       proj.buzz += 3
       addStat(g, 'happiness', 5)
       text = pickSite(g, [
@@ -773,7 +773,7 @@ const speechScript = defineScript('special.actor.speech', (g, choice) => {
   let text: string
   if (choice === 'family') {
     addStat(g, 'happiness', 5)
-    for (const p of g.people) if (p.alive && ['parent', 'spouse', 'child', 'sibling'].includes(p.relation)) addRelationship(p, 5)
+    for (const p of g.people) if (p.alive && ['parent', 'spouse', 'child', 'sibling'].includes(p.relation)) addRelationship(g, p, 5)
     text = 'You thanked your family through tears. Your mom has watched the clip four hundred times.'
   } else if (choice === 'agent') {
     const sim = actorStore.peek(g)

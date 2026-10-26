@@ -41,9 +41,9 @@ function syncLegacy(s: AstroState, g: GameState): void {
 function familyCost(g: GameState, s: AstroState): void {
   if (s.family < STRAIN.partnerFrom) return
   const partner = g.people.find((p) => p.alive && PARTNERS.has(p.relation))
-  if (partner) addRelationship(partner, -Math.min(6, Math.round((s.family - 40) / 6)))
+  if (partner) addRelationship(g, partner, -Math.min(6, Math.round((s.family - 40) / 6)))
   if (s.family < STRAIN.childFrom) return
-  for (const p of g.people) if (p.alive && p.relation === 'child' && p.age < 18) addRelationship(p, -2)
+  for (const p of g.people) if (p.alive && p.relation === 'child' && p.age < 18) addRelationship(g, p, -2)
 }
 
 /** A peer's flight is lost: 1 to 3 crew are named in one new inquiry, mood and safety fall. */

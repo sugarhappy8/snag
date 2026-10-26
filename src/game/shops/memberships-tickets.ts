@@ -1178,7 +1178,7 @@ function fillMoment(g: GameState, ev: TicketEvent, m: string, companion: Person 
       return 'A foul ball came screaming toward your section and you caught it barehanded! The crowd went wild. Your hand is still throbbing.'
     case 'BIG_SCREEN':
       if (companion && (companion.relation === 'spouse' || companion.relation === 'partner' || companion.relation === 'fiance')) {
-        addRelationship(companion, randInt(g, 2, 5))
+        addRelationship(g, companion, randInt(g, 2, 5))
         return `The kiss cam landed on you and ${companion.firstName}. You went for it. The stadium cheered.`
       }
       return pickLine(g, ['You ended up on the big screen mid-bite. You waved with a mouth full of nachos.', 'The camera found you dancing on the big screen. You did not stop. Legend.'])
@@ -1293,7 +1293,7 @@ export function goToEvent(g: GameState, ev: TicketEvent, tierIndex: number, comp
 
   // Bringing someone.
   if (companion) {
-    addRelationship(companion, randInt(g, 4, 10))
+    addRelationship(g, companion, randInt(g, 4, 10))
     companion.data.lastSeenAge = c.age
     if (c.age < 13 && paidBy && paidBy.id === companion.id) parts.push(`Your ${relationLabel(companion).toLowerCase()} ${companion.firstName} took you and paid for everything.`)
     else parts.push(`${companion.firstName} had a blast too.`)

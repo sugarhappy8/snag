@@ -24,6 +24,7 @@ import {
   relationLabel,
   remember,
   scriptChoice,
+  setRelationship,
   spend,
   useYearAction,
   yearActionsUsed,
@@ -521,7 +522,7 @@ function partnerReacts(g: GameState, sentence: number): void {
   const base = partner.relation === 'spouse' ? 0.2 : partner.relation === 'fiance' ? 0.35 : 0.5
   const leaveChance = clamp(base + (sentence >= 10 ? 0.25 : sentence >= 4 ? 0.1 : 0) - (partner.relationship - 50) / 200, 0.05, 0.95)
   if (!chance(g, leaveChance)) {
-    addRelationship(partner, -randInt(g, 5, 15))
+    addRelationship(g, partner, -randInt(g, 5, 15))
     notePerson(partner, 'Stood by me when I went to prison.')
     return
   }
@@ -535,7 +536,7 @@ function partnerReacts(g: GameState, sentence: number): void {
     log(g, `My ${label} ${partner.firstName} broke up with me after I went to prison.`, 'bad')
   }
   partner.livesWithPlayer = false
-  partner.relationship = Math.min(partner.relationship, randInt(g, 5, 30))
+  setRelationship(g, partner, Math.min(partner.relationship, randInt(g, 5, 30)))
   notePerson(partner, 'Left me when I went to prison.')
   addStat(g, 'happiness', -randInt(g, 8, 15))
   notice(
@@ -975,17 +976,17 @@ const EVENT_PACKAGE = defineScript('prison.event.package', (g, choice, data) => 
   }
   if (choice === 'keep') {
     addStat(g, 'happiness', randInt(g, 5, 10))
-    if (sender) addRelationship(sender, randInt(g, 3, 8))
+    if (sender) addRelationship(g, sender, randInt(g, 3, 8))
     log(g, `I got a care package with ${item} from ${sender ? sender.firstName : 'home'}.`, 'good')
   } else if (choice === 'share') {
     addStat(g, 'happiness', randInt(g, 2, 5))
     p.respect = clamp(p.respect + randInt(g, 4, 8))
-    for (const m of cellmates(g)) addRelationship(m, randInt(g, 5, 12))
-    if (sender) addRelationship(sender, randInt(g, 2, 5))
+    for (const m of cellmates(g)) addRelationship(g, m, randInt(g, 5, 12))
+    if (sender) addRelationship(g, sender, randInt(g, 2, 5))
     log(g, `I shared my care package with my cellmates.`, 'good')
   } else {
     if (sender) {
-      addRelationship(sender, -randInt(g, 8, 15))
+      addRelationship(g, sender, -randInt(g, 8, 15))
       notePerson(sender, 'I returned their care package while I was in prison.')
     }
     log(g, `I returned the care package ${sender ? `${sender.firstName} sent me` : 'from home'}.`, 'neutral')
@@ -1019,7 +1020,7 @@ function prisonEvent(g: GameState): void {
   if (quietMates.length > 0 && chance(g, 0.5)) {
     const m = pick(g, quietMates)
     m.data.storyAge = c.age
-    addRelationship(m, randInt(g, 1, 5))
+    addRelationship(g, m, randInt(g, 1, 5))
     m.yearsKnown += 1
     const story = pick(g, [
       `My cellmate ${m.firstName} told me the whole story of how ${pronouns(m.gender).he} got caught. Twice.`,
@@ -2004,7 +2005,7 @@ function fightInmate(g: GameState, name: string, desc: string, person: Person | 
     )
     if (person) {
       addPersonStat(person, 'health', -randInt(g, 10, 30))
-      person.relationship = Math.min(person.relationship, randInt(g, 0, 10))
+      setRelationship(g, person, Math.min(person.relationship, randInt(g, 0, 10)))
       notePerson(person, 'I beat them up in prison.')
     }
     log(g, `I beat up ${person ? `my cellmate ${person.firstName}` : `an inmate named ${first}`}.`, 'event')
@@ -2018,7 +2019,7 @@ function fightInmate(g: GameState, name: string, desc: string, person: Person | 
       ], 0xcd8edd6e),
     )
     if (person) {
-      addRelationship(person, -randInt(g, 20, 40))
+      addRelationship(g, person, -randInt(g, 20, 40))
       notePerson(person, 'I tried to fight them in prison and lost.')
     }
     log(g, `I lost a fight to ${person ? `my cellmate ${person.firstName}` : `an inmate named ${first}`}.`, 'bad')
@@ -2370,7 +2371,7 @@ function letterNodes(g: GameState): MenuNode[] {
         const p = pronouns(target.gender)
         const reply = target.relationship >= 30 || chance(gg, 0.5)
         if (reply) {
-          addRelationship(target, randInt(gg, 4, 10))
+          addRelationship(g, target, randInt(gg, 4, 10))
           addStat(gg, 'happiness', randInt(gg, 2, 5))
           notePerson(target, 'Wrote to me from prison.')
           log(gg, `I wrote a letter to my ${relationLabel(target).toLowerCase()} ${target.firstName} from prison.`, 'good')

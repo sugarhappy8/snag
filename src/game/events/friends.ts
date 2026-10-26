@@ -1,6 +1,6 @@
 // Friend events: new friends, advice, best-friend requests, rumors, unfriending,
 // insurance fraud schemes, alibis, moving day, late-night flat tires and interventions.
-import { removePerson } from '../core'
+import { removePerson, setRelationship } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import { pickLine } from '../text/pick'
@@ -100,7 +100,7 @@ export const FRIEND_EVENTS = defineEvents([
       yes: (g, x) => {
         if (x.q) {
           x.q.relation = 'friend'
-          x.q.relationship = Math.max(0, x.q.relationship - 20)
+          setRelationship(g, x.q, Math.max(0, x.q.relationship - 20))
         }
         if (x.p) x.p.relation = 'bestFriend'
         say(g, x, ['BFFs', 'Besties'], `You and ${nm(x)} are now best friends!${x.q ? ` ${x.q.firstName} is not thrilled about being demoted.` : ''}`, `My friend ${nm(x)} and I became best friends.`, { rel: 15, happiness: 8 }, 'good', '💛')

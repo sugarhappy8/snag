@@ -489,7 +489,7 @@ function walkWith(g: GameState, p: Person): void {
   count(g, 'walks')
   addStat(g, 'health', randInt(g, 1, 3))
   addStat(g, 'happiness', randInt(g, 2, 5))
-  addRelationship(p, randInt(g, 5, 12))
+  addRelationship(g, p, randInt(g, 5, 12))
   notePerson(p, 'Went on a walk together.')
   log(g, `I went for a walk with ${p.firstName}.`, 'good')
   result(g, 'Walk', say(g, [

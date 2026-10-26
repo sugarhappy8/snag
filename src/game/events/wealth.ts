@@ -129,14 +129,14 @@ function payAllowances(g: GameState): void {
         x.given += amt
         x.missed = 0
       })
-      if (amt >= norm * 0.8 && chance(g, 0.5)) addRelationship(p, 1)
+      if (amt >= norm * 0.8 && chance(g, 0.5)) addRelationship(g, p, 1)
       if (isDescendant(p) && p.age < 30) {
         const ratio = amt / Math.max(1, norm)
         if (ratio > 2) addEntitlement(p, Math.min(6, Math.round(Math.log2(ratio) * 1.5)))
         else if (ratio <= 1.2) addEntitlement(p, -1)
       }
     } else {
-      addRelationship(p, -randInt(g, 2, 5))
+      addRelationship(g, p, -randInt(g, 2, 5))
       const missed = t.missed + 1
       updateTies(g, p, (x) => {
         x.missed = missed
@@ -166,7 +166,7 @@ function collectLoans(g: GameState): void {
         x.owes = Math.max(0, x.owes - pay)
         if (x.owes === 0) x.owesSince = 0
       })
-      addRelationship(p, 2)
+      addRelationship(g, p, 2)
       const left = t.owes - pay
       // A part payment is said through its row (text/state-table.ts), one record per person: when the debt has halved since the
       // last line (after 2 years) or after 5 quiet years. A quiet year still takes the log id the line took. The last payment
@@ -174,7 +174,7 @@ function collectLoans(g: GameState): void {
       if (left > 0) logStateLine(g, stateLine(g, 'loan.back', left, { id: p.id, slots: { who: cap(myOf(p)), whom: myOf(p), he: p.gender === 'male' ? 'he' : 'she', money: money(pay), left: money(left) } }), 'good')
       else log(g, `${cap(myOf(p))} paid back the last ${money(pay)} ${p.gender === 'male' ? 'he' : 'she'} owed me!`, 'good')
     } else if (chance(g, Math.min(0.5, 0.1 + years * 0.04))) {
-      addRelationship(p, -randInt(g, 1, 4))
+      addRelationship(g, p, -randInt(g, 1, 4))
       // The last mark is read before this year's is written: the line comes once in five years.
       const said = t.marks.avoid
       updateTies(g, p, (x) => {
@@ -209,7 +209,7 @@ function settleVentures(g: GameState): void {
         // A royal appointment is their title: the court keeps it (syncRoyalAppointment), and a
         // reload would put it straight back.
         if (p.age < 65 && x.kind === 'venture' && !p.data.royalAppointment) p.occupation = 'Business Owner'
-        addRelationship(p, randInt(g, 4, 8))
+        addRelationship(g, p, randInt(g, 4, 8))
         notePerson(p, `Made ${x.what} a success with your money.`)
       }
       log(g, `${cap(x.what)} took off! ${cap(who)} paid me back ${money(back)}.`, 'good')
@@ -219,7 +219,7 @@ function settleVentures(g: GameState): void {
       addMoney(g, back, { reason: 'draw', with: 'pool:firms' })
       log(g, `${cap(x.what)} fizzled. ${cap(who)} paid me back ${money(back)} of the ${money(x.amt)} I put in.`)
     } else {
-      if (p && p.alive) addRelationship(p, -randInt(g, 0, 3))
+      if (p && p.alive) addRelationship(g, p, -randInt(g, 0, 3))
       log(g, fillSlots(pickLine(g, VENTURE_LOST_LINES), { what: x.what, money: money(x.amt) }), 'bad')
     }
   }
@@ -243,7 +243,7 @@ function kidsYear(g: GameState): void {
       if (how === 'spoiled' && chance(g, 0.5)) p.stats.smarts = Math.max(0, p.stats.smarts - 1)
       if (how === 'fair' && chance(g, 0.35)) {
         p.stats.smarts = Math.min(100, p.stats.smarts + 1)
-        addRelationship(p, 1)
+        addRelationship(g, p, 1)
       }
     }
     const t = readTies(g, p)

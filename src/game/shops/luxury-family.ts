@@ -15,7 +15,7 @@
 // or in the year of an emigration; family who live abroad aren't around to use anything.
 import { findAsset, isHeirloom } from '../assets'
 import { personCash } from '../cash'
-import { addHidden, addMoney, addStat, canAfford, count, formatMoney, getPerson, inPrison, log, notice, pronouns, relationLabel, scriptChoice, shortMoney, spend } from '../core'
+import { addHidden, addMoney, addStat, canAfford, count, formatMoney, getPerson, inPrison, log, notice, pronouns, relationLabel, scriptChoice, setRelationship, shortMoney, spend } from '../core'
 import { addEntitlement, allowanceNorm, entitlement, gratitude, isAbroad, isDescendant, isParent, isPartner, isSibling, traitIn } from '../events/wealth-core'
 import { isEstranged } from '../events/will-core'
 import { hasTech } from '../history/timeline'
@@ -166,7 +166,7 @@ export function grantAccess(g: GameState, a: Asset, p: Person): boolean {
   writeAccess(g, a, [...accessOf(g, a), p.id])
   const f = readFu(g, p)
   // Being trusted with the first thing warms people; the tenth thing is just the tenth thing.
-  if (f.given === 0) p.relationship = Math.min(100, p.relationship + 1)
+  if (f.given === 0) setRelationship(g, p, Math.min(100, p.relationship + 1))
   f.given += 1
   writeFu(p, f)
   log(g, `I let ${p.firstName} use my ${a.name}.`)
@@ -177,7 +177,7 @@ export function revokeAccess(g: GameState, a: Asset, p: Person): number {
   if (!hasAccess(g, a, p)) return 0
   const cost = revokeCost(g, p)
   writeAccess(g, a, accessOf(g, a).filter((id) => id !== p.id))
-  if (cost > 0) p.relationship = Math.max(0, p.relationship - cost)
+  if (cost > 0) setRelationship(g, p, Math.max(0, p.relationship - cost))
   if (cost > 0 && isDescendant(p)) addEntitlement(p, -1)
   log(g, `I took away ${p.firstName}'s access to my ${a.name}.`, cost > 0 ? 'bad' : 'neutral')
   return cost
@@ -349,8 +349,8 @@ function spoilBy(g: GameState, p: Person, a: Asset, capSoFar: Map<string, number
   capSoFar.set(p.id, used + step)
 }
 
-function warmth(p: Person, base: number): void {
-  p.relationship = Math.min(100, p.relationship + gratitude(p, base))
+function warmth(g: GameState, p: Person, base: number): void {
+  setRelationship(g, p, Math.min(100, p.relationship + gratitude(p, base)))
 }
 
 function risky(p: Person): boolean {
@@ -393,7 +393,7 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
     if (!spend(g, deduct, 'premium')) return unrepaired(short(deduct))
     a.condition = Math.min(100, a.condition + 20)
     syncValue(a)
-    p.relationship = Math.min(100, p.relationship + 1)
+    setRelationship(g, p, Math.min(100, p.relationship + 1))
     log(g, `The insurer covered the repairs after ${name} crashed my ${a.name}.`)
     notice(g, 'Claim Approved', `The insurer paid for the repairs on your ${a.name} after the ${formatMoney(deduct)} deductible. ${name} is relieved, and has promised to be more careful (${pickLine(g, ['again', 'probably', 'for a bit'])}).`, { emoji: '🛡️', tone: 'good' })
     return
@@ -405,7 +405,7 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
     personCash(g, p, Math.max(0, p.money - share) - p.money, 'purchase', 0)
     a.condition = Math.min(100, a.condition + 30)
     syncValue(a)
-    p.relationship = Math.max(0, p.relationship - 3)
+    setRelationship(g, p, Math.max(0, p.relationship - 3))
     if (isDescendant(p)) addEntitlement(p, -3)
     fuBad(p, g)
     notice(g, 'Making It Right', `You paid ${formatMoney(bill - share)} and ${name} chipped in ${formatMoney(share)} from ${pronouns(p.gender).his} own pocket. It stung ${him}. It was also the first time ${pronouns(p.gender).he} had ever paid for a mistake.`, { emoji: '🔧' })
@@ -413,7 +413,7 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
   }
   if (choice === 'ground') {
     for (const x of g.assets) if (hasAccess(g, x, p)) writeAccess(g, x, accessOf(g, x).filter((id) => id !== p.id))
-    p.relationship = Math.max(0, p.relationship - 6)
+    setRelationship(g, p, Math.max(0, p.relationship - 6))
     if (isDescendant(p)) addEntitlement(p, -2)
     const repaired = spend(g, bill, 'purchase')
     if (repaired) {
@@ -429,7 +429,7 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
   a.condition = Math.min(100, a.condition + 28)
   syncValue(a)
   if (isDescendant(p)) addEntitlement(p, choice === 'slide' ? 3 : 1)
-  p.relationship = Math.min(100, p.relationship + (choice === 'slide' ? 2 : 0))
+  setRelationship(g, p, Math.min(100, p.relationship + (choice === 'slide' ? 2 : 0)))
   notice(g, choice === 'slide' ? 'Boys Will Be Boys' : 'Repaired', choice === 'slide' ? `You paid ${formatMoney(bill)} and said nothing. ${name} learned that crashing is free.` : `You paid ${formatMoney(bill)} for the repairs and had a calm word with ${name}.`, { emoji: '🔧', tone: choice === 'slide' ? 'neutral' : 'good' })
 })
 
@@ -438,7 +438,7 @@ function crashPopup(g: GameState, a: Asset, p: Person): void {
   a.condition = Math.max(0, a.condition - randInt(g, 25, 50))
   syncValue(a)
   fuBad(p, g)
-  p.relationship = Math.max(0, p.relationship - 2)
+  setRelationship(g, p, Math.max(0, p.relationship - 2))
   const choices: ChoiceOption[] = []
   if (insuredNow(a)) choices.push({ id: 'claim', label: `File a claim (you pay the ${formatMoney(Math.min(deductibleOf(a), worth))} deductible)`, emoji: '🛡️' })
   choices.push({ id: 'pay', label: `Pay the ${formatMoney(worth)} repair bill yourself`, emoji: '🔧' })
@@ -467,13 +467,13 @@ const PAWN = defineScript('luxury.family.pawn', (g, choice, data) => {
     copy.condition = Math.max(0, copy.condition - 3)
     syncValue(copy)
     g.assets.push(copy)
-    p.relationship = Math.max(0, p.relationship - 3)
+    setRelationship(g, p, Math.max(0, p.relationship - 3))
     if (isDescendant(p)) addEntitlement(p, -2)
     log(g, `I bought my ${copy.name} back from a pawnbroker.`)
     notice(g, 'Bought Back', `You paid ${formatMoney(cost)} to get your ${copy.name} back from the pawnbroker. ${p.firstName} cried, apologized and swore it was for something important. It was not.`, { emoji: '🏷️' })
     return
   }
-  p.relationship = Math.max(0, p.relationship - (choice === 'forgive' ? 1 : 5))
+  setRelationship(g, p, Math.max(0, p.relationship - (choice === 'forgive' ? 1 : 5)))
   if (isDescendant(p)) addEntitlement(p, choice === 'forgive' ? 2 : -1)
   notice(g, choice === 'forgive' ? 'Let It Go' : 'Hard Words', choice === 'forgive' ? `You let it go. ${p.firstName} hugged you very hard, which felt a bit like relief rather than love.` : `You told ${p.firstName} exactly what you thought. The ${str(obj(raw)?.name)} is gone, and so is a little trust.`, { emoji: '😔' })
 })
@@ -504,12 +504,12 @@ const PARTY = defineScript('luxury.family.party', (g, choice, data) => {
   if (choice === 'own') {
     pay(g, cost)
     addHidden(g, 'fame', 1)
-    p.relationship = Math.min(100, p.relationship + 2)
+    setRelationship(g, p, Math.min(100, p.relationship + 2))
     notice(g, 'Own It', `You paid for the damage and said it was a great party. ${hasTech(g, 'socialMedia') ? 'The clip got a million views.' : 'The story got told for a decade.'}`, { emoji: '🎉', tone: 'good' })
     return
   }
   pay(g, cost)
-  p.relationship = Math.max(0, p.relationship - 3)
+  setRelationship(g, p, Math.max(0, p.relationship - 3))
   if (isDescendant(p)) addEntitlement(p, -1)
   notice(g, 'Rules Were Made', `You paid ${formatMoney(cost)} for the damage and set some rules. ${p.firstName} rolled ${pronouns(p.gender).his} eyes in a way that suggested they would be tested.`, { emoji: '📋' })
 })
@@ -560,8 +560,8 @@ export function yearlyFamilyUse(g: GameState): void {
     if (use === 'wear' || use === 'show' || use === 'play') {
       if (isFake(cur) && authOf(cur) === 'unknown' && chance(g, 0.18)) {
         revealAuth(g, cur)
-        warmth(p, 0)
-        p.relationship = Math.max(0, p.relationship - 2)
+        warmth(g, p, 0)
+        setRelationship(g, p, Math.max(0, p.relationship - 2))
         addStat(g, 'happiness', -3)
         fuBad(p, g)
         lines.push(`${p.firstName} wore your ${cur.name} to a party and a guest who knew better said it was a fake. ${him.He} was mortified, and so are you. It is a counterfeit.`)
@@ -577,7 +577,7 @@ export function yearlyFamilyUse(g: GameState): void {
         g.assets = g.assets.filter((x) => x.id !== cur.id)
         if (payout > 0) addMoney(g, payout, 'claim')
         fuBad(p, g)
-        p.relationship = Math.max(0, p.relationship - 3)
+        setRelationship(g, p, Math.max(0, p.relationship - 3))
         log(g, `${p.firstName} lost my ${cur.name}.`, 'bad')
         lines.push(`${p.firstName} lost your ${cur.name} somewhere between a taxi and a party. ${payout > 0 ? `The insurer paid ${formatMoney(payout)}.` : 'It was not insured. It is gone.'} ${him.He} cried and apologized.`)
         continue
@@ -589,7 +589,7 @@ export function yearlyFamilyUse(g: GameState): void {
         lines.push(`${p.firstName} put a scratch on your ${cur.name}. It will need a polish.`)
       } else {
         const base = isPartner(p) && cur.kind === 'jewelry' ? 5 : 3
-        warmth(p, base)
+        warmth(g, p, base)
         const where = hasTech(g, 'socialMedia') ? `posted photos of it all weekend` : pick(g, p.age < 18 ? ['bragged about it at school', 'paraded it down the street', 'showed it off to the whole class'] : ['showed it off at the club', 'wore it to church and everyone looked', 'paraded it down the street'])
         calm.push(`${p.firstName} ${pick(g, ['wore', 'carried', 'borrowed'])} your ${cur.name} and ${where}. ${isPartner(p) && cur.kind === 'jewelry' ? `${him.He} loves it, and you for letting ${him.him}.` : `${him.He} felt trusted.`}`)
       }
@@ -611,7 +611,7 @@ export function yearlyFamilyUse(g: GameState): void {
         fuBad(p, g)
         lines.push(`${p.firstName} put a dent in your ${cur.name}.${bill > 0 ? ` The body shop charged ${formatMoney(bill)}.` : ''}`)
       } else {
-        warmth(p, young ? 4 : 3)
+        warmth(g, p, young ? 4 : 3)
         const where = chauffeured ? `was driven to school in your ${cur.name} by the chauffeur` : pick(g, ['took your', 'drove your', 'cruised in your']) + ' ' + cur.name
         calm.push(`${p.firstName} ${chauffeured ? where : `${where} to ${pick(g, p.age < 18 ? ['school', 'a friend\'s house', 'the beach'] : ['the club', 'a friend\'s house', 'the beach', 'a weekend away'])}`} and everybody saw. ${pickLine(g, ['The valet is now a fan.', 'Someone asked who owned it.', 'The neighbors definitely noticed.'])}`)
       }
@@ -622,7 +622,7 @@ export function yearlyFamilyUse(g: GameState): void {
         decision = () => partyPopup(g, cur, p)
         continue
       }
-      warmth(p, 4)
+      warmth(g, p, 4)
       cur.condition = Math.max(0, cur.condition - randInt(g, 0, 3))
       syncValue(cur)
       calm.push(`${p.firstName} took your ${cur.name} out with friends. Fuel, dockage and crew came to ${formatMoney(cost)}.`)
@@ -630,7 +630,7 @@ export function yearlyFamilyUse(g: GameState): void {
     } else if (use === 'fly') {
       const trip = num(cur.details.tripCost) || Math.round(marketValue(cur) * 0.006)
       const cost = pay(g, trip + Math.round(trip * 0.25), 'leisure')
-      warmth(p, 5)
+      warmth(g, p, 5)
       cur.condition = Math.max(0, cur.condition - randInt(g, 0, 2))
       syncValue(cur)
       calm.push(`${p.firstName} and the family took ${pronouns(p.gender).his} holiday on your ${cur.name}. Fuel, landing fees and crew came to ${formatMoney(cost)}.`)
@@ -643,7 +643,7 @@ export function yearlyFamilyUse(g: GameState): void {
       const rival = g.people.find((q) => isFamilyMember(g, q) && q.id !== p.id && !hasAccess(g, cur, q) && (isSibling(q) || q.relation === 'halfSibling' || q.relation === 'stepsibling' || isParent(q)))
       if (rival) {
         envied = true
-        rival.relationship = Math.max(0, rival.relationship - randInt(g, 1, 3))
+        setRelationship(g, rival, Math.max(0, rival.relationship - randInt(g, 1, 3)))
         lines.push(`${rival.firstName} heard about it and made a few remarks about money. ${hasTech(g, 'smartphone') ? 'The family group chat is not what it was.' : 'Family dinners are not what they were.'}`)
       }
     }
