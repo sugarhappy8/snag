@@ -6,7 +6,7 @@
 // keeps its years for the whole life, so the cap can count them.
 import { describe, expect, it } from 'vitest'
 import { familyLast, familyUses, isMemKey, noteFamily, readTextMem, familyStats } from '../src/game/text/memory'
-import { PACE, askGapOk, notePopup, paceKey, paceWeight, popupSeen, withPaceOff } from '../src/game/text/pace'
+import { KIN_FAMILIES, PACE, askGapOk, notePopup, paceKey, paceWeight, popupSeen, withPaceOff } from '../src/game/text/pace'
 import type { GameState } from '../src/game/types'
 import { deepFreeze } from './fuzz-kit'
 import { makeTestGame } from './helpers'
@@ -19,7 +19,7 @@ function game(year = 2030): GameState {
 
 describe('PACE', () => {
   it('holds the agreed numbers', () => {
-    expect(PACE).toEqual({ window: 5, weight: 0.25, askGap: 4, askLife: 6, maxFamilies: 60 })
+    expect(PACE).toEqual({ window: 5, weight: 0.25, askGap: 4, askLife: 6, maxFamilies: 80 })
     expect(Object.isFrozen(PACE)).toBe(true)
   })
 })
@@ -30,6 +30,28 @@ describe('paceKey', () => {
     expect(paceKey('ask', 'wheels')).toBe('pop.ask.wheels')
     expect(paceKey('biz', 'regulator')).toBe('pop.biz.regulator')
     expect(paceKey('kit', 'work.crisis')).toBe('pop.kit.work.crisis')
+    expect(paceKey('kin', 'feud')).toBe('pop.kin.feud')
+  })
+
+  // R4-E9 (X41): the fifth engine, `kin`, holds the three families that E10b (a lender calls), E11 (a secret leaks) and E12 (a falling out)
+  // use. The list is closed: a fourth name is a typo or a task that has not asked for its family, and either way it throws when the table loads.
+  it('has the kin engine with a closed list of three families', () => {
+    expect([...KIN_FAMILIES]).toEqual(['feud', 'lender', 'leak'])
+    expect(Object.isFrozen(KIN_FAMILIES)).toBe(true)
+    expect(KIN_FAMILIES.map((f) => paceKey('kin', f))).toEqual(['pop.kin.feud', 'pop.kin.lender', 'pop.kin.leak'])
+    for (const other of ['gossip', 'offer', 'Feud', 'feuds', 'feud.x', '']) expect(() => paceKey('kin', other), JSON.stringify(other)).toThrow(/pace/i)
+  })
+
+  it('notes a kin family like any other, and ignores a kin key outside the list', () => {
+    const g = game(2030)
+    for (const f of KIN_FAMILIES) notePopup(g, paceKey('kin', f))
+    notePopup(g, 'pop.kin.gossip')
+    notePopup(g, 'pop.kin.')
+    expect(Object.keys(readTextMem(g).f).sort()).toEqual(['pop.kin.feud', 'pop.kin.leak', 'pop.kin.lender'])
+    expect(popupSeen(g, 'pop.kin.lender')).toBe(true)
+    expect(paceWeight(g, 'pop.kin.feud', 8)).toBe(2)
+    // a kin family is a weighted family, not an ask: it keeps the ten years every non-ask family keeps
+    expect(familyUses(g, 'pop.kin.leak')).toBe(1)
   })
 
   it('always makes a key the text memory accepts, also at the longest family', () => {
@@ -227,11 +249,11 @@ describe('familyUses', () => {
     g.flags.textMem = { v: 1, p: {}, f: { '9bad': '2030' }, r: {} } as never
     expect([familyUses(g, '9bad'), familyUses(g, 'toString'), familyUses(g, '__proto__')]).toEqual([0, 0, 0])
     const f: Record<string, string> = { [key]: '2030,2031' }
-    for (let i = 0; i < 130; i++) f[`pop.ev.f${i}`] = '2030'
+    for (let i = 0; i < 170; i++) f[`pop.ev.f${i}`] = '2030'
     g.flags.textMem = { v: 1, p: {}, f, r: {} } as never
-    // The sanitized memory keeps the newest 120 keys, so the oldest one (key) is dropped there.
+    // The sanitized memory keeps the newest 160 keys, so the oldest one (key) is dropped there.
     expect(familyUses(g, key)).toBe(0)
-    expect(familyUses(g, 'pop.ev.f129')).toBe(1)
+    expect(familyUses(g, 'pop.ev.f169')).toBe(1)
   })
 })
 

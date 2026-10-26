@@ -14,6 +14,7 @@ import { marketOf } from '../data/markets'
 import { notePerson } from '../people'
 import { chance, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { familyRoom, useFamilyAct } from '../society/contract'
 import type { Asset, GameState, Person } from '../types'
 import { remember } from '../world/edge-write'
 import { handOver, managerCandidate } from './career'
@@ -34,9 +35,22 @@ export function popupRoom(g: GameState): boolean {
   return (g.yearActions[POP_KEY] ?? 0) < NEPO_POPUPS && g.queue.filter((m) => m.kind === 'choice').length < 4
 }
 
-/** Spend one of the year's popups. */
+/**
+ * Spend one of the year's popups: the local cap of this module (`nepo.pop`, 2). The year's one outcome notice spends this and nothing
+ * else, because a notice is not a choice and takes no slot of the shared family budget (R4-E9, C13).
+ */
 export function usePopup(g: GameState): boolean {
   return useYearAction(g, POP_KEY, NEPO_POPUPS)
+}
+
+/**
+ * Spend one of the year's popups for a CHOICE (an ask, a life event, the question of the baton): the shared budget must have room for
+ * nepo, then the local cap is spent, then the shared key (society/budget.ts, R4-E9, X40). A refusal on either side spends nothing on the
+ * other. On a life that is not stamped there is no shared budget and this is usePopup.
+ */
+export function useChoicePopup(g: GameState): boolean {
+  if (familyRoom(g, 'nepo') < 1) return false
+  return usePopup(g) && useFamilyAct(g, 'nepo')
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +533,9 @@ function batonPrompt(g: GameState, a: Asset, b: BizState): boolean {
   if (c.age < 66 || g.year - fam.handYear < 4 || c.prison) return false
   const name = s.kind === 'person' ? `${s.person.firstName} ${s.person.lastName}` : s.name
   const skill = s.kind === 'person' ? Math.round(s.job.skill) : Math.round(s.skill)
+  // The slot is spent before the year is marked: a prompt the budget refuses leaves handYear alone and the question comes next year.
+  // The local cap is spent here as well (the caller used to do it after the prompt was queued); nothing in between reads it.
+  if (!useChoicePopup(g)) return false
   fam.handYear = g.year
   scriptChoice(
     g,
@@ -560,6 +577,6 @@ export function familyYear(g: GameState): void {
   for (const a of businessAssets(g)) {
     if (!popupRoom(g)) break
     const b = bizOf(g, a)
-    if (batonPrompt(g, a, b)) usePopup(g)
+    batonPrompt(g, a, b)
   }
 }

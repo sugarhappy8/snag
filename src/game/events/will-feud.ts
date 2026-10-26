@@ -15,6 +15,7 @@ import { personEntity } from '../kernel/person-ref'
 import { chance, pick, randInt, shuffle } from '../rng'
 import type { GameState, Person } from '../types'
 import { remember } from '../world/edge-write'
+import { useFamilyAct } from '../society/contract'
 import { landline } from './era'
 import { goodsScale, isAbroad, typicalIncome } from './wealth-core'
 import { afterWillChange, ensureSnap, estrange, learn } from './will-act'
@@ -236,6 +237,9 @@ export function yearlyWillFeuds(g: GameState): void {
   const tryScene = (): boolean => {
     if (scene) return false
     if (!useYearAction(g, 'will.scene', 1)) return false
+    // a scene is one of the family's choices: on a stamped life it takes one of the year's three as well (R4-E9, X40), and a scene that
+    // finds none is not played this year. will.scene is spent either way, so a falling out (E12) cannot slip in behind it
+    if (!useFamilyAct(g, 'will')) return false
     scene = true
     return true
   }

@@ -10,7 +10,7 @@ import { addMoney, addRelationship, addStat, formatMoney, log, notice, scriptCho
 import { businessAssets } from '../business/state'
 import { internWord } from '../business/nepo-roles'
 import { driveOf, outlookFor } from '../business/nepo-model'
-import { popupRoom, usePopup } from '../business/nepo-year'
+import { popupRoom, useChoicePopup } from '../business/nepo-year'
 import { hasTech } from '../history/timeline'
 import { notePerson } from '../people'
 import { chance, pick } from '../rng'
@@ -140,7 +140,7 @@ export function yearlyNepoLife(g: GameState): void {
   if (kids.length === 0 || !chance(g, odds(g))) return
   const p = pick(g, kids)
   const kind = pickKind(g, p)
-  if (!kind || !usePopup(g)) return
+  if (!kind || !useChoicePopup(g)) return
   p.data.nepoLife = g.year
   present(g, p, kind)
 }

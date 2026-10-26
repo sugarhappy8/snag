@@ -22,7 +22,7 @@ import { MODEL_DEFS, modelCrises } from '../src/game/special/model-events'
 import { modelStore } from '../src/game/special/model-state'
 import { MUSIC_DEFS } from '../src/game/special/music-events'
 import { readTextMem } from '../src/game/text/memory'
-import { PACE, notePopup, paceKey, withPaceOff } from '../src/game/text/pace'
+import { KIN_FAMILIES, PACE, notePopup, paceKey, withPaceOff } from '../src/game/text/pace'
 import type { ChoiceModal, GameState } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
@@ -60,11 +60,11 @@ describe('the families table', () => {
     expect(kitPaceKey('actor', 'not.a.crisis')).toBeUndefined()
   })
 
-  it('fits, with the event, ask, company and career families, under the 60 the text memory leaves for popups', () => {
+  it('fits, with the event, ask, company and career families, under the 80 the text memory leaves for popups', () => {
     const events = new Set(EVENT_LIBRARY.map((e) => eventPaceFamily(e.id)).filter((f): f is string => f !== undefined)).size
     const asks = new Set(Object.values(ASK_FAMILIES).map((e) => e.family)).size
     const biz = new Set(Object.values(BIZ_EVENT_FAMILIES)).size
-    expect(events + asks + biz + families().size).toBeLessThanOrEqual(PACE.maxFamilies)
+    expect(events + asks + biz + families().size + KIN_FAMILIES.length).toBeLessThanOrEqual(PACE.maxFamilies)
   })
 })
 

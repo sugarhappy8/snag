@@ -887,6 +887,22 @@ the UI. Escrow and a cut-out heir's claim survive into the next generation and r
 if that heir dies first. A written will that omits an otherwise eligible spouse or child counts as
 cutting them out at the reading.
 
+### Society (society/*.ts)
+
+`society/` is the domain of what people do to each other and the budget that keeps it from burying the player in popups. It is layer 3,
+like `events/` and `business/`, and it is new in R4 (v5.3.0). Its one door is `society/contract.ts`: another domain imports only that
+file (the domain rule of `test/layers-domains.test.ts` does not count a contract import), and `society/` reaches `life` and no other
+domain (the `society->life` pair arrives with the acts of R4-E10a, when its files import `cash.ts` and `npc-state.ts`). The files of
+the domain read the world (`world/`), `core` and the kernel, and nothing from `events/` or `business/`.
+
+R4-E9 put the first two files in it. `society/budget.ts` is the family-act budget: `useFamilyAct(g, source)` spends one of the three
+family choices a year (`g.yearActions['fam.act']`) on a life the social stamp marks, `familyRoom(g, source)` looks before the spend, and
+`familyLive(g)` says whether the family has a stake (someone cut out of the will, an open feud or debt, a family firm with employed
+relatives) that holds one slot back from the wealth asks and the luxury choice. The sources that spend it are the wealth asks, the
+luxury family choice, the nepo ask, life event and baton prompt, and the will's scene; the acts of the close join them. An
+unstamped life has no counter and keeps the old caps. Later tasks add one export line each to the contract, and their detail goes to
+`docs/SOCIAL.md` (section 12 has the budget).
+
 ### Main Character Syndrome and instant mastery
 
 `talents.ts MainCharacter` occupies one of the three starting-talent slots. `hasTalent(g, id)` must
