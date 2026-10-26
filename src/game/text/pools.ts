@@ -288,3 +288,13 @@ export const KIN_WIDOWED = defineLines('life.kinWidowed', [
   'This year {who} was widowed when {spouse} died.',
   'I got word that {spouse} died, leaving {who} widowed.',
 ])
+
+// R4-E13 (D.4): a key person lured away by a rival at the year's end (business/staff-loyalty.ts). {who} is the full name, {role} the
+// title and {company} the company's name, so a loss reads as someone's. Each line holds all three slots.
+/** A key person poached: {who}, {role}, {company}. Said once for each person, on a stamped life. */
+export const STAFF_POACHED_LINES = defineLines('business.staffPoached', [
+  'A rival lured {who}, our {role}, away from {company}.',
+  "{who} took a rival's offer. {company} lost its {role}.",
+  'A competitor hired {who} away, and {company} lost its {role}.',
+  '{who} left {company} for a rival, and our {role} went with them.',
+])

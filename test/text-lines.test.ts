@@ -31,6 +31,7 @@ import {
   NOTEBOOK_FULL_LINES,
   REFUSED_LINES,
   RESIGN_LINES,
+  STAFF_POACHED_LINES,
   VENTURE_LOST_LINES,
   VOUCH_LINES,
 } from '../src/game/text/pools'
@@ -283,6 +284,8 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'social.broker', lines: BROKER_LINES, role: 'log', slots: ['who', 'whom'] },
   // R4-L4: a close relative is widowed ({who} is "my sister Fatima", {spouse} the first name of the one who died).
   { id: 'life.kinWidowed', lines: KIN_WIDOWED, role: 'log', slots: ['spouse', 'who'] },
+  // R4-E13: a key person poached at the year's end ({who} the full name, {role} the title, {company} the company).
+  { id: 'business.staffPoached', lines: STAFF_POACHED_LINES, role: 'log', slots: ['company', 'role', 'who'] },
 ]
 
 describe('the pools of R2-P10', () => {
