@@ -113,7 +113,7 @@ Not owned: the shim and goldens (Edges), the popup budget itself (E9), edges and
 | Strife edges | 3 a person, 36 in all | 100 cut-out relatives | L10 (`strife-edges`) |
 | NPC wage | a person's yearly wage at most a multiple of typical income x wages (the 3.5 is UNVERIFIED and L12 measures the multiple and writes it in); the same row also holds the aggregate of all NPC wages booked in a year to a multiple of typical income x the NpcLife population (F18 is only partly closed: a named employer is R6 A.K3) | a grid of skill, education, experience; 100x people | L12 (`npc-wage`) |
 
-The rows are ids of the ceiling list; each task that owns a row writes its probe into `test/ceiling-kit.ts` through L12, which owns the file edit (X50, section 2 of the cross-check).
+The Task column names the task whose code a row probes; L12 writes all ten rows and their probes into `test/ceiling-list.json` and `test/ceiling-kit.ts` (cross-check section 2, the ceiling files row).
 
 State, in JSON nodes: `Person.data` keys about 11 an anchor; kin records at most 24 nodes (20 typical); edges 11 each. A typical life (4 anchors, 8 records, 12 edges, the measured 12 lives) is about 340 nodes; a long family life (10 anchors, 40 records, 50 edges) about 1,500; the worst case (60 anchors = 660, 160 records at 24 = 3,840, 256 edges at 11 = 2,800) about 7,300, inside the Registry's 10,401 and the Edges' 17,000 except the `Person.data` keys. The 160-record cap leaves 240 of the Met shard's 400 records to everyone else. Nothing here raises the lead's world budget (P2, X47).
 
@@ -134,7 +134,7 @@ Before the flip nothing here is stamped, so no gate can see it. After the flip t
 | File | Tasks in merge order | Edit |
 |---|---|---|
 | `life.ts` | E5 (calls), E7 (717 stamp), L5 (:1186), L8 (:1214-1231), L6 (:1233-1240 and :1496-1497), L9 (:1367-1470 and :1496-1497), L11 (:1496-1497) | separate statements, except `:1496-1497`: three one-line calls are added after `n.character = heir` in the order `carryReceivables` (L6), `carryEdges` (L9), the sid fold (L11); L9 waits for L6 only |
-| `relationships.ts` | E5 (calls), L2 (:896-917), E7 (:1525, :1541), E8, E14 (:2129), L4 (:1338-1378), E10a and U5 (:3721) | L2: the mortality table becomes a re-export; L4: two inline hooks (marriage, baby). Merge after E5 |
+| `relationships.ts` | E5 (calls), L2 (:896-917), E7 (:1525, :1541), E8 (:2834), E14 (:2129), L4 (:1338-1378), E10a and U5 (:3721) | L2: the mortality table becomes a re-export; L4: two inline hooks (marriage, baby). Merge after E5 |
 | `npc-lives.ts` | E5 (calls), S10 (:96, :104, :250, :336), L8 (:158-168), U5 (:475-492) | L8: an options argument; distinct hunks |
 | `love.ts` | E5, E8 (:912, :962, :1627), E11 (:912-918), L7 (:1651-1669) | L7: one call after the asset loop; distinct hunk |
 | `business/dynasty-ownership.ts` | L5 only (:28, :41-56) | three `[]` returns become `kinHeirIds` |
