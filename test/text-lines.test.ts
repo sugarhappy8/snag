@@ -30,6 +30,7 @@ import {
   GAVE_LINES,
   HOME_BOUGHT_LINES,
   HOMELESS_LINES,
+  KIN_STRIFE,
   KIN_WIDOWED,
   LEAK_LINES,
   LENT_LINES,
@@ -303,6 +304,8 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'business.staffPoached', lines: STAFF_POACHED_LINES, role: 'log', slots: ['company', 'role', 'who'] },
   // R4-L7: what is left of a divorce settlement lapses ({money} is what was still owed).
   { id: 'life.divorceLapse', lines: DIVORCE_LAPSE, role: 'log', slots: ['money'] },
+  // R4-L10: the reading of the will, a cut-out relative against a favored one ({who} and {whom} are first names, each cut to 24 characters).
+  { id: 'life.kinStrife', lines: KIN_STRIFE, role: 'log', slots: ['who', 'whom'] },
 ]
 
 describe('the pools of R2-P10', () => {

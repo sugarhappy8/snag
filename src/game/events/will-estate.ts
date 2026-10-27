@@ -19,7 +19,9 @@ import { counterparty, type Reason } from '../kernel/reasons'
 import { notePerson } from '../people'
 import { chance, rand, randFloat, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
+import { useFamilyAct } from '../society/contract'
 import type { Character, GameState, Json, Person } from '../types'
+import { socialOn } from '../world/social'
 import { noteCashGift, personCountry, typicalIncome } from './wealth-core'
 import { askedPurse, wholePurse } from './purses'
 import { afterWillChange, ensureSnap, reactionClause } from './will-act'
@@ -37,6 +39,7 @@ import {
   willSlices,
   type Slice,
 } from './will-core'
+import { strifeEdges, strifeLine } from './will-strife'
 
 const EMOJI = '\u{1F4DC}'
 
@@ -304,6 +307,11 @@ export interface EstatePlan {
   carried: number
   /** A claim the heir may press, held out of everyone's share until they decide (written to the new state by settleReading). */
   pot: Pot | null
+  /**
+   * The slices of the people other than the heir (no charity, nothing empty), as fractions of the estate: who the cut-out relatives may hold
+   * it against (R4-L10, events/will-strife.ts). The will state does not reach the heir, so the plan carries them. Empty on a life that is not stamped.
+   */
+  recipients: { id: string; pct: number }[]
 }
 
 export interface EstateInput {
@@ -371,6 +379,7 @@ export function planEstate(n: GameState, input: EstateInput): EstatePlan {
     lines: [],
     carried,
     pot: null,
+    recipients: socialOn(n) ? slices.filter((s) => s.id !== CHARITY && s.id !== input.heirId && s.pct > 0).map((s) => ({ id: s.id, pct: s.pct })) : [],
   }
   const excluded = excludedFamily(n, inIds)
   const worth = estate / Math.max(1, people.length + 1)
@@ -545,6 +554,11 @@ export function settleReading(n: GameState, plan: EstatePlan, old: Character, he
     else addRelationship(n, p, -Math.round(c.anger / 8))
   }
   out.push(...readingLines(n, plan, old, heirId))
+  // On a stamped life the relatives who were cut out hold it against the ones who were favored: edges between the two (R4-L10, X31), and one line
+  // for the strongest pair. The will ladder is not touched. strifeEdges does nothing on a life that is not stamped.
+  const quarrel = strifeEdges(n, plan, heirId)
+  const quarrelLine = quarrel === null ? null : strifeLine(n, quarrel)
+  if (quarrelLine !== null) out.push(quarrelLine)
 
   // Siblings who got everything react to the heir being cut out.
   if (heirCut) {
@@ -575,30 +589,44 @@ export function settleReading(n: GameState, plan: EstatePlan, old: Character, he
   notice(n, 'The Reading of the Will', out.join('\n\n'), { emoji: EMOJI, tone: heirCut ? 'bad' : undefined })
 
   // An angry sibling who was cut out asks the heir for a share.
+  let ask: { p: Person; cash: number; anger: number } | null = null
   if (!heirCut) {
     const asker = plan.cutOut
       .filter((c) => c.anger >= 45 && c.id !== heirId && c.outcome !== 'won' && c.outcome !== 'settled')
       .sort((a, b) => b.anger - a.anger)
       .map((c) => ({ c, p: n.people.find((x) => x.id === c.id) }))
       .find(({ p }) => !!p && p.alive && isSiblingOf(p) && p.age >= 18)
-    if (asker && asker.p && plan.heirCash > 0) {
-      const p = asker.p
-      const cash = plan.heirCash
-      const half = Math.round(cash / 2)
-      const tenth = Math.round(cash / 10)
-      scriptChoice(
-        n,
-        S_ASK,
-        `${p.firstName} Wants a Share`,
-        `${p.firstName} caught you outside the lawyer's office. "You got everything. I got a speech about how ${old.gender === 'male' ? 'he' : 'she'} 'loved me in ${old.gender === 'male' ? 'his' : 'her'} own way.' Be fair."`,
-        [
-          { id: 'half', label: `Split it evenly (give ${formatMoney(half)})`, emoji: '\u{2696}\u{FE0F}' },
-          { id: 'tenth', label: `Give a tenth (${formatMoney(tenth)})`, emoji: '\u{1F91D}' },
-          { id: 'keep', label: 'Keep what the will gave you', emoji: '\u{1F512}' },
-        ],
-        { emoji: EMOJI, data: { pid: p.id, cash, anger: asker.c.anger }, personId: p.id },
-      )
+    if (asker && asker.p && plan.heirCash > 0) ask = { p: asker.p, cash: plan.heirCash, anger: asker.c.anger }
+  }
+
+  // The reading puts at most one question to the heir: the sibling's (S_ASK needs an heir who was not cut out) or the heir's own claim (S_HEIR
+  // needs a cut-out heir), never both. On a stamped life it takes one of the year's three family choices (R4-L10, X40); the year is fresh
+  // (continueAsChild resets n.yearActions before the reading). With none left the question is not asked, and a claim that nobody presses goes
+  // back to the relatives it was taken from. On a life that is not stamped useFamilyAct is true and writes nothing.
+  if ((ask !== null || plan.heirClaim) && !useFamilyAct(n, 'will')) {
+    const pot = plan.heirClaim ? readPot(n) : null
+    if (pot) {
+      refund(n, pot)
+      writePot(n, null)
     }
+    return
+  }
+  if (ask !== null) {
+    const { p, cash, anger } = ask
+    const half = Math.round(cash / 2)
+    const tenth = Math.round(cash / 10)
+    scriptChoice(
+      n,
+      S_ASK,
+      `${p.firstName} Wants a Share`,
+      `${p.firstName} caught you outside the lawyer's office. "You got everything. I got a speech about how ${old.gender === 'male' ? 'he' : 'she'} 'loved me in ${old.gender === 'male' ? 'his' : 'her'} own way.' Be fair."`,
+      [
+        { id: 'half', label: `Split it evenly (give ${formatMoney(half)})`, emoji: '\u{2696}\u{FE0F}' },
+        { id: 'tenth', label: `Give a tenth (${formatMoney(tenth)})`, emoji: '\u{1F91D}' },
+        { id: 'keep', label: 'Keep what the will gave you', emoji: '\u{1F512}' },
+      ],
+      { emoji: EMOJI, data: { pid: p.id, cash, anger }, personId: p.id },
+    )
   }
 
   // The cut-out heir may take the family to court.

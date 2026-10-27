@@ -343,3 +343,16 @@ export const DIVORCE_LAPSE = defineLines('life.divorceLapse', [
   'I was let off the last {money} of the divorce settlement.',
   'The {money} still left on the divorce debt lapsed.',
 ])
+
+// R4-L10 (D.9 b): the reading of the will, when a relative who was cut out holds it against one who was favored (events/will-strife.ts). {who} is
+// the cut-out relative's first name and {whom} the favored one's, trimmed to 24 characters, so a line stays under the log cap with any two names.
+// Said as one more line of the notice `The Reading of the Will`, for the strongest pair only, on a stamped life. A line opens on a first name, so it reads in the notice's third person.
+/** A cut-out relative against a favored one: {who}, {whom}. */
+export const KIN_STRIFE = defineLines('life.kinStrife', [
+  "{who} wouldn't look at {whom} after the reading.",
+  '{who} blamed {whom} for how it came out.',
+  '{who} left before {whom} could say a word.',
+  '{who} stared at {whom} across the table.',
+  '{who} said {whom} got the better deal.',
+  "{who} told {whom} this wasn't over.",
+])

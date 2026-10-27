@@ -190,6 +190,17 @@ function withoutRelationships(r: ParityRow): ParityRow {
   return { ...r, rel: [], rng: null, money: null, x }
 }
 
+/**
+ * A row with the text memory taken out of its flag list (`x.flags`). The first line the text kit picks in a life writes `flags.textMem`, and on a
+ * stamped life the reading of the will says one such line when a cut-out relative holds it against a favored one (R4-L10, KIN_STRIFE), so the
+ * stamped hand-over has the key where the unstamped rows have not. Every other flag, and every other cell, is still compared.
+ */
+function withoutTextMem(r: ParityRow): ParityRow {
+  const flags = r.x?.flags
+  if (!Array.isArray(flags)) return r
+  return { ...r, x: { ...r.x, flags: flags.filter((f) => f !== 'textMem') } }
+}
+
 /** The rows of one hand-over. */
 function play(c: Case): ParityRow[] {
   const s = scene(c.tuple, { character: c.character, cast: c.cast })
@@ -278,7 +289,7 @@ describe('the heir hand-over oracle', () => {
     const recorded = readRows(ORACLE).rows
     expect(rows.map((r) => r.label)).toEqual(recorded.map((r) => r.label))
     const handOver = (r: ParityRow): boolean => /\|(death|person|dropped|estate)(\||$)/.test(r.label)
-    const report = compareRows(recorded.filter(handOver).map(withoutRelationships), rows.filter(handOver).map(withoutRelationships))
+    const report = compareRows(recorded.filter(handOver).map(withoutRelationships).map(withoutTextMem), rows.filter(handOver).map(withoutRelationships).map(withoutTextMem))
     expect(report.lines, 'the hand-over cells that are not relationship numbers').toEqual([])
     expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
     expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
