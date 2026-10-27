@@ -13,6 +13,12 @@
 // for `serviceDebt`, which is not an act but a function that books money: it answers 0 where an act answers null.
 // R4-E13 is not an act (a company's key people are not people of the game): its rows are the last describe, the same check for the year
 // step and the five writers of business/staff-loyalty.ts on a life that is not stamped.
+// R4-E11 part A adds the secret: `leakPass` (the yearly leak) and `addSecret` (the writer of the records) in the states that block them. Neither is
+// an act; each answers with nothing written. An estranged holder is NOT a blocked state of the leak: a grudge is what makes a holder tell (the
+// plan's list of states was written for the acts).
+// R4-E11 part B adds the enrolment of the mentor (`mentorAct` through `runAct`, and `enrolMentor`, which also writes the baseline) and `betray`, in
+// the last describe: the mentor's enrolment is an act but one with no call-in cooldown, so it does not sit in the ACTS table (its controls
+// are the cooldown's), and `betray` is not an act. The same blocked states are also pinned beside their tests (social-mentor, social-reconcile).
 //
 // The blocked states: a life that is not stamped; the person dead, a pet, estranged or not in the game; the call-in cooldown not elapsed; the
 // edge cap reached (a map of 1,200 bound edges with none for this person); a key whose second end is not the current ego (another owner's edge,
@@ -25,13 +31,18 @@ import { staffTurnover } from '../src/game/business/staff'
 import { managerPoached, staffGone, staffHired, staffLoyaltyYear, staffRaised, staffYelled } from '../src/game/business/staff-loyalty'
 import { bizOf, type KeyStaff } from '../src/game/business/state'
 import { peekLedger } from '../src/game/kernel/ledger'
-import { runAct, type SocialAct } from '../src/game/society/acts'
+import { actRoll, runAct, type SocialAct } from '../src/game/society/acts'
 import { debtToken, serviceDebt } from '../src/game/society/debt'
 import { broker, helpAct, vouch } from '../src/game/society/favor'
 import { askLoan, lend, lendAct, loanAct } from '../src/game/society/loan'
+import { enrolMentor, mentorAct, mentorSettle, protegesOf } from '../src/game/society/mentor'
+import { LEAK, addSecret, betray, leakPass, readSecret, secretsOf } from '../src/game/society/secret'
 import type { Edge } from '../src/game/world/edges'
-import { putEdge } from '../src/game/world/edge-write'
+import { putEdge, putSecret } from '../src/game/world/edge-write'
+import { initializeNpc } from '../src/game/npc-lives'
+import { patchSocial } from '../src/game/world/social'
 import { playerRef } from '../src/game/world/people'
+import type { EntityRef } from '../src/game/kernel/ids'
 import type { GameState, Person } from '../src/game/types'
 import { makeTestGame } from './helpers'
 import { company } from './market-kit'
@@ -429,5 +440,312 @@ describe('staff loyalty: authorization inside the function', () => {
     const hired = JSON.stringify(f.g.world?.edges)
     staffGone(f.g, f.b.staff[0]!)
     expect(JSON.stringify(f.g.world?.edges)).not.toBe(hired)
+  })
+})
+
+// R4-E11 part A: the secret. The leak runs once a year inside the one `society.acts` entry and `addSecret` is the writer the callers use, so both
+// check their own authorization: in each blocked state they write nothing, draw nothing and book nothing.
+describe('the secret: authorization inside the function', () => {
+  /** A stamped adult with a circle of friends: a holder who will surely leak (the roll is under the floor of the odds) and two to tell. */
+  interface Leak {
+    g: GameState
+    holder: Person
+    told: Person[]
+    id: string
+  }
+
+  function leaking(stamped = true): Leak {
+    const g = stamped ? socialGame(1, { age: 30 }) : makeTestGame(1, { age: 30 })
+    const [holder, ...told] = [0, 1, 2, 3].map(() => cast(g, 70, 'friend')) as [Person, ...Person[]]
+    if (stamped) {
+      expect(putEdge(g, `${personEntity(holder)}>${personEntity(told[0]!)}`, { t: 50, f: 90, r: 50, s: 0, o: 0, y: g.year, l: g.year })).toBe(true)
+      g.year -= 1
+    }
+    const id = stamped ? addSecret(g, playerRef(g), 'affair', 3, [holder])! : 'secret:1'
+    // an unstamped game has no way to write a record: it is put in by hand, as a hostile save could carry it
+    if (!stamped) Object.assign(g, { world: { v: 1, edges: { 'secret:1': { a: playerRef(g), k: 'affair', v: 3, h: [personEntity(holder)], y: g.year - 1 } } } })
+    if (stamped) g.year += 1
+    for (let i = 1; i < 6000; i++) {
+      const life = `life-${i}`
+      if (actRoll({ lifeId: life, flags: g.flags, year: g.year }, 'leak', `secret:1|${personEntity(holder)}`)() < LEAK.base) {
+        g.lifeId = life
+        break
+      }
+    }
+    return { g, holder, told, id }
+  }
+
+  interface Blocked {
+    name: string
+    apply(w: Leak): void
+    stamped?: boolean
+  }
+
+  const states: readonly Blocked[] = [
+    { name: 'a life that is not stamped', apply: () => undefined, stamped: false },
+    { name: 'the player dead', apply: (w) => void (w.g.character.alive = false) },
+    { name: 'a secret about an earlier player (another owner)', apply: (w) => void putSecret(w.g, w.id, { ...readSecret(w.g, w.id)!, a: 'person:old-ego' as EntityRef }) },
+    { name: 'the holder dead', apply: (w) => void (w.holder.alive = false) },
+    { name: 'the holder a pet', apply: (w) => void (w.holder.relation = 'pet') },
+    { name: 'the holder not in the game', apply: (w) => void (w.g.people = w.g.people.filter((p) => p.id !== w.holder.id)) },
+    { name: 'a holder who has nobody to tell', apply: (w) => void (w.g.people = w.g.people.filter((p) => p.id === w.holder.id)) },
+    { name: 'a secret that began this year', apply: (w) => void putSecret(w.g, w.id, { ...readSecret(w.g, w.id)!, y: w.g.year }) },
+    { name: 'a secret that has leaked already', apply: (w) => void putSecret(w.g, w.id, { ...readSecret(w.g, w.id)!, p: w.g.year - 1 }) },
+    { name: 'a debt secret while the player owes nobody', apply: (w) => void putSecret(w.g, w.id, { ...readSecret(w.g, w.id)!, k: 'debt' }) },
+  ]
+
+  for (const state of states) {
+    it(`leakPass writes nothing, draws nothing and books nothing for: ${state.name}`, () => {
+      const w = leaking(state.stamped ?? true)
+      state.apply(w)
+      const before = JSON.stringify(w.g)
+      const ledger = JSON.stringify(peekLedger(w.g))
+      const { rng, nextId } = w.g
+      leakPass(w.g)
+      expect(JSON.stringify(w.g)).toBe(before)
+      expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+      expect(w.g.rng).toBe(rng)
+      expect(w.g.nextId).toBe(nextId)
+    })
+  }
+
+  it('control: the same arrangement in the allowed state leaks, hits the people told and books no money', () => {
+    const w = leaking(true)
+    const before = JSON.stringify(w.g)
+    const ledger = JSON.stringify(peekLedger(w.g))
+    const { rng } = w.g
+    leakPass(w.g)
+    expect(JSON.stringify(w.g)).not.toBe(before)
+    expect(readSecret(w.g, w.id)!.p).toBe(w.g.year)
+    expect(w.told[0]!.relationship).toBeLessThan(70)
+    expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+    expect(w.g.rng).toBe(rng)
+    expect(states.length).toBeGreaterThanOrEqual(10)
+  })
+
+  /** One call of the writer: a stamped game with friends, and what to offer. */
+  interface Add {
+    g: GameState
+    about: EntityRef
+    kind: 'affair' | 'debt'
+    severity: number
+    holders: (Person | EntityRef)[]
+  }
+
+  function adding(stamped = true): Add {
+    const g = stamped ? socialGame(1, { age: 30 }) : makeTestGame(1, { age: 30 })
+    const people = [0, 1, 2].map(() => cast(g, 70, 'friend'))
+    return { g, about: playerRef(g), kind: 'affair', severity: 3, holders: [people[0]!] }
+  }
+
+  const adds: readonly [string, (a: Add) => void, boolean?][] = [
+    ['a life that is not stamped', () => undefined, false],
+    ['an about that is another owner\'s ego', (a) => void (a.about = 'person:old-ego' as EntityRef)],
+    ['an about that is a friend', (a) => void (a.about = personEntity(a.holders[0] as Person))],
+    ['no holder', (a) => void (a.holders = [])],
+    ['a holder who is dead', (a) => void ((a.holders[0] as Person).alive = false)],
+    ['a holder who is a pet', (a) => void ((a.holders[0] as Person).relation = 'pet')],
+    ['a holder who is not in the game', (a) => void (a.holders = ['person:nobody' as EntityRef])],
+    ['a severity of 0', (a) => void (a.severity = 0)],
+    ['a severity of 6', (a) => void (a.severity = 6)],
+    ['a severity that is not a number', (a) => void (a.severity = Number.NaN)],
+    ['a kind it does not know', (a) => void (a.kind = 'rumour' as never)],
+    [
+      'the table of 40 secrets full of live ones',
+      (a) => {
+        for (let n = 1; n <= 40; n++) expect(putSecret(a.g, `secret:${n}`, { a: a.about, k: 'affair', v: 2, h: [personEntity(a.holders[0] as Person)], y: a.g.year - 1 })).toBe(true)
+      },
+    ],
+  ]
+
+  for (const [name, apply, stamped] of adds) {
+    it(`addSecret answers null and changes nothing for: ${name}`, () => {
+      const a = adding(stamped ?? true)
+      apply(a)
+      const before = JSON.stringify(a.g)
+      const { rng, nextId } = a.g
+      expect(addSecret(a.g, a.about, a.kind, a.severity, a.holders)).toBeNull()
+      expect(JSON.stringify(a.g)).toBe(before)
+      expect(a.g.rng).toBe(rng)
+      expect(a.g.nextId).toBe(nextId)
+    })
+  }
+
+  it('control: addSecret in the allowed state writes the record and draws and books nothing', () => {
+    const a = adding(true)
+    const before = JSON.stringify(a.g)
+    const { rng, nextId } = a.g
+    const id = addSecret(a.g, a.about, a.kind, a.severity, a.holders)
+    expect(id).toBe('secret:1')
+    expect(JSON.stringify(a.g)).not.toBe(before)
+    expect(a.g.rng).toBe(rng)
+    expect(a.g.nextId).toBe(nextId)
+    expect(adds.length).toBeGreaterThanOrEqual(12)
+  })
+})
+
+// R4-E11 part B: the mentor's enrolment and the betrayal. Neither may write, draw or book anything in a blocked state: the game to the byte,
+// `g.rng`, `g.nextId` and the ledger stay as they were.
+describe('the mentor and the betrayal: authorization inside the function', () => {
+  interface Pair {
+    g: GameState
+    p: Person
+  }
+
+  /** A stamped player of 45 with a sibling of 25 who has a life of their own (a protege), and a second sibling (never enrolled). */
+  function pair(stamped = true): Pair {
+    const g = stamped ? socialGame(1, { age: 45 }) : makeTestGame(1, { age: 45 })
+    const p = cast(g, 70, 'sibling', { age: 25 })
+    cast(g, 70, 'sibling', { age: 26 })
+    initializeNpc(g, p)
+    return { g, p }
+  }
+
+  const sibling = (g: GameState, p: Person): Person => g.people.find((x) => x.id !== p.id)!
+  const estrange = (g: GameState, p: Person): void => void (p.data.wl = { by: g.character.id, anger: 60, cut: true, estr: true })
+
+  interface Enrol {
+    name: string
+    apply(w: Pair): void
+    key?(w: Pair): string
+    person?(w: Pair): Person | null
+    stamped?: boolean
+  }
+
+  const enrols: readonly Enrol[] = [
+    { name: 'a life that is not stamped', apply: () => undefined, stamped: false },
+    { name: 'the person dead', apply: (w) => void (w.p.alive = false) },
+    { name: 'the person a pet', apply: (w) => void (w.p.relation = 'pet') },
+    { name: 'the person estranged', apply: (w) => estrange(w.g, w.p) },
+    { name: 'the person not younger than the player', apply: (w) => void (w.p.age = 45) },
+    { name: 'the person under 14', apply: (w) => void (w.p.age = 13) },
+    { name: 'the person over 40', apply: (w) => void ((w.g.character.age = 70), (w.p.age = 41)) },
+    { name: 'the person a friend, a parent, not a relative or coworker', apply: (w) => void (w.p.relation = 'parent') },
+    { name: 'the person with no life of their own to measure', apply: (w) => void delete w.p.data.life },
+    { name: 'the player dead', apply: (w) => void (w.g.character.alive = false) },
+    { name: 'the player under 16', apply: (w) => void ((w.g.character.age = 15), (w.p.age = 14)) },
+    { name: 'three proteges already', apply: (w) => void patchSocial(w.g, { ms: [['person:q1', 10], ['person:q2', 10], ['person:q3', 10]] as never }) },
+    { name: 'the person already a protege', apply: (w) => void patchSocial(w.g, { ms: [[personEntity(w.p), 10]] }) },
+    { name: 'a key whose second end is not the current ego (another owner)', apply: () => undefined, key: (w) => `${personEntity(w.p)}>person:old-ego` },
+    { name: 'a key whose first end is another owner\'s ego', apply: () => undefined, key: (w) => `person:old-ego>${personEntity(w.p)}`, person: () => null },
+    { name: 'the key of the player\'s own edge (player > person), not the person\'s', apply: () => undefined, key: (w) => `${playerRef(w.g)}>${personEntity(w.p)}` },
+    { name: 'an edge between two other people', apply: () => undefined, key: (w) => `${personEntity(w.p)}>${personEntity(sibling(w.g, w.p))}` },
+    { name: 'a person that does not match the key', apply: () => undefined, person: (w) => sibling(w.g, w.p) },
+    { name: 'no person', apply: () => undefined, person: () => null },
+    { name: 'a person who is not in the game', apply: () => undefined, person: (w) => ({ ...w.p, id: 'p-not-in-the-game' }) },
+    { name: 'a key that is not a key', apply: () => undefined, key: () => 'person:p1>' },
+  ]
+
+  for (const state of enrols) {
+    it(`the enrolment answers null and changes nothing for: ${state.name}`, () => {
+      const w = pair(state.stamped ?? true)
+      state.apply(w)
+      const key = state.key ? state.key(w) : keyOf(w.g, w.p)
+      const person = state.person ? state.person(w) : w.p
+      const before = JSON.stringify(w.g)
+      const ledger = JSON.stringify(peekLedger(w.g))
+      const { rng, nextId } = w.g
+      expect(runAct(w.g, mentorAct, key, person)).toBeNull()
+      if (state.key === undefined && state.person === undefined) expect(enrolMentor(w.g, w.p)).toBe(false)
+      expect(JSON.stringify(w.g)).toBe(before)
+      expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+      expect(w.g.rng).toBe(rng)
+      expect(w.g.nextId).toBe(nextId)
+    })
+  }
+
+  it('control: the enrolment in the allowed state answers, writes the memory and the baseline, and books no money', () => {
+    const w = pair()
+    const before = JSON.stringify(w.g)
+    const ledger = JSON.stringify(peekLedger(w.g))
+    const { rng } = w.g
+    expect(enrolMentor(w.g, w.p)).toBe(true)
+    expect(JSON.stringify(w.g)).not.toBe(before)
+    expect(protegesOf(w.g)).toHaveLength(1)
+    expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+    // the notice takes ids from g.nextId (the queue), so only the dice are checked: no draw of g.rng
+    expect(w.g.rng).toBe(rng)
+    expect(enrols.length).toBeGreaterThanOrEqual(20)
+  })
+
+  it('mentorSettle changes nothing on a life that is not stamped, for a player who is dead, or with no baseline, and books no money', () => {
+    for (const make of [() => pair(false), () => { const w = pair(); w.g.character.alive = false; return w }, () => pair()]) {
+      const w = make()
+      const before = JSON.stringify(w.g)
+      const ledger = JSON.stringify(peekLedger(w.g))
+      const { rng, nextId } = w.g
+      mentorSettle(w.g)
+      expect(JSON.stringify(w.g)).toBe(before)
+      expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+      expect(w.g.rng).toBe(rng)
+      expect(w.g.nextId).toBe(nextId)
+    }
+  })
+
+  /** A stamped game with a friend who has an edge; the betrayal is asked of the key `person > player` unless a state changes it. */
+  function friends(stamped = true): Pair {
+    const g = stamped ? socialGame(1, { age: 40 }) : makeTestGame(1, { age: 40 })
+    const p = cast(g, 80, 'friend')
+    cast(g, 80, 'friend')
+    if (stamped) setEdge(g, p)
+    return { g, p }
+  }
+
+  interface Blow {
+    name: string
+    apply?(w: Pair): void
+    key(w: Pair): string
+    severity?: number
+    stamped?: boolean
+  }
+
+  const toPlayer = (w: Pair): string => keyOf(w.g, w.p)
+  const blows: readonly Blow[] = [
+    { name: 'a life that is not stamped', key: toPlayer, stamped: false },
+    { name: 'the person dead', apply: (w) => void (w.p.alive = false), key: toPlayer },
+    { name: 'the person a pet', apply: (w) => void (w.p.relation = 'pet'), key: toPlayer },
+    { name: 'the person not in the game', apply: (w) => void (w.g.people = w.g.people.filter((x) => x.id !== w.p.id)), key: toPlayer },
+    { name: 'the player dead', apply: (w) => void (w.g.character.alive = false), key: toPlayer },
+    { name: 'an edge of another owner (the second end is not the ego)', key: (w) => `${personEntity(w.p)}>person:old-ego` },
+    { name: 'an edge of another owner (the first end is not the ego)', key: (w) => `person:old-ego>${personEntity(w.p)}` },
+    { name: 'an edge between two other people', key: (w) => `${personEntity(w.p)}>${personEntity(sibling(w.g, w.p))}` },
+    { name: 'a key that is not a key', key: () => 'person:p1>' },
+    { name: 'the player to themselves', key: (w) => `${playerRef(w.g)}>${playerRef(w.g)}` },
+    { name: 'a severity of 0', key: toPlayer, severity: 0 },
+    { name: 'a severity of 6', key: toPlayer, severity: 6 },
+    { name: 'a severity that is not a whole number', key: toPlayer, severity: 2.5 },
+    { name: 'a severity that is not a number', key: toPlayer, severity: Number.NaN },
+    { name: 'an infinite severity', key: toPlayer, severity: Number.POSITIVE_INFINITY },
+  ]
+
+  for (const state of blows) {
+    it(`betray writes nothing, draws nothing and books nothing for: ${state.name}`, () => {
+      const w = friends(state.stamped ?? true)
+      state.apply?.(w)
+      const key = state.key(w)
+      const before = JSON.stringify(w.g)
+      const ledger = JSON.stringify(peekLedger(w.g))
+      const { rng, nextId } = w.g
+      betray(w.g, key, state.severity ?? 3)
+      expect(JSON.stringify(w.g)).toBe(before)
+      expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+      expect(w.g.rng).toBe(rng)
+      expect(w.g.nextId).toBe(nextId)
+    })
+  }
+
+  it('control: betray in the allowed state pins the betrayal, costs the relationship, begins the secret, and draws and books nothing', () => {
+    const w = friends()
+    const before = JSON.stringify(w.g)
+    const ledger = JSON.stringify(peekLedger(w.g))
+    const { rng, nextId } = w.g
+    betray(w.g, toPlayer(w), 3)
+    expect(JSON.stringify(w.g)).not.toBe(before)
+    expect(w.p.relationship).toBe(50)
+    expect(secretsOf(w.g)).toHaveLength(1)
+    expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+    expect(w.g.rng).toBe(rng)
+    expect(w.g.nextId).toBe(nextId)
+    expect(blows.length).toBeGreaterThanOrEqual(15)
   })
 })

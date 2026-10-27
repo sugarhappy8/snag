@@ -577,7 +577,117 @@ protector.
 **Cost.** The protector reads the 1,200 edges of a full map in about 0.7 ms and is called by the Met store when it makes room or sweeps, not
 by the writers. An eviction in `putEdge` is one pass over the map plus one look at the people.
 
-## 16. What the next tasks add here
+## 16. Secrets and gossip (R4-E11, D.4, X27, X29, C39)
+
+Something the player did that a few people know. A secret is a record under `secret:<n>` in the **edges map** (it shares the map's chunks and
+caps; every reader of edges skips it, `isSecretKey`):
+
+```
+{ a: the ref it is about, k: 'affair' | 'debt', v: severity 1..5, h: holders (6), y: the year it began, p?: the year it leaked }
+```
+
+At most 40 (`EDGE_CAPS.secrets`), 6 holders each. The normalizer (`world/edges.ts`, E6a) keeps a record only as it is valid and cuts to the 40 that
+matter (an unleaked one over a leaked one, a heavier one over a lighter, a newer over an older); `readSecrets(g)` lists them in number order
+(`secret:2` before `secret:10`). The one writer is `putSecret(g, key, secret | null)` in `world/edge-write.ts`: it reads the record back through
+the normalizer, refuses an edge key, refuses a 41st record (one of the 40 can be replaced) and replaces the root, frozen, like `putEdge`.
+`society/secret.ts` is the layer above, and the only caller:
+
+| Name | What it does |
+|---|---|
+| `addSecret(g, about, kind, v, holders)` | begins a secret and answers its id (`secret:<n>`, the next after the largest held), or `null`: a life that is not stamped, an `about` that is not the player (a record about an earlier player is inert, X28), a kind other than `affair` and `debt`, a severity that is not a whole number from 1 to 5, no holder who is a living person of the game (6 are kept, each once), the same kind with the same holders begun already this year, or 40 held none of which is spent. A **spent** secret is dropped to make room: one about an earlier player, or one that leaked `LEAK.spentAfter` (10) years ago or more, inert ones first and then the longest gone |
+| `secretsOf(g)`, `readSecret(g, id)` | the records in number order, with their ids; pure, total, a hostile record reads as none |
+| `leakOdds(g, holder)` | the odds that a holder tells in a year, below |
+| `leakPass(g)` | the yearly pass, below |
+| `betray(g, key, severity)` | the cost of a betrayal and the secret a found affair begins: section 17 |
+
+**The odds.** `0.02 + 0.10 x resentment + 0.06 x (1 - honesty) + 0.04 x temper x resentment`, with resentment the `s` of the edge
+`holder > player` over 100, honesty the honesty axis over 100 and temper the other end of the steadiness axis over 100 (the seam, `society/seam.ts`).
+The temper term only counts when there is a grudge to spill, so a holder who is honest and holds none leaks at **0.02, whatever their temper**
+(under 3% a year); the odds never pass **0.22**. Honesty from a person's words is cut to 5..95, so only a person with a Met record reaches 100.
+
+**The pass** runs inside the one `society.acts` entry, after the debts (`society/module.ts`), so it is stamped by `social.ay` like the rest. For
+each secret that is about the player, has not leaked and began in an earlier year, each holder in the order of the list (a holder who is dead, a
+pet or not in the game does not roll) draws once from the stream `social`, `actRoll(g, 'leak', '<secret id>|<holder ref>')`; the first holder
+under their odds who has someone to tell leaks it. A `debt` secret is moot while the player owes nobody a loan (it reads the record of section 14,
+`debtsOf`). Nothing but that stream is drawn: `g.rng` and `g.nextId` are untouched by the decision.
+
+**A leak** (`society/gossip.ts`): the holder tells at most 2 people, their best-liked contacts, and each of those at most 1 more, then it stops
+(hop cap 2, so 4 people at most, each once, never a holder). The contacts of a person are the living people of the game they know (the same
+circle as the favors: family, friends, or one school or firm), best liked first: the `f` of the edge `person > contact` when the map holds
+it, else a base of 55 for family, 50 for friends and 45 for a school or firm, ties by person key. (The model has no other acquaintance graph, so
+without an edge the order is the key order.) `spread` itself takes the lists as an argument, so the cap holds for any graph, a hostile one
+included. Everyone told gets the memory `gossiped_about_me` (weight 1, 2 or 3 by severity) and a relationship hit of `3 x severity` as an
+`offence` through the shim, bounded so that no person loses more than `LEAK.damageYear` (30) points to leaks in one pass whatever the number of
+secrets (40 of severity 5 with 6 holders each cost a person 30, not 600). The holder who told pays too (`betray`, section 17), out of the same
+allowance of 30. The secret's `p` is set to the year **first**: the secret leaks at most
+once, the hits apply once for each (secret, person), and the pass skips a record whose `p` is set.
+
+**What the player hears.** One line of `LEAK_LINES` (four phrasings, each names the holder and the first person told) in the life log, and the
+notice `Word Got Around` once in `PACE.askGap` years (the kin family `leak`, `pop.kin.leak`; at most `PACE.askLife` in a life): a notice, not a
+choice, so it spends no family act (X40). The fact `social.leak` goes on the bus, subject the player's ref, other party the holder's key, `v`
+the number told, severity 40, 53, 65, 78 or 90 for a secret of 1 to 5, at most 8 a pass; the module declares it in `facts`, and the bus drops a
+kind nobody declared. Reputation by group, leak timing and scandal stories are R5's.
+
+Tests: `test/social-gossip.test.ts` (the record, the cap, the spread over 10,000 simulated leaks, the odds, the pass, the fact),
+`test/social-act-auth.test.ts` (the leak and `addSecret` in the states that block them). Betrayal, reconciliation and mentorship are section 17.
+
+## 17. Betrayal, reconciliation and mentorship (R4-E11, D.4, X27, C39)
+
+Three small things that lean on the edges. None draws a number of its own and none books money.
+
+**Betrayal.** `betray(g, key, severity)` in `society/secret.ts`, exported by the door (`society/contract.ts`, C39). The key is an edge of the
+current player and the severity a whole number from 1 to 5.
+
+| Key | Who did it | What is written |
+|---|---|---|
+| `person > player` | the player (an affair found out) | the pinned memory `betrayal` on the person's edge toward the player; the person's relationship falls as an `offence`; the person becomes the holder of a new secret about the player, an `affair` of this severity, begun this year |
+| `player > person` | the person (a holder who told) | the pinned memory `betrayal` on the player's edge toward the person; the person's relationship falls as a cooling (`decay`: it adds no resentment, so telling does not make a holder likelier to tell the next secret) |
+
+The relationship falls by `15 + 5 x severity`, 20 to 40, through the shim. The memory's weight is 1 for a severity of 1 or 2, 2 for 3 or 4 and
+3 for 5. A betrayal is one event a year on an edge: `remember` makes the memory once for a (kind, edge, year), and only the call that makes it pays
+the cost, so a second call the same year changes nothing, not even the secret (`addSecret` refuses the same kind, holders and year). A full table of
+40 secrets leaves the secret out and keeps the memory and the cost. Nothing is written for a life that is not stamped, a player who is dead, a
+severity that is not 1 to 5, a person who is dead, a pet or not in the game, or a key that is not an edge of the player (another owner's, one
+between two other people, one with the player at both ends).
+
+Two callers. The leak (section 16) betrays the holder who told: the same call with the key `player > holder`, the cost held to what is left of the
+holder's 30 points for the pass (`LEAK.damageYear`, shared with the people told), so no person loses more than 30 to leaks in a pass, however many
+secrets they hold or are told. `love.ts` calls it for a hook-up behind a partner's back that the partner finds out (severity 4), through the door
+only. The old lines there stay as they were: the hit of 25 to 45 and the memory of weight 3 are this event's cost, so `betray` finds the betrayal made
+and pays nothing more, and adds the secret alone; a life that is not stamped is untouched and a stamped one plays the same numbers (the stamped replay
+of `test/love-parity.test.ts`). A defaulted loan keeps the memory `loan_unpaid` of section 14; it does not call `betray`.
+
+**Reconciliation.** `reconcileOdds(g, p)` in `society/reconcile.ts`, also through the door, is what the society side adds to the odds of a
+heart-to-heart with a relative who is cut out or estranged: `clamp(0.0015 x max(0, o), 0, 0.15)`, with `o` the obligation of the edge
+`person > player`. What raises `o`: a brokered peace (section 13, 20 a time) and the mirror of a debt the person owes the player. It is 0 on a life
+that is not stamped, for a pair with no edge, with no obligation or with one owed the other way, and for an `o` that is not a number; it is 0.15
+at 100 and never more. It signs for `Pick<GameState, 'world' | 'character'>`: the edge needs the player's ref, which is made from the character.
+It does not repeat the memory term (`peaceOdds` already holds what the person remembers, section 11), and it cannot call the will's `peaceOdds`
+(that needs the whole state, and a `society->events` import is not an approved pair). `events/will-amends.ts` adds the two at both of its sites,
+the odds the row shows and the odds the roll uses (`talkOdds`): `clamp(peaceOdds + reconcileOdds, 0.05, 0.85)` when the addition is above 0, else
+`peaceOdds` itself, so a life that is not stamped, and a stamped pair with no obligation, roll exactly as before.
+
+**Mentorship.** `society/mentor.ts`. A younger relative (a sibling, half or step sibling, child, step child or grandchild) or coworker of 14 to
+40, with a career to measure (`npcLife`), can be taken under the player's wing from the person's page (the row `Take {name} Under Your Wing`,
+`social.mentor`, a greyed-out row with the reason once 3 are taken, and an info row once the person is one). The enrolment is the SocialAct
+`mentor.enrol` (blocked for a life that is not stamped, a player who is dead or under 16, a person who is dead, a pet, estranged or not in the
+game, not younger than the player, under 14 or over 40, already enrolled, or a fourth): it writes the memory `mentored_me`, a log line and a
+notice, and `enrolMentor` then writes the baseline pair `[ref, skill]` into the `social` shard (`ms`, 3 pairs at most, `patchSocial`).
+
+Each year `mentorSettle` runs inside the one `society.acts` entry, after the leak pass (`close` 6; the NPC year it measures ran inside
+`relationships` at life 40, before the close phase, and there is no second aging entry and nothing in the `society` phase). For each pair it takes
+the protege's gain since the baseline, adds **0.15 x the gain** (never negative, never past a skill of 100) through `npcLife` and `saveNpcLife`
+(reached through the seam, so `society->life` stays at two files), and rewrites the baseline to the skill with the bonus. A protege who is no longer
+one (dead, a pet, estranged, over 40, gone from the game, no life) leaves the baseline. So the bonus is never taken on a bonus, a year with no gain
+or a fall adds nothing, a second settle in one state adds nothing, and over any run of years a mentored protege is at most 1.15 x the unmentored
+gain ahead of the control. A baseline that is missing or hostile reads as none (the shard's reader keeps three valid pairs, each person once, a
+skill held between 0 and 100). `npc-lives.ts` is not edited.
+
+Tests: `test/social-reconcile.test.ts` (reconciliation, the peace odds of the will, `betray`, the callers), `test/social-mentor.test.ts`
+(enrolment, the settle, the 40-year probe, the baseline, the menu row), `test/social-act-auth.test.ts` (the enrolment and `betray` in the states
+that block them).
+
+## 18. What the next tasks add here
 
 - R4-E11 to E16: secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
   (`social` at the close) and adds its export line to `society/contract.ts`.

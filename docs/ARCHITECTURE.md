@@ -921,6 +921,17 @@ R4-E14 put one more name through the door: `isBound`, which lives in the layer-2
 a person at one of its ends) and is only re-exported by `society/contract.ts`. The file also registers the Met store's protector and salience
 and is what `putEdge`, the orphan rule and `cleanupPeople` ask. The detail is in `docs/SOCIAL.md` section 15.
 
+R4-E11 (part A) added secrets and gossip. A secret is a record `secret:<n>` in the edges map (written only by `putSecret` in
+`world/edge-write.ts`, read with `readSecrets`); `society/secret.ts` begins them (`addSecret`) and runs the yearly leak (`leakPass`, a step
+inside the one `society.acts` entry), `society/gossip.ts` is the pure spread of a leak (two people told, one more through each, hop cap 2). The
+module declares the fact `social.leak`. The detail is in `docs/SOCIAL.md` section 16.
+
+R4-E11 (part B) added betrayal, reconciliation and mentorship. `betray` (`society/secret.ts`) is the cost of a betrayal and begins the secret of a
+found affair; `love.ts` and the leak call it, `love.ts` through the door only. `reconcileOdds` (`society/reconcile.ts`) is added to the will's
+`peaceOdds` in `events/will-amends.ts`, through the door, for a stamped pair that owes the player. `society/mentor.ts` enrols up to 3 proteges and
+settles their bonus (0.15 of the year's gain) inside the one `society.acts` entry; it reaches the NPC life through the seam, so the
+`society->life` pair stays at two files. The detail is in `docs/SOCIAL.md` section 17.
+
 ### Main Character Syndrome and instant mastery
 
 `talents.ts MainCharacter` occupies one of the three starting-talent slots. `hasTalent(g, id)` must

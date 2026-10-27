@@ -54,6 +54,7 @@
     "src/game/shops/memberships.ts": { "addRelationship(": 2 },
     "src/game/society/acts.ts": { "addRelationship(": 1 },
     "src/game/society/debt.ts": { "addRelationship(": 1 },
+    "src/game/society/secret.ts": { "addRelationship(": 1 },
     "src/game/special/actor-pipeline.ts": { "addRelationship(": 2 },
     "src/game/special/actor.ts": { "addRelationship(": 4 },
     "src/game/special/astronaut-events.ts": { "addRelationship(": 1 },

@@ -82,7 +82,7 @@ const FAMILY: ReadonlySet<RelationKind> = new Set<RelationKind>([
 ])
 
 /** The circle a person moves in, or null for one who is in none. */
-function circleOf(p: Pick<Person, 'relation' | 'contextId'>): string | null {
+export function circleOf(p: Pick<Person, 'relation' | 'contextId'>): string | null {
   if (FAMILY.has(p.relation)) return 'family'
   if (p.relation === 'friend' || p.relation === 'bestFriend') return 'friends'
   return typeof p.contextId === 'string' && p.contextId !== '' ? `ctx:${p.contextId}` : null

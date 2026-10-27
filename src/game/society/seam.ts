@@ -7,6 +7,8 @@
 //   honestyOf(g, p)  the honesty axis: 0 a liar, 100 a person whose word holds
 //   temperOf(g, p)   how quick to anger, 0 to 100: the other end of the steadiness axis (a hot-headed person is high)
 //
+//   npcLife, saveNpcLife   a person's NPC life and its writer (R4-E11, the mentor settle): re-exported from npc-state.ts, the file the seam
+//                    already imports, so that mentor.ts joins no domain pair. The writer is the only way society/ changes a person's life.
 //   typicalIncome(g)  a typical full-time year's pay where the player lives (R4-E10b, X54): the yardstick of the loan cap here and of
 //                    E12's legal fee. It is the function of the layer-2 leaf world/typical-income.ts (P7), re-exported so that society/
 //                    takes it from one file and joins no domain pair (the leaf imports nothing from events/).
@@ -18,6 +20,8 @@ import { axesOfPerson } from '../npc-state'
 import type { GameState, Person } from '../types'
 import type { Axes } from '../world/axes'
 
+export { npcLife, saveNpcLife } from '../npc-state'
+export type { NpcLife } from '../npc-state'
 export { typicalIncome } from '../world/typical-income'
 
 /** The five axes of a person. A new object each call. */
