@@ -27,7 +27,7 @@ every life, stamped or not.
   never as "Friend". Relatives you had only heard of become people when they inherit. At most 7 heirs
   a death, 12 relatives made people in a year and 30 alive at once.
 - **What people remember changes the odds.** A loan repaid or left unpaid, a gift, a betrayal, a secret
-  kept or leaked, being cut from the will (forty kinds of memory in all) is remembered by the other
+  kept or leaked, being cut from the will (41 kinds of memory in all) is remembered by the other
   person and moves how likely they are to repay you, make peace or say yes, by at most 15 points either
   way. Their profile shows the memories that matter on a "Shared history"
   card, three lines at most.
