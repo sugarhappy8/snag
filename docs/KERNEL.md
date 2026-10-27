@@ -22,7 +22,7 @@ The aging seam is `ageUp`: the clock and the economy step run first, then one en
 | `careers` | career 10, special 20 |
 | `government` | nation 10 |
 | `firms` | workshop 10, corruption 20, business 30, techWaves 40 |
-| `money` | development 10, investments 20, hedge 30, shops 40, computer 50, finance 60, wealth 70, familyUse 80, nepo 90, willFeuds 100 |
+| `money` | development 10, investments 20, hedge 30, shops 40, computer 50, finance 60, wealth 70, life.debts 75, familyUse 80, nepo 90, willFeuds 100 |
 | `assets` | immigration 10, assets 20, crime 30, underworld 40 |
 | `advisors` | advisors 10 |
 | `close` | world.edges 5, society.acts 6, milestones 10 |

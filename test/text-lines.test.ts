@@ -22,6 +22,7 @@ import {
   DEBT_BORROW_LINES,
   DEBT_DEFAULT_LINES,
   DEBT_REPAY_LINES,
+  DIVORCE_LAPSE,
   DONATED_LINES,
   ENDORSE_RENEWED_LINES,
   FAVOR_DONE_LINES,
@@ -113,6 +114,8 @@ const SITE_SLOTS: Readonly<Record<string, readonly string[]>> = {
   'loan.back': ['who', 'whom', 'he', 'money', 'left'],
   // R4-E10b: a part payment of a loan the player owes a person (society/debt.ts); {who} is "my friend Kay".
   'debt.owe': ['who', 'money'],
+  // R4-L7: a payment on the divorce settlement the player owes an ex (divorce-debt.ts); {who} is "my ex Dana", {money} the year's payment.
+  'divorce.pay': ['who', 'money'],
 }
 
 describe('the rows of R2-P9', () => {
@@ -295,6 +298,8 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'life.kinWidowed', lines: KIN_WIDOWED, role: 'log', slots: ['spouse', 'who'] },
   // R4-E13: a key person poached at the year's end ({who} the full name, {role} the title, {company} the company).
   { id: 'business.staffPoached', lines: STAFF_POACHED_LINES, role: 'log', slots: ['company', 'role', 'who'] },
+  // R4-L7: what is left of a divorce settlement lapses ({money} is what was still owed).
+  { id: 'life.divorceLapse', lines: DIVORCE_LAPSE, role: 'log', slots: ['money'] },
 ]
 
 describe('the pools of R2-P10', () => {

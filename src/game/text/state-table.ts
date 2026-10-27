@@ -116,6 +116,20 @@ export const STATE_TABLE = {
     variants: ['I still owe {who} {money}.', 'There is {money} left on what I owe {who}.', 'I paid down the loan from {who}. {money} to go.'],
     band: logBand(2),
   },
+  // R4-L7 (A.K8 b): a payment on the divorce settlement the player still owes an ex (divorce-debt.ts), one record per ex (the call passes the ex's
+  // id). The value is the share of the debt paid so far, 0 to 1: it speaks each time another fifth is paid (the last payment is the fifth band, so
+  // the closing of the debt is said too: gap 1), or after 4 quiet years. {who} is "my ex Dana", {money} what the year's payment was.
+  'divorce.pay': {
+    variants: [
+      'I paid {who} {money} on the divorce settlement.',
+      'Another {money} went to {who} for the divorce.',
+      'I sent {who} {money} toward the divorce debt.',
+      'This year I handed {who} {money} of what the divorce cost.',
+    ],
+    band: bandBy(0.2, 0.4, 0.6, 0.8, 1),
+    every: 4,
+    gap: 1,
+  },
 } as const satisfies Record<string, StateSpec>
 
 export type StateKey = keyof typeof STATE_TABLE

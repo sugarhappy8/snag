@@ -5,7 +5,8 @@ three fields on the relative (`married`, `spouseName`, `kids`) and a log line. R
 (`docs/PEOPLE.md`, section 5), so their faces never change, and links the relative to them. This file is the saved shape of the
 links, the caps, the pure readers and the problems list (R4-L3, `src/game/world/kin.ts`), from section 9, the writers, the yearly
 step and the frozen table of the face (R4-L4, `src/game/kin.ts`), from section 10 the estate (R4-L5, `src/game/modules/kin-estates.ts`) and
-from section 11 the debts and claims of the hand-over (R4-L6, `src/game/modules/heirs.ts`).
+from section 11 the debts and claims of the hand-over (R4-L6, `src/game/modules/heirs.ts`) and from section 12 the divorce debt (R4-L7,
+`src/game/divorce-debt.ts`).
 Later tasks add their sections: the rest of the hand-over (R4-L9) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
 
 ## 1. The rules
@@ -300,3 +301,23 @@ test stays true and green, because the allowance and the history are still the l
 - A person's loan is paid from the cash and from the equity of the property that is sold, as the bank's is. A sole keeper keeps the
   property only while the cash after the debts is not below zero; when the cash cannot pay the debts alone the property is sold into
   the estate, exactly as it is for a bank loan.
+
+## 12. The divorce debt (R4-L7, `src/game/divorce-debt.ts`)
+
+A divorce the player cannot pay in full used to forgive the rest: `love.ts` `divorce` moved the cash, sold property for the ex and then let the
+shortfall vanish, so the judge's order was a number in a notice. On a stamped life (X6; an unstamped life, a v5.2.0 save and every heir of one
+keep the old forgiveness to the byte) the shortfall is a debt of the player's, owed and paid over years, in the open (X24, X35).
+
+| Piece | Rule |
+|---|---|
+| The record | the edge `player > ex` carries `dv = [owed, 0, year, 1, paid]`, kind 1 (`DEBT_KIND.divorce`). It is the one record of the edge model: no separate store, no new ledger reason. An unpaid `dv` binds the edge at the edge alone (`edgeLocalBound`), so the edge cap and the orphan rule of the edge step keep it. It counts against `EDGE_CAPS.debts` (40) |
+| Opening | `openDivorceDebt(g, ex, owed)` is called by `divorce` after the asset loop and before `p.relation = 'exSpouse'`, so the partner is still a `spouse` there: it takes a `spouse`, an `exSpouse` or an `ex` and nothing else. It moves no cash and draws nothing. The notice gains one paragraph, "You still owe {name} {money}." It answers false, with nothing written, for an unstamped life, a dead player, a person who is not in the game or is dead (the live Person is read, not the copy it is given), a sum under a dollar or not a number, an edge that already carries a loan, and a full table of debts. A second order for the same ex joins the first as one debt that starts over |
+| Paying | `serveDivorceDebts(g)` is the yearly step of the module `life.debts` (aging seam, `money` phase, order 75, between `wealth` 70 and `familyUse` 80, group `people`). Oldest first, each debt pays `min(still owed, floor(0.2 x cash))` by `serviceDebt` (reason `divorce`, token `debtToken('divorce', year, key)`, `dv[4]` holds the total paid), reading the cash that is left after the debts before it: a payment never takes the cash below 0, k debts take at most `1 - 0.8^k` of it, and a second call in the year pays nothing |
+| Saying it | the state row `divorce.pay` (one record per ex, the value the share of the debt paid, a line each time another fifth is paid, or after 4 quiet years) |
+| Lapsing | what is left lapses with one `DIVORCE_LAPSE` line and no money moved (no deposit was created, so there is no `writeoff` burn) in the tenth year after the debt began, after that year's payment, or at once when the ex is gone from the game, dead or a pet. A debt down to less than a dollar is let go without a word |
+| Death | nothing runs for a dead player. L6 (`payPersonalDebts`) pays what is left out of the estate, before the shares, and closes the edge |
+| The loans | E10b's pass inside `society.acts` serves kind 0 only, so the two never touch the same debt |
+
+The ex's shortfall to the player (the richer ex who cannot pay what the judge orders) stays forgiven: an NPC ex has no income path in R4 (X35).
+The ex is never dropped while the debt stands: `cleanupPeople` drops only dead exes past 10 and live `ex` rows past 20, and an `exSpouse` is
+neither. The step draws nothing from `g.rng`, uses no stream and writes no money outside the ledger.
