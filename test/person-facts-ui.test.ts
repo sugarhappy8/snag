@@ -140,7 +140,8 @@ describe('cold: before the chunk is loaded', () => {
 
   it('prints no true number: the legacy bars would, in Realistic', () => {
     const { g, p } = sentinelCase()
-    const legacy = inFog(() => html(g, p))
+    // the legacy sheet is the one the build flag off prints, so the flag is named (the default is on since R4-E16)
+    const legacy = withFlags(OFF, () => inFog(() => html(g, p)))
     expect(leaksATrueNumber(legacy).length, 'the legacy sheet leaks, so this check can fail').toBeGreaterThan(10)
     const cold = profile(() => html(g, p))
     expect(leaksATrueNumber(cold)).toEqual([])

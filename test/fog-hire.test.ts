@@ -11,7 +11,9 @@
 //   tidy     the readings live only while the popup does: hiring, or hiring nobody, forgets them
 //   ceiling  the fee follows the role's pay, so a hundred times the cash or the money pays the same
 //
-// The suite runs in Exact (test/setup-exact.ts). Every Realistic case goes through inFog (test/knowledge-kit.ts).
+// The suite runs in Exact (test/setup-exact.ts). Every Realistic case goes through inFog (test/knowledge-kit.ts). The three cases that say a hire
+// leaves no reading behind go through `dark`: that is the v5.2.0 sheet, and with the build flag peopleProfile on (R4-U6, since R4-E16) the read
+// of the hire is carried to the staff row on purpose (test/fog-staff.test.ts pins that).
 import { describe, expect, it } from 'vitest'
 import { businessAssetView } from '../src/game/business'
 import { traitOf } from '../src/game/business/flavor'
@@ -22,6 +24,7 @@ import { bizOf, readBiz } from '../src/game/business/state'
 import { money } from '../src/game/business/util'
 import { formatMoney } from '../src/game/core'
 import { INDUSTRY_IDS } from '../src/game/data/markets'
+import { withFlags } from '../src/game/flags'
 import { localPay } from '../src/game/data/local-pay'
 import { flowsOf, ledgerProblems } from '../src/game/kernel/ledger'
 import { buyIntel, lookCloser, readKnow } from '../src/game/knowledge/contract'
@@ -31,6 +34,9 @@ import type { Asset, ChoiceModal, GameState, MenuAction, MenuInfo, MenuNode, Mod
 import { makeTestGame } from './helpers'
 import { deepFreeze, fogGame, inFog, readerGame, unitAt } from './knowledge-kit'
 import { adult, allNodes, company, drain } from './market-kit'
+
+/** Realistic with the build flag peopleProfile off: the v5.2.0 hiring sheet. */
+const dark = <T>(fn: () => T): T => withFlags({ peopleProfile: false }, () => inFog(fn))
 
 const DASH = new RegExp(`[${String.fromCharCode(0x2014)}${String.fromCharCode(0x2013)}]`)
 const BAD = /NaN|undefined|\[object|Infinity/
@@ -215,7 +221,7 @@ describe('the shortlist in Realistic mode', () => {
   })
 
   it('still stores the true skill and trait of the one you hire', () => {
-    inFog(() => {
+    dark(() => {
       for (let s = 1; s <= 4; s++) {
         const { g, a } = life(s * 5 + 1)
         const { m } = interview(g, a)
@@ -290,7 +296,7 @@ describe('a background check', () => {
   })
 
   it('forgets the readings when you hire, or hire nobody', () => {
-    inFog(() => {
+    dark(() => {
       const { g, a } = life(23)
       const { m } = interview(g, a)
       runScript(g, m.scriptId!, 'vet', m.data, m)
@@ -385,7 +391,7 @@ describe('a background check', () => {
 
 describe('every industry', () => {
   it('opens a shortlist for each of its roles, checks it and hires from it, with no NaN and no dash', () => {
-    inFog(() => {
+    dark(() => {
       let rows = 0
       INDUSTRY_IDS.forEach((industry, n) => {
         const g = adult(60 + n, 2026, 'us')
