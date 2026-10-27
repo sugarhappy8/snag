@@ -467,7 +467,10 @@ describe('lookKeysOf', () => {
     expect(withFlags(ON, () => lookKeysOf(g, p))).toEqual([])
     expect(withFlags(OFF, () => lookKeysOf(g, p))).toEqual([])
     expect(withFlags(OFF, () => inFog(() => lookKeysOf(g, p)))).toEqual([])
-    expect(inFog(() => lookKeysOf(g, p))).toEqual([]) // the default is off until the release flips it
+    // the default is on since the release flipped it (R4-E16): Realistic with no flag named reads as Realistic with the flag on
+    const keys = withFlags(ON, () => inFog(() => lookKeysOf(g, p)))
+    expect(keys).toEqual(['ppl:p1:smarts', 'ppl:p1:health', 'ppl:p1:happiness', 'ppl:p1:cash'])
+    expect(inFog(() => lookKeysOf(g, p))).toEqual(keys)
   })
 
   it('is smarts, health, happiness, cash, then skill when the person has an NPC life', () => {
