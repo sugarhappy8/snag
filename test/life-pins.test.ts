@@ -430,10 +430,16 @@ describe('e  relatives employed at a firm the designated sibling adopts', () => 
     expect((x.who as [string, number][]).find((w) => w[0] === 'willHeir')![1]).toBe(0)
   })
 
-  it('keeps the other child\'s job record at the hand-over (X35 asked; the answer is yes, the record stays)', () => {
+  it('keeps the other child\'s job record and the late player\'s sibling\'s at the hand-over (X35 asked; the answer is yes, both records stay)', () => {
+    // The hand-over of a life the social flag stamped (every new life since R4-E16) keeps each person the late player was bound to (R4-L9,
+    // keptContacts): the other child, now the heir's half sibling, and the late player's own sibling, hired at the firm, who stays as a
+    // `friend` (data.kin says aunt or uncle) because the family job held them. The unstamped rule dropped that sibling, who had never had a
+    // yearly pass of their own in this scene; a played life kept them either way (docs/KIN.md section 15, known limits).
     const kept = jobs(1).filter((j) => j[2] !== null)
-    expect(kept).toHaveLength(1)
-    expect(kept[0]![1]).toBe('halfSibling')
+    expect(kept).toHaveLength(2)
+    expect(kept.map((j) => j[1]).sort()).toEqual(['friend', 'halfSibling'])
+    for (const j of kept) expect(j[2]).toEqual(['firm', 1])
+    expect((xOf(rows()[1]!).who as [string, number][]).find((w) => w[0] === 'uncle')![1]).toBe(1)
   })
 
   it('ends it in the first family year: a job at a firm the player no longer owns closes, the person is unemployed (UNVERIFIED until this row)', () => {
