@@ -49,7 +49,7 @@ import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState, InputModal, MenuAction, Person, RelationKind } from '../src/game/types'
 import { deepFreeze } from './fuzz-kit'
-import { expectRows, isRecording, oracle, queueKinds, recordRows, scene, snapshot, trapRng, type CastSpec, type Extra, type ParityRow, type Scene, type Tuple, stampStats, withStamped } from './social-parity-kit'
+import { compareRows, expectRows, isRecording, oracle, queueKinds, readRows, recordRows, scene, snapshot, trapRng, type CastSpec, type Extra, type ParityRow, type Scene, type Tuple, stampStats, withStamped } from './social-parity-kit'
 
 const ORACLE = oracle('will')
 
@@ -830,9 +830,26 @@ describe('the will oracle', () => {
     else expectRows(ORACLE, rows)
   })
 
-  it('plays the same rows on a stamped life: the mirror follows every number and moves none (R4-E7)', { timeout: 120_000 }, () => {
+  // R4-L9 (X33) narrows this replay in one place: the reading of the will (the `est|...|read` rows) is a hand-over. On a stamped life a direct
+  // kin starts at round((roll + old) / 2), and the late player's living spouse, who is bound to them and not the heir's parent, stays as a
+  // contact, so those rows differ from the unstamped recording in every relationship number and in the list of people (and so in their cash).
+  // They are compared without those two cells; their dice, ids, queue, money, escrow, pot and popups stay equal to the recorded rows. Every
+  // other row, and the step labels, are compared as before. The unstamped rows and the fixture are not touched (they move at R4-E16).
+  it('plays the same rows on a stamped life: the mirror follows every number and moves none; the reading of the will keeps its dice and popups (R4-E7, R4-L9)', { timeout: 120_000 }, () => {
     const rows = withStamped(playFresh)
-    expectRows(ORACLE, rows)
+    const recorded = readRows(ORACLE).rows
+    expect(rows.map((r) => r.label)).toEqual(recorded.map((r) => r.label))
+    const reading = (r: ParityRow): boolean => /^est\|[^|]+\|t\d+\|read$/.test(r.label)
+    const withoutPeople = (r: ParityRow): ParityRow => {
+      const x = { ...(r.x ?? {}) }
+      delete x.cash
+      return { ...r, rel: [], x }
+    }
+    const rest = compareRows(recorded.filter((r) => !reading(r)), rows.filter((r) => !reading(r)))
+    expect(rest.lines, 'the rows that are not a reading').toEqual([])
+    const read = compareRows(recorded.filter(reading).map(withoutPeople), rows.filter(reading).map(withoutPeople))
+    expect(read.lines, 'the readings, without the relationship numbers and the people\'s cash').toEqual([])
+    expect(recorded.filter(reading).length, 'the readings must be there').toBeGreaterThan(0)
     expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
     expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
   })

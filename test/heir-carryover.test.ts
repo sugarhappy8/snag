@@ -24,10 +24,11 @@ import { heirUnsafe, personEntity, personKey } from '../src/game/kernel/person-r
 import { adoptSpouse, syncKin } from '../src/game/kin'
 import { continueAsChild } from '../src/game/life'
 import { materializePerson } from '../src/game/materialize'
-import { heirSpouseOverrides } from '../src/game/modules/heirs'
+import { carryEdges, heirSpouseOverrides, keptContacts, keptStart } from '../src/game/modules/heirs'
 import type { GameState, Gender, Person, RelationKind } from '../src/game/types'
 import { formatMemory } from '../src/game/world/edge-memory'
 import { putEdge } from '../src/game/world/edge-write'
+import { EDGE_CAPS } from '../src/game/world/caps'
 import { edgeKey, edgeProblems, readEdge, type Edge } from '../src/game/world/edges'
 import { worldProblems } from '../src/game/world/invariants'
 import { kinProblems } from '../src/game/world/kin'
@@ -724,6 +725,113 @@ describe('what stays as it was (part B)', () => {
     expect(byId(n, f.who.uncle!.id)!.data.kin).toBeUndefined()
     expect(readWorld(n).edges).toBeUndefined()
   })
+})
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 6. Part B: the widow, the start rule and the ceilings
+
+describe('the people the late player was bound to, and the ceilings', () => {
+  it('keeps the late player\'s living spouse when the heir does not live with them: a friend at max(25, half), with the edge she had', () => {
+    const prepare = (x: Fam): void => {
+      x.who.heir!.livesWithPlayer = false
+      feel(x.g, x.who.wife!, { t: 80, r: 70, s: 10 })
+    }
+    const mine = over(1, { stamped: true, old: 80, prepare })
+    const twin = over(1, { stamped: false, old: 80, prepare })
+    const wife = byId(mine.n, mine.f.who.wife!.id)
+    expect(wife, 'the widow is kept').toBeDefined()
+    expect(wife!.relation).toBe('friend')
+    expect(wife!.relationship).toBe(40)
+    expect(wife!.livesWithPlayer).toBe(false)
+    expect(wife!.data.generationConnection).toContain('Known through')
+    expect(byId(twin.n, twin.f.who.wife!.id), 'the unstamped hand-over drops her').toBeUndefined()
+    const e = edgeOf(mine.n, wife!)!
+    expect([e.t, e.r, e.s, e.f]).toEqual([40, 35, 6, 40])
+    expect(mine.n.rng).toBe(twin.n.rng)
+    clean(mine.n)
+  })
+
+  it('starts a kept contact at min(60, max(25 if bound, round(half))) and an enemy at min(old, 30), and reads any garbage as 0', () => {
+    expect(keptStart(80, false, false)).toBe(40)
+    expect(keptStart(10, false, false)).toBe(5)
+    expect(keptStart(10, true, false)).toBe(25)
+    expect(keptStart(90, true, false)).toBe(45)
+    expect(keptStart(100, false, false)).toBe(50)
+    expect(keptStart(1e9, false, false)).toBe(60)
+    expect(keptStart(80, false, true)).toBe(30)
+    expect(keptStart(10, true, true)).toBe(10)
+    expect(keptStart(Number.NaN, false, false)).toBe(0)
+    expect(keptStart(Number.NaN, true, false)).toBe(25)
+    expect(keptStart(Number.POSITIVE_INFINITY, false, true)).toBe(0)
+    expect(keptStart(-5, false, true)).toBe(0)
+  })
+
+  it('offers at most 40 contacts at 100 times the cap, and a hostile list or a game with no stamp offers none', () => {
+    const g = makeTestGame(3, { age: 70, money: 100_000, countryId: 'us', gender: 'male' })
+    stampSocial(g)
+    const ego = playerRef(g)
+    for (let i = 0; i < 4_000; i++) {
+      const p = cast(g, 70, 'friend', { age: 40, countryId: 'us' })
+      p.data.wl = { by: g.character.id, cut: true }
+    }
+    const taken = new Set<string>()
+    const kept = keptContacts(g, 'nobody', ego, taken)
+    expect(kept).toHaveLength(40)
+    expect(new Set(kept.map((c) => c.person.id)).size).toBe(40)
+    // the same twice, in the order of the list, and nobody that is taken
+    expect(keptContacts(g, 'nobody', ego, taken).map((c) => c.person.id)).toEqual(kept.map((c) => c.person.id))
+    expect(kept.map((c) => g.people.indexOf(c.person))).toEqual([...kept.map((c) => g.people.indexOf(c.person))].sort((a, b) => a - b))
+    const some = new Set(kept.slice(0, 10).map((c) => c.person.id))
+    expect(keptContacts(g, 'nobody', ego, some).some((c) => some.has(c.person.id))).toBe(false)
+    // a read of a frozen game gives the same answer: no write, no draw, no cache on the state
+    expect(keptContacts(deepFreeze(structuredClone(g)), 'nobody', ego, taken).map((c) => c.person.id)).toEqual(kept.map((c) => c.person.id))
+    // a hostile list never throws
+    const hostile = structuredClone(g)
+    hostile.people.splice(3, 0, null as never, 7 as never, { id: 'x', data: null } as never)
+    expect(() => keptContacts(hostile, 'nobody', ego, taken)).not.toThrow()
+    expect(keptContacts({ ...g, people: 'nope' } as never, 'nobody', ego, taken)).toEqual([])
+    const plain = makeTestGame(3, { age: 70 })
+    plain.people.push(cast(plain, 70, 'friend', { age: 40 }))
+    plain.people[0]!.data.wl = { by: plain.character.id, cut: true }
+    expect(keptContacts(plain, 'nobody', playerRef(plain), new Set())).toEqual([])
+  }, 120_000)
+
+  it('carries the edges of 4,000 people into the caps at once: no more edges than before, memories at most 8, none left at the late ego, the same twice', () => {
+    const build = (): { g: GameState; oldEgo: ReturnType<typeof playerRef>; heirRef: ReturnType<typeof playerRef> } => {
+      const g = makeTestGame(4, { age: 70, money: 100_000, countryId: 'us', gender: 'male' })
+      stampSocial(g)
+      const oldEgo = playerRef(g)
+      const memories = Array.from({ length: 8 }, (_, i) => formatMemory({ kind: (['stood_by_me', 'gift_given', 'told_gently', 'gossiped_about_me'] as const)[i % 4] as never, year: 2010 + i, w: 3, by: 'ego' }))
+      for (let i = 0; i < 4_000; i++) {
+        const p = cast(g, 60 + (i % 40), i % 2 === 0 ? 'friend' : 'sibling', { age: 40, countryId: 'us' })
+        // 1,200 edges at most are kept by the map itself; the rest of the people have none
+        if (i < 1_300) putEdge(g, edgeKey(personEntity(p), oldEgo)!, { t: 100, f: p.relationship, r: 100, s: 100, o: 0, y: 2000, l: 2020, m: memories })
+      }
+      const heir = cast(g, 70, 'child', { age: 30, countryId: 'us' })
+      const people = g.people.filter((p) => p.id !== heir.id)
+      g.people = people
+      g.character = { ...g.character, id: heir.id }
+      return { g, oldEgo, heirRef: playerRef(g) }
+    }
+    const a = build()
+    const before = Object.keys(readWorld(a.g).edges ?? {}).length
+    expect(before).toBeLessThanOrEqual(EDGE_CAPS.edges)
+    carryEdges(a.g, a.oldEgo, a.heirRef, a.g.people)
+    const edges = readWorld(a.g).edges ?? {}
+    expect(before, 'the map must be full for the probe to bite').toBe(EDGE_CAPS.edges)
+    expect(Object.keys(edges).length).toBeLessThanOrEqual(before)
+    expect(Object.keys(edges).length, 'the edges must cross').toBeGreaterThan(1_000)
+    expect(Object.keys(edges).filter((k) => k.endsWith(`>${a.oldEgo}`))).toEqual([])
+    for (const e of Object.values(edges)) expect((e.m ?? []).length).toBeLessThanOrEqual(EDGE_CAPS.memPerEdge)
+    expect(edgeProblems(edges, a.g.people, a.heirRef)).toEqual([])
+    const b = build()
+    carryEdges(b.g, b.oldEgo, b.heirRef, b.g.people)
+    expect(JSON.stringify(readWorld(b.g).edges)).toBe(JSON.stringify(edges))
+    // an unstamped game and a hostile list do nothing and never throw
+    const plain = makeTestGame(4, { age: 70 })
+    expect(() => carryEdges(plain, playerRef(plain), person('someone'), [null as never, 3 as never])).not.toThrow()
+    expect(() => carryEdges(a.g, a.oldEgo, a.heirRef, 'nope' as never)).not.toThrow()
+  }, 180_000)
 })
 
 describe('the saved words', () => {

@@ -53,7 +53,7 @@ import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
 import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
-import { carryReceivables, estateSentences, heirShareOf, heirSpouseOverrides, matchSpouseEdge, payPersonalDebts } from './modules/heirs'
+import { carryEdges, carryReceivables, contactHeld, estateSentences, heirShareOf, heirSpouseOverrides, keptContacts, keptStart, payPersonalDebts } from './modules/heirs'
 import { settleKinEstates } from './modules/kin-estates'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
@@ -66,6 +66,7 @@ import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, 
 import { flagOn } from './flags'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
 import './world/edge-mirror'
+import { playerRef } from './world/people'
 import { socialOn, stampSocial } from './world/social'
 import { syncWorld } from './world/sync'
 import type {
@@ -1145,6 +1146,9 @@ function parentNoun(gender: Gender): string {
   return gender === 'male' ? 'father' : 'mother'
 }
 
+/** The relations of the late player's own siblings: on a stamped hand-over a kept one is an uncle or an aunt to the heir (R4-L9). */
+const LATE_SIBLINGS: ReadonlySet<string> = new Set(['sibling', 'halfSibling', 'stepsibling'])
+
 /**
  * Generations: after the player dies, carry on as one of their children. Returns a new
  * GameState (the input is not modified).
@@ -1503,8 +1507,6 @@ export function continueAsChild(g: GameState, childId: string): GameState {
       }
     }
     people.push(heirSpouse)
-    // the pair edge of a record's spouse follows the final relationship (edge.f === Person.relationship, X22)
-    if (face !== null) matchSpouseEdge(n, heirSpouse, childId)
   }
   // Grandchildren through the heir become the heir's children.
   for (const gc of n.people.filter((p) => p.relation === 'grandchild')) {
@@ -1518,12 +1520,24 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     people.push(reset(pet, 'pet', randInt(n, 40, 80), true))
   }
   // Persistent entrepreneurs and known relatives do not disappear when the viewpoint changes.
-  for (const contact of n.people) {
-    if (contact.id === childId || people.some(p => p.id === contact.id) || (!npcLife(contact) && !familyOwnerIds.has(contact.id))) continue
-    const kept = reset(contact, 'friend', Math.min(60, contact.relationship), false)
+  // On a stamped life (R4-L9, X33) every kept contact starts at what keptStart says: half of the old number, at least 25 for a person the
+  // late player was bound to, at most 60; the late player's siblings are an uncle or an aunt to the heir. An unstamped life keeps min(60, old).
+  const oldEgo = playerRef(n)
+  const heldContact = stamped ? contactHeld(n, oldEgo) : null
+  const keep = (contact: Person, relation: RelationKind, relationship: number): Person => {
+    const kept = reset(contact, relation, relationship, false)
     kept.notes = contact.notes
     kept.data.generationConnection = `Known through ${oldName}`
-    people.push(kept)
+    if (stamped && LATE_SIBLINGS.has(contact.relation) && typeof kept.data.kin !== 'string') kept.data.kin = contact.gender === 'male' ? 'uncle' : 'aunt'
+    return kept
+  }
+  for (const contact of n.people) {
+    if (contact.id === childId || people.some(p => p.id === contact.id) || (!npcLife(contact) && !familyOwnerIds.has(contact.id))) continue
+    people.push(keep(contact, 'friend', heldContact ? keptStart(contact.relationship, heldContact(contact), contact.relation === 'enemy') : Math.min(60, contact.relationship)))
+  }
+  // and the people the late player was bound to, the best friends and the feuds (at most 40, none that are already in the list)
+  if (stamped) {
+    for (const c of keptContacts(n, childId, oldEgo, new Set(people.map((p) => p.id)))) people.push(keep(c.person, c.relation, c.relationship))
   }
   n.people = people
   for (const unit of allocatedUnits) {
@@ -1554,6 +1568,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   closeEstate(n, old)
   n.character = heir
   const claims = heirShare === null ? null : carryReceivables(n, old, heirShare)
+  carryEdges(n, oldEgo, playerRef(n), n.people)
   // The inheritance and the heir's first lines are written in the heir's currency (they may
   // live abroad), not the late parent's.
   bindMoneyContext(n)

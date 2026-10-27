@@ -621,7 +621,7 @@ describe('a clone, a reload and a Time Machine jump give the same edges', () => 
 // 8b. The heir switch
 
 describe('the heir hand-over of a stamped life', () => {
-  it('keeps the stamp, makes no problem, and starts the new ego with no edge until the heir plays (L9 copies them later)', () => {
+  it('keeps the stamp, makes no problem, and carries the edges of the people who stay to the heir with none left at the late ego (R4-L9)', () => {
     const g = socialGame(5, { age: 82, money: 2_000_000 })
     const kid = cast(g, 70, 'child', { age: 50, lastName: g.character.lastName })
     const sib = cast(g, 60, 'child', { age: 47, lastName: g.character.lastName })
@@ -639,8 +639,11 @@ describe('the heir hand-over of a stamped life', () => {
     const ego = playerRef(n)
     expect(ego).toBe(`person:${kid.id}`)
     expect(ego).not.toBe(oldEgo)
-    // what the hand-over wrote on the way (the people rebuilt from the heir's seat) ends at the old ego or nowhere; none ends at the heir
-    expect(Object.keys(rootOf(n)).filter((k) => k.endsWith(`>${ego}`))).toEqual([])
+    // R4-L9 carries the edge of every Person who stays: the sibling keeps one to the heir (its f is the blended relationship, which edgeProblems
+    // checks below); the friend (47, bound to nobody) is not kept as a contact, the heir's own edge to the late ego goes with the rest, and
+    // no edge is left that ends at the late ego
+    expect(Object.keys(rootOf(n)).filter((k) => k.endsWith(`>${oldEgo}`))).toEqual([])
+    expect(Object.keys(rootOf(n)).filter((k) => k.endsWith(`>${ego}`))).toEqual([`${personEntity(sib)}>${ego}`])
     expect(edgeProblems(readWorld(n).edges, n.people, ego)).toEqual([])
     expect(worldProblems(n, { live: false }).filter((p) => p.startsWith('edges') || p.startsWith('social'))).toEqual([])
     // the heir plays: a relative's number moves and the edge toward the heir holds it
