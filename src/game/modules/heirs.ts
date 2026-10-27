@@ -73,7 +73,9 @@
 //                                of `kept` (the late player's own and the pets excepted) the edge `person > oldEgo` crosses through
 //                                heirEdges (E8: t, r and a non-kin's f at 0.5, s at 0.6, never a raise, memories one point lighter, q
 //                                and k for a kin link only, dv, n, d and c dropped) as `person > heirRef`. Then, in this order:
-//                                  1. every edge that ENDS at the late ego goes (kept or not: nothing is left to point at the dead);
+//                                  1. every edge of the late ego goes, one that ends at them and one that starts at them (kept or not:
+//                                     nothing is left to point at the dead, and the dead parent has no edge to the heir to disagree with
+//                                     their relationship);
 //                                  2. each crossed edge is written with f set to the person's final Person.relationship (so a direct
 //                                     kin's f is the blend, X33). Where an edge `person > heirRef` is already there (a strife edge of an
 //                                     earlier reading, the pair edge of the heir's spouse, the claim the receivables made) it is the
@@ -376,9 +378,6 @@ function put(n: GameState, key: EdgeKey, patch: Partial<Edge>): void {
   if (patch.q !== undefined) putEdge(n, key, { ...patch, q: undefined })
 }
 
-/** Whether the edge `key` ends at `ref`. */
-const endsAt = (key: string, ref: EntityRef): boolean => key.slice(key.indexOf('>') + 1) === ref
-
 /** The final relationship as an edge keeps it: the Person's number, cut to 0 to 100; null when it is not a number. */
 function affection(p: Person): number | null {
   const r = p.relationship
@@ -410,8 +409,11 @@ export function carryEdges(n: GameState, oldEgo: EntityRef, heirRef: EntityRef, 
       if (was !== null && hasOwn(map, was)) sub[was] = map[was]!
     }
     const crossed = heirEdges(sub, oldEgo, heirRef, n.year)
-    // nothing may point at the dead: every edge that ends at the late ego goes first, which also frees the room the crossed ones need
-    for (const [key] of edgesOf(n, oldEgo)) if (endsAt(key, oldEgo)) putEdge(n, key, null)
+    // nothing may point at the dead, and nothing may start at them: the late player stays in the list as the heir's dead parent, so an edge
+    // that starts at them (a loan the heir made once and was repaid, a leak the heir told) would read as the parent's edge to the new ego with
+    // an f that is not the parent's relationship (R4-E15, the 120-year probe). Every edge of the late ego goes first, which also frees the room
+    // the crossed ones need
+    for (const [key] of edgesOf(n, oldEgo)) putEdge(n, key, null)
     for (const { p, key, f } of rows) {
       const inc = hasOwn(crossed, key) ? crossed[key]! : null
       const cur = readEdge(n, personEntity(p), heirRef)

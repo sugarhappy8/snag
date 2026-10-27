@@ -37,6 +37,7 @@ import { kindOfKey } from '../src/game/knowledge/kinds'
 import { withInfoMode } from '../src/game/knowledge/mode'
 import { yearlyKnowledge } from '../src/game/knowledge/module'
 import { SOURCES, SOURCE_IDS, priceOf, readingSd } from '../src/game/knowledge/sources'
+import type { EntityRef } from '../src/game/kernel/ids'
 import { personEntity } from '../src/game/kernel/person-ref'
 import { BURNS, LEDGER_CAPS, MINTS, acctBalance, book, bookBurn, bookMint, checkLedger, flowsOf, peekLedger, playerAcct, type AcctRef } from '../src/game/kernel/ledger'
 import { REASONS, type BurnName, type MintName, type Reason } from '../src/game/kernel/reasons'
@@ -45,9 +46,18 @@ import { transactionsLevy } from '../src/game/nation/rates'
 import { continueAsChild } from '../src/game/life'
 import { carryReceivables, keptContacts } from '../src/game/modules/heirs'
 import { settleKinEstates } from '../src/game/modules/kin-estates'
-import { yearlyNpcLife } from '../src/game/npc-lives'
+import { initializeNpc, yearlyNpcLife } from '../src/game/npc-lives'
 import { npcLife, saveNpcLife, type NpcLife } from '../src/game/npc-state'
 import { PEOPLE_CAPS, exposureOf, lookKeysOf } from '../src/game/people-fog'
+import { playerEdgeKey, runAct } from '../src/game/society/acts'
+import { INTEREST_CEILING, debtsOf } from '../src/game/society/debt'
+import { FAVOR_BOND, FAVOR_COOLDOWN, helpAct } from '../src/game/society/favor'
+import { FEUD, legalFee, stepFeuds } from '../src/game/society/feud'
+import { HOP_CAP, MAX_TOLD, spread } from '../src/game/society/gossip'
+import { LOAN_OPEN_MAX, lend, loanTerms, openLoans } from '../src/game/society/loan'
+import { MENTOR, enrolMentor, mentorSettle, protegesOf } from '../src/game/society/mentor'
+import { yearlyActs } from '../src/game/society/module'
+import { LEAK, addSecret } from '../src/game/society/secret'
 import { createPerson } from '../src/game/people'
 import { editPolicy, writePolicy } from '../src/game/nation/state'
 import { DEBT_KIND } from '../src/game/society/contract'
@@ -65,11 +75,11 @@ import { readFirms } from '../src/game/world/firms'
 import { readHomes } from '../src/game/world/homes'
 import { EDGE_CAPS, FRONTIER_CAPS, MET_CAPS } from '../src/game/world/caps'
 import { formatMemory, MEMORY_KINDS } from '../src/game/world/edge-memory'
-import { edgeKey, edgeMap, liveFeuds, openDebts, readEdge } from '../src/game/world/edges'
+import { edgeKey, edgeMap, liveFeuds, normalizeEdges, openDebts, readEdge, type Edge } from '../src/game/world/edges'
 import { readFacts } from '../src/game/world/facts'
 import { KIN_CAPS, kinProblems, readKin } from '../src/game/world/kin'
 import { LIFE_MAX_AGE, ageTo, type KinBase } from '../src/game/world/life-path'
-import { putEdge } from '../src/game/world/edge-write'
+import { putEdge, putSecret, remember } from '../src/game/world/edge-write'
 import { applyDisclosure, frontierLead, frontierRows, readFrontier } from '../src/game/world/frontier'
 import { FIELD_IDS, FIELDS, fieldOfKind } from '../src/game/world/frontier-fields'
 import { LOD_CAPS, lodSweep, promote, type LodKind } from '../src/game/world/lod'
@@ -935,6 +945,335 @@ const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
 ]
 
 // R4-U11: the People UI and fog track.
+// R4-E15: the social rows. The web of people is bounded in the edge map (1,200 edges, 4,000 memories, 40 debts, 12 feuds, 40 secrets), in the
+// acts (a loan, a call-in, a leak, a suit, a mentor's bonus) and in what a year can cost the player. Each row feeds its terms `scale` times
+// what a life reaches and reads the worst case against the cap its sentence promises.
+const EDGE_SLICE_NODES = 24_000
+const edgeKeyAt = (ego: string, i: number): string => `person:e${String(i).padStart(6, '0')}>${ego}`
+const HOSTILE_MEMORIES = Array.from({ length: 8 }, (_, i) => Array.from({ length: 12 }, (_, j) => formatMemory({ kind: MEMORY_KINDS[(i + j) % MEMORY_KINDS.length]!, year: 2000 + ((i + j) % 25), w: (1 + ((i + j) % 3)) as 1 | 2 | 3, by: j % 2 === 0 ? 'ego' : 'them' })))
+const memoriesFor = (i: number, n = EDGE_CAPS.memPerEdge): string[] =>
+  Array.from({ length: n }, (_, j) => formatMemory({ kind: MEMORY_KINDS[(i + j) % MEMORY_KINDS.length]!, year: 2000 + ((i + j) % 25), w: (1 + ((i + j) % 3)) as 1 | 2 | 3, by: j % 2 === 0 ? 'ego' : 'them' }))
+
+/** The counts of a stored edge map, read off the root and not off the normalizer. */
+export function edgeCounts(map: unknown): { edges: number; debts: number; feuds: number; talk: number; secrets: number; memories: number; most: number; nodes: number; holders: number } {
+  const out = { edges: 0, debts: 0, feuds: 0, talk: 0, secrets: 0, memories: 0, most: 0, nodes: jsonNodes(map), holders: 0 }
+  if (map === null || typeof map !== 'object') return out
+  for (const [k, v] of Object.entries(map as Record<string, Record<string, unknown>>)) {
+    if (k.startsWith('secret:')) {
+      out.secrets++
+      out.holders = Math.max(out.holders, Array.isArray(v.h) ? v.h.length : 0)
+      continue
+    }
+    out.edges++
+    const m = Array.isArray(v.m) ? v.m.length : 0
+    out.memories += m
+    out.most = Math.max(out.most, m)
+    if (v.dv !== undefined) out.debts++
+    if (v.q !== undefined) out.feuds++
+    if (v.n !== undefined || v.d !== undefined) out.talk++
+  }
+  return out
+}
+
+const rawEdges = (g: GameState): unknown => (g.world as { edges?: unknown } | undefined)?.edges
+
+function readEdgeCaps(t: ReturnType<typeof tightest>, map: unknown, at: string): void {
+  const c = edgeCounts(map)
+  t.add(c.edges, EDGE_CAPS.edges, `${at}: edges`)
+  t.add(c.debts, EDGE_CAPS.debts, `${at}: debts`)
+  t.add(c.feuds, EDGE_CAPS.feuds, `${at}: feuds`)
+  t.add(c.talk, EDGE_CAPS.talkEdges, `${at}: edges with talk`)
+  t.add(c.secrets, EDGE_CAPS.secrets, `${at}: secrets`)
+  t.add(c.holders, EDGE_CAPS.holders, `${at}: holders of one secret`)
+  t.add(c.memories, EDGE_CAPS.memTotal, `${at}: memories in all`)
+  t.add(c.most, EDGE_CAPS.memPerEdge, `${at}: memories on one edge`)
+  t.add(c.nodes, EDGE_SLICE_NODES, `${at}: nodes of the slice`)
+}
+
+function edgeCapsRow(): CeilingProbe {
+  return {
+    id: 'edge-caps',
+    cap: 'the edge map keeps at most 1,200 edges, 40 debts, 12 feuds, 120 edges with talk and 40 secrets of 6 holders, 8 memories an edge and 24,000 nodes, however many people are offered or loaded, and a world full of bound edges refuses a new one (R4-E15)',
+    // 1,200 + 20 x scale edges are offered to the writer one at a time, each with eight memories, and a debt, a feud and talk on as many as the
+    // scale asks for (the caps refuse what is over); 40 x scale secrets are offered; then a hostile map of 1,200 x scale edges and 40 x scale
+    // secrets is read; then 20 x scale edges are offered to a world whose 1,200 edges are all bound (a link kind), which must refuse every one.
+    run: (scale) => {
+      const t = tightest()
+      const g = lifeIn('us', 2030)
+      stampSocial(g)
+      const ego = playerRef(g)
+      const offered = EDGE_CAPS.edges + 20 * scale
+      for (let i = 0; i < offered; i++) {
+        const extra: Partial<Edge> = { m: memoriesFor(i) }
+        if (i < EDGE_CAPS.debts * scale) extra.dv = [1_000 + i, 8, 2029, 0, 0]
+        if (i < EDGE_CAPS.feuds * scale) extra.q = [1 + (i % 4), 2029, 0]
+        if (i < EDGE_CAPS.talkEdges * scale) Object.assign(extra, { n: [`cb${i}`], d: [i % 50] })
+        // a refused write is the cap doing its work: the edge is simply not there
+        putEdge(g, edgeKeyAt(ego, i), { t: 50, f: 20 + (i % 70), r: 50, s: i % 9, o: 0, y: 2029, l: 2030, ...extra })
+        if (i % 500 === 0) readEdgeCaps(t, rawEdges(g), `${i + 1} edges offered`)
+      }
+      for (let i = 0; i < EDGE_CAPS.secrets * scale; i++) putSecret(g, `secret:${i + 1}`, { a: ego, k: i % 2 === 0 ? 'affair' : 'debt', v: 1 + (i % 5), h: Array.from({ length: 1 + (i % EDGE_CAPS.holders) }, (_, j) => `person:h${i}x${j}`), y: 2020 + (i % 10) } as never)
+      readEdgeCaps(t, rawEdges(g), `${offered} edges and ${EDGE_CAPS.secrets * scale} secrets offered`)
+
+      // The hostile map: every edge carries a debt, a feud, talk, a link kind and 12 memories (4 of them past the eight an edge keeps).
+      const hostile: Record<string, unknown> = {}
+      for (let i = 0; i < EDGE_CAPS.edges * scale; i++) {
+        hostile[edgeKeyAt(ego, i)] = i < 4 * EDGE_CAPS.edges ? { t: 50, f: 50, r: 50, s: i % 100, o: 0, y: 2000, l: 2030, m: HOSTILE_MEMORIES[i % HOSTILE_MEMORIES.length], dv: [10 + i, 5, 2029, 0, 0], q: [1, 2029, 0], n: ['a', 'b'], d: [1, 2], k: 'kin', c: 2029 } : { t: 50, f: 50, r: 50, s: i % 100, o: 0, y: 2000, l: 2030 }
+      }
+      for (let i = 0; i < EDGE_CAPS.secrets * scale; i++) hostile[`secret:${i + 1}`] = { a: ego, k: 'affair', v: 3, h: Array.from({ length: 3 * EDGE_CAPS.holders }, (_, j) => `person:z${j}`), y: 2020 }
+      readEdgeCaps(t, normalizeEdges(Object.fromEntries(Object.entries(hostile).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))), `a hostile map of ${EDGE_CAPS.edges * scale} edges`)
+
+      const bound = lifeIn('us', 2030)
+      stampSocial(bound)
+      for (let i = 0; i < EDGE_CAPS.edges; i++) putEdge(bound, edgeKeyAt(ego, i), { t: 50, f: 50, r: 50, s: 0, o: 0, y: 2030, l: 2030, k: 'kin' })
+      const before = JSON.stringify(rawEdges(bound))
+      for (let i = 0; i < 20 * scale; i++) putEdge(bound, edgeKeyAt(ego, EDGE_CAPS.edges + i), { t: 50, f: 99, r: 50, s: 99, o: 0, y: 2030, l: 2030 })
+      readEdgeCaps(t, rawEdges(bound), `${20 * scale} edges offered to ${EDGE_CAPS.edges} bound ones`)
+      t.add(JSON.stringify(rawEdges(bound)) === before ? 0 : 1, 0, 'a bound edge was lost or a new one let in')
+      return t.result()
+    },
+  }
+}
+
+function memoryTotalRow(): CeilingProbe {
+  return {
+    id: 'memory-total',
+    cap: 'a memory moves trust, respect, resentment and obligation by at most 25 points at its full weight, an edge keeps 8 memories and the map 4,000, however many are made, and every number stays inside its range (R4-E15)',
+    // One edge is offered 8 x scale memories (every kind, in 8 x scale / 8 years); then 50 x scale memories are made round the table across
+    // 520 edges. After each: no edge holds more than 8, the map no more than 4,000, no one memory moved a number by more than 25 and every
+    // number is inside its range.
+    run: (scale) => {
+      const t = tightest()
+      const g = lifeIn('us', 2030)
+      stampSocial(g)
+      const ego = playerRef(g)
+      const check = (who: EntityRef, at: string): void => {
+        const e = readEdge(g, who, ego)
+        if (e === null) return
+        for (const f of ['t', 'r', 's'] as const) {
+          t.add(e[f], 100, `${at}: ${f}`)
+          t.add(100 - e[f], 100, `${at}: ${f} from 0`)
+        }
+        t.add(Math.abs(e.o), 100, `${at}: o`)
+      }
+      const one = 'person:solo' as EntityRef
+      for (let n = 0; n < 8 * scale; n++) {
+        g.year = 2030 + Math.floor(n / 8)
+        const before = readEdge(g, one, ego)
+        remember(g, one, MEMORY_KINDS[n % 8]!, { w: 3, by: n % 2 === 0 ? 'ego' : 'them' })
+        const after = readEdge(g, one, ego)
+        if (before !== null && after !== null) for (const f of ['t', 'r', 's', 'o'] as const) t.add(Math.abs(after[f] - before[f]), 25, `one memory, field ${f}`)
+        if (n % 50 === 0 || n === 8 * scale - 1) {
+          t.add(edgeCounts(rawEdges(g)).most, EDGE_CAPS.memPerEdge, `${n + 1} memories offered to one edge`)
+          check(one, `${n + 1} memories offered to one edge`)
+        }
+      }
+      const people = 520
+      for (let n = 0; n < 50 * scale; n++) {
+        g.year = 2030 + Math.floor(n / people)
+        const who = `person:m${String(n % people).padStart(4, '0')}` as EntityRef
+        remember(g, who, MEMORY_KINDS[(n * 7) % MEMORY_KINDS.length]!, { w: (1 + (n % 3)) as 1 | 2 | 3, by: n % 2 === 0 ? 'ego' : 'them' })
+        if (n % 2_000 === 0) readEdgeCaps(t, rawEdges(g), `${n + 1} memories made`)
+      }
+      readEdgeCaps(t, rawEdges(g), `${50 * scale} memories made`)
+      t.add(edgeCounts(rawEdges(g)).memories, EDGE_CAPS.memTotal, `${50 * scale} memories made across ${people} edges`)
+      return t.result()
+    },
+  }
+}
+
+function loanCapRow(): CeilingProbe {
+  return {
+    id: 'loan-cap',
+    cap: 'a loan is at most 2 typical incomes whatever the lender holds and a quarter of a small purse, the player carries 3 loans at most, and 40 years of default at the sharpest rate never pass 3 times the principal (R4-E15)',
+    // Every country's wealth is scaled, so the typical income is; a lender holds 10^7 x scale or 40,000 x scale; 3 x scale lenders each lend
+    // the most they will in one year; then the three loans taken go into 40 years of default at 60%.
+    run: (scale) =>
+      withWealth(scale, () => {
+        const t = tightest()
+        const g = socialGame(1, { age: 30, money: 1_000 })
+        const income = typicalIncome(g)
+        const rich = cast(g, 70, 'friend', { money: 1e7 * scale })
+        t.add(loanTerms(g, rich).cap, 2 * income, `a lender with ${1e7 * scale} dollars`)
+        const small = cast(g, 70, 'friend', { money: 40_000 * scale })
+        t.add(loanTerms(g, small).cap, 0.25 * small.money, `a lender with ${small.money} dollars`)
+        t.add(loanTerms(g, small).cap, 2 * income, `a lender with ${small.money} dollars, against the income`)
+        for (let i = 0; i < 3 * scale; i++) {
+          const lender = cast(g, 70, 'friend', { money: 1e7 * scale, traits: ['sneaky'] })
+          lend(g, lender, loanTerms(g, lender).cap)
+          t.add(openLoans(g), LOAN_OPEN_MAX, `${i + 1} lenders asked`)
+        }
+        const ego = playerRef(g)
+        const taken = debtsOf(g, ego).filter((r) => r.owedBy)
+        for (const r of taken) {
+          const e = readEdge(g, ego, r.key.slice(r.key.indexOf('>') + 1) as EntityRef)
+          if (e?.dv !== undefined) putEdge(g, r.key, { dv: [e.dv[0], 60, e.dv[2], e.dv[3], e.dv[4]] })
+        }
+        const principal = new Map(taken.map((r) => [r.key, r.owed]))
+        g.character.money = 0
+        for (let y = 0; y < 40; y++) {
+          g.year += 1
+          yearlyActs(g)
+          g.character.money = 0
+        }
+        for (const r of debtsOf(g, ego)) if (r.owedBy && principal.has(r.key)) t.add(r.owed, INTEREST_CEILING * principal.get(r.key)!, '40 years of default at 60 percent')
+        t.add(taken.length, LOAN_OPEN_MAX, 'loans taken')
+        return t.result()
+      }),
+  }
+}
+
+function favorCallinRow(): CeilingProbe {
+  return {
+    id: 'favor-callin',
+    cap: 'a person is called in at most once in 3 years however often they are asked, a favor done adds 2 points of regard at most, and the player owes no one more than 100 (R4-E15)',
+    // 40 friends are asked 100 x scale times a year for 3 years. Each does one favor, the regard gained is at most 2 each, and the
+    // obligation never passes -100.
+    run: (scale) => {
+      const t = tightest()
+      const g = socialGame(1, { age: 30 })
+      const list = Array.from({ length: 40 }, () => cast(g, 70, 'friend'))
+      const start = new Map(list.map((p) => [p.id, p.relationship]))
+      const calls = new Map<string, number>()
+      const y0 = g.year
+      for (let year = y0; year < y0 + FAVOR_COOLDOWN; year++) {
+        g.year = year
+        for (let i = 0; i < 100 * scale; i++) {
+          const p = list[i % list.length]!
+          const key = playerEdgeKey(g, p)
+          if (key !== null && runAct(g, helpAct, key, p) !== null) calls.set(p.id, (calls.get(p.id) ?? 0) + 1)
+        }
+      }
+      t.add(Math.max(1, ...calls.values()), 1, `${100 * scale} asks a year for ${FAVOR_COOLDOWN} years, calls on one person`)
+      for (const p of list) {
+        t.add(p.relationship - start.get(p.id)!, FAVOR_BOND, `regard gained by ${p.firstName}`)
+        const e = readEdge(g, personEntity(p), playerRef(g))
+        t.add(Math.max(0, -(e?.o ?? 0)), 100, `obligation owed to ${p.firstName}`)
+      }
+      return t.result()
+    },
+  }
+}
+
+/** A small deterministic generator, so a hostile graph is the same graph every run. */
+function lcg(seed: number): () => number {
+  let s = seed >>> 0 || 1
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
+    return s / 2 ** 32
+  }
+}
+
+function gossipHopsRow(): CeilingProbe {
+  return {
+    id: 'gossip-hops',
+    cap: 'a leak goes 2 hops and tells 4 people at most, each once, over any circle, and no person loses more than 30 points of regard to leaks in a year however many secrets they hold (R4-E15)',
+    // 10 x scale leaks over hostile graphs whose contact lists are 14 x scale long; then 40 x scale secrets are offered, 6 holders each, to a
+    // circle of 14 who all hold a grudge, and the year step runs 4 times: the most any one person lost in a year is read against 30.
+    run: (scale) => {
+      const t = tightest()
+      const r = lcg(7)
+      for (let i = 0; i < 10 * scale; i++) {
+        const n = 1 + Math.floor(r() * 30)
+        const ids = Array.from({ length: n }, (_, k) => `p${k}`)
+        const contacts = new Map(ids.map((id) => [id, Array.from({ length: Math.floor(r() * 14 * scale) }, () => (r() < 0.1 ? id : ids[Math.floor(r() * n)]!))]))
+        const skip = new Set(ids.filter(() => r() < 0.1))
+        const out = spread(ids[Math.floor(r() * n)]!, (id) => contacts.get(id) ?? [], skip)
+        t.add(Math.max(0, ...out.map((x) => x.hop)), HOP_CAP, `leak ${i}: the deepest hop`)
+        t.add(out.length, MAX_TOLD, `leak ${i}: people told`)
+      }
+      const g = socialGame(1, { age: 30 })
+      const circle = Array.from({ length: 14 }, () => cast(g, 70, 'friend', { traits: ['sneaky', 'manipulative', 'jealous'] }))
+      for (const p of circle) putEdge(g, `${personEntity(p)}>${playerRef(g)}`, { t: 60, f: p.relationship, r: 50, s: 100, o: 0, y: g.year, l: g.year })
+      for (let i = 0; i < EDGE_CAPS.secrets * scale; i++) {
+        g.year = 1990 + (i % 40)
+        addSecret(g, playerRef(g), i % 2 === 0 ? 'affair' : 'debt', 5, circle.slice(i % 8, (i % 8) + EDGE_CAPS.holders))
+      }
+      g.year = 2030
+      for (let y = 0; y < 4; y++) {
+        const was = new Map(circle.map((p) => [p.id, p.relationship]))
+        g.year += 1
+        yearlyActs(g)
+        for (const p of circle) t.add(was.get(p.id)! - p.relationship, LEAK.damageYear, `${p.firstName}, year ${y + 1} of leaks`)
+      }
+      return t.result()
+    },
+  }
+}
+
+function feudLiveRow(): CeilingProbe {
+  return {
+    id: 'feud-live',
+    cap: "at most 12 feuds are live however many people hold a grudge, a suit costs at most 3 typical incomes and a quarter of the payer's cash whatever the net worth, and sabotage takes 3 happiness and 2 job performance a year in all (R4-E15)",
+    // 12 + 3 x scale people hold a grudge of 100 (topped up each year, 100 x what the edge step would leave) for 12 years; a suit at rung 4 is
+    // paid by a player whose cash is 10^6 x scale; and 12 feuds at rung 3 sabotage in one year.
+    run: (scale) => {
+      const t = tightest()
+      const g = socialGame(1, { age: 30, money: 300_000 })
+      const foes = Array.from({ length: 12 + 3 * scale }, () => cast(g, 30, 'friend'))
+      for (let y = 0; y < 12; y++) {
+        for (const p of foes) putEdge(g, `${personEntity(p)}>${playerRef(g)}`, { t: 30, f: 30, r: 40, s: 100, o: 0, y: g.year - 3, l: g.year, m: [formatMemory({ kind: 'betrayal', year: g.year - 1, w: 2, by: 'ego' })] })
+        g.year += 1
+        yearlyActs(g)
+        t.add(liveFeuds(g), EDGE_CAPS.feuds, `${foes.length} people at resentment 100, year ${y + 1}`)
+      }
+      for (const cash of [1e5, 1e6 * scale]) {
+        const h = socialGame(1, { age: 30, money: cash })
+        const p = cast(h, 30, 'friend')
+        putEdge(h, `${personEntity(p)}>${playerRef(h)}`, { t: 30, f: 30, r: 40, s: 90, o: 0, y: h.year - 3, l: h.year, q: [4, h.year - 6, 0] })
+        const fee = legalFee(h, h.year - 6)
+        t.add(fee, Math.min(3 * typicalIncome(h), FEUD.feeCash * cash), `a suit paid from ${cash} dollars`)
+        const before = h.character.money
+        stepFeuds(h)
+        t.add(before - h.character.money, Math.min(3 * typicalIncome(h), FEUD.feeCash * cash), `the suit as booked, from ${cash} dollars`)
+      }
+      const s = socialGame(1, { age: 30, money: 1e6 })
+      const wave = Array.from({ length: EDGE_CAPS.feuds }, () => cast(s, 30, 'friend'))
+      for (const p of wave) putEdge(s, `${personEntity(p)}>${playerRef(s)}`, { t: 30, f: 30, r: 40, s: 30, o: 0, y: s.year - 3, l: s.year, q: [3, s.year - 2, 0] })
+      const happy = s.character.stats.happiness
+      stepFeuds(s)
+      t.add(happy - s.character.stats.happiness, FEUD.sabotageHappiness, `${wave.length} feuds at rung 3 in one year`)
+      return t.result()
+    },
+  }
+}
+
+function mentorGainRow(): CeilingProbe {
+  return {
+    id: 'mentor-gain',
+    cap: 'the player mentors 3 people at most and each gains at most 15 percent more skill than the same year would have given alone, however large the yearly gain is (R4-E15)',
+    // 3 + scale relatives are offered as proteges; the 3 enrolled each gain 10 x scale points a year for 5 years (clamped at 100 by the NPC
+    // year) and the settle runs. The bonus of a year is read against 15 percent of the gain, the proteges against 3.
+    run: (scale) => {
+      const t = tightest()
+      const g = socialGame(1, { age: 45 })
+      const list = Array.from({ length: MENTOR.proteges + scale }, () => {
+        const p = cast(g, 70, 'sibling', { age: 25 })
+        initializeNpc(g, p)
+        saveNpcLife(p, { ...npcLife(p)!, skill: 20 })
+        return p
+      })
+      for (const p of list) enrolMentor(g, p)
+      t.add(protegesOf(g).length, MENTOR.proteges, `${list.length} proteges offered`)
+      for (let y = 0; y < 5; y++) {
+        const before = list.map((p) => npcLife(p)!.skill)
+        const gain = Math.min(10 * scale, 100)
+        list.forEach((p, i) => saveNpcLife(p, { ...npcLife(p)!, skill: Math.min(100, before[i]! + gain) }))
+        const raw = list.map((p) => npcLife(p)!.skill)
+        mentorSettle(g)
+        list.forEach((p, i) => {
+          const asked = raw[i]! - before[i]!
+          t.add(npcLife(p)!.skill - raw[i]!, MENTOR.bonus * Math.max(asked, 1e-9), `a gain of ${asked}, protege ${i + 1}`)
+          t.add(npcLife(p)!.skill, 100, 'skill')
+        })
+      }
+      return t.result()
+    },
+  }
+}
+
+const SOCIAL_ROWS: readonly CeilingProbe[] = [edgeCapsRow(), memoryTotalRow(), loanCapRow(), favorCallinRow(), gossipHopsRow(), feudLiveRow(), mentorGainRow()]
+
 const PEOPLE_ROWS: readonly CeilingProbe[] = [peopleReadsRow()]
 
 // R4-L12: the Life rows. The kin links, the estate, the debts and claims of a hand-over, the divorce debt, the contacts a hand-over keeps,
@@ -1400,5 +1739,5 @@ function npcWageRow(): CeilingProbe {
 // R4-L12: the Life rows.
 const KIN_ROWS: readonly CeilingProbe[] = [kinCapsRow(), lifeFactsRow(), lifePathRow(), kinEstateRow(), estateDebtsRow(), receivableRow(), divorceDebtRow(), keptContactsRow(), strifeEdgesRow(), npcWageRow()]
 
-/** Every row: the R0 and R1 growth terms, the world rows, the effort rows (R3-E9, test/effort-ceilings.ts), the Knowledge rows (R3-H4), then the People rows (R4-U11), then the Life rows (R4-L12). */
-export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS, ...KNOWLEDGE_ROWS, ...PEOPLE_ROWS, ...KIN_ROWS]
+/** Every row: the R0 and R1 growth terms, the world rows, the effort rows (R3-E9, test/effort-ceilings.ts), the Knowledge rows (R3-H4), then the Social rows (R4-E15), the People rows (R4-U11), then the Life rows (R4-L12). */
+export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS, ...KNOWLEDGE_ROWS, ...SOCIAL_ROWS, ...PEOPLE_ROWS, ...KIN_ROWS]
