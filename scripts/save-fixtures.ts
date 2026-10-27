@@ -27,22 +27,42 @@
 //          data.wl), a loan to a friend (data.w, owes) and 22 live exes (the cap is 20, cleanupPeople in relationships.ts, so the
 //          first year played drops 2). The exes are made last, after the last year, because cleanupPeople would cut them to 20 in it.
 //          The family is kept warm while the 30 years are played (see oneYear), a measurement aid like keepAlive
+//   stamped gzip(JSON.stringify(a stamped life after one hand-over)): the v5.3.0 stamped save (R4-P6, test/fixtures/save-v5.3.0-stamped.json.gz).
+//          The heavy mode's life has no debt, secret or feud, so this one holds every record the web of people of v5.3.0 saves, all
+//          written by the v5.3.0 engine with the build key `social` on: the social stamp, a founder's family, a hand-over to the eldest
+//          child (generation 2), and in the heir's life a loan the heir owes, a divorce debt, a secret, a feud and 22 live exes. It
+//          imports modules that exist only from v5.3.0, so it is bundled in the release tree and never in an older one (the other modes
+//          bundle anywhere; to record an older fixture again, take this file from the commit that made it)
 //
 // Never regenerate a fixture from a later engine: it would be a later save (the header of scripts/save-size.ts says the same of
-// test/fixtures/save-v1.json.gz). A new release adds one fixture, written by that release's tag.
+// test/fixtures/save-v1.json.gz). A new release adds one fixture, written by that release's tag. v5.3.0 adds two, heavy (the 20-year life
+// of save-v5.0.0-heavy, now a stamped life) and stamped, both written by the release commit, because the tag did not exist yet.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { ageUp } from '../src/game/aging'
 import { designateSuccessor, hireRelative } from '../src/game/business/nepo-actions'
 import { bizOf } from '../src/game/business/state'
+import { killCharacter } from '../src/game/death'
+import { openDivorceDebt } from '../src/game/divorce-debt'
 import { cutFromWill } from '../src/game/events/wealth-kids'
 import { wealthNodes } from '../src/game/events/wealth-menu'
-import { breakUp, performWedding } from '../src/game/love'
+import { withFlags } from '../src/game/flags'
+import { personEntity } from '../src/game/kernel/person-ref'
+import { continueAsChild } from '../src/game/life'
+import { breakUp, divorce, performWedding } from '../src/game/love'
 import { createPerson } from '../src/game/people'
 import { memorySnapshotBackend, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
 import { encodeSnapshotRecord } from '../src/game/snapshot-codec'
+import { packCause } from '../src/game/society/feud'
+import { lend, loanTerms, openLoans } from '../src/game/society/loan'
+import { addSecret } from '../src/game/society/secret'
 import type { GameState, MenuAction, MenuNode, Person } from '../src/game/types'
+import { putEdge } from '../src/game/world/edge-write'
+import '../src/game/world/edge-step'
+import { liveFeuds, openDebts, readSecrets } from '../src/game/world/edges'
+import { playerRef } from '../src/game/world/people'
+import { socialOn } from '../src/game/world/social'
 import { probeLife, type ProbeOptions } from '../test/probe-life'
 
 /** The lives each mode plays. The seed, the birth year and the counts are part of the fixture's identity. */
@@ -56,6 +76,12 @@ const TM_FIRST_SNAPSHOT = 3
 const SOCIAL_LIFE: ProbeOptions = { seed: 3, birthYear: 1966, businesses: 1, years: 0 }
 const SOCIAL_YEARS = 30
 const SOCIAL_EXES = 22
+/** The stamped life (R4-P6): the same founder and family, 30 years, then a hand-over to the eldest child and 6 years of the heir. */
+const STAMPED_SEED = 3
+const STAMPED_LIFE: ProbeOptions = { seed: STAMPED_SEED, birthYear: 1966, businesses: 1, years: 0 }
+const STAMPED_YEARS = 30
+const STAMPED_HEIR_YEARS = 6
+const STAMPED_EXES = 22
 
 const INDEX_KEY = 'anotherlife.timemachine.v1'
 const SAVE_KEY = 'anotherlife.save.v1'
@@ -207,9 +233,87 @@ function socialLife(): GameState {
   return g
 }
 
+/**
+ * The stamped life (R4-P6). The build key `social` is on while the life is made, so createNewLife writes the stamp (X6). A founder of 30 with
+ * a spouse, two children and a friend lives 30 years (the family kept warm, as in socialLife), dies, and the eldest child carries on
+ * (continueAsChild: the kin edges copy at 0.5 and 0.6, the debts of the dead are settled from the estate). Six years of the heir, then, made by
+ * the engine's own functions: a friend lends the heir money (lend), the heir marries and divorces and the part of the order the heir cannot
+ * pay is written as a debt, by hand, the way a stamped divorce writes it (openDivorceDebt), a secret about the heir is kept by three people
+ * (addSecret), a person who resents the heir has a feud on the second rung (putEdge), and last of all the exes, each a partner who is then
+ * broken up with, so there are more than the cleanup keeps.
+ */
+function stampedLife(): GameState {
+  const first = withFlags({ social: true }, () => probeLife(STAMPED_LIFE))
+  if (!socialOn(first)) fail('the life was made without the social stamp')
+  const partner = createPerson(first, { relation: 'partner', age: 29, relationship: 78, livesWithPlayer: true, money: 2_000_000 })
+  performWedding(first, partner, { venue: 'eloped', prenup: false, honeymoon: null })
+  for (const age of [3, 1]) {
+    createPerson(first, {
+      relation: 'child',
+      age,
+      lastName: first.character.lastName,
+      relationship: 85,
+      money: 0,
+      otherParentId: partner.id,
+      biological: true,
+      livesWithPlayer: true,
+    })
+  }
+  createPerson(first, { relation: 'friend', age: 33, relationship: 62, money: 400_000 })
+  for (let year = 1; year <= STAMPED_YEARS; year++) {
+    oneYear(first)
+    if (!first.character.alive) fail(`the first life died in year ${year}: pick another seed`)
+  }
+  const kids = first.people.filter((p) => p.alive && p.relation === 'child' && p.age >= 18)
+  const elder = kids.sort((a, b) => b.age - a.age || (a.id < b.id ? -1 : 1))[0]
+  if (!elder) fail('no grown child to carry on: pick another seed')
+  killCharacter(first, 'Old Age')
+  first.queue = []
+  const g = continueAsChild(first, elder.id)
+  if (g === first || g.generation !== first.generation + 1) fail('the hand-over to the eldest child did not happen')
+  g.queue = []
+  for (let year = 1; year <= STAMPED_HEIR_YEARS; year++) {
+    oneYear(g)
+    if (!g.character.alive) fail(`the heir died in year ${year}: pick another seed`)
+  }
+  if (!socialOn(g)) fail('the heir is not stamped')
+
+  // a loan: a friend with cash lends the heir money, at the terms the engine names for that friend
+  const lender = createPerson(g, { relation: 'friend', age: 45, relationship: 80, money: 900_000 })
+  const terms = loanTerms(g, lender)
+  if (!(terms.cap >= terms.min)) fail('the friend cannot lend the minimum')
+  if (!lend(g, lender, Math.min(terms.cap, terms.min * 5)) || openLoans(g) < 1) fail('the loan was not made')
+
+  // a divorce debt: a marriage, a divorce, and the part of the order the heir cannot pay is owed over the years
+  const spouse = createPerson(g, { relation: 'partner', age: 36, relationship: 70, livesWithPlayer: true, money: 150_000 })
+  performWedding(g, spouse, { venue: 'eloped', prenup: false, honeymoon: null })
+  divorce(g, spouse, 'player')
+  const ex = g.people.find((p) => p.id === spouse.id)
+  if (!ex || !ex.alive) fail('the ex is not there to be owed')
+  if (!openDivorceDebt(g, ex, 180_000) || !g.world || openDebts(g) < 2) fail('the divorce debt was not opened')
+
+  // a secret about the heir, kept by three living people
+  const holders = g.people.filter((p) => p.alive && p.relation === 'friend').slice(0, 3)
+  if (holders.length < 3) fail(`only ${holders.length} friends to keep a secret`)
+  if (addSecret(g, playerRef(g), 'affair', 3, holders) === null || readSecrets(g).length < 1) fail('the secret was not kept')
+
+  // a feud: a person who resents the heir, on the gossip rung, the cause a betrayal
+  const foe = createPerson(g, { relation: 'friend', age: 41, relationship: 30, money: 50_000 })
+  const edge = { t: 30, f: 30, r: 40, s: 80, o: 0, y: g.year - 3, l: g.year, q: [2, g.year - 1, packCause(1, 0, 0)] as [number, number, number] }
+  if (!putEdge(g, `${personEntity(foe)}>${playerRef(g)}`, edge) || liveFeuds(g) < 1) fail('the feud was not written')
+
+  g.queue = []
+  const ex2 = (i: number): Person => createPerson(g, { relation: 'partner', age: 24 + (i % 17), relationship: 40 + ((i * 7) % 35) })
+  for (let i = 0; i < STAMPED_EXES; i++) breakUp(g, ex2(i), i % 2 === 0 ? 'them' : 'player')
+  g.queue = []
+  const exes = g.people.filter((p) => p.alive && p.relation === 'ex').length
+  if (exes < STAMPED_EXES) fail(`only ${exes} live exes, ${STAMPED_EXES} wanted`)
+  return g
+}
+
 async function main(): Promise<void> {
   const [mode, path] = process.argv.slice(2)
-  if (path === undefined) fail('usage: save-fixtures <v402|heavy|tm|idb|social> <out.json.gz>')
+  if (path === undefined) fail('usage: save-fixtures <v402|heavy|tm|idb|social|stamped> <out.json.gz>')
   if (mode === 'v402') {
     writeGz(path, JSON.stringify(probeLife(V402_LIFE)), 'v402 life')
   } else if (mode === 'heavy') {
@@ -223,8 +327,10 @@ async function main(): Promise<void> {
     writeGz(path, JSON.stringify({ saves: { [SAVE_KEY]: record }, marker: IDB_MARKER, state }), 'indexeddb record')
   } else if (mode === 'social') {
     writeGz(path, JSON.stringify(socialLife()), 'social life')
+  } else if (mode === 'stamped') {
+    writeGz(path, JSON.stringify(stampedLife()), 'stamped life')
   } else {
-    fail(`unknown mode ${String(mode)}: v402, heavy, tm, idb or social`)
+    fail(`unknown mode ${String(mode)}: v402, heavy, tm, idb, social or stamped`)
   }
 }
 

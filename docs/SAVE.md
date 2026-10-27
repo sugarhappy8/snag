@@ -219,10 +219,15 @@ cd <scratch>/v500 && node_modules/.bin/esbuild scripts/save-fixtures.ts --bundle
 node <worktree>/../bin/slot.mjs heavy -- node <scratch>/fx500.mjs heavy test/fixtures/save-v5.0.0-heavy.json.gz
 ```
 
-The modes are `v402`, `heavy`, `tm`, `idb` and `social` (R4-E1: a 30-year life with a family, a family firm, a will that cuts a
-child out, a loan and 22 exes, `test/fixtures/save-v5.2.0-social.json.gz`; `test/social-fixture.test.ts` pins what it holds).
-`test/save-v3-schema.test.ts` loads every fixture, brings it up and plays five years, in CI every release. The next release adds one
-fixture and one line there.
+The modes are `v402`, `heavy`, `tm`, `idb`, `social` (R4-E1: a 30-year life with a family, a family firm, a will that cuts a
+child out, a loan and 22 exes, `test/fixtures/save-v5.2.0-social.json.gz`; `test/social-fixture.test.ts` pins what it holds) and
+`stamped` (R4-P6: a life made with the build key `social` on, after one hand-over, with a loan, a divorce debt, a secret, a feud, kin
+records and 22 exes, `test/fixtures/save-v5.3.0-stamped.json.gz`; it imports modules that exist only from v5.3.0, so it is bundled in the
+release tree and never in an older one). v5.3.0 adds that file and `save-v5.3.0-heavy.json.gz`, the heavy life on the release commit, now
+stamped, both built from the release commit because the tag did not exist yet and each recorded twice, byte-identical, under Node 22.
+The fixtures from `save-v5.3.0-` on are the stamped ones; a test that wants an unstamped life picks by the version in the file name
+(before 5.3.0). `test/save-v3-schema.test.ts` loads every fixture, brings it up and plays five years, in CI every release. The next
+release adds one fixture and one line there.
 
 ## Adding saved state
 
