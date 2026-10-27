@@ -24,6 +24,7 @@ import {
   pronouns,
   relationLabel,
   remember,
+  removePerson,
   scriptChoice,
   scriptInput,
   shortMoney,
@@ -1713,7 +1714,8 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
   // Stepchildren leave with their parent; shared kids may split custody.
   const steps = g.people.filter((x) => x.relation === 'stepchild' && x.data.viaSpouseId === p.id)
   if (steps.length) {
-    g.people = g.people.filter((x) => !steps.includes(x))
+    // One by one through the door, so a stepchild who is an anchor takes the flags of the links they held with them (R4 fix, cause B).
+    for (const s of steps) removePerson(g, s.id)
     lines.push(`You are no longer a stepparent to ${steps.map((s) => s.firstName).join(' and ')}.`)
   }
   const kids = children(g).filter((k) => k.otherParentId === p.id && k.age < 18 && k.livesWithPlayer)

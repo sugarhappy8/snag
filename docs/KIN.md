@@ -112,8 +112,9 @@ half (R4-L4) on a stamped life only.
   Life's link, so the check leaves it alone (a classmate whose `fl` a hostile save cut to 63 is the reader's business, not a drift).
 
 An anchor dead for 10 years or more is let go: its links need not resolve and hold no record. A dead anchor with no `diedYear` is not
-known to be old, so it holds. Life's yearly sweep (R4-L4) clears an orphan flag in the year it appears, so after any year a flagged
-orphan is a real fault and not a lag.
+known to be old, so it holds. A flag ends with its last anchor: the yearly sweep (R4-L4) clears an orphan, and whatever takes an anchor
+out of the list between two steps (`removePerson`, the clean-up of the relationships step, the hand-over) clears the flags in the same
+call (`releaseKinFlags`, below), so at any moment a flagged orphan is a real fault and not a lag.
 
 ## 7. A relative who became a Person (X38)
 
@@ -196,7 +197,20 @@ stepped once and put right):
 4. every linked record is kept fresh (its last-seen year stamped when it is 3 years old), so the Met sweep, which turns a record not
    seen for 6 years into a tombstone, never takes a spouse or an heir;
 5. the orphan sweep: the flags 2 and 4 of a kin record that no living anchor, and no anchor dead for under 10 years, links are
-   cleared, and so are its `pair` and `kin` edges, so an anchor that left the game leaves no bound edge behind.
+   cleared, and so are its `pair` and `kin` edges, so an anchor that left the game leaves no bound edge behind. An edge is read at
+   every kin sid at its ends, and it stands when the entity at the other end of any of them links that sid: a relative made a Person by
+   an estate (X38) has her own record's sid as her entity, so the edge between her and the record of her husband or of her baby has a
+   kin sid at both ends. The sweep once asked about the first only, and took the edge from her for an orphan every year (R4-L12 found it
+   for the wedding; E16 rehearsal 2, item 4, causes C and D, are the same cut for the wedding and for the baby, from a rehearsal head
+   that pre-dated the fix). `test/kin-records.test.ts` pins both halves and the real year step; the edge stays swept when no end is linked.
+
+The flags half of (5) is also `releaseKinFlags(g)`, exported, idempotent, draw-free and a no-op on an unstamped life. The step is at order
+37, and an anchor leaves the list after it or between two steps, so the flags are cleared where the anchor leaves (R4 fix, E16 rehearsal 2,
+item 4, cause B): `removePerson` (core.ts) tells `kin.ts` through a hook (`bindDeparture`, bound at the foot of `kin.ts`, because `kin.ts`
+imports `core.ts`) when the person who left held a link, so the unfriend action and every event that drops a friend are covered;
+`cleanupPeople` calls it at its end, after it dropped a friend who died; `continueAsChild` calls it before the world is synced, after the
+list was rebuilt (the heir was an anchor and is the player now, and a relative the rebuild dropped took their links out). Only the flags:
+the edges stay the yearly sweep's, which is why the new spouse of an heir keeps the pair edge to the heir until the next step.
 
 A widowed anchor is `married = false`, so the marriage and baby rolls of `familyLifeCycle` treat it as single from then on (a stamped
 life only: those rolls draw from `g.rng`). A record that is no longer linked is an ordinary Met record and is dropped by the sweep
@@ -364,8 +378,9 @@ so `edge.f === Person.relationship` holds for the spouse too. `syncLegacy` runs 
 
 **Limits.** Anger travels as `Edge.s` x 0.6 (the will's record `data.wl` stays the late player's and reads blank for the heir); a rival's
 feud ends at the hand-over even though the enemy stays as a contact. The relatives the hand-over drops and the heir's own anchor leave
-kin records with a spouse or heir flag and no living anchor until the orphan sweep of `life.kin` runs at the next year, so `kinProblems`
-can name them between `continueAsChild` and the next year step.
+kin records with a spouse or heir flag and no living anchor; `continueAsChild` clears those flags before it syncs the world
+(`releaseKinFlags`, section 9, step 5), so `kinProblems` names nothing at the hand-over. Their `pair` and `kin` edges, and the pair edge of the
+heir's new spouse, wait for the orphan sweep of `life.kin` at the next year step.
 
 ## 14. The family quarrels over the will (R4-L10, `events/will-strife.ts` and `events/will-estate.ts`)
 
@@ -430,10 +445,11 @@ the edge are kin sids, and the orphan sweep of `syncKin` read only one, so it re
   gives them a full NpcLife: a wage from `pool:employers`, expenses, a marriage roll and babies of their own. Bounded by `KIN_CAPS.persons`
   (30) and by the `npc-wage` ceiling; none of it draws from `g.rng`. When such a relative dies as a `friend`, `cleanupPeople` drops them with
   the links they held.
-- **A flag may outlive its anchor by one year step.** `cleanupPeople` runs inside `relationships` (order 40), after the kin step (37) of the
-  same year, so a record whose last anchor was just dropped keeps its spouse or heir flag until the next year's orphan sweep, and
-  `kinProblems` can name it once (and between `continueAsChild` and the next year step, section 13). The acceptance allows the line for one
-  year step and fails it the second time running.
+- **A flag no longer outlives its anchor (E16 rehearsal 2, item 4, cause B).** `cleanupPeople` runs inside `relationships` (order 40),
+  after the kin step (37) of the same year, an unfriend or an event drops a friend with `removePerson` at any time, and the hand-over
+  rebuilds the list; each of them clears the flags of the links the leaving anchor held in the same call (`releaseKinFlags`, section 9, step 5), so a
+  record whose last anchor was just dropped is unflagged at once and `kinProblems` has nothing to name between steps. The acceptance still
+  tolerates the line for one year step (it was written for the lag) and fails it the second time running; the fuzzer tolerates nothing.
 - **A job record may outlive its firm by one family year.** A company that fails or is sold leaves its relatives' `FamilyJob.assetId` until
   the next family year's `cleanup` closes them (the same X35 rule); `danglingIds` names it once and the acceptance fails it the second time running.
 - **The ex's shortfall to the player stays forgiven (X35).** An NPC ex has no income path in R4, so a settlement the richer ex cannot pay is

@@ -851,8 +851,24 @@ export function parents(g: GameState, aliveOnly = true): Person[] {
   return peopleBy(g, ['parent', 'stepparent'], aliveOnly)
 }
 
+/** What removePerson tells once a person has left the list: the game (already without them) and the person who left. */
+export type DepartureHook = (g: GameState, gone: Person) => void
+
+let departure: DepartureHook | null = null
+
+/**
+ * Binds what removePerson tells when someone leaves the list (R4 fix, rehearsal 2 item 4 cause B): kin.ts binds it, so the spouse and heir
+ * flags of the links a leaving anchor held end in the same call and not at the next year step. A hook and not an import, because kin.ts
+ * imports this file. A second call replaces the first. Unbound, a removal is the old filter and nothing else.
+ */
+export function bindDeparture(fn: DepartureHook): void {
+  departure = fn
+}
+
 export function removePerson(g: GameState, id: string): void {
+  const gone = departure === null ? undefined : g.people.find((p) => p.id === id)
   g.people = g.people.filter((p) => p.id !== id)
+  if (gone !== undefined && departure !== null) departure(g, gone)
 }
 
 /** What a relative who became a Person is called: lower-case letters, spaces and hyphens, 20 characters at most (`niece`, `sister-in-law`; KIN.md). */

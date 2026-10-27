@@ -75,7 +75,7 @@ import {
   yourRel,
 } from './love'
 import { createPerson, notePerson, randomOccupation } from './people'
-import { adoptChild, adoptSpouse } from './kin'
+import { adoptChild, adoptSpouse, releaseKinFlags } from './kin'
 import { chance, pick, rand, randFloat, randInt, uid, weightedPick } from './rng'
 import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
@@ -2197,6 +2197,9 @@ function cleanupPeople(g: GameState): void {
     else dropExes(g, sorted, drop)
   }
   if (drop.size) g.people = g.people.filter((p) => !drop.has(p.id))
+  // The kin step (order 37) ran before this, so a friend who died this year and was dropped above took their links out of the list after it:
+  // the flags of what they linked end now and not at the next step (R4 fix, rehearsal 2 item 4 cause B). Nothing on a life the stamp does not mark.
+  releaseKinFlags(g)
 }
 
 // ---------------------------------------------------------------------------
