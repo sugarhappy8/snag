@@ -42,7 +42,9 @@
 //   (4) every linked record is kept fresh (its `s` stamped when it is 3 years old), so the Met sweep, which turns a record idle for 6 years
 //       into a tombstone, never takes a spouse or an heir; the stake flag alone would turn it into a tombstone with no axes;
 //   (5) the orphan sweep: the flags 2 and 4 of a kin record that no living anchor, and no anchor dead for under 10 years, links are cleared,
-//       and so are its pair and kin edges, so a leaving anchor never leaves a bound edge behind;
+//       and so are its pair and kin edges, so a leaving anchor never leaves a bound edge behind. An edge is read at every kin sid at its ends
+//       and stands when the entity at the other end of any of them links that sid (a relative made a Person by an estate has her own record's
+//       sid as her entity, so the edge to her husband's or her baby's record has a kin sid at both ends: kinEnds);
 //   and `kinY` is the year.
 // The flags half of (5) does not wait for the next step (R4 fix, rehearsal 2 item 4, cause B). The step is at order 37, and what drops an anchor
 // runs after it or between two steps: cleanupPeople (relationships, order 40) drops a friend who died, an unfriend or an event drops one with

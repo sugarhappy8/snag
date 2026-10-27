@@ -197,7 +197,12 @@ stepped once and put right):
 4. every linked record is kept fresh (its last-seen year stamped when it is 3 years old), so the Met sweep, which turns a record not
    seen for 6 years into a tombstone, never takes a spouse or an heir;
 5. the orphan sweep: the flags 2 and 4 of a kin record that no living anchor, and no anchor dead for under 10 years, links are
-   cleared, and so are its `pair` and `kin` edges, so an anchor that left the game leaves no bound edge behind.
+   cleared, and so are its `pair` and `kin` edges, so an anchor that left the game leaves no bound edge behind. An edge is read at
+   every kin sid at its ends, and it stands when the entity at the other end of any of them links that sid: a relative made a Person by
+   an estate (X38) has her own record's sid as her entity, so the edge between her and the record of her husband or of her baby has a
+   kin sid at both ends. The sweep once asked about the first only, and took the edge from her for an orphan every year (R4-L12 found it
+   for the wedding; E16 rehearsal 2, item 4, causes C and D, are the same cut for the wedding and for the baby, from a rehearsal head
+   that pre-dated the fix). `test/kin-records.test.ts` pins both halves and the real year step; the edge stays swept when no end is linked.
 
 The flags half of (5) is also `releaseKinFlags(g)`, exported, idempotent, draw-free and a no-op on an unstamped life. The step is at order
 37, and an anchor leaves the list after it or between two steps, so the flags are cleared where the anchor leaves (R4 fix, E16 rehearsal 2,

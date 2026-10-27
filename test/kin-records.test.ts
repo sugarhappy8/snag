@@ -23,6 +23,7 @@ import { personEntity } from '../src/game/kernel/person-ref'
 import { yearlyEntries } from '../src/game/kernel/registry'
 import { continueAsChild } from '../src/game/life'
 import { divorce } from '../src/game/love'
+import { materializePerson } from '../src/game/materialize'
 import { MODULES } from '../src/game/modules/index'
 import { kinModule } from '../src/game/modules/kin-years'
 import { personActions, yearlyRelationships } from '../src/game/relationships'
@@ -1469,6 +1470,121 @@ describe('the spouse and heir flags of a link end when its anchor leaves the lis
     expect(kinProblems(big)).toEqual([])
     expect(kinSidsOf(big).length).toBeLessThanOrEqual(KIN_CAPS.records)
   }, 60_000)
+})
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// The orphan sweep reads both kin sids of an edge key (E16 rehearsal 2, item 4, causes C and D)
+//
+// kinProblems named "person <id> spouse <sid> has no pair edge out" and "person <id> child <sid> has no kin edge out" on a stamped life, for
+// good, from the year a niece made a Person by the estate (X38) married or had a baby. Her account is her own record's sid, so the edge
+// between her and the record of her husband or her baby has a kin sid at BOTH ends. The orphan sweep of syncKin (life/37) read only the
+// first of them: for the edge from her it asked who links HER sid (her aunt, as a child) and found another entity at the far end, took the
+// edge for an orphan, and removed it every year, while the edge back (the record first) was asked about the right sid and stood. The sweep
+// reads every kin sid of the key now, and the edge is a link if either end is. The spouse half is also pinned in life-acceptance.test.ts;
+// the child half and the real year step were not.
+
+describe('a relative made a Person keeps the edges of the family of their own: the orphan sweep reads every kin sid of an edge key', () => {
+  // A named life for the scene, not a pin of the form the seed ratchet counts (test/seed-pins.test.ts).
+  const NIECE_LIFE = 5
+
+  /**
+   * A married sibling (the aunt) with a baby on record, and that baby made a Person the way the estate does it (X38): a friend whose account
+   * is her record's sid. Built by the real writers; nothing is flagged or linked by hand.
+   */
+  function scene(): { g: GameState; aunt: Person; niece: Person; babySid: string } {
+    const g = kinGame(NIECE_LIFE, 0)
+    const aunt = withLife(cast(g, 60, 'sibling', { age: 52, gender: 'female', firstName: 'Lena', lastName: 'Okafor' }))
+    married(g, aunt, 'Ana Ruiz')
+    const babySid = adoptChild(g, aunt, { first: 'Tobi', last: 'Okafor', gender: 'female' })
+    expect(babySid, 'the aunt has a baby on record').not.toBeNull()
+    const niece = materializePerson(g, babySid!, { relation: 'friend', age: 27, relationship: 40, data: { kin: 'niece' } })
+    expect(niece, 'the estate made the baby a Person').not.toBeNull()
+    expect(personEntity(niece!), 'her account is her record\'s sid').toBe(`person:${babySid!}`)
+    withLife(niece!)
+    expect(kinProblems(g), 'the scene starts sound').toEqual([])
+    return { g, aunt, niece: niece!, babySid: babySid! }
+  }
+
+  /** The link edges between an anchor and one member, each way: the kind of the link, or null for an edge that is missing. */
+  function between(g: GameState, anchor: Person, member: string): { out: string | null; back: string | null } {
+    const far = `person:${member}`
+    return { out: readEdge(g, ent(anchor), far as never)?.k ?? null, back: readEdge(g, far as never, ent(anchor))?.k ?? null }
+  }
+
+  it('a baby of the niece: the kin edge stands in both directions through three year steps, and so do the edges to her aunt (cause D)', () => {
+    const { g, aunt, niece, babySid } = scene()
+    const baby = adoptChild(g, niece, { first: 'Zed', last: 'Okafor', gender: 'male' })
+    expect(baby, 'the niece has a baby on record').not.toBeNull()
+    expect(between(g, niece, baby!)).toEqual({ out: 'kin', back: 'kin' })
+    for (let y = 1; y <= 3; y++) {
+      nextYear(g)
+      expect(between(g, niece, baby!), `year ${y}: her baby`).toEqual({ out: 'kin', back: 'kin' })
+      expect(between(g, aunt, babySid), `year ${y}: her aunt's link to her`).toEqual({ out: 'kin', back: 'kin' })
+      expect(kinProblems(g), `year ${y}`).toEqual([])
+    }
+    expect(rec(g, baby).fl & 6).toBe(4)
+  })
+
+  it('a wedding, then two babies: the pair edge and the kin edges all stand through five year steps (causes C and D together)', () => {
+    const { g, aunt, niece, babySid } = scene()
+    married(g, niece, 'Mateo Okafor')
+    nextYear(g)
+    const husband = readKin(niece).spouse
+    expect(husband, 'the step made a record for her husband').not.toBeNull()
+    const kids = [adoptChild(g, niece, { first: 'Zed', last: 'Okafor', gender: 'male' })!, adoptChild(g, niece, { first: 'Ola', last: 'Okafor', gender: 'female' })!]
+    expect(kids.every((k) => k !== null)).toBe(true)
+    for (let y = 1; y <= 5; y++) {
+      nextYear(g)
+      expect(between(g, niece, husband!), `year ${y}: her husband`).toEqual({ out: 'pair', back: 'pair' })
+      for (const k of kids) expect(between(g, niece, k), `year ${y}: ${k}`).toEqual({ out: 'kin', back: 'kin' })
+      expect(between(g, aunt, babySid), `year ${y}: her aunt`).toEqual({ out: 'kin', back: 'kin' })
+      expect(kinProblems(g), `year ${y}`).toEqual([])
+    }
+    expect(rec(g, husband).fl & 6).toBe(2)
+  })
+
+  it('through the real year step: a wedding in the legacy fields becomes a link at life/37 and no later step of the year takes its edges', () => {
+    const { g, niece } = scene()
+    married(g, niece, 'Mateo Okafor')
+    for (let y = 1; y <= 3; y++) {
+      ageUp(g)
+      g.queue = []
+      const husband = readKin(niece).spouse
+      expect(husband, `year ${y}: a link`).not.toBeNull()
+      expect(between(g, niece, husband!), `year ${y}: her husband`).toEqual({ out: 'pair', back: 'pair' })
+      expect(kinProblems(g), `year ${y}`).toEqual([])
+    }
+  }, 120_000)
+
+  it('still sweeps what nobody links: a stray edge between two kin sids, and an edge from the wrong anchor to a baby that is linked by another', () => {
+    const { g, aunt, niece } = scene()
+    const baby = adoptChild(g, niece, { first: 'Zed', last: 'Okafor', gender: 'male' })!
+    const strayA = key('person:kin.us.2026.7', 'person:kin.us.2026.8')
+    const strayB = key(ent(aunt), `person:${baby}`)
+    expect(putEdge(g, strayA, { ...EDGE, k: 'pair' })).toBe(true)
+    expect(putEdge(g, strayB, { ...EDGE, k: 'kin' })).toBe(true)
+    nextYear(g)
+    expect(readEdge(g, 'person:kin.us.2026.7', 'person:kin.us.2026.8'), 'two kin sids that nobody links').toBeNull()
+    expect(readEdge(g, ent(aunt), `person:${baby}` as never), 'the aunt does not link her great-nephew').toBeNull()
+    expect(between(g, niece, baby), 'the link that stands').toEqual({ out: 'kin', back: 'kin' })
+    expect(kinProblems(g)).toEqual([])
+  })
+
+  it('a divorce of the niece takes the pair edges with the link and leaves the kin edges of her baby', () => {
+    const { g, niece } = scene()
+    married(g, niece, 'Mateo Okafor')
+    nextYear(g)
+    const husband = readKin(niece).spouse!
+    const baby = adoptChild(g, niece, { first: 'Zed', last: 'Okafor', gender: 'male' })!
+    nextYear(g)
+    niece.data.married = false
+    nextYear(g)
+    expect(readKin(niece).spouse).toBeNull()
+    expect(between(g, niece, husband)).toEqual({ out: null, back: null })
+    expect(between(g, niece, baby)).toEqual({ out: 'kin', back: 'kin' })
+    expect(rec(g, husband).fl & 6).toBe(0)
+    expect(kinProblems(g)).toEqual([])
+  })
 })
 
 describe('the source', () => {
