@@ -30,7 +30,7 @@ import { continueAsChild } from '../src/game/life'
 import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState, MenuAction, Person } from '../src/game/types'
-import { GAME_SLOT, expectRows, isRecording, oracle, recordRows, scene, snapshot, type CastSpec, type ParityRow, type Scene, type Tuple, stampStats, withStamped } from './social-parity-kit'
+import { GAME_SLOT, compareRows, expectRows, isRecording, oracle, readRows, recordRows, scene, snapshot, type Cell, type CastSpec, type ParityRow, type Scene, type Tuple, stampStats, withStamped } from './social-parity-kit'
 
 const ORACLE = oracle('heir')
 
@@ -172,6 +172,24 @@ const CASES: Case[] = [
   },
 ]
 
+/** The cases whose hand-over rolls a sibling's mood from `relationship >= 60` in the reading of the will (the heir is cut out). */
+const MOOD_CASES: readonly string[] = ['cutout']
+
+/**
+ * A row with its relationship numbers taken out: the `rel` column (every person's) and `x.rel`. What is left is dice, ids, people and money.
+ * A row of a case that rolls a mood from a relationship also loses its dice and cash cells (`rng`, `money`, `x.money`, `x.heir`, `x.siblings`).
+ */
+function withoutRelationships(r: ParityRow): ParityRow {
+  const x: { [key: string]: Cell } = { ...(r.x ?? {}) }
+  delete x.rel
+  const moody = MOOD_CASES.some((c) => r.label.startsWith(`${c}|`))
+  if (!moody) return { ...r, rel: [], x }
+  delete x.money
+  delete x.heir
+  delete x.siblings
+  return { ...r, rel: [], rng: null, money: null, x }
+}
+
 /** The rows of one hand-over. */
 function play(c: Case): ParityRow[] {
   const s = scene(c.tuple, { character: c.character, cast: c.cast })
@@ -246,9 +264,22 @@ describe('the heir hand-over oracle', () => {
     else expectRows(ORACLE, rows)
   })
 
-  it('plays the same rows on a stamped life: the mirror follows every number and moves none (R4-E7)', { timeout: 120_000 }, () => {
+  // R4-L9 (X33) narrows this replay to what a stamped hand-over must keep. A direct kin starts at the blend round((roll + old) / 2) on a stamped
+  // life, so every relationship number the hand-over writes differs from the unstamped rows by design, and the family time after it (whose
+  // actions read those numbers) goes its own way. What a stamped hand-over keeps is the dice, the ids, the people (who is kept, with which
+  // relation, age, money and data keys, and who is dropped) and the estate: those cells are compared to the recorded rows with the relationship
+  // numbers taken out. One case reads the numbers inside the hand-over itself: when the heir is cut out, the reading of the will weights each
+  // other sibling's mood by `relationship >= 60` (will-estate.ts), so a blended number can pick another mood, and the dice, the gift and every
+  // cash cell after it differ; that case is compared without its dice and cash. The later steps (the answer to the reading, the family time) are
+  // compared by label only. The unstamped rows above and the fixture are not touched; the blended values, the edges and the contacts are
+  // asserted by test/heir-carryover.test.ts.
+  it('plays the hand-over of each case on a stamped life: the same ids, people and estate as the unstamped rows (and, where no mood is rolled, the same dice), with the relationship numbers left to the blend (R4-E7, R4-L9)', { timeout: 120_000 }, () => {
     const rows = withStamped(playAll)
-    expectRows(ORACLE, rows)
+    const recorded = readRows(ORACLE).rows
+    expect(rows.map((r) => r.label)).toEqual(recorded.map((r) => r.label))
+    const handOver = (r: ParityRow): boolean => /\|(death|person|dropped|estate)(\||$)/.test(r.label)
+    const report = compareRows(recorded.filter(handOver).map(withoutRelationships), rows.filter(handOver).map(withoutRelationships))
+    expect(report.lines, 'the hand-over cells that are not relationship numbers').toEqual([])
     expect(stampStats().stamped, 'the replay must stamp games').toBeGreaterThan(0)
     expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(0)
   })

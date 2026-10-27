@@ -53,7 +53,7 @@ import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
 import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
-import { carryReceivables, estateSentences, heirShareOf, payPersonalDebts } from './modules/heirs'
+import { carryReceivables, estateSentences, heirShareOf, heirSpouseOverrides, matchSpouseEdge, payPersonalDebts } from './modules/heirs'
 import { settleKinEstates } from './modules/kin-estates'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
@@ -1407,6 +1407,12 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     return out
   }
 
+  // On a stamped life (R4-L9, X6, X33) a direct kin starts at the blend of the dice and of what the family felt: round((roll + old) / 2), where
+  // `old` is the relationship before the hand-over. The seven draws below keep their order and count either way, so the dice are the unstamped
+  // twin's; an unstamped life takes the roll alone, as it always did.
+  const stamped = socialOn(n)
+  const blend = (roll: number, p: Person): number => (stamped && Number.isFinite(p.relationship) ? Math.round((roll + p.relationship) / 2) : roll)
+
   // The late player.
   people.push({
     id: old.id,
@@ -1430,22 +1436,22 @@ export function continueAsChild(g: GameState, childId: string): GameState {
 
   let guardian: Person | undefined
   if (otherParent) {
-    const p = reset(otherParent, 'parent', randInt(n, 55, 95), age < 18)
+    const p = reset(otherParent, 'parent', blend(randInt(n, 55, 95), otherParent), age < 18)
     people.push(p)
     if (p.alive) guardian = p
   }
   const spouse = n.people.find((p) => p.alive && p.relation === 'spouse' && p.id !== otherParent?.id)
   if (spouse && (age < 18 || heirP.livesWithPlayer)) {
-    const p = reset(spouse, 'stepparent', randInt(n, 30, 75), age < 18)
+    const p = reset(spouse, 'stepparent', blend(randInt(n, 30, 75), spouse), age < 18)
     people.push(p)
     guardian = guardian ?? p
   }
 
   for (const sib of n.people.filter((p) => (p.relation === 'child' || p.relation === 'stepchild') && p.id !== childId)) {
-    people.push(reset(sib, siblingRelation(heirP, sib), randInt(n, 35, 85), age < 18 && sib.livesWithPlayer))
+    people.push(reset(sib, siblingRelation(heirP, sib), blend(randInt(n, 35, 85), sib), age < 18 && sib.livesWithPlayer))
   }
   for (const gp of n.people.filter((p) => p.alive && (p.relation === 'parent' || p.relation === 'stepparent'))) {
-    const p = reset(gp, 'grandparent', randInt(n, 50, 90), false)
+    const p = reset(gp, 'grandparent', blend(randInt(n, 50, 90), gp), false)
     people.push(p)
     guardian = guardian ?? p
   }
@@ -1455,27 +1461,56 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   if (heirP.data.married === true && spouseName && age >= 18) {
     const [first, ...rest] = spouseName.split(' ')
     const spouseGender: Gender = sexuality === 'gay' ? heir.gender : sexuality === 'straight' ? (heir.gender === 'male' ? 'female' : 'male') : chance(n, 0.5) ? 'male' : 'female'
+    // On a stamped life the spouse already has a face (R4-L9, C21, X15): the Met record behind the heir's spouse link, or the Person that holds
+    // its sid. Every legacy expression below is still evaluated in its order, so the dice are the unstamped twin's, and the face replaces
+    // their RESULTS afterwards. A holder that the rebuilt list already took (it cannot be a stranger then) leaves the old path.
+    const wanted = stamped ? heirSpouseOverrides(n, heirP) : null
+    const holder = wanted?.holder ?? null
+    const face = wanted !== null && (holder === null || !people.some((p) => p.id === holder.id)) ? wanted : null
     const before = n.people.length
+    const legacyAge = Math.max(18, age + randInt(n, -4, 4))
+    const legacyRelationship = randInt(n, 55, 90)
+    const legacySkin = randomSkinTone(n, country)
     heirSpouse = createPerson(n, {
       relation: 'spouse',
-      age: Math.max(18, age + randInt(n, -4, 4)),
+      age: legacyAge,
       gender: spouseGender,
       firstName: first,
       lastName: rest.join(' ') || heir.lastName,
-      relationship: randInt(n, 55, 90),
+      relationship: legacyRelationship,
       livesWithPlayer: true,
-      skinTone: randomSkinTone(n, country),
+      skinTone: legacySkin,
     })
     // createPerson appends to the old list; move them into the rebuilt one.
     n.people.splice(before)
     heirSpouse.yearsKnown = randInt(n, 2, Math.max(2, age - 18))
+    if (face !== null) {
+      if (holder === null) {
+        // a new Person: the record's name, gender and age and the sid (the only writer of a sid here is heirSpouseOverrides' file)
+        heirSpouse.firstName = face.firstName
+        heirSpouse.lastName = face.lastName
+        heirSpouse.gender = face.gender
+        heirSpouse.age = face.age
+        heirSpouse.data = { ...heirSpouse.data, ...face.data }
+      } else {
+        // the Person that holds the sid is the spouse and keeps its identity; the call above and its Person are discarded, with no sid and
+        // no override, so no second Person ever touches the account person:<sid>
+        const kept = reset(holder, 'spouse', heirSpouse.relationship, true)
+        kept.yearsKnown = heirSpouse.yearsKnown
+        kept.data = { ...kept.data }
+        delete kept.data.kin
+        heirSpouse = kept
+      }
+    }
     people.push(heirSpouse)
+    // the pair edge of a record's spouse follows the final relationship (edge.f === Person.relationship, X22)
+    if (face !== null) matchSpouseEdge(n, heirSpouse, childId)
   }
   // Grandchildren through the heir become the heir's children.
   for (const gc of n.people.filter((p) => p.relation === 'grandchild')) {
     const ids = [gc.data.parentId, gc.data.childOf, gc.otherParentId, ...strList(gc.data.parentIds)]
     if (!ids.includes(childId)) continue
-    const kid = reset(gc, 'child', randInt(n, 60, 95), gc.alive && gc.age < 18)
+    const kid = reset(gc, 'child', blend(randInt(n, 60, 95), gc), gc.alive && gc.age < 18)
     if (heirSpouse) kid.otherParentId = heirSpouse.id
     people.push(kid)
   }

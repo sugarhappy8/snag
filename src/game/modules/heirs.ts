@@ -33,19 +33,44 @@
 //                                the sentences of the Generation notice: at most one for the debts and one for the claims, each 140
 //                                characters or less, in the heir's currency (call it after bindMoneyContext).
 //
+// R4-L9 (D.9 a, X15, X33, C21) adds the heir's spouse. A hand-over used to make the heir's NPC husband or wife out of two legacy fields
+// (`married` and `spouseName`) and a handful of dice; on a stamped life that spouse already exists as a Met record (R4-L4), and the face of
+// a record never changes.
+//
+//   heirSpouseOverrides(n, heirP)
+//                                the face the hand-over gives the heir's spouse: { firstName, lastName, gender, age, data: { sid },
+//                                holder }, read through kinView from the heir's valid `spouseSid` and the record behind it (or the Person
+//                                that holds the sid). `holder` is that Person when one exists (a materialized relative, C21): the
+//                                hand-over then resets it to spouse and keeps its identity, so two Persons never share the ledger
+//                                account person:<sid>. Null, and the old path, for an unstamped life, a heir with no link, a garbage
+//                                link, a record that is gone, a tombstone, a spouse who has died, and a holder that is dead, the heir
+//                                itself or a child, stepchild, grandchild or pet (SID_RELATIONS: a sid never goes on those, X15).
+//                                Pure and total: no luck, no write, no uid, a deep-frozen state is fine.
+//                                This file is one of the two that write a `sid` (the other is materialize.ts, S11 scans for it), so the
+//                                `data: { sid }` literal lives here and life.ts only spreads it.
+//   matchSpouseEdge(n, spouse, heirId)
+//                                the one edge a record's spouse brings with it: the pair edge `person:<sid> > heir` that R4-L4 wrote while
+//                                the spouse was a record has f 70, and the affection invariant (edge.f === Person.relationship, X22)
+//                                needs the final relationship now that the spouse is a non-pet Person with an edge to the player. It
+//                                patches `f` only, and only on an edge that is there.
+//
 // All three run on a stamped life only (X6): an unstamped life, a v5.2.0 save and every heir of one get exactly the old hand-over, and each
 // function returns zeros and writes nothing for a life the stamp does not mark. They draw nothing from g.rng, make no id, and book only
 // through cash.moveCash (inside serviceDebt) under the reasons `divorce` and `support`; no reason is new and nothing is minted or burned.
 //
 // This file is layer 4 (assembly), like life.ts, which calls it, and the rest of modules/; the society door is reached through
-// society/contract.ts only (C39). R4-L9 adds keptContacts, carryEdges and heirSpouseOverrides here.
+// society/contract.ts only (C39). R4-L9 adds heirSpouseOverrides and matchSpouseEdge here (part A) and keptContacts and carryEdges (part B).
 import { formatMoney } from '../core'
 import { readTies, updateTies } from '../events/wealth-core'
 import { willSlices } from '../events/will-core'
 import { estatePurse } from '../events/will-estate'
+import { personEntity } from '../kernel/person-ref'
+import { SID_RELATIONS } from '../materialize'
 import { debtToken, debtsOf, serviceDebt } from '../society/contract'
-import type { Character, GameState } from '../types'
+import type { Character, GameState, Gender, Person } from '../types'
 import { putEdge } from '../world/edge-write'
+import { edgeKey, readEdge } from '../world/edges'
+import { kinView, readKin } from '../world/kin'
 import { playerRef } from '../world/people'
 import { socialOn } from '../world/social'
 
@@ -62,6 +87,17 @@ export interface DebtsPaid {
 export interface ClaimsCarried {
   carried: number
   forgiven: number
+}
+
+/** What heirSpouseOverrides answers: the face of the record, and the Person that already holds the sid (null for a record that is no Person). */
+export interface SpouseOverrides {
+  firstName: string
+  lastName: string
+  gender: Gender
+  age: number
+  /** The `data` the new spouse gets: the sid and nothing else (typed as a record, so the L6 source rule that forbids a sid key with a value finds none, test/heir-debts.test.ts). */
+  data: Readonly<Record<'sid', string>>
+  holder: Person | null
 }
 
 /** The heir's fraction of the estate under the will: 0 to 1. A child the will leaves out, an unknown id and any garbage read 0. Pure and total. */
@@ -142,4 +178,36 @@ export function estateSentences(old: Pick<Character, 'gender'>, debts: DebtsPaid
     else if (forgiven >= 1) out.push(`The ${formatMoney(forgiven)} people owed ${him} was forgiven.`)
   }
   return out
+}
+
+/** The face the hand-over gives the heir's spouse, from the record behind the heir's spouse link (see the header); null takes the old path. */
+export function heirSpouseOverrides(n: GameState, heirP: Person): SpouseOverrides | null {
+  try {
+    if (!socialOn(n)) return null
+    const sid = readKin(heirP).spouse
+    if (sid === null) return null
+    const member = kinView(n, heirP).find((m) => m.role === 'spouse' && m.key === sid)
+    if (member === undefined || !member.alive) return null
+    const holder = member.person
+    // a holder is reset to spouse, so it has to be a living stranger of a relation that may carry a sid, and not the heir
+    if (holder !== null && (holder === heirP || holder.id === heirP.id || holder.alive !== true || !SID_RELATIONS.has(holder.relation))) return null
+    if (!Number.isFinite(member.age) || member.age < 0) return null
+    return { firstName: member.first, lastName: member.last, gender: member.gender, age: Math.round(member.age), data: { sid }, holder }
+  } catch {
+    return null
+  }
+}
+
+/** Sets `f` of the pair edge spouse > heir to the spouse's final relationship, when the edge is there (see the header). A no-op unstamped. */
+export function matchSpouseEdge(n: GameState, spouse: Person, heirId: string): void {
+  try {
+    if (!socialOn(n)) return
+    const key = edgeKey(personEntity(spouse), personEntity({ id: heirId, data: {} }))
+    if (key === null) return
+    const e = readEdge(n, personEntity(spouse), personEntity({ id: heirId, data: {} }))
+    const f = Math.max(0, Math.min(100, spouse.relationship))
+    if (e !== null && Number.isFinite(f) && e.f !== f) putEdge(n, key, { f })
+  } catch {
+    // an edge that cannot be written leaves the old number; the affection check names it
+  }
 }
