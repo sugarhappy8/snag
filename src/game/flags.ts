@@ -48,12 +48,12 @@ export const FLAG_DEFS = {
   // The social web of R4 (X6): edges between people, acts, kin and estates, debts. It changes simulation output, so it is stamped
   // into the save at life creation (createNewLife writes the world shard `social` when this key is on) and is NEVER read from FLAGS
   // at run time: everything after creation asks socialOn(g). A v5.2.0 save, an unstamped life and the heirs of one keep v5.2.0
-  // behaviour byte for byte. Off until the release commit flips it together with the version.
-  social: { default: false, ships: '5.3.0' },
+  // behaviour byte for byte. On since 5.3.0: the release commit flipped it together with the version.
+  social: { default: true, ships: '5.3.0' },
   // The People profile, the staff and CEO reads and the cockpit tiles of R4 (X8). Presentation only, so it is read at the place of
-  // use and applies to every life, stamped or not. It stays off until the exit-gate walk passes; if the walk fails, the release
-  // commit leaves it at `ships: '5.4.0'` and `default: false`.
-  peopleProfile: { default: false, ships: '5.3.0' },
+  // use and applies to every life, stamped or not. On since 5.3.0: the exit-gate walk passed (case 5, the People screen fog), so the
+  // release commit flipped it together with the version.
+  peopleProfile: { default: true, ships: '5.3.0' },
 } as const satisfies Record<string, FlagDef>
 
 export type FlagKey = keyof typeof FLAG_DEFS
