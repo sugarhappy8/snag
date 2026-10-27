@@ -295,7 +295,7 @@ test stays true and green, because the allowance and the history are still the l
 **Limits.**
 
 - The mirror of a claim the late player held, the edge person > late ego with its `dv`, is not touched here. The edge carry of the
-  hand-over (section 13) removes every edge that ends at the late ego, and the heir's own edge person > heir is the one `updateTies`
+  hand-over (section 13) removes every edge of the late ego, and the heir's own edge person > heir is the one `updateTies`
   writes (a new edge starts at trust 50, respect 50, with the person's relationship as affection); the carry merges into it.
 - A creditor the hand-over would not keep as a contact is still paid: the payment is booked to their account before the list is
   rebuilt, and the person is gone from the heir's list afterwards.
@@ -354,7 +354,7 @@ names the late player's standing and keeps nobody (X28). The late player's sibli
 **The edges.** `carryEdges(n, oldEgo, heirRef, kept)` runs right after `n.character = heir` and `carryReceivables`. Every edge
 `person > late ego` of a kept Person crosses through `heirEdges` as `person > heir`: trust, respect and a non-kin's affection at 0.5,
 resentment at 0.6, nothing raised, memories one point lighter, `q` and `k` for a kin link only, `dv`, `n`, `d` and `c` dropped. Then
-every edge that ends at the late ego is removed (kept or not), each crossed edge is written with `f` set to the Person's final
+every edge of the late ego is removed, one that ends at them and one that starts at them (kept or not; the late player stays in the list as the heir's dead parent, and an edge that starts at them, a loan the heir was once repaid or a leak the heir told, would read as the parent's edge to the new ego with an `f` that is not the parent's relationship: R4-E15, found by the 120-year probe), each crossed edge is written with `f` set to the Person's final
 `relationship` (so a direct kin's `f` is the blend), and an edge `person > heir` that was already there (a strife edge, the pair edge of
 the heir's spouse, the claim the receivables made) is merged into: the larger `s`, the union of both memories at most 8 (C12), a link
 kind or feud rung it lacked taken over, the rest its own. Every other edge of a kept person to the heir also gets `f` = relationship,
