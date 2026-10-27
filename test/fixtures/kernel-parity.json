@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "base": "422d7f2",
+  "base": "e47bd29",
   "aging": ["world.frontier","history","digest","household","effort.you","life.kin","relationships","sharedProjects","life.estates","givingFund","background","royalty","royalCareers","health","education","professions","career","special","nation","workshop","corruption","business","techWaves","development","investments","hedge","shops","computer","finance","wealth","life.debts","familyUse","nepo","willFeuds","immigration","assets","crime","underworld","advisors","world.edges","society.acts","milestones","knowledge.core","world"],
   "special": ["military","actor","music","sports","gamedev","author","model","politics","astronaut","careers2","hustler","social","fame"],
   "lives": {
