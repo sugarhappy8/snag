@@ -4,8 +4,9 @@ The note for the kin links of R4 (v5.3.0). A sibling, a child or a parent of the
 three fields on the relative (`married`, `spouseName`, `kids`) and a log line. R4 adds the people behind those fields as Met records
 (`docs/PEOPLE.md`, section 5), so their faces never change, and links the relative to them. This file is the saved shape of the
 links, the caps, the pure readers and the problems list (R4-L3, `src/game/world/kin.ts`), from section 9, the writers, the yearly
-step and the frozen table of the face (R4-L4, `src/game/kin.ts`), and from section 10 the estate (R4-L5, `src/game/modules/kin-estates.ts`).
-Later tasks add their sections: the hand-over (R4-L9) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
+step and the frozen table of the face (R4-L4, `src/game/kin.ts`), from section 10 the estate (R4-L5, `src/game/modules/kin-estates.ts`) and
+from section 11 the debts and claims of the hand-over (R4-L6, `src/game/modules/heirs.ts`).
+Later tasks add their sections: the rest of the hand-over (R4-L9) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
 
 ## 1. The rules
 
@@ -252,3 +253,50 @@ relative is a `friend` and the count of 30 reads the kin sid, not `data.kin`.
   none; the stake then leaves the family records, as it did before R4.
 - The part of a relative the caps leave out is shared by the others, not sent to the pool; the pool takes a whole estate only when no
   heir is left.
+
+## 11. Debts and claims at the hand-over (R4-L6, `src/game/modules/heirs.ts`)
+
+A hand-over used to forget two kinds of private money. What the dead player owed to people (a divorce settlement, a loan from a sibling)
+went nowhere, and what people owed the dead player (a friend who borrowed $40,000) was lost with the allowance and the history, because
+the readers of that record are stamped by the owner (`readTies` compares `by` with the character's id, so after the switch it reads the
+late player's records as blank). On a stamped life (X6; an unstamped life, a v5.2.0 save and every heir of one get the old hand-over to
+the byte) `continueAsChild` now does two things, both with no `g.rng`, no id and no new ledger reason (X24, X34).
+
+| When | Call | Rule |
+|---|---|---|
+| Before the slices, right after the will is read | `heirShareOf(n, childId)` | the heir's fraction under the will (`willSlices`): 0 to 1, 0 for a child the will leaves out. Read before `planEstate`, which can change who is in line. Pure |
+| Before `planEstate` | `payPersonalDebts(n, old, available)` | `available` is the cash plus the equity of the property that is sold, less the bank loans (which are paid first, exactly as before, and still burn what the estate cannot cover). The debts `debtsOf` lists with the late player as the debtor are paid oldest first, by the age of the debt and not by its kind, each by `serviceDebt(n, key, min(owed, left), debtToken('estate', year, key, old.id), estatePurse(n))`: a divorce under `divorce`, a loan under `support`, out of the late player's account to the creditor's purse. `estate` and `cashAfterDebts` both drop by what was paid, so a sole keeper is not paid twice |
+| After `n.character = heir` | `carryReceivables(n, old, share)` | each kept Person's stored claim (`data.w.owes`, read through a view whose character is the late player) passes as `round(claim x share)`, re-stamped to the heir by `updateTies` (the allowance, the history and the marks stay blank: they were the late player's), and E7's mirror writes the claim on the edge person > heir. The rest is forgiven |
+| After the heir is the player | `estateSentences(old, debts, claims)` | at most one sentence for the debts and one for the claims, in the heir's currency, added to the `Generation` notice. No popup |
+
+**What lapses.** What the estate cannot pay lapses: no deposit was ever made for it, so it moves no money and burns nothing (the
+`writeoff` burn is for bank loans only). A debt whose creditor is no longer a living Person of the game (gone from the list, dead or a
+pet), and a debt of a kind nobody serves (2 to 9), lapses the same way. The heir is never liable (D4 b): an insolvent estate pays what
+it has, the heir gets nothing and keeps what was theirs, and the cash of nobody goes below 0.
+
+**Every debt that was listed is closed.** Paid in full or lapsed, each debt's edge (the key starts at the late ego) is removed with
+`putEdge(n, key, null)`. The hand-over's edge carry takes the edges that END at the ego, so it never sees these; a `dv` left behind
+would bind the edge for good (`edgeLocalBound`) and count against `EDGE_CAPS.debts` (40), which counts every valid `dv`, paid or not.
+Only the edges `debtsOf` listed go, nothing wider. After five generations the count of open debts does not creep.
+
+**Tokens.** `debtToken('estate', year, key, old.id)` is `estate:<year>:<8 hex of fnv1a(old.id|key)>`, under 40 characters. The ledger
+cuts a token at 80 and an edge key can be 95, so a token built from the key would lose its tail; two debts whose keys differ only in
+the last characters of two 40-character sids get two tokens, in every year.
+
+**Claims.** The claim is the legacy record and stays the authority (C10). `heirEdges` drops `dv`, so the edge carry of R4-L9 makes no
+second copy. A claim is carried at most at 1e12 (the edge model's bound for a debt) and never above itself; a share outside 0 to 1
+reads as the nearest end and a share that is not a number as 0. A dead debtor's claim is forgiven (`settleTheDead` zeroes it in the
+legacy yearly step anyway), and a record of any other owner reads blank, so a third owner sees nothing. The title of
+`wealth.test.ts:446` ("heirs inherit the people, not their parent's allowances or loans") is stale for loans on a stamped life: the
+test stays true and green, because the allowance and the history are still the late player's, but the loan now passes at the share.
+
+**Limits.**
+
+- The mirror of a claim the late player held, the edge person > late ego with its `dv`, is not touched here. The edge carry of the
+  hand-over (R4-L9) removes every edge that ends at the late ego, so the stale copy stays until that task, and the heir's own edge
+  person > heir is the one `updateTies` writes (a new edge starts at trust 50, respect 50, with the person's relationship as affection).
+- A creditor the hand-over would not keep as a contact is still paid: the payment is booked to their account before the list is
+  rebuilt, and the person is gone from the heir's list afterwards.
+- A person's loan is paid from the cash and from the equity of the property that is sold, as the bank's is. A sole keeper keeps the
+  property only while the cash after the debts is not below zero; when the cash cannot pay the debts alone the property is sold into
+  the estate, exactly as it is for a bank loan.

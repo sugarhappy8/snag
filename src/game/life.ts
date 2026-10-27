@@ -53,6 +53,7 @@ import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
 import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
+import { carryReceivables, estateSentences, heirShareOf, payPersonalDebts } from './modules/heirs'
 import { settleKinEstates } from './modules/kin-estates'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
@@ -1249,10 +1250,15 @@ export function continueAsChild(g: GameState, childId: string): GameState {
 
   const debts = old.loans.reduce((s, l) => s + l.balance, 0)
   const divisibleEquity = divisibleProperty.reduce((s, a) => s + a.value - (a.mortgage?.balance ?? 0), 0)
-  const estate = Math.round(old.money + divisibleEquity - debts)
+  // On a stamped life (R4-L6, X24, X34) what the late player owed to people is paid after the bank loans and before the slices, and the
+  // will's share of the heir is read here for the claims the heir takes over below. An unstamped life skips all of it (null).
+  const heirShare = socialOn(n) ? heirShareOf(n, childId) : null
+  const personal = heirShare === null ? null : payPersonalDebts(n, old, old.money + divisibleEquity - debts)
+  const personalPaid = personal?.paid ?? 0
+  const estate = Math.round(old.money + divisibleEquity - debts - personalPaid)
   const adult = heirP.age >= 18
   // Who inherits what (the will, charity, contests and probate live in events/will-estate.ts).
-  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0 || groupIds.size > 0, cashAfterDebts: old.money - debts, taxDelta: personalTax(g, 'inheritance', old.countryId) / 100 })
+  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0 || groupIds.size > 0, cashAfterDebts: old.money - debts - personalPaid, taxDelta: personalTax(g, 'inheritance', old.countryId) / 100 })
   bookEstate(n, plan, { old, heirId: childId, gross: old.money + divisibleEquity, debts })
   const heirIncluded = plan.heirIncluded
   const shareCount = Math.max(1, plan.ways)
@@ -1512,6 +1518,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   n.ancestors = [...n.ancestors, summary]
   closeEstate(n, old)
   n.character = heir
+  const claims = heirShare === null ? null : carryReceivables(n, old, heirShare)
   // The inheritance and the heir's first lines are written in the heir's currency (they may
   // live abroad), not the late parent's.
   bindMoneyContext(n)
@@ -1628,6 +1635,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   }
   n.flags.grandkidsSeen = n.people.filter((p) => p.relation === 'grandchild').map((p) => p.id)
   inheritanceLines.push(...groupInheritanceLines)
+  inheritanceLines.push(...estateSentences(old, personal, claims))
 
   const childWord = heir.gender === 'male' ? (heirP.relation === 'stepchild' ? 'stepson' : 'son') : heirP.relation === 'stepchild' ? 'stepdaughter' : 'daughter'
   log(n, `I am now playing as ${fullName(heir)}, the ${childWord} of ${oldName}.`, 'event')

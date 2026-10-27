@@ -97,8 +97,8 @@ row that is not in the table drops that row on load.
 | | `luck` | other | other | an event's money effect with no named party |
 | Family | `gift` | family | family | a gift between people |
 | | `inheritance` | family | family | what an heir receives |
-| | `support` | family | family | money sent to relatives |
-| | `divorce` | family | family | a divorce settlement |
+| | `support` | family | family | money sent to relatives; also a loan between people and, on a stamped life, what the estate pays a person the late player borrowed from (R4-L6, token `debtToken('estate', ...)`) |
+| | `divorce` | family | family | a divorce settlement; also the unpaid part of one that the estate pays before the shares (R4-L6) |
 | | `estate` | family | family | an estate passed on; also the NPC estate: the cash a dead relative leaves when no heir is modeled (R4-L5) |
 | | `donation` | charity | charity | gifts to charity |
 | Crime | `crime.take` | crime | crime | what a crime brings in |
