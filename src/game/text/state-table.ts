@@ -130,6 +130,18 @@ export const STATE_TABLE = {
     every: 4,
     gap: 1,
   },
+  // R4-E12 (D.4): the cold rung of a feud (society/feud.ts), one record per person (the call passes the person's id). It speaks the year the feud
+  // starts and again after 3 quiet years while it is still cold; the value is the rung, so a rung is one band. {who} is "my sister Fatima".
+  'feud.cold': {
+    variants: [
+      'Things between {who} and me went cold.',
+      'I stopped hearing from {who}, and we both knew why.',
+      "At the last dinner, {who} wouldn't look at me.",
+      'The silence with {who} has settled in.',
+    ],
+    band: () => 0,
+    every: 3,
+  },
 } as const satisfies Record<string, StateSpec>
 
 export type StateKey = keyof typeof STATE_TABLE

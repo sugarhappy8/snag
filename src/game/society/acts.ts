@@ -25,7 +25,7 @@
 // are not stamped). A patch is a pure function of the state and that stream.
 //
 // Layer 3 (society). It imports core, cash, the kernel and the edge model and writer of world/. No events/, no business/.
-import { moveCash, personPurse, playerPurse, type Purse } from '../cash'
+import { moveCash, personPurse, playerPurse, poolPurse, type Purse } from '../cash'
 import { addRelationship, getPerson, log, notice } from '../core'
 import type { EntityRef } from '../kernel/ids'
 import { personEntity } from '../kernel/person-ref'
@@ -39,8 +39,9 @@ import { playerRef } from '../world/people'
 import { socialOn } from '../world/social'
 
 // The purses of society/ (R4-E10b, X26): this is the one file of society/ that imports cash.ts, because the layer baseline counts the files
-// of a domain that reach another (`society->life` is 2: this file and the seam). A debt (society/debt.ts) takes the purses from here.
-export { moveCash, personPurse, playerPurse }
+// of a domain that reach another (`society->life` is 2: this file and the seam). A debt (society/debt.ts) takes the purses from here, and the legal
+// fee of a feud (society/feud.ts, R4-E12) takes `poolPurse('legal')` from here.
+export { moveCash, personPurse, playerPurse, poolPurse }
 export type { Purse }
 
 /** What an act is run with: the game (read only), the edge it is run on, the person at its other end, the year and the luck of the stream. */

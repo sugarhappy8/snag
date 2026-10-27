@@ -932,6 +932,11 @@ found affair; `love.ts` and the leak call it, `love.ts` through the door only. `
 settles their bonus (0.15 of the year's gain) inside the one `society.acts` entry; it reaches the NPC life through the seam, so the
 `society->life` pair stays at two files. The detail is in `docs/SOCIAL.md` section 17.
 
+R4-E12 added the feud ladder. `society/feud.ts` holds `stepFeuds` (the last step of the one `society.acts` entry), the legal fee, `A Falling Out`
+and `Make peace` (the SocialAct `feud.peace` and the row of `society/menu.ts`); a feud is the rung `Edge.q` and nothing else is saved. The fee is
+booked through `cash.moveCash` to `pool:legal` under `legal`, with `poolPurse` re-exported by `society/acts.ts` so that file stays the one
+importer of `cash.ts`. The module declares the fact `social.feud`. The detail is in `docs/SOCIAL.md` section 18.
+
 ### Main Character Syndrome and instant mastery
 
 `talents.ts MainCharacter` occupies one of the three starting-talent slots. `hasTalent(g, id)` must

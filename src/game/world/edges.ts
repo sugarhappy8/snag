@@ -57,7 +57,7 @@ export interface Edge {
   q?: [rung: number, since: number, cause: number]
   /** The debt, in dollars the first end owes the second: owed, rate in percent a year (0 to 60), since (year), kind (0 a loan, 1 a divorce), paid. */
   dv?: [owed: number, ratePct: number, since: number, kind: number, paid: number]
-  /** The year of the last favor call-in. */
+  /** The year of the last call-in on the edge: a favor, and (R4-E12) a peace tried, a peace made or a suit settled. */
   c?: number
   k?: LinkKind
 }

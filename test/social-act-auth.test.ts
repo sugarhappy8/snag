@@ -20,6 +20,9 @@
 // the last describe: the mentor's enrolment is an act but one with no call-in cooldown, so it does not sit in the ACTS table (its controls
 // are the cooldown's), and `betray` is not an act. The same blocked states are also pinned beside their tests (social-mentor, social-reconcile).
 //
+// R4-E12 adds Make peace (`peaceAct` of society/feud.ts) in the last describe: it is an act, but its blocked states are the feud's (no feud on the
+// edge, a pair the will owns, the try cooldown), not the favors', so it does not sit in the ACTS table (`expect(ACTS).toHaveLength(5)` is unchanged).
+//
 // The blocked states: a life that is not stamped; the person dead, a pet, estranged or not in the game; the call-in cooldown not elapsed; the
 // edge cap reached (a map of 1,200 bound edges with none for this person); a key whose second end is not the current ego (another owner's edge,
 // or an edge between two other people); a person that does not match the key; and the roles of the other two acts (a vouch for a third who is
@@ -34,10 +37,11 @@ import { peekLedger } from '../src/game/kernel/ledger'
 import { actRoll, runAct, type SocialAct } from '../src/game/society/acts'
 import { debtToken, serviceDebt } from '../src/game/society/debt'
 import { broker, helpAct, vouch } from '../src/game/society/favor'
+import { feudOf, makePeace, peaceAct, stepFeuds } from '../src/game/society/feud'
 import { askLoan, lend, lendAct, loanAct } from '../src/game/society/loan'
 import { enrolMentor, mentorAct, mentorSettle, protegesOf } from '../src/game/society/mentor'
 import { LEAK, addSecret, betray, leakPass, readSecret, secretsOf } from '../src/game/society/secret'
-import type { Edge } from '../src/game/world/edges'
+import { readEdge, type Edge } from '../src/game/world/edges'
 import { putEdge, putSecret } from '../src/game/world/edge-write'
 import { initializeNpc } from '../src/game/npc-lives'
 import { patchSocial } from '../src/game/world/social'
@@ -747,5 +751,118 @@ describe('the mentor and the betrayal: authorization inside the function', () =>
     expect(w.g.rng).toBe(rng)
     expect(w.g.nextId).toBe(nextId)
     expect(blows.length).toBeGreaterThanOrEqual(15)
+  })
+})
+
+// R4-E12: Make peace. A feud is the rung `q` on the edge person > player; the act ends it with a roll. Like every act it is checked where it is run:
+// in a blocked state it answers null and writes nothing, draws nothing and books nothing, and `stepFeuds` does nothing at all on a life that is not
+// stamped.
+describe('make peace: authorization inside the function', () => {
+  interface Pair {
+    g: GameState
+    p: Person
+  }
+
+  /** A stamped adult of 30 with a friend in a feud on rung 3 (resentment 80), and a second friend. */
+  function feud(stamped = true): Pair {
+    const g = stamped ? socialGame(1, { age: 30 }) : makeTestGame(1, { age: 30 })
+    const p = cast(g, 30, 'friend')
+    cast(g, 30, 'friend')
+    if (stamped) setEdge(g, p, { s: 80, q: [3, g.year - 1, 0] })
+    return { g, p }
+  }
+
+  const other = (g: GameState, p: Person): Person => g.people.find((x) => x.id !== p.id)!
+
+  interface State {
+    name: string
+    apply?(w: Pair): void
+    key?(w: Pair): string
+    person?(w: Pair): Person | null
+    stamped?: boolean
+  }
+
+  const states: readonly State[] = [
+    { name: 'a life that is not stamped', stamped: false },
+    { name: 'the person dead', apply: (w) => void (w.p.alive = false) },
+    { name: 'the person a pet', apply: (w) => void (w.p.relation = 'pet') },
+    { name: 'a pair the will owns (the person cut out)', apply: (w) => void (w.p.data.wl = { by: w.g.character.id, anger: 60, cut: true, estr: false }) },
+    { name: 'a pair the will owns (the person estranged)', apply: (w) => void (w.p.data.wl = { by: w.g.character.id, anger: 60, cut: false, estr: true }) },
+    { name: 'no feud on the edge', apply: (w) => void putEdge(w.g, keyOf(w.g, w.p), { q: undefined }) },
+    { name: 'a try made last year (the cooldown of 3 years not elapsed)', apply: (w) => setEdge(w.g, w.p, { s: 80, q: [3, w.g.year - 1, 0], c: w.g.year - 1 }) },
+    { name: 'a try made this year', apply: (w) => setEdge(w.g, w.p, { s: 80, q: [3, w.g.year - 1, 0], c: w.g.year }) },
+    { name: 'a try made 2 years back', apply: (w) => setEdge(w.g, w.p, { s: 80, q: [3, w.g.year - 1, 0], c: w.g.year - 2 }) },
+    { name: 'the player dead', apply: (w) => void (w.g.character.alive = false) },
+    { name: 'the player a child', apply: (w) => void (w.g.character.age = 10) },
+    { name: 'a key whose second end is not the current ego (another owner)', key: (w) => `${personEntity(w.p)}>person:old-ego` },
+    { name: "a key whose first end is another owner's ego", key: (w) => `person:old-ego>${personEntity(w.p)}`, person: () => null },
+    { name: "the key of the player's own edge (player > person), not the person's", key: (w) => `${playerRef(w.g)}>${personEntity(w.p)}` },
+    { name: 'an edge between two other people', key: (w) => `${personEntity(w.p)}>${personEntity(other(w.g, w.p))}` },
+    { name: 'a person that does not match the key', person: (w) => other(w.g, w.p) },
+    { name: 'no person', person: () => null },
+    { name: 'a person who is not in the game', person: (w) => ({ ...w.p, id: 'p-not-in-the-game' }) },
+    { name: 'a key that is not a key', key: () => 'person:p1>' },
+  ]
+
+  for (const state of states) {
+    it(`answers null and changes nothing for: ${state.name}`, () => {
+      const w = feud(state.stamped ?? true)
+      state.apply?.(w)
+      const key = state.key ? state.key(w) : keyOf(w.g, w.p)
+      const person = state.person ? state.person(w) : w.p
+      const before = JSON.stringify(w.g)
+      const ledger = JSON.stringify(peekLedger(w.g))
+      const { rng, nextId } = w.g
+      expect(runAct(w.g, peaceAct, key, person)).toBeNull()
+      if (state.key === undefined && state.person === undefined) expect(makePeace(w.g, w.p)).toBeNull()
+      expect(JSON.stringify(w.g)).toBe(before)
+      expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+      expect(w.g.rng).toBe(rng)
+      expect(w.g.nextId).toBe(nextId)
+    })
+  }
+
+  it('control: in the allowed state it answers with a patch, stamps the try (c), draws nothing from g.rng and books no money', () => {
+    const w = feud()
+    const before = JSON.stringify(w.g)
+    const ledger = JSON.stringify(peekLedger(w.g))
+    const { rng } = w.g
+    const out = runAct(w.g, peaceAct, keyOf(w.g, w.p), w.p)
+    expect(out).not.toBeNull()
+    expect(JSON.stringify(w.g)).not.toBe(before)
+    expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+    expect(w.g.rng).toBe(rng)
+    expect(readEdge(w.g, personEntity(w.p), playerRef(w.g))!.c).toBe(w.g.year)
+    expect(states.length).toBeGreaterThanOrEqual(19)
+  })
+
+  it('control: the cooldown opens after 3 years, and not before', () => {
+    const w = feud()
+    const y = w.g.year
+    expect(runAct(w.g, peaceAct, keyOf(w.g, w.p), w.p)).not.toBeNull()
+    // a no leaves the feud (a yes would end it and there would be nothing left to ask)
+    if (feudOf(w.g, w.p) === null) setEdge(w.g, w.p, { s: 80, q: [3, y - 1, 0], c: y })
+    for (const dy of [0, 1, 2]) {
+      w.g.year = y + dy
+      const before = JSON.stringify(w.g)
+      expect(runAct(w.g, peaceAct, keyOf(w.g, w.p), w.p), `year +${dy}`).toBeNull()
+      expect(JSON.stringify(w.g)).toBe(before)
+    }
+    w.g.year = y + 3
+    expect(runAct(w.g, peaceAct, keyOf(w.g, w.p), w.p)).not.toBeNull()
+  })
+
+  it('stepFeuds changes nothing on a life that is not stamped, for a dead player, or with no feud, and books no money', () => {
+    for (const make of [() => feud(false), () => { const w = feud(); w.g.character.alive = false; return w }, () => { const w = feud(); putEdge(w.g, keyOf(w.g, w.p), { q: undefined, s: 10 }); return w }]) {
+      const w = make()
+      const before = JSON.stringify(w.g)
+      const ledger = JSON.stringify(peekLedger(w.g))
+      const { rng, nextId } = w.g
+      stepFeuds(w.g)
+      expect(JSON.stringify(w.g)).toBe(before)
+      expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+      expect(w.g.rng).toBe(rng)
+      expect(w.g.nextId).toBe(nextId)
+    }
   })
 })

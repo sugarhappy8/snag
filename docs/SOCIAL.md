@@ -687,7 +687,91 @@ Tests: `test/social-reconcile.test.ts` (reconciliation, the peace odds of the wi
 (enrolment, the settle, the 40-year probe, the baseline, the menu row), `test/social-act-auth.test.ts` (the enrolment and `betray` in the states
 that block them).
 
-## 18. What the next tasks add here
+## 18. The feud ladder (R4-E12, D.4, X29, X31, X40, X54, C12)
 
-- R4-E11 to E16: secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
-  (`social` at the close) and adds its export line to `society/contract.ts`.
+What a grudge becomes when nobody stops it. A feud is the rung `q = [rung, since, cause]` of the edge `person > player` (the only thing it saves):
+rung 1 cold, 2 gossip, 3 sabotage, 4 legal. At most 12 are live in the map (`EDGE_CAPS.feuds`); Life's strife edges between two relatives carry a rung
+too and count toward the 12 (X31, C12), but `stepFeuds` plays only the feuds that are the player's. The will keeps its own ladder
+(`events/will-feud.ts`): a pair whose person is cut out or estranged under the will (`cutOff` of `society/favor.ts`, the raw record) belongs to it, so
+this ladder neither starts a feud on such a pair nor plays one that is already there (it ends quietly, handed back to the will).
+
+**The step.** `stepFeuds(g)` in `society/feud.ts` is the last step of the one `society.acts` entry (`close` 6, after the debts, the leak and the mentor):
+the live feuds first, in key order, then the new ones, so a feud that ends frees its slot before a new one asks for it. For each live feud not yet
+stepped this year (the tick, below):
+
+| Case | What happens |
+|---|---|
+| the person is not in the game | the feud ends, quietly |
+| the person died | the feud ends with a line of `FEUD_GONE_LINES` and the fact |
+| a pet, or the will has come to own the pair | the feud ends, quietly |
+| resentment under 25 for the second year in a row | `Feud Cooled` (notice, weight 1: it folds into the log), the feud ends, the fact |
+| rung 1, cold | the person's regard falls 2 a year, as a drift (`decay`: it adds no resentment); the status row `feud.cold` speaks the year the feud starts and after 3 quiet years |
+| rung 2, gossip | one leak: the two best-liked contacts of the person and one more through each (`society/gossip.ts`, hop cap 2) lose 3 points as an offence and get the memory `gossiped_about_me`; no person loses more than 9 to the gossip of a pass whatever the number of feuds; a line of `FEUD_GOSSIP_LINES` |
+| rung 3, sabotage | happiness down 3 and job performance down 2 (never below 0), no money, **once a year in all** however many feuds are on this rung (the first takes it, the others say their line); a line of `FEUD_SABOTAGE_LINES` |
+| rung 4, legal | the suit is decided: the fee, a line, the settlement (below) |
+
+Then, for rungs 1 to 3, the rise: with the roll of `feud.up|<key>` under 0.25 and resentment at least `40 + 10 x rung` (50, 60, 70) the rung goes up.
+A rise into 3 or 4 says the fact `social.feud` and asks the player (`A Falling Out`, below). A rung that was raised this year is not played until
+next year, so rung 4 is a year in which the player can still answer, and the suit is decided in the next step. The fastest feud is 4 years, from the
+cold year to the suit; the resentment that keeps a feud going also fades by a tenth a year (the edge step), so most cool before they get there.
+
+**New feuds.** A person with an edge to the player is asked when resentment is 45 or more, the edge holds a memory of `betrayal`, `loan_unpaid` or
+`cut_from_will` from the last 5 years (younger than 5: the year of the memory and the 4 after it; a memory dated after this year is not read), the
+stamp `Edge.c` is not from the last 5 years, the person is alive, not a pet and not the will's, and fewer than 12 feuds are live. The biggest
+grudges are asked first (resentment, then key). The chance is `0.10 + (s - 45) / 200` a year (0.10 at 45, 0.375 at 100), drawn from the stream
+`social` as `feud.start|<key>`. A new feud is cold, carries the cause of its trigger and is not played in the year it starts.
+
+**The cause byte.** The model keeps three numbers for a feud and reads the third as a code from 0 to 255, so `q[2]` holds three things (`packCause`,
+`unpackCause`, `tickOf`): bits 0 to 2 the cause (0 none, 1 betrayal, 2 loan_unpaid, 3 cut_from_will), bits 3 and 4 the calm years (0 to 3), bits 5 to
+7 the tick of the year the feud was last stepped (`1 + year mod 7`, never 0). The tick makes the step idempotent in a year on its own, whatever the
+stamp of the entry says: a second call finds every feud already stepped, and the new feuds are the same ones because every roll is the stream's. A rung
+written by another task (the strife edges write `[1, year, 0]`) is a feud with no cause, no calm years and no tick, stepped at its first chance.
+
+**The stamp `Edge.c`.** The year of the last call-in on the edge (section 13). This task also writes it for a peace tried (it holds the next try off 3
+years, the cooldown of the favors) and for a settlement or a peace made (it holds a new feud off 5 years). The favors read it the same way, so a pair
+that has just settled can't call in a favor for 3 years, which is the intent. A stamp dated after this year is not read.
+
+**The legal fee** is priced by the object and never by the payer's wealth (design P9, 14.2): `1.5 x typicalIncome` for a first suit and `2.5 x` once
+the feud has run 4 years, so never above 3 x (`typicalIncome` is the P7 leaf, reached through `society/seam.ts`), held to **a quarter of the payer's
+cash** as an affordability guard only; the suits of one year take a quarter of the cash between them (the cash the pass began with). The only thing about the payer that is read is the cash: net worth times 100 gives the same fee, and an
+asset-rich, cash-poor payer pays little, never a negative balance. It is booked through `cash.moveCash` from the player to `pool:legal` under `legal`,
+once, by the token `feudToken` (`feud.suit:<year>:<8 hex>`; a replay books nothing). A payer with nothing pays nothing, the line says the suit was
+settled, and the settlement still happens. **The settlement:** resentment down 30 on the person's edge and, if the model holds one, the player's edge
+to the person; the feud ends; `Edge.c` is stamped; the fact of the end.
+
+**`A Falling Out`** is a choice, queued by a rise into rung 3 or 4: *Try to make peace*, *Hold firm*, *Pay it off*. It is one of the year's three
+family choices (`useFamilyAct(g, 'social')`) and the year's one scene of the will's ladder as well: it is queued only if `will.scene` is unspent and
+a family choice is left, and it spends both, so a year has one popup across the two ladders. It waits `PACE.askGap` years in the family `pop.kin.feud`
+and is not deferrable at the year close. The answers re-read the state they are answered in (a forged or stale one changes nothing):
+
+| Answer | What happens |
+|---|---|
+| peace | the same roll as the row below; a yes ends the feud, a no costs a point and holds the next try off |
+| firm | resentment up 5, the person's regard cooled by 2; the feud goes on |
+| pay | `payoffFee`: one typical income, a quarter of the cash at most, through the ledger under `legal` (token `feud.pay`); then the settlement. With nothing to offer, a point is lost and the feud goes on |
+
+**Make peace.** `peaceAct` (id `feud.peace`) is a SocialAct on the edge `person > player`, the row `Make Peace with {name}` (`social.peace`, on the page
+of a person in a feud, whatever the person feels, greyed out with the reason) and the answer *peace*. Odds: `clamp(0.22 + 0.3 x f/100 - 0.3 x s/100 +
+memoryOdds(peace) + reconcileOdds, 0.05, 0.85)` from the pair edge, the shape of the will's `peaceOdds` without its temper and will terms
+(`society/` may not import it; a pair the will owns keeps `peaceOdds` through `events/will-amends.ts`, so the act refuses it). A yes ends the feud,
+makes the memory `reconciled` (weight 2), warms the person by 6, stamps `c` and says the fact of the end; a no costs a point as an offence and
+stamps `c`, so the next try waits 3 years. Blocked for a life that is not stamped, a player who is dead or under 16, a person who is dead or a pet,
+a pair the will owns, a pair with no feud and a try in the last 3 years.
+
+**The fact `social.feud`** (X29): subject the player's ref, other party the person's key, `v` the rung (3 or 4, or 0 for an end), severity 65, 90 and 40.
+The module declares it. At most 8 a year (`g.yearActions['feud.facts']`). The facts store keeps one row for a kind, year, subject and other party, so a
+rise and an end of the same person in the same year are one row, the first.
+
+**Text.** Four lines a rung, each naming the person (`FEUD_GOSSIP_LINES`, `FEUD_SABOTAGE_LINES`, `FEUD_LEGAL_LINES`; `FEUD_SETTLED_LINES` for a payer
+with nothing and for *pay it off*; `FEUD_PEACE_LINES`, `FEUD_COOLED_LINES`, `FEUD_GONE_LINES`) and the status row `feud.cold`: a feud has about 3
+tellings. Luck is the stream `social` (`docs/STREAMS.md`); the lines come from the text kit's own stream. Nothing here draws from `g.rng`.
+
+**Ceilings.** Live feuds 12 (100 people at resentment 100 hold at 12); the fee a quarter of the cash, in all for a year, and never above 3 typical incomes
+for one suit; sabotage 3 happiness and 2 performance a year in all; gossip 3 a person told and 9 a pass; facts 8 a year. Tests: `test/social-feud.test.ts` (starting, the rungs, the rise and the
+cooling, the scene, Make peace, the fact, the fee, the 100 times and 60-year probes, purity), `test/social-act-auth.test.ts` (Make peace and
+`stepFeuds` in the states that block them).
+
+## 19. What the next tasks add here
+
+- R4-E13 and E15: staff loyalty (`business/`, not `society/`) and the acceptance tests. A task that queues a choice calls `useFamilyAct` with its own
+  source (`social` at the close) and adds its export line to `society/contract.ts`.
