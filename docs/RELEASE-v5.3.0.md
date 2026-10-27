@@ -41,7 +41,11 @@ every life, stamped or not.
 - **Feuds climb a ladder.** A grudge of 45 or more, with a betrayal, an unpaid loan or a cut from the
   will behind it, can turn cold, then gossip, then sabotage, then a legal suit. At most 12 feuds are
   live at once. The suit's fee is about 1.5 to 2.5 typical incomes and never more than a quarter of
-  your cash. "A Falling Out" asks you whether to make peace, hold firm or pay it off.
+  your cash. "A Falling Out" asks you whether to make peace, hold firm or pay it off. A grudge a will
+  reading leaves between two of your relatives cools within about 9 years, so it never keeps one of
+  the 12 places for good.
+- **The people who hear gossip remember hearing it.** Their profile reads "Ana heard gossip about you",
+  not that they spread it.
 - **Key staff and a hired CEO can lose faith in you.** How they feel about you now decides whether they
   quit or can be poached, instead of a flat morale roll.
 - **Three family choices a year, no more.** Wealth asks, the family business, the will and feuds share
@@ -102,13 +106,14 @@ The initial bundle is measured against the v5.2.0 baseline of 2,969,098 gzip byt
 |---|---:|---:|
 | CP2 (the freeze point) | +16,014 | 2,985,112 |
 | CP3 (after the last track merge) | +49,637 | 3,018,735 |
-| Final head (bda16a4), `vite build` and `node scripts/bundle-budget.mjs` | +53,676 | 3,022,774 |
+| E16 head (bda16a4), `vite build` and `node scripts/bundle-budget.mjs` | +53,676 | 3,022,774 |
+| Final head after the review fixes (f542034), the same two commands | +54,001 | 3,023,099 |
 
-The final head is 6,324 bytes under the +60,000 allowance, which stays as it is. The start of the release
+The final head is 5,999 bytes under the +60,000 allowance, which stays as it is. The start of the release
 recorded about 4.13 gzip bytes per net source line. The final head measures 4.06 over the 13,218 net lines
 of `src` (13,956 added, 738 deleted), a little under that rate. The owner approved a raise up to +120,000
 if it was needed, and it wasn't, so nothing was raised. The People profile is a lazy chunk
-of 5,193 gzip bytes and isn't in the initial total. R5 and R6 start with 6,324 bytes of room, and R5
+of 5,213 gzip bytes and isn't in the initial total. R5 and R6 start with 5,999 bytes of room, and R5
 carries the bundle work (a first download 35% smaller).
 
 ## The walk
@@ -224,8 +229,11 @@ drifted in the nightly dispatch (drift 0). The three repetition gates (`text-rep
 - **Platform.** CI runs at 8 shards. The world cap and budget were raised, with a fixed drop order.
   `typicalIncome` moved to the layer-2 leaf `world/typical-income.ts`. Every pinned number the release
   moved has a row in `docs/superpowers/plans/2026-10-26-r4-v5.3.0/moved-tests.md`.
-- **Tests.** The 12 test files that assumed an unstamped or flag-off life now name the flag they mean
-  with `withFlags`, and no assertion was weakened. The 120-year probes of the registry, the social
+- **Tests.** The 13 test files that assumed an unstamped or flag-off life now name the flag they mean
+  with `withFlags`, and no assertion was weakened. One audit is narrower: the 120-year registry probe
+  checks a played life with `worldProblems(g, { live: false })`, as the fuzzer and the life probe already
+  did, because a choice that cuts a friend off leaves a row that is fresh only at the next world step
+  (its own row in `moved-tests.md`). The 120-year probes of the registry, the social
   track and the life track are the acceptance of the release, along with `people-ui-acceptance`.
 
 ## Seeds
@@ -306,7 +314,9 @@ The calls that deserve an eye before merge and tag, each taken as the lead's def
 - The family budget counts choices only (X40).
 - Cousins and spouse's in-laws aren't delivered, so the "People who remember" headline promises a little
   more than three of the roadmap's "player sees" lines (X46).
-- The bundle is 6,324 bytes under the allowance, with a raise to +120,000 pre-approved if needed.
+- The whole-diff review appended a 41st memory kind, `heard_gossip`, to the append-only list frozen at
+  E6a, with its `MEMORY_FX` row and its phrase in the same commit (17af4e7). R5 and R6 code against 41.
+- The bundle is 5,999 bytes under the allowance, with a raise to +120,000 pre-approved if needed.
 - The world node cap went from 40,000 to 80,000 (X47), and CI went to 8 shards (X49).
 
 ## The size of the release
@@ -329,6 +339,8 @@ that plan to 26,383.
 
 ## CI
 
-The last green run is on bda16a4: the push run 40590186417 and the pull request run 40590193092, with
-all 8 shards, the guards, the typecheck, voice and build step, and the gate. `scripts/test-timings.json`
+The E16 head bda16a4 was green on the push run 40590186417 and the pull request run 40590193092. After
+the whole-diff review fixes, f542034 was green on the push run 40602788414, the pull request run
+40602790857 and the dispatched run 40603088615, with all 8 shards, the guards, the typecheck, voice and
+build step, and the gate, and on Preview. `scripts/test-timings.json`
 was refreshed from run 40590186417 (619 files from 8 reports).
