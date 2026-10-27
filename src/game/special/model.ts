@@ -634,7 +634,13 @@ function scoutDeclines(g: GameState): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
-const SCOUT_SPOTS = ['at the mall', 'at a coffee shop', 'on the train', 'at a music festival', 'at the airport', 'while you were crossing the street']
+export const SCOUT_SPOTS = ['at the mall', 'at a coffee shop', 'on the train', 'at a music festival', 'at the airport', 'while you were crossing the street']
+/**
+ * The same six before there are airports to stop you at (the anachronism lint's air travel rule starts in 1925). A stand-in holds the
+ * airport's place, so the pool stays six lines in every year: one text draw as before, and from 1925 the very array it was (the same
+ * memory key too). The pool is picked inline below because the layers test counts a special -> events import, and this isn't worth one.
+ */
+export const SCOUT_SPOTS_BEFORE_AIRPORTS = ['at the mall', 'at a coffee shop', 'on the train', 'at a music festival', 'outside the theater', 'while you were crossing the street']
 
 function maybeScouted(g: GameState): void {
   const c = g.character
@@ -650,7 +656,7 @@ function maybeScouted(g: GameState): void {
     g,
     scoutScript,
     'Scouted!',
-    `A scout from ${a.name} ${'\u{2B50}'.repeat(a.tier + 1)} stopped you ${pickLine(g, SCOUT_SPOTS)} and handed you a business card. They want to sign you on the spot: ${money(a.retainer)} a year to start.${c.job ? ` You'd have to quit your job as ${c.job.title}.` : ''}`,
+    `A scout from ${a.name} ${'\u{2B50}'.repeat(a.tier + 1)} stopped you ${pickLine(g, g.year >= 1925 ? SCOUT_SPOTS : SCOUT_SPOTS_BEFORE_AIRPORTS)} and handed you a business card. They want to sign you on the spot: ${money(a.retainer)} a year to start.${c.job ? ` You'd have to quit your job as ${c.job.title}.` : ''}`,
     [
       { id: 'accept', label: 'Sign with them', emoji: '\u{270D}\u{FE0F}' },
       { id: 'decline', label: 'Not interested', emoji: '\u{274C}' },
