@@ -18,8 +18,9 @@
 //     shares each shard root between drafts, frozen (save-clone.ts), and the codec rewrites only the `e.edge.<n>` shard whose
 //     entries changed; a stray in-place write is a TypeError at the line that wrote it, which is the alarm. Lists the caller passed are
 //     copied, never frozen in place.
-//   - A new edge in a map of 1,200 evicts the lowest-salience edge that is not bound (edgeLocalBound; ties go to the highest key, as in
-//     the normalizer), and the edge being written is the one that is kept. A map whose 1,200 edges are all bound refuses.
+//   - A new edge in a map of 1,200 evicts the lowest-salience edge that is not bound (isBound of world/edge-bound.ts: the edge's own
+//     fields, or a person at one of its ends who is held; ties go to the highest key, as in the normalizer), and the edge being written
+//     is the one that is kept. A map whose 1,200 edges are all bound refuses (R4-E14 widened E6b's edge-local test).
 //   - 12 feuds, 40 debts and the dialogue store on 120 edges are refused over the cap, not cut: a cut would take the field from an
 //     edge the caller did not name. 4,000 memories in all are kept by eviction, as the normalizer does it: the oldest unpinned memory
 //     of the lowest-salience edge goes first, a pinned one only when no unpinned memory is left anywhere.
@@ -38,14 +39,15 @@
 // invariant of edgeProblems), else 50. An edge that is there keeps its f and y.
 //
 // Pure of luck: no draw from the life's random stream, no named stream, no clock, no ledger (an edge holds no dollars that move; a debt record is bookkeeping E10b keeps).
-// Layer 2: it imports the ref grammar, the person key, the caps, the memory table, the edge model, the player's ref, the stamp and the
-// world root.
+// Layer 2: it imports the ref grammar, the person key, the caps, the memory table, the edge model, the bound predicate, the player's
+// ref, the stamp and the world root.
 import { parseRef, type EntityRef } from '../kernel/ids'
 import { personEntity } from '../kernel/person-ref'
 import type { GameState, Person } from '../types'
 import { EDGE_CAPS } from './caps'
+import { boundTest } from './edge-bound'
 import { MEMORY_FX, formatMemory, isMemoryKind, isPinnedKind, parseMemory, type MemoryKind } from './edge-memory'
-import { edgeKey, edgeLocalBound, isSecretKey, normalizeEdges, salience, trustMap, type Edge, type EdgeKey, type EdgeMap } from './edges'
+import { edgeKey, isSecretKey, normalizeEdges, salience, trustMap, type Edge, type EdgeKey, type EdgeMap } from './edges'
 import { playerRef } from './people'
 import { SEEN_MAX, SEEN_MIN, isPlain } from './rows'
 import { socialOn } from './social'
@@ -148,8 +150,13 @@ function tallyOf(map: EdgeMap): Tally {
  */
 const TALLIES = new WeakMap<object, Tally>()
 
-/** The edge to evict for a new one: the lowest salience among the edges that are not bound, the highest key among equals. Null when every edge is bound. */
-function weakestUnbound(map: EdgeMap): string | null {
+/**
+ * The edge to evict for a new one: the lowest salience among the edges that are not bound (isBound: the edge's own fields or a held
+ * person at an end), the highest key among equals. Null when every edge is bound. The held people are read once, and only when an edge
+ * could be the victim by salience and is not bound by its own fields.
+ */
+function weakestUnbound(g: GameState, map: EdgeMap): string | null {
+  const bound = boundTest(g, map)
   let best: string | null = null
   let low = Infinity
   for (const k of Object.keys(map)) {
@@ -158,7 +165,7 @@ function weakestUnbound(map: EdgeMap): string | null {
     // an edge with a link kind is bound, so an unbound edge has a role of 0 and its salience is the sum
     const sal = e.f + e.s + Math.abs(e.o)
     if (sal > low || (sal === low && best !== null && k < best)) continue
-    if (edgeLocalBound(e)) continue
+    if (bound(k)) continue
     best = k
     low = sal
   }
@@ -312,7 +319,7 @@ export function putEdge(g: GameState, key: EdgeKey, patch: Partial<Edge> | null)
   if (old !== undefined) count(tally, old, -1)
   let victim: string | null = null
   if (old === undefined && tally.edges >= EDGE_CAPS.edges) {
-    victim = weakestUnbound(cur)
+    victim = weakestUnbound(g, cur)
     if (victim === null) return false
     count(tally, cur[victim]!, -1)
   }

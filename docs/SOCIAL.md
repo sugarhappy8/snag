@@ -528,7 +528,56 @@ the open loans (3) and the debts (40).
 another and `society->life` stays at the two files the lead approved (`acts.ts` and `seam.ts`); `society/debt.ts` registers its script
 through the kernel's `scripts.ts`. `test/relationship-ratchet.json` has one new entry, `society/debt.ts` with one `addRelationship(` call.
 
-## 15. What the next tasks add here
+## 15. The bound edge (R4-E14, X13, X14, X25, C4, C5, C6)
+
+`world/edge-bound.ts` (layer 2) decides which edges are never let go, and is where the Edges track answers the Met store. It is pure and
+total: no write, no draw, no id; a hostile game, a person with a getter that throws or a record of the wrong shape answers false, 0 or an
+empty list.
+
+**`isBound(g, key)`** is true when the edge is bound by its own fields (`edgeLocalBound` of `world/edges.ts`: a link kind, an unpaid debt, a
+feud rung, a pinned memory) or when a person at one of its ends is held at the person level (the player's own end counts for nothing):
+
+- owes the player: `data.w.owes` above 0, read through `world/edge-legacy.ts` (a dead person too, until `settleTheDead` writes the loan off);
+- is a living spouse or fiance, or a child or stepchild;
+- holds a share of a company in the holdings table (`readHoldings`), owns an old NPC firm (`npcFirmId`), or holds a family job (`data.nepo`
+  with a company id);
+- is cut out of the will or estranged (`legacyWl`).
+
+The person-level reasons need no edge, so a key with no edge behind it answers for the people at its ends. A secret key, a text that is no
+edge key and anything that is not a text is not bound. `boundTest(g, map?)` is the same predicate for a pass over many keys: the held people
+are read once (12 microseconds with 80 people), and only when an edge is not already bound by its own fields. `society/contract.ts`
+re-exports `isBound` (C4), which is how a domain outside `world/` reaches it.
+
+**The guards.** `putEdge` (section 6) evicts the weakest edge that is not bound, by salience with ties to the highest key, and refuses a new
+edge when all 1,200 are bound; E6b and E7 could use only the edge-local part, and this task swapped them. The orphan rule of the yearly step
+(section 10) removes an edge only when it is not bound. The normalizer has no game in hand and keeps `edgeLocalBound`: it cuts only a hostile
+or over-full map. A held person's weak edge now outlives a stronger stranger's.
+
+**`cleanupPeople`** (`relationships.ts`, life 40) on a stamped life:
+
+- the dead who still owe stay. It runs before `settleTheDead` (`events/wealth.ts`, money phase) in the same year, so a friend who died this
+  year and owed was gone from the list before the loan was written off and told. The rule is `data.w.owes` above 0, or an open debt on the
+  edge person>player (`debtsOf` of the society door). A dead ex over the limit of ten is kept the same way. At most 40 of them
+  (`EDGE_CAPS.debts`, in the order of the list). Once the record says nothing is owed the next cleanup lets them go;
+- a live ex whom the edge model holds is skipped when the list is cut to 20, so the next in line goes instead and the list still ends at 20
+  when it can. The list never passes 40 live exes (`HELD_EXES_MAX`, twice the old limit): past it the least regarded of the held go too, so a
+  hundred debtors cannot grow it. 20 and 40 are the planner's numbers, tested as a range.
+
+An unstamped life runs the old statements and nothing else.
+
+**The Met hooks** (S7 defined them, X13). `registerProtector('edges.bound', boundFarEnds)` names the personKey of the person at the far end
+of every bound edge: both person ends of an edge bound by its own fields, the held end of an edge bound through a person. A Met record that
+is named there is never swept, so a sid-born debtor with an edge debt survives the yearly sweeps (the integration case of X14 is E15's, a
+three-sweep version is in `test/edge-bound.test.ts`). `registerSalience('edges.salience', playerEdgeSalience)` returns `f + s + abs(o)` of
+the edge `person:<key>>player` and nothing for the link role: Met adds `w x 10` itself, so a weight is never counted twice. Both are
+registered when the file loads, and a second registration with another function throws. `world/lod.ts` is not edited (C5): its guard covers
+every person of `g.people`, the player and the holders already, and the real guard for a sid-born person who is not in `g.people` is the
+protector.
+
+**Cost.** The protector reads the 1,200 edges of a full map in about 0.7 ms and is called by the Met store when it makes room or sweeps, not
+by the writers. An eviction in `putEdge` is one pass over the map plus one look at the people.
+
+## 16. What the next tasks add here
 
 - R4-E11 to E16: secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
   (`social` at the close) and adds its export line to `society/contract.ts`.

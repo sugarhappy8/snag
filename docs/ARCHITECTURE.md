@@ -917,6 +917,10 @@ and the choice `A Lender Calls`; the four names go out through the door. `typica
 leaf `world/typical-income.ts`, and `society/acts.ts` stays the one file that imports `cash.ts`, so the `society->life` pair stays at two
 imports. The detail is in `docs/SOCIAL.md` section 14.
 
+R4-E14 put one more name through the door: `isBound`, which lives in the layer-2 file `world/edge-bound.ts` (the edge held by its own fields or by
+a person at one of its ends) and is only re-exported by `society/contract.ts`. The file also registers the Met store's protector and salience
+and is what `putEdge`, the orphan rule and `cleanupPeople` ask. The detail is in `docs/SOCIAL.md` section 15.
+
 ### Main Character Syndrome and instant mastery
 
 `talents.ts MainCharacter` occupies one of the three starting-talent slots. `hasTalent(g, id)` must
