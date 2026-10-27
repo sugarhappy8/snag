@@ -21,7 +21,7 @@
 //                      debtsOf), and a holder who is dead, a pet or not in the game does not roll.
 //
 // A leak. The holder tells at most 2 people, each of those at most 1 more, then it stops (society/gossip.ts, hop cap 2). Everyone told gets
-// the memory `gossiped_about_me` and a relationship hit of 3 x severity as an offence, through the shim, bounded so that no person loses more
+// the memory `heard_gossip` (they heard it; the holder who told has the betrayal) and a relationship hit of 3 x severity as an offence, through the shim, bounded so that no person loses more
 // than LEAK.damageYear (30) points to leaks in one pass whatever the number of secrets. The secret's `p` is set to the year FIRST, so a
 // secret leaks at most once, and the hits apply once for each (secret, person): the pass skips a secret whose `p` is set, and the whole
 // `society.acts` entry is stamped by `social.ay`, so a second run in the year changes nothing either. The player hears of it from a line
@@ -279,7 +279,7 @@ function leak(g: GameState, row: SecretRow, holder: Person, lost: Map<string, nu
       lost.set(t.who.id, (lost.get(t.who.id) ?? 0) + cut)
       feel(g, t.who, -cut, 'offence')
     }
-    remember(g, t.who, 'gossiped_about_me', { w: weightOf(s.v), by: 'them' })
+    remember(g, t.who, 'heard_gossip', { w: weightOf(s.v), by: 'them' })
   }
   // the holder pays for telling: a betrayal of the player (the player's edge to them), out of the allowance the people told have
   const room = Math.max(0, LEAK.damageYear - (lost.get(holder.id) ?? 0))

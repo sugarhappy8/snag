@@ -41,7 +41,7 @@ function withMemories(memories: string[], seed = 1): { g: GameState; p: Person }
 }
 
 describe('the table', () => {
-  it('has a row for each of the 40 kinds, three integer entries each, none beyond 5 hundredths and none all zero', () => {
+  it('has a row for each of the 41 kinds, three integer entries each, none beyond 5 hundredths and none all zero', () => {
     expect(Object.keys(MEMORY_ODDS)).toEqual([...MEMORY_KINDS])
     for (const k of MEMORY_KINDS) {
       const row = MEMORY_ODDS[k]
@@ -59,7 +59,7 @@ describe('the table', () => {
   it('prints the table, one line a kind: repay, peace and ask in hundredths at weight 3', () => {
     const rows = MEMORY_KINDS.map((k) => `${k.padEnd(18)} ${ODDS_GROUPS.map((gr) => String(MEMORY_ODDS[k][gr]).padStart(5)).join(' ')}`)
     process.stdout.write(`memory odds (hundredths at weight 3)\n${'kind'.padEnd(18)} ${ODDS_GROUPS.map((gr) => gr.padStart(5)).join(' ')}\n${rows.join('\n')}\n`)
-    expect(rows).toHaveLength(40)
+    expect(rows).toHaveLength(41)
   })
 
   it('points the way a reader would say: a payer repays, an olive branch makes peace, a gift brings asks, a betrayal costs all three', () => {

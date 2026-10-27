@@ -2,7 +2,7 @@
 // 'secret:<n>' in the edges map ({ a, k, v, h, y, p? }, cap 40, 6 holders), written by society/secret.ts through the one writer of the
 // map (world/edge-write.ts putSecret). Once a year, inside the one `society.acts` entry, each holder of a secret rolls to leak it;
 // the first to do so tells at most 2 people (the holder's best-liked contacts) and each of those at most 1 more, then it stops (hop cap
-// 2). Everyone told gets `gossiped_about_me` and a relationship hit of 3 x severity as an offence; the player is told once by the
+// 2). Everyone told gets `heard_gossip` and a relationship hit of 3 x severity as an offence; the player is told once by the
 // notice `Word Got Around`; the fact `social.leak` goes on the bus. A secret leaks at most once: the leak sets `p`.
 //
 //   1. The record: addSecret writes it, the cap is 40 (the 41st is refused), holders are 6 at most, a hostile record reads as none.
@@ -22,6 +22,7 @@ import { loadGame, saveGame } from '../src/game/save'
 import { memorySaveBackend } from '../src/game/save-backends'
 import { resetSaveStoreForTests, setSaveBackend } from '../src/game/save-store'
 import { personEntity, personKey } from '../src/game/kernel/person-ref'
+import { memoryLines } from '../src/game/hubs/people-memory'
 import '../src/game/modules/index'
 import { actRoll } from '../src/game/society/acts'
 import { acquainted } from '../src/game/society/favor'
@@ -115,7 +116,7 @@ function plant(g: GameState, holders: Person[], v = 3, kind: SecretRecord['k'] =
 }
 
 const hitOf = (p: Person, before: number): number => before - p.relationship
-const told = (g: GameState): Person[] => g.people.filter((p) => memoriesOf(edgeOf(g, p) ?? ({} as Edge)).some((m) => m.kind === 'gossiped_about_me'))
+const told = (g: GameState): Person[] => g.people.filter((p) => memoriesOf(edgeOf(g, p) ?? ({} as Edge)).some((m) => m.kind === 'heard_gossip'))
 
 // ---------------------------------------------------------------------------------------------------------------------
 // 1. The record
@@ -619,12 +620,36 @@ describe('leakPass', () => {
     expect(memoriesOf(readEdge(g, playerRef(g), personEntity(h))!).some((m) => m.kind === 'betrayal')).toBe(true)
     // each told person remembers it, and the edge follows the number (the shim's mirror) with the grudge raised
     for (const p of [a, b, c, d]) {
-      expect(memoriesOf(edgeOf(g, p)!).some((m) => m.kind === 'gossiped_about_me')).toBe(true)
+      expect(memoriesOf(edgeOf(g, p)!).some((m) => m.kind === 'heard_gossip')).toBe(true)
       expect(edgeOf(g, p)!.f).toBe(p.relationship)
       expect(edgeOf(g, p)!.s).toBeGreaterThan(12)
     }
     expect(told(g).map((p) => p.id).sort()).toEqual([a, b, c, d].map((p) => p.id).sort())
     expect(readSecret(g, id)!.p).toBe(g.year)
+  })
+
+  it('writes what the people told remember as heard_gossip, so that their profile says they heard it and never that they gossiped (the whole-diff review)', () => {
+    const { g, list } = circle(9)
+    const [h, a, b, c, d] = list as [Person, Person, Person, Person, Person]
+    like(g, h, a, 95)
+    like(g, h, b, 90)
+    like(g, a, c, 90)
+    like(g, b, d, 90)
+    for (const p of list) setEdge(g, p)
+    const id = plant(g, [h], 4)
+    makeLeak(g, id, h)
+    leakPass(g)
+    for (const p of [a, b, c, d]) {
+      const kinds = memoriesOf(edgeOf(g, p)!).map((m) => m.kind)
+      expect(kinds, p.firstName).toContain('heard_gossip')
+      expect(kinds, p.firstName).not.toContain('gossiped_about_me')
+      const lines = memoryLines(g, p, 8).join(' | ')
+      expect(lines, p.firstName).toContain(`${p.firstName} heard gossip about you (${g.year})`)
+      expect(lines, p.firstName).not.toMatch(/gossiped about you/)
+    }
+    // the holder is the one who told: nobody wrote gossip on their own edge, and the betrayal is the record of it
+    expect(memoriesOf(edgeOf(g, h)!).map((m) => m.kind)).not.toContain('heard_gossip')
+    expect(memoryLines(g, h, 8).join(' | ')).not.toMatch(/gossip/)
   })
 
   it('scales the hit with the severity: 3 for a 1, 15 for a 5', () => {
@@ -829,9 +854,9 @@ describe('leakPass', () => {
     // the 3 x 2 + 3 x 5 the people told could lose in all)
     const worst = Math.max(...[...drops.values()].map((d) => Math.max(...d)))
     expect(worst).toBeLessThanOrEqual(LEAK.damageYear)
-    // each told person was told of each secret at most once: at most two gossiped_about_me memories in all, one per secret year
+    // each told person was told of each secret at most once: at most two heard_gossip memories in all, one per secret year
     for (const p of list) {
-      const m = memoriesOf(edgeOf(g, p) ?? ({} as Edge)).filter((x) => x.kind === 'gossiped_about_me')
+      const m = memoriesOf(edgeOf(g, p) ?? ({} as Edge)).filter((x) => x.kind === 'heard_gossip')
       expect(m.length, p.firstName).toBeLessThanOrEqual(2)
     }
   })

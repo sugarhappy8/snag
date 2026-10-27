@@ -1,4 +1,4 @@
-// R4-E8 (X22, X27, X28): the memory writers. Twenty-four of the 40 memory kinds are made by the game from now on, one `remember` line at
+// R4-E8 (X22, X27, X28): the memory writers. Twenty-four of the first 40 memory kinds are made by the game from now on, one `remember` line at
 // each of the sites below (the events of money, the will, love, the family business and the rumor), and every line is a no-op on a life
 // that is not stamped (X6). SITES is the list the plan asks for: the site, the kind, the weight and the side it writes, in this order.
 //

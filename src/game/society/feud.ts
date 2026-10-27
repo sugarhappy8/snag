@@ -13,7 +13,7 @@
 //             the notice `Feud Cooled` (weight 1, it folds into the log)
 //   the rung  1 cold   the person's regard falls 2 more points a year, as a drift (it adds no resentment); the status row `feud.cold` speaks sparingly
 //             2 gossip  one leak: the two best-liked contacts of the person and one more through each hear the worst (society/gossip.ts, hop cap 2),
-//                       3 points each as an offence and the memory `gossiped_about_me`, no person losing more than 9 in a pass whatever the feuds
+//                       3 points each as an offence and the memory `heard_gossip`, no person losing more than 9 in a pass whatever the feuds
 //             3 sabotage  at most 3 happiness and 2 job performance a year in all, however many feuds are on this rung, no money
 //             4 legal   the suit is decided: a one-off fee through the ledger, then the settlement, below
 //   the rise  25% a year while resentment is at least 40 + 10 x the rung (50, 60, 70); the legal rung is the last. A rise into 3 or 4 says the fact and
@@ -330,7 +330,7 @@ function gossip(g: GameState, p: Person, pass: Pass): void {
       pass.lost.set(t.who.id, (pass.lost.get(t.who.id) ?? 0) + hit)
       feel(g, t.who, -hit, 'offence')
     }
-    remember(g, t.who, 'gossiped_about_me', { w: 1, by: 'them' })
+    remember(g, t.who, 'heard_gossip', { w: 1, by: 'them' })
   }
   log(g, fillSlots(pickLine(g, FEUD_GOSSIP_LINES), { who: my(p), whom: my(told[0]!.who) }), 'bad')
 }

@@ -7,7 +7,7 @@
 //   group 'peace'   added to peaceOdds (events/will-core.ts): how likely an honest talk about the will gets through
 //   group 'ask'     the weight of an ask (events/wealth.ts, requestCandidates) is multiplied by 1 + this: how likely they are to come to you
 //
-// MEMORY_ODDS is the table: for each of the 40 kinds and each group, the change in hundredths of a point of probability that one memory
+// MEMORY_ODDS is the table: for each of the 41 kinds and each group, the change in hundredths of a point of probability that one memory
 // of that kind at the full weight of 3 makes (a memory of weight 1 or 2 makes a third or two thirds of it). The size of a row is bounded
 // twice: no entry is more than 5 hundredths, and whatever the memories of one kind add up to, the kind never moves a group by more than
 // 0.05; and the whole term never goes beyond plus or minus 0.15, however many memories are offered. A test prints the table and holds the
@@ -46,7 +46,7 @@ export const TOTAL_ODDS_MAX = 0.15
  * The will:  a cut and an estrangement are the biggest drops for peace; an olive branch, a reconciliation and a restoration are the
  *            biggest rises. Telling someone gently helps, telling them bluntly hurts.
  * Love:      a yes helps everything a little, a no, a break-up and a divorce cost, the divorce the most; a betrayal costs everything.
- * Secrets:   keeping one helps, a leak, a report and an outing cost peace the most.
+ * Secrets:   keeping one helps, a leak, a report and an outing cost peace the most; hearing gossip about the player costs what telling it did.
  * Career:    hiring, promoting, signing, referring and mentoring build the three groups; firing, demoting, passing over, poaching and
  *            beating cost them.
  */
@@ -91,6 +91,7 @@ const ROWS = {
   referred_me: [2, 2, 1],
   mentored_me: [3, 3, 1],
   beat_me: [-1, -2, 0],
+  heard_gossip: [-2, -4, -1],
 } as const satisfies Record<MemoryKind, readonly [number, number, number]>
 
 function frozenTable(): Readonly<Record<MemoryKind, Readonly<Record<OddsGroup, number>>>> {
@@ -115,7 +116,7 @@ export interface OddsMemory {
 const weightUnits = (w: number): number => (w === 1 || w === 2 || w === 3 ? w : 0)
 
 /**
- * The term of a list of memories, for one group. Pure and total: a kind that is not one of the 40 and a weight that is not 1, 2 or 3 are
+ * The term of a list of memories, for one group. Pure and total: a kind that is not one of the 41 and a weight that is not 1, 2 or 3 are
  * skipped, one kind adds up to at most 0.05 however many of its memories are offered, and the whole is cut to plus or minus 0.15. The list
  * is not limited (an edge keeps 8): the bounds are the proof that 100 memories offered change no more than 8 do.
  */

@@ -7,7 +7,7 @@
 // shown. A phrase is a fact label and not a pick: the same memory reads the same every time, so there is no pickLine and no repetition
 // risk. A life that the social flag never stamped has no lines (X6): every v5.2.0 save and every unstamped life draws the card it drew.
 //
-// MEMORY_PHRASE is a FROZEN TABLE (cross-check section 3.3, X57). It holds two sentences for each of the 40 kinds of MEMORY_KINDS, one for
+// MEMORY_PHRASE is a FROZEN TABLE (cross-check section 3.3, X57). It holds two sentences for each of the 41 kinds of MEMORY_KINDS, one for
 // each side of `by` on a memory: `ego` when the player did it ("You lent Ana money") and `them` when the person did ("Ana lent you money").
 // The same fact has to read right from both ends. Each sentence has one {name} slot (the person's first name) and is at most 60 characters,
 // so a line with the longest name (24 characters) and the longest year (100000) stays under the log cap of 90. The lead reads the values at
@@ -40,7 +40,7 @@ export interface MemoryPhrase {
  * Money and favors:  lent, paid back, not paid back, forgave, gave, turned down, cut the allowance, bailed out, kept asking.
  * The will:          cut out of the will, put back, told gently or bluntly, an olive branch, a side taken, cut off, made up.
  * Love:              betrayed, a proposal with its answer, broke up, divorced.
- * Loyalty:           stood by, saved, covered for, kept or leaked a secret, gossiped, outed, reported.
+ * Loyalty:           stood by, saved, covered for, kept or leaked a secret, gossiped, outed, reported, heard gossip.
  * Career:            hired, fired, promoted, demoted, passed over, poached, signed, referred, mentored, came out ahead.
  */
 const ROWS: Record<MemoryKind, MemoryPhrase> = {
@@ -84,6 +84,7 @@ const ROWS: Record<MemoryKind, MemoryPhrase> = {
   referred_me: { ego: 'You referred {name} for a job', them: '{name} referred you for a job' },
   mentored_me: { ego: 'You mentored {name}', them: '{name} mentored you' },
   beat_me: { ego: 'You came out ahead of {name}', them: '{name} came out ahead of you' },
+  heard_gossip: { ego: 'You heard gossip about {name}', them: '{name} heard gossip about you' },
 }
 
 function frozenTable(rows: Record<MemoryKind, MemoryPhrase>): Readonly<Record<MemoryKind, Readonly<MemoryPhrase>>> {
@@ -91,7 +92,7 @@ function frozenTable(rows: Record<MemoryKind, MemoryPhrase>): Readonly<Record<Me
   return Object.freeze(rows)
 }
 
-/** The frozen phrase table: two sentences for each of the 40 kinds, with one {name} slot each (see the header for how to read it). */
+/** The frozen phrase table: two sentences for each of the 41 kinds, with one {name} slot each (see the header for how to read it). */
 export const MEMORY_PHRASE: Readonly<Record<MemoryKind, Readonly<MemoryPhrase>>> = frozenTable(ROWS)
 
 /** A first name is cut to this many characters, so the longest line (a 60-character phrase, the longest year) stays under 90. */

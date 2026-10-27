@@ -1,7 +1,7 @@
 # Social: edges, memories and acts
 
 How people feel about each other, and what they remember, as the engine keeps it (R4, v5.3.0). This note starts with the
-**edge model** (R4-E6a): the record, the 40 memory kinds, the caps and the rules of the normalizer. R4-E6b adds the writer, the
+**edge model** (R4-E6a): the record, the 41 memory kinds, the caps and the rules of the normalizer. R4-E6b adds the writer, the
 stamp and the slice; R4-E7 the mirror and the yearly step (sections 9 and 10); R4-E8 the memory writers, the odds terms and the heir copy (section 11); R4-E9 the family-act budget (section 12); R4-E10a the act engine and the favors (section 13); the later tasks of the Edges and acts track add the rest. Until a
 section below says otherwise, `docs/superpowers/plans/2026-10-26-r4-v5.3.0/00-crosscheck.md` section 3.1 is the authority for every
 name and signature. Plain hyphens only: no long dashes anywhere in this file.
@@ -105,17 +105,20 @@ replaced, never edited in place). They never create `g.world`, never draw a numb
 - `memoriesOf(e)`: the memories as `{ kind, year, w, by }`, oldest first, newest last.
 - `liveFeuds(g)`, `openDebts(g)`: the number of edges with a valid `q`, a valid `dv`; never above 12 and 40.
 
-## 5. The 40 memory kinds
+## 5. The 41 memory kinds
 
 `MEMORY_KINDS` in `world/edge-memory.ts`, in this order. **Append-only**: a stored memory carries its kind id, so an id is never
-renamed, reordered or removed. R6 appends after the 40th, and U10 holds one phrase for every id, so a kind that is appended needs
-its phrase in the same commit.
+renamed, reordered or removed. E6a made 40 of them and the whole-diff review of R4 appended the 41st, `heard_gossip`, so that the people a
+leak or a feud tells have a memory that reads "heard gossip about you" and not "gossiped about you" (a `them` memory names the person on the
+edge as the one who did it). R6 appends after the 41st, and U10 holds one phrase for every id, so a kind that is appended needs its phrase
+in the same commit.
 
 1. Money and favors: `loan_given loan_repaid loan_unpaid loan_forgiven gift_given gift_refused allowance_cut bailed_out asked_too_often`
 2. The will and the family: `cut_from_will restored_to_will told_gently told_bluntly olive_branch took_my_side estranged reconciled`
 3. Love: `betrayal proposed_yes proposed_no broke_up divorced`
 4. Loyalty and secrets: `stood_by_me saved_me covered_for_me kept_secret leaked_secret gossiped_about_me outed_me reported_me`
 5. Career: `hired_me fired_me promoted_me demoted_me passed_over poached_me signed_me referred_me mentored_me beat_me`
+6. Appended after E6a: `heard_gossip`
 
 A memory is the text `kind.year.weight.by`, for example `betrayal.2031.3.e`: the weight is 1 to 3 (it decays to 0 and the memory
 goes), `by` is `e` when the ego did it and `t` when they did. `parseMemory` and `formatMemory` read and write it; the reader accepts
@@ -281,7 +284,7 @@ once a year and not once for every edge that faded (CP4, section 20).
 Three things use the edges that sections 6 to 10 keep. Each is a no-op on a life that is not stamped (X6): the writers return at
 once, the odds terms are 0, and the heir copy is not called by an unstamped hand-over.
 
-**The writers.** Twenty-four of the 40 kinds are made by the game, one `remember` line at each site. `by` is the side of the edge:
+**The writers.** Twenty-four of the first 40 kinds are made by the game, one `remember` line at each site (`heard_gossip` is written by the leak and the feud, sections 16 and 18). `by` is the side of the edge:
 `ego` is the second end (the player on every `person > player` edge), `them` the first end. Weights are 1 to 3.
 
 | Site | Kind | Weight | By |
@@ -626,7 +629,7 @@ under their odds who has someone to tell leaks it. A `debt` secret is moot while
 circle as the favors: family, friends, or one school or firm), best liked first: the `f` of the edge `person > contact` when the map holds
 it, else a base of 55 for family, 50 for friends and 45 for a school or firm, ties by person key. (The model has no other acquaintance graph, so
 without an edge the order is the key order.) `spread` itself takes the lists as an argument, so the cap holds for any graph, a hostile one
-included. Everyone told gets the memory `gossiped_about_me` (weight 1, 2 or 3 by severity) and a relationship hit of `3 x severity` as an
+included. Everyone told gets the memory `heard_gossip` (weight 1, 2 or 3 by severity; the effect of the old `gossiped_about_me` row, under a name that says they heard it) and a relationship hit of `3 x severity` as an
 `offence` through the shim, bounded so that no person loses more than `LEAK.damageYear` (30) points to leaks in one pass whatever the number of
 secrets (40 of severity 5 with 6 holders each cost a person 30, not 600). The holder who told pays too (`betray`, section 17), out of the same
 allowance of 30. The secret's `p` is set to the year **first**: the secret leaks at most
@@ -716,7 +719,7 @@ stepped this year (the tick, below):
 | a pet, or the will has come to own the pair | the feud ends, quietly |
 | resentment under 25 for the second year in a row | `Feud Cooled` (notice, weight 1: it folds into the log), the feud ends, the fact |
 | rung 1, cold | the person's regard falls 2 a year, as a drift (`decay`: it adds no resentment); the status row `feud.cold` speaks the year the feud starts and after 3 quiet years |
-| rung 2, gossip | one leak: the two best-liked contacts of the person and one more through each (`society/gossip.ts`, hop cap 2) lose 3 points as an offence and get the memory `gossiped_about_me`; no person loses more than 9 to the gossip of a pass whatever the number of feuds; a line of `FEUD_GOSSIP_LINES` |
+| rung 2, gossip | one leak: the two best-liked contacts of the person and one more through each (`society/gossip.ts`, hop cap 2) lose 3 points as an offence and get the memory `heard_gossip`; no person loses more than 9 to the gossip of a pass whatever the number of feuds; a line of `FEUD_GOSSIP_LINES` |
 | rung 3, sabotage | happiness down 3 and job performance down 2 (never below 0), no money, **once a year in all** however many feuds are on this rung (the first takes it, the others say their line); a line of `FEUD_SABOTAGE_LINES` |
 | rung 4, legal | the suit is decided: the fee, a line, the settlement (below) |
 

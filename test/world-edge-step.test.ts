@@ -12,7 +12,7 @@
 //   1. The module: id, layer, slice, the phase and the order, the registry's order (before milestones), the group rows of X42.
 //   2. A no-op unstamped; idempotent by social.y; a stamp from the future is stepped once and put right.
 //   3. Resentment: the fade, 20 years of no contact leaves a friend under 10.
-//   4. Memories: all 40 kinds across 14 years, the multi-year gap, the pinned five.
+//   4. Memories: all 41 kinds across 14 years, the multi-year gap, the pinned five.
 //   5. Legacy sync inside the step. 6. The orphan rule, one condition at a time.
 //   7. Bounds at 100 times: 1,200 edges for 100 years; 5,000 people touched; the cost of a tap at 1,200 edges.
 //   8. A clone, a reload and a Time Machine jump give the same edges. 9. Through the real ageUp: stamped lives, an unstamped one.
@@ -248,10 +248,10 @@ describe('resentment fades', () => {
 describe('memories lose weight', () => {
   const YEARS = 14
 
-  it('every 4 years (2 for a petty kind) for each of the 40 kinds, never for the pinned five, 0 removes it', () => {
+  it('every 4 years (2 for a petty kind) for each of the 41 kinds, never for the pinned five, 0 removes it', () => {
     const g = socialGame(3)
     const owners = MEMORY_KINDS.map((kind) => ({ kind, p: withEdge(g, 60, { m: [mem(kind, 2026)] }) }))
-    expect(MEMORY_KINDS).toHaveLength(40)
+    expect(MEMORY_KINDS).toHaveLength(41)
     for (let n = 1; n <= YEARS; n++) {
       nextYear(g)
       for (const { kind, p } of owners) {

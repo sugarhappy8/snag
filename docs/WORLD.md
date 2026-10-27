@@ -336,7 +336,7 @@ are described in `docs/PEOPLE.md`; this section is the shard.
 
 Since R4 (v5.3.0) a life that has the stamp keeps `g.world.edges`, who feels what about whom and what they remember, and
 `g.world.social`, the stamp itself. The model, the caps and the writer are described in `docs/SOCIAL.md`; this section is the two
-shards as the world sees them. The code is `world/edges.ts` (the model and the reader), `world/edge-memory.ts` (the 40 memory kinds),
+shards as the world sees them. The code is `world/edges.ts` (the model and the reader), `world/edge-memory.ts` (the 41 memory kinds),
 `world/edge-write.ts` (the writer), `world/social.ts` (the stamp) and `world/edges-slice.ts` (the save row); the ceilings are
 `EDGE_CAPS` in `world/caps.ts`.
 

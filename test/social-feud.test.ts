@@ -30,6 +30,7 @@ import { memorySaveBackend } from '../src/game/save-backends'
 import { resetSaveStoreForTests, setSaveBackend } from '../src/game/save-store'
 import { NOTICE_WEIGHTS } from '../src/game/notice-weights'
 import { runScript } from '../src/game/scripts'
+import { memoryLines } from '../src/game/hubs/people-memory'
 import { actRoll, runAct } from '../src/game/society/acts'
 import { ACT_KEY } from '../src/game/society/budget'
 import { reconcileOdds } from '../src/game/society/reconcile'
@@ -351,11 +352,28 @@ describe('the rungs', () => {
     expect(told.length).toBeLessThanOrEqual(4)
     for (const o of told) {
       expect(before.get(o.id)! - o.relationship).toBe(FEUD.gossipHit)
-      expect(memoriesOf(edgeOf(g, o)!).map((m) => m.kind)).toContain('gossiped_about_me')
+      expect(memoriesOf(edgeOf(g, o)!).map((m) => m.kind)).toContain('heard_gossip')
     }
     for (const o of others.filter((x) => !told.includes(x))) expect(o.relationship).toBe(before.get(o.id))
     expect(p.relationship).toBe(30)
     expect(logText(g).filter((l) => l.includes(p.firstName)).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('gossip: the people told remember that they heard it (heard_gossip), and the profile of one of them never says that they gossiped (the whole-diff review)', () => {
+    const g = world()
+    const others = circle(5, g)
+    const p = feuding(g, 2, { s: 55 })
+    rollAtLeast(g, UP, toPlayer(g, p), 0.25)
+    const before = new Map(others.map((o) => [o.id, o.relationship]))
+    stepFeuds(g)
+    const told = others.filter((o) => o.relationship < before.get(o.id)!)
+    expect(told.length).toBeGreaterThanOrEqual(2)
+    for (const o of told) {
+      const kinds = memoriesOf(edgeOf(g, o)!).map((m) => m.kind)
+      expect(kinds).toContain('heard_gossip')
+      expect(kinds).not.toContain('gossiped_about_me')
+      expect(memoryLines(g, o, 8).join(' | ')).toContain(`${o.firstName} heard gossip about you (${g.year})`)
+    }
   })
 
   it('gossip: nobody to tell, nothing happens; and no person loses more than 9 points to the gossip of a year, whatever the number of feuds', () => {

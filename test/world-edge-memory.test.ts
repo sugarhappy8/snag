@@ -1,9 +1,10 @@
 // ci: fast
-// R4-E6a (D.3): the 40 memory kinds and their effect table (src/game/world/edge-memory.ts). A memory is one string on an edge,
-// 'kind.year.weight.by', and its kind id is stored in every save that holds one, so the list of ids is append-only (R6 appends after
-// the 40th) and MEMORY_FX is a frozen table that the lead reads before the merge (cross-check section 3.3, X57).
+// R4-E6a (D.3): the 41 memory kinds (E6a's 40, and `heard_gossip` appended by the whole-diff review) and their effect table
+// (src/game/world/edge-memory.ts). A memory is one string on an edge, 'kind.year.weight.by', and its kind id is stored in every save that
+// holds one, so the list of ids is append-only (R6 appends after the 41st) and MEMORY_FX is a frozen table that the lead reads before the
+// merge (cross-check section 3.3, X57).
 //
-// What this file pins: the 40 ids and their order, the shape of every effect row (integers within 25, no row moving all four fields
+// What this file pins: the 41 ids and their order, the shape of every effect row (integers within 25, no row moving all four fields
 // by the full 25, a decay of 0 for the pinned five and 1 or more for the rest), the signs the lead checks by name (a betrayal costs
 // trust and respect and raises resentment, saved_me does the opposite), and the memory string codec (canonical text in, the same text
 // out, anything else null). The VALUES of the table are not pinned here: the lead's read is their only review, and after R4 a changed
@@ -34,16 +35,16 @@ const IDS = [
   'asked_too_often', 'cut_from_will', 'restored_to_will', 'told_gently', 'told_bluntly', 'olive_branch', 'took_my_side', 'estranged',
   'reconciled', 'betrayal', 'proposed_yes', 'proposed_no', 'broke_up', 'divorced', 'stood_by_me', 'saved_me',
   'covered_for_me', 'kept_secret', 'leaked_secret', 'gossiped_about_me', 'outed_me', 'reported_me', 'hired_me', 'fired_me',
-  'promoted_me', 'demoted_me', 'passed_over', 'poached_me', 'signed_me', 'referred_me', 'mentored_me', 'beat_me',
+  'promoted_me', 'demoted_me', 'passed_over', 'poached_me', 'signed_me', 'referred_me', 'mentored_me', 'beat_me', 'heard_gossip',
 ] as const
 
 const PINNED = ['betrayal', 'saved_me', 'cut_from_will', 'estranged', 'divorced'] as const
 
-describe('MEMORY_KINDS: the 40 ids', () => {
-  it('are exactly the list of the plan, in its order (append-only: R6 adds after the 40th)', () => {
+describe('MEMORY_KINDS: the 41 ids', () => {
+  it('are exactly the list of the plan and then heard_gossip, in that order (append-only: R6 adds after the 41st)', () => {
     expect([...MEMORY_KINDS]).toEqual([...IDS])
-    expect(MEMORY_KINDS).toHaveLength(40)
-    expect(new Set(MEMORY_KINDS).size).toBe(40)
+    expect(MEMORY_KINDS).toHaveLength(41)
+    expect(new Set(MEMORY_KINDS).size).toBe(41)
   })
 
   it('is frozen, and every id is lower case words joined by underscores that never hold a dot (the string codec splits on dots)', () => {
@@ -55,7 +56,7 @@ describe('MEMORY_KINDS: the 40 ids', () => {
     for (const k of ['signed_me', 'fired_me', 'poached_me', 'beat_me', 'hired_me', 'referred_me', 'mentored_me']) expect(MEMORY_KINDS).toContain(k)
   })
 
-  it('isMemoryKind is a total guard: the 40 ids pass, nothing else does', () => {
+  it('isMemoryKind is a total guard: the 41 ids pass, nothing else does', () => {
     for (const k of MEMORY_KINDS) expect(isMemoryKind(k), k).toBe(true)
     for (const bad of ['', 'Betrayal', 'betrayal ', 'unknown', '__proto__', 'constructor', 'toString', 'hasOwnProperty', 5, null, undefined, {}, [], ['betrayal']]) {
       expect(isMemoryKind(bad)).toBe(false)
@@ -68,7 +69,7 @@ describe('MEMORY_KINDS: the 40 ids', () => {
 })
 
 describe('MEMORY_FX: the frozen effect table', () => {
-  it('has one row for each of the 40 kinds and no other key', () => {
+  it('has one row for each of the 41 kinds and no other key', () => {
     expect(Object.keys(MEMORY_FX).sort()).toEqual([...MEMORY_KINDS].sort())
   })
 
@@ -191,7 +192,7 @@ describe('the memory string: kind.year.weight.by', () => {
         }
       }
     }
-    expect(n).toBe(40 * 3 * 2 * 3)
+    expect(n).toBe(41 * 3 * 2 * 3)
   })
 
   it('stays well inside 40 characters, the longest kind at the last year included', () => {
@@ -226,8 +227,8 @@ describe('docs/SOCIAL.md and docs/PEOPLE.md', () => {
   const social = read('docs/SOCIAL.md')
   const people = read('docs/PEOPLE.md')
 
-  it('SOCIAL.md names each of the 40 ids once in the list of kinds, in the order of the table', () => {
-    const at = social.indexOf('## 5. The 40 memory kinds')
+  it('SOCIAL.md names each of the 41 ids once in the list of kinds, in the order of the table', () => {
+    const at = social.indexOf('## 5. The 41 memory kinds')
     expect(at).toBeGreaterThan(0)
     const section = social.slice(at, social.indexOf('## 6.', at))
     let from = 0

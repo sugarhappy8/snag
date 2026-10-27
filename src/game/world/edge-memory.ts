@@ -1,9 +1,11 @@
-// The memories an edge keeps (R4-E6a, D.3): the 40 kinds, what each one does to the edge the day it is made, and the string a memory
+// The memories an edge keeps (R4-E6a, D.3): the 41 kinds, what each one does to the edge the day it is made, and the string a memory
 // is stored as. Pure data and two pure functions; nothing here stores, draws or reads the game.
 //
-//   MEMORY_KINDS     the 40 ids, in a fixed order, append-only: a stored memory carries its kind id, so an id is never renamed,
-//                    reordered or removed. R6 appends after the 40th, and the phrase table of the people UI (U10) holds one phrase
-//                    for every id, so a kind that is appended needs its phrase in the same commit.
+//   MEMORY_KINDS     the 41 ids, in a fixed order, append-only: a stored memory carries its kind id, so an id is never renamed,
+//                    reordered or removed. E6a made 40; `heard_gossip` is the 41st (the whole-diff review: the people a leak or a
+//                    feud told had been given `gossiped_about_me`, which reads "they gossiped about you" from their side). R6
+//                    appends after the 41st, and the phrase table of the people UI (U10) holds one phrase for every id, so a
+//                    kind that is appended needs its phrase in the same commit.
 //   MEMORY_FX        per kind { t, r, s, o, decay }: the one-time change `remember` (world/edge-write.ts, E6b) applies to the edge's
 //                    trust, respect, resentment and obligation, and the years one point of weight lasts. A FROZEN TABLE (cross-check
 //                    section 3.3, X57): a test proves its shape and only a reader can say whether its values are right. After R4 a
@@ -28,17 +30,17 @@ const KINDS = [
   'asked_too_often', 'cut_from_will', 'restored_to_will', 'told_gently', 'told_bluntly', 'olive_branch', 'took_my_side', 'estranged',
   'reconciled', 'betrayal', 'proposed_yes', 'proposed_no', 'broke_up', 'divorced', 'stood_by_me', 'saved_me',
   'covered_for_me', 'kept_secret', 'leaked_secret', 'gossiped_about_me', 'outed_me', 'reported_me', 'hired_me', 'fired_me',
-  'promoted_me', 'demoted_me', 'passed_over', 'poached_me', 'signed_me', 'referred_me', 'mentored_me', 'beat_me',
+  'promoted_me', 'demoted_me', 'passed_over', 'poached_me', 'signed_me', 'referred_me', 'mentored_me', 'beat_me', 'heard_gossip',
 ] as const
 
 export type MemoryKind = (typeof KINDS)[number]
 
-/** The 40 kinds, in this order, append-only. */
+/** The 41 kinds, in this order, append-only. */
 export const MEMORY_KINDS: readonly MemoryKind[] = Object.freeze([...KINDS])
 
 const KIND_SET: ReadonlySet<string> = new Set<string>(KINDS)
 
-/** True for one of the 40 ids. Total: any value in, a boolean out. */
+/** True for one of the 41 ids. Total: any value in, a boolean out. */
 export function isMemoryKind(x: unknown): x is MemoryKind {
   return typeof x === 'string' && KIND_SET.has(x)
 }
@@ -111,6 +113,8 @@ const FX = {
   referred_me: { t: 8, r: 6, s: -4, o: 12, decay: 4 },
   mentored_me: { t: 12, r: 14, s: -6, o: 14, decay: 4 },
   beat_me: { t: -2, r: 6, s: 8, o: 0, decay: 4 },
+  // the first end heard the gossip about the second: what `gossiped_about_me` did to the people a leak or a feud told, under a name that says who did it
+  heard_gossip: { t: -10, r: -8, s: 12, o: 0, decay: 4 },
 } as const satisfies Record<MemoryKind, MemoryFx>
 
 function frozenTable(rows: Record<MemoryKind, MemoryFx>): Readonly<Record<MemoryKind, Readonly<MemoryFx>>> {
@@ -118,7 +122,7 @@ function frozenTable(rows: Record<MemoryKind, MemoryFx>): Readonly<Record<Memory
   return Object.freeze(rows)
 }
 
-/** The frozen effect table: one row for each of the 40 kinds (see the header for how to read it). */
+/** The frozen effect table: one row for each of the 41 kinds (see the header for how to read it). */
 export const MEMORY_FX: Readonly<Record<MemoryKind, Readonly<MemoryFx>>> = frozenTable({ ...FX })
 
 /** The five kinds that never decay (decay 0 in MEMORY_FX) and that bind an edge while they are on it. */

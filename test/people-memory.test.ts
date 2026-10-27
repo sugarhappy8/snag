@@ -3,7 +3,7 @@
 // what the person remembers: up to three short sentences, the strongest memory first, each with its year. memoryLines (src/game/hubs/
 // people-memory.ts) builds them from the memories of the edge `person > player` and PersonProfile.tsx draws them above the notes.
 //
-//   table       MEMORY_PHRASE holds two sentences for each of the 40 kinds of MEMORY_KINDS, one for each side of `by` (you did it, they did
+//   table       MEMORY_PHRASE holds two sentences for each of the 41 kinds of MEMORY_KINDS, one for each side of `by` (you did it, they did
 //               it), each with one {name} slot. It is a frozen table (cross-check section 3.3, X57): the lead reads the values at the merge,
 //               and a change after R4 needs a RECORD_REASON. The shape tests below prove the count, the length, the dash and the voice;
 //               they fail the day R6 appends a kind without a phrase, by design (X45)
@@ -80,14 +80,14 @@ function plain(markup: string): string {
 // The frozen table
 
 describe('MEMORY_PHRASE, the frozen table (X57)', () => {
-  it('has a phrase for each of the 40 kinds, in the order of MEMORY_KINDS, and nothing else', () => {
-    expect(MEMORY_KINDS).toHaveLength(40)
+  it('has a phrase for each of the 41 kinds, in the order of MEMORY_KINDS, and nothing else', () => {
+    expect(MEMORY_KINDS).toHaveLength(41)
     expect(phraseProblems(MEMORY_KINDS, MEMORY_PHRASE)).toEqual([])
   })
 
   it('fails the day R6 appends a kind without a phrase, by design (X45)', () => {
     expect(phraseProblems([...MEMORY_KINDS, 'new_kind'], MEMORY_PHRASE)).toEqual(['new_kind has no phrase'])
-    expect(phraseProblems(MEMORY_KINDS.slice(0, 39), MEMORY_PHRASE)).toEqual([`${MEMORY_KINDS[39]!} is not a kind`])
+    expect(phraseProblems(MEMORY_KINDS.slice(0, 40), MEMORY_PHRASE)).toEqual([`${MEMORY_KINDS[40]!} is not a kind`])
     expect(phraseProblems([...MEMORY_KINDS].reverse(), MEMORY_PHRASE)).toEqual(['the rows are not in the order of the kinds'])
   })
 
@@ -129,7 +129,7 @@ describe('MEMORY_PHRASE, the frozen table (X57)', () => {
         seen.set(text, `${k} (${by})`)
       }
     }
-    expect(seen.size).toBe(80)
+    expect(seen.size).toBe(82)
   })
 
   it('keeps the voice of docs/VOICE.md: no banned phrase, no flag of the voice tool, contractions, no dash, nothing a life log may not say', () => {
@@ -156,7 +156,7 @@ describe('MEMORY_PHRASE, the frozen table (X57)', () => {
   it('prints the table for the lead to read: one line a kind, the sentence for each side', () => {
     const rows = MEMORY_KINDS.map((k) => `${k.padEnd(18)} ego:  ${MEMORY_PHRASE[k].ego}\n${' '.repeat(18)} them: ${MEMORY_PHRASE[k].them}`)
     process.stdout.write(`MEMORY_PHRASE (the {name} slot is the first name)\n${rows.join('\n')}\n`)
-    expect(rows).toHaveLength(40)
+    expect(rows).toHaveLength(41)
   })
 })
 
