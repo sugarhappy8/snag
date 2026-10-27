@@ -124,9 +124,11 @@ const kinRecords = (g: GameState): string[] => Object.keys(readMet(g)).filter((k
 const kinPersons = (g: GameState): Person[] => g.people.filter((p) => p.alive && parseSid(personKey(p))?.kind === 'kin')
 
 /**
- * A kin record keeps its spouse or heir flag in the tail of the year in which its last anchor leaves the list: a kin Person who is a `friend`
- * and dies is dropped by cleanupPeople (relationships.ts, after the kin step of the same year) with the links it held, and the sweep of
- * `life.kin` clears the flag at the next year step. So the fault may be named once, and never in two years running (docs/KIN.md, known limits).
+ * A kin record used to keep its spouse or heir flag in the tail of the year in which its last anchor left the list: a kin Person who is a
+ * `friend` and dies is dropped by cleanupPeople (relationships.ts, after the kin step of the same year) with the links it held, and the sweep of
+ * `life.kin` cleared the flag at the next year step. Since the R4 fix (E16 rehearsal 2, item 4, cause B) the flag is cleared where the anchor
+ * leaves (releaseKinFlags), so this audit should see none; it still tolerates one year step and fails the second running, as a margin
+ * (docs/KIN.md, known limits). The fuzzer tolerates nothing.
  */
 const ORPHAN = /carries the spouse or heir flag and no living or recently dead person links it/
 const SID_IN = /kin\.[A-Za-z0-9_-]+\.\d+\.\d+/
@@ -372,7 +374,7 @@ function audit(g: GameState, s: Script, atHandOver = false): void {
   for (const p of worldProblems(g, { live: false }).filter((x) => !ORPHAN.test(x)).slice(0, 3)) bad(`world: ${p}`)
   const orphans = kinProblems(g).filter((x) => ORPHAN.test(x))
   for (const p of kinProblems(g).filter((x) => !ORPHAN.test(x)).slice(0, 3)) bad(`kin: ${p}`)
-  // between continueAsChild and the next year step the anchors the hand-over dropped are orphans too (docs/KIN.md, section 13): not a year step
+  // the hand-over clears the flags of the anchors it dropped (releaseKinFlags, docs/KIN.md section 13), so this guard is a margin; it is not a year step
   if (!atHandOver) {
     const sids = orphans.map((x) => SID_IN.exec(x)?.[0] ?? x)
     for (const sid of sids) if (s.orphans.includes(sid)) bad(`kin: ${sid} carried a stake flag with no anchor for two year steps running`)

@@ -56,6 +56,7 @@ import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
 import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
 import { carryEdges, carryReceivables, contactHeld, estateSentences, heirShareOf, heirSpouseOverrides, keptContacts, keptStart, payPersonalDebts } from './modules/heirs'
+import { releaseKinFlags } from './kin'
 import { settleKinEstates } from './modules/kin-estates'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
@@ -1757,6 +1758,10 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   )
   // The reading of the will: reactions, contests, the cut-out heir's choices (events/will-estate.ts).
   settleReading(n, plan, old, childId)
+  // The list was rebuilt: the heir was an anchor and is the player now, and a relative the rebuild dropped took their links out of the list. The
+  // flags of what they linked end here and not at the next kin step (R4 fix, rehearsal 2 item 4 cause B); the edges stay the step's, so the
+  // new spouse keeps the pair edge to the heir until then. Nothing on a life the stamp does not mark.
+  releaseKinFlags(n)
   // g.world came with the clone; the people were rebuilt above, so index them (and the firms, homes and holdings) again.
   syncWorld(n)
   return n

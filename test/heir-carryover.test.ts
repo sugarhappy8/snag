@@ -404,9 +404,32 @@ describe('the heir\'s spouse comes over with the same face (C21, X15)', () => {
     }
   })
 
+  it('leaves no orphan flag at the hand-over: the heir\'s spouse record and the record of a relative the rebuilt list drops are unflagged before any year step', () => {
+    let dropped: string | null = null
+    const mine = over(1, {
+      stamped: true,
+      link: 'record',
+      prepare: (f) => {
+        // a friend with a wife on record and no bond the hand-over keeps (no NpcLife, no debt, no job, no firm): the rebuilt list does not hold them
+        const friend = cast(f.g, 40, 'friend', { age: 52, countryId: 'us', gender: 'male', data: { married: true, spouseName: 'Mina Karimi' } })
+        dropped = adoptSpouse(f.g, friend, { gender: 'female' })
+        expect(dropped, 'the friend has a wife on record').not.toBeNull()
+        f.who.friend = friend
+      },
+    })
+    expect(byId(mine.n, mine.f.who.friend!.id), 'the hand-over drops the friend').toBeUndefined()
+    expect(metRecord(mine.n, dropped!), 'the record of the dropped relative stays').not.toBeNull()
+    expect(kinProblems(mine.n)).toEqual([])
+    expect(metRecord(mine.n, mine.f.sid!)!.fl & 6, 'the heir is the player now: no anchor links the spouse record, a Person holds the sid').toBe(0)
+    expect(metRecord(mine.n, dropped!)!.fl & 6).toBe(0)
+    expect(spouseOf(mine.n)!.data.sid).toBe(mine.f.sid)
+    // the edges are the yearly sweep's, as before: the new spouse's pair edge is still there at the hand-over
+    expect(edgeOf(mine.n, spouseOf(mine.n)!)!.k).toBe('pair')
+  })
+
   it('leaves the world sound: after the next step of the kin records nothing is dangling and the spouse keeps the sid', () => {
     const mine = over(1, { stamped: true, link: 'record' })
-    // the heir's anchor is gone, so the flag of the record is an orphan until the sweep of the next life/37 step
+    // the heir's anchor is gone and the hand-over cleared the flag of the record (releaseKinFlags); its edges wait for the sweep of the next life/37 step
     syncKin(mine.n)
     expect(kinProblems(mine.n)).toEqual([])
     expect(spouseOf(mine.n)!.data.sid).toBe(mine.f.sid)

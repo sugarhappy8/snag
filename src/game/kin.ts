@@ -13,6 +13,8 @@
 //                                       Person): born this year, weight 4, flag 4, `kidSids` (at most 6), a kin edge both ways, life.birth
 //   unlinkSpouse(g, anchor)             the link ends: `spouseSid` gone, flag 2 cleared, both pair edges removed. The record stays
 //   syncKin(g)                          the yearly step (the module life.kin, life phase, order 37): see below
+//   releaseKinFlags(g)                  the flags half of the orphan sweep, alone: what takes an anchor out of the list between two steps runs it
+//                                       (removePerson through the departure hook, cleanupPeople, the hand-over), see below
 //   KIN_IDENTITY                        the frozen table of the face (X57)
 //   keyedSpouse(seed, year, anchorKey)  the keyed draw of a spouse's gender and birth offset, pure
 //   kinSid(g, country, year)            the next sid, or null
@@ -42,6 +44,13 @@
 //   (5) the orphan sweep: the flags 2 and 4 of a kin record that no living anchor, and no anchor dead for under 10 years, links are cleared,
 //       and so are its pair and kin edges, so a leaving anchor never leaves a bound edge behind;
 //   and `kinY` is the year.
+// The flags half of (5) does not wait for the next step (R4 fix, rehearsal 2 item 4, cause B). The step is at order 37, and what drops an anchor
+// runs after it or between two steps: cleanupPeople (relationships, order 40) drops a friend who died, an unfriend or an event drops one with
+// removePerson, and the hand-over rebuilds the list. A flag that outlived its anchor was a fault in that tail of the year, and a fault for good
+// after a snapshot or a save taken in it. So each of those runs `releaseKinFlags`, which is (5) without the edges: removePerson tells it through
+// the departure hook (core.ts, bound at the foot of this file) when the person who left held a link, cleanupPeople runs it at its end, and
+// continueAsChild runs it before the world is synced. The edges stay the yearly sweep's: they are no fault between steps, and the hand-over
+// keeps the new spouse's pair edge until the step, as it always did.
 // Facts stop at 8 a year (`g.yearActions['life.facts']`, shared with L5). No `g.rng`; the only uid is the one log line.
 //
 // Records are not stepped (`ageTo` says in any year whether one is alive: world/life-path.ts, pure, from the family seed), so a year of 40
@@ -50,7 +59,7 @@
 //
 // This is a root file (domain life, layer 3). relationships.ts imports it, so it imports neither relationships.ts, nor life.ts, nor
 // npc-lives.ts, nor love.ts (an import cycle); it reaches layers 0 to 2 and the light npc-state.ts.
-import { relationLabel, log } from './core'
+import { bindDeparture, relationLabel, log } from './core'
 import { emit } from './kernel/bus'
 import type { EntityRef } from './kernel/ids'
 import { personEntity, personKey } from './kernel/person-ref'
@@ -490,17 +499,7 @@ export function syncKin(g: GameState): void {
   }
 
   // Who links whom now: every anchor that keeps its links (alive, or dead for under 10 years).
-  const linked = new Map<string, { entity: string; role: Role }>()
-  for (let i = 0; i < scan; i++) {
-    const p = people[i]
-    if (!isObject(p) || !isObject(p.data) || p.relation === 'pet') continue
-    const person = p as unknown as Person
-    if (person.alive !== true && deadFor(person, year) >= KIN_CAPS.deadYears) continue
-    const links = readKin(person)
-    const entity = personEntity(person)
-    if (links.spouse !== null) linked.set(links.spouse, { entity, role: 'spouse' })
-    for (const kid of links.kids) linked.set(kid, { entity, role: 'child' })
-  }
+  const linked = linkedNow(g, year)
 
   // (4) Keep every linked record fresh.
   for (const [sid, { role }] of linked) {
@@ -509,12 +508,7 @@ export function syncKin(g: GameState): void {
   }
 
   // (5) The orphan sweep: flags and edges of a record nobody keeps.
-  const shard = readMet(g)
-  for (const sid of Object.keys(shard)) {
-    if (!sid.startsWith('kin.') || linked.has(sid)) continue
-    const fl = flagsOf(g, sid)
-    if ((fl & (STAKE.spouse | STAKE.heir)) !== 0) markMet(g, sid, { fl: fl & ~(STAKE.spouse | STAKE.heir) })
-  }
+  clearOrphanFlags(g, linked)
   const edges = worldShard<EdgeMap>(g, 'edges') ?? {}
   const orphans: string[] = []
   for (const key of Object.keys(edges)) {
@@ -527,3 +521,61 @@ export function syncKin(g: GameState): void {
   }
   for (const key of orphans) putEdge(g, key, null)
 }
+
+/** Who a sid is linked by (the entity of the anchor) and as what: the table the freshness pass and the orphan sweep read. */
+type Linked = Map<string, { entity: string; role: Role }>
+
+/** Who links whom now: every anchor of the list that keeps its links (alive, or dead for under 10 years), by the sids it names. Pure. */
+function linkedNow(g: GameState, year: number): Linked {
+  const people = g.people
+  const linked: Linked = new Map()
+  const scan = Math.min(people.length, peopleScan())
+  for (let i = 0; i < scan; i++) {
+    const p = people[i]
+    if (!isObject(p) || !isObject(p.data) || p.relation === 'pet') continue
+    const person = p as unknown as Person
+    if (person.alive !== true && deadFor(person, year) >= KIN_CAPS.deadYears) continue
+    const links = readKin(person)
+    const entity = personEntity(person)
+    if (links.spouse !== null) linked.set(links.spouse, { entity, role: 'spouse' })
+    for (const kid of links.kids) linked.set(kid, { entity, role: 'child' })
+  }
+  return linked
+}
+
+/** (5), the flags half: the spouse and heir bits of every kin record or tombstone that nobody in `linked` names are cleared. Writes only for a flagged orphan. */
+function clearOrphanFlags(g: GameState, linked: Linked): void {
+  const shard = readMet(g)
+  for (const sid of Object.keys(shard)) {
+    if (!sid.startsWith('kin.') || linked.has(sid)) continue
+    const fl = flagsOf(g, sid)
+    if ((fl & (STAKE.spouse | STAKE.heir)) !== 0) markMet(g, sid, { fl: fl & ~(STAKE.spouse | STAKE.heir) })
+  }
+}
+
+/**
+ * The flags half of the orphan sweep, now: a kin record whose spouse or heir flag no anchor that keeps its links names loses the two bits, so
+ * a flag never outlives its last anchor between two year steps (see the header). Idempotent, no luck, nothing written when no flag is an
+ * orphan, nothing at all on a life the social stamp does not mark. It never throws: a failed sweep leaves the flags as they were, and the
+ * step of the next year clears them.
+ */
+export function releaseKinFlags(g: GameState): void {
+  try {
+    if (!socialOn(g)) return
+    const year = g.year
+    if (!wholeYear(year) || !Array.isArray(g.people)) return
+    clearOrphanFlags(g, linkedNow(g, year))
+  } catch {
+    // Nothing here is news: the next step of the kin records does the same sweep.
+  }
+}
+
+/** What removePerson tells once someone has left the list: if they held a link, the flags of what they linked end now. A bystander costs a read of their data. */
+function onDeparture(g: GameState, gone: Person): void {
+  if (!socialOn(g)) return
+  const links = readKin(gone)
+  if (links.spouse === null && links.kids.length === 0) return
+  releaseKinFlags(g)
+}
+
+bindDeparture(onDeparture)

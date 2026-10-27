@@ -16,18 +16,21 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
+import { removePerson } from '../src/game/core'
 import { killCharacter } from '../src/game/death'
-import { KIN_EDGE, KIN_IDENTITY, KIN_ROLE, adoptChild, adoptSpouse, keyedSpouse, kinSid, syncKin, unlinkSpouse } from '../src/game/kin'
+import { KIN_EDGE, KIN_IDENTITY, KIN_ROLE, adoptChild, adoptSpouse, keyedSpouse, kinSid, releaseKinFlags, syncKin, unlinkSpouse } from '../src/game/kin'
 import { personEntity } from '../src/game/kernel/person-ref'
 import { yearlyEntries } from '../src/game/kernel/registry'
 import { continueAsChild } from '../src/game/life'
+import { divorce } from '../src/game/love'
 import { MODULES } from '../src/game/modules/index'
 import { kinModule } from '../src/game/modules/kin-years'
+import { personActions, yearlyRelationships } from '../src/game/relationships'
 import { loadGame, loadSnapshot, memorySnapshotBackend, saveGame, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
 import { memorySaveBackend } from '../src/game/save-backends'
 import { resetSaveStoreForTests, setSaveBackend } from '../src/game/save-store'
 import { KIN_WIDOWED } from '../src/game/text/pools'
-import type { GameState, Person } from '../src/game/types'
+import type { GameState, MenuAction, Person } from '../src/game/types'
 import { EDGE_CAPS, MET_CAPS } from '../src/game/world/caps'
 import { putEdge } from '../src/game/world/edge-write'
 import { edgeKey, edgeLocalBound, readEdge, type Edge } from '../src/game/world/edges'
@@ -1330,6 +1333,142 @@ describe('a real stamped life', () => {
       expect(linked || (r.fl & 6) === 0, `${sid} is linked or unflagged`).toBe(true)
     }
   }, 180_000)
+})
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// The flags of a link end with its anchor (E16 rehearsal 2, item 4, cause B)
+
+describe('the spouse and heir flags of a link end when its anchor leaves the list', () => {
+  /**
+   * A stamped game with a married friend who has a baby (the anchor who will leave: Peyman, his wife and his daughter are three people of
+   * the record shard) and a married sibling who stays. Every record and link is made by the real writers; nothing is flagged by hand.
+   */
+  function scene(): { g: GameState; friend: Person; wife: string; kid: string; kept: string } {
+    const g = kinGame(21, 1)
+    const friend = cast(g, 60, 'friend', { age: 46, gender: 'male', firstName: 'Peyman', lastName: 'Karimi' })
+    married(g, friend, 'Mina Karimi')
+    nextYear(g)
+    const kid = adoptChild(g, friend, { first: 'Sol', last: 'Karimi', gender: 'female' })
+    const wife = readKin(friend).spouse
+    const kept = readKin(sibs(g)[0]!).spouse
+    expect(wife, 'the wedding made a link').not.toBeNull()
+    expect(kid, 'the baby made a link').not.toBeNull()
+    expect(kept, 'the sibling keeps a link').not.toBeNull()
+    expect(rec(g, wife).fl & 6).toBe(2)
+    expect(rec(g, kid).fl & 6).toBe(4)
+    expect(kinProblems(g), 'the scene starts sound').toEqual([])
+    return { g, friend, wife: wife!, kid: kid!, kept: kept! }
+  }
+
+  /** What must hold once the friend is out of the list, with no year step between: nothing is named, the friend's records are unflagged and stay. */
+  function expectReleased(s: ReturnType<typeof scene>, g: GameState): void {
+    expect(kinProblems(g)).toEqual([])
+    expect(worldProblems(g, { live: false }).filter((x) => x.startsWith('kin'))).toEqual([])
+    expect(rec(g, s.wife).fl & 6).toBe(0)
+    expect(rec(g, s.kid).fl & 6).toBe(0)
+    // the face is stored once and the record stays; what another anchor still links keeps its flag
+    expect(rec(g, s.kept).fl & 6).toBe(2)
+  }
+
+  it('removePerson (the door of the unfriend action and of every event that drops a friend) clears the flags in the same call', () => {
+    const s = scene()
+    removePerson(s.g, s.friend.id)
+    expectReleased(s, s.g)
+  })
+
+  it('the unfriend action itself leaves no orphan flag, built from a deep-frozen menu state and run on a draft', () => {
+    const s = scene()
+    const frozen = deepFreeze(structuredClone(s.g))
+    const action = personActions(frozen, frozen.people.find((p) => p.id === s.friend.id)!).find((n): n is MenuAction => n.type === 'action' && n.id === 'unfriend')
+    expect(action, 'a friend can be unfriended').toBeDefined()
+    const draft = structuredClone(s.g)
+    action!.run(draft)
+    expect(draft.people.some((p) => p.id === s.friend.id)).toBe(false)
+    expectReleased(s, draft)
+  })
+
+  it('the yearly clean-up of the relationships step drops a friend who died this year with the flags of the links it held', () => {
+    const s = scene()
+    s.friend.alive = false
+    s.friend.data.diedYear = s.g.year
+    yearlyRelationships(s.g)
+    expect(s.g.people.some((p) => p.id === s.friend.id), 'cleanupPeople drops the dead friend').toBe(false)
+    expect(kinProblems(s.g).filter((l) => l.includes(s.wife) || l.includes(s.kid))).toEqual([])
+    expect(rec(s.g, s.wife).fl & 6).toBe(0)
+    expect(rec(s.g, s.kid).fl & 6).toBe(0)
+    expect(rec(s.g, s.kept).fl & 6).toBe(2)
+  })
+
+  it('a divorce takes the stepchildren with their spouse, and a married stepchild takes the flags of their link along', () => {
+    const s = scene()
+    const wife = cast(s.g, 70, 'spouse', { age: 42, gender: 'female', firstName: 'Lena', lastName: 'Fischer' })
+    const step = cast(s.g, 50, 'stepchild', { age: 27, gender: 'male', firstName: 'Noor', lastName: 'Fischer', data: { viaSpouseId: wife.id } })
+    married(s.g, step, 'Yara Haddad')
+    nextYear(s.g)
+    const sid = readKin(step).spouse
+    expect(sid, 'the stepchild has a wife on record').not.toBeNull()
+    expect(rec(s.g, sid).fl & 6).toBe(2)
+    divorce(s.g, wife, 'player')
+    expect(s.g.people.some((p) => p.id === step.id), 'the stepchild leaves with their parent').toBe(false)
+    expect(kinProblems(s.g).filter((l) => l.includes(sid!))).toEqual([])
+    expect(rec(s.g, sid).fl & 6).toBe(0)
+    expect(rec(s.g, s.wife).fl & 6, 'the friend who stays keeps the flags of the links they hold').toBe(2)
+  })
+
+  it('keeps the flags of an anchor who stays: a friend dead for under 10 years that the list still holds is a link that stands', () => {
+    const s = scene()
+    s.friend.alive = false
+    s.friend.data.diedYear = s.g.year - 3
+    releaseKinFlags(s.g)
+    expect(rec(s.g, s.wife).fl & 6).toBe(2)
+    expect(rec(s.g, s.kid).fl & 6).toBe(4)
+    expect(kinProblems(s.g)).toEqual([])
+  })
+
+  it('is idempotent, writes nothing when no flag is an orphan, and touches nothing on a life the social stamp does not mark', () => {
+    const s = scene()
+    const before = json(s.g.world)
+    releaseKinFlags(s.g)
+    releaseKinFlags(s.g)
+    expect(json(s.g.world), 'a sound world is not rewritten').toBe(before)
+    // removing someone who held no link does not write the shard either
+    const bystander = cast(s.g, 50, 'friend', { age: 33 })
+    const shard = readMet(s.g)
+    removePerson(s.g, bystander.id)
+    expect(readMet(s.g), 'the Met shard root is the same object').toBe(shard)
+
+    const plain = makeTestGame(21, { age: 40 })
+    const other = cast(plain, 50, 'friend', { age: 33 })
+    other.data.spouseSid = 'kin.us.2026.0'
+    const world = json(plain.world)
+    removePerson(plain, other.id)
+    releaseKinFlags(plain)
+    expect(json(plain.world), 'an unstamped life keeps v5.2.0 behaviour to the byte').toBe(world)
+  })
+
+  it('a hostile list, a hostile year and a frozen state are refused or read without a throw, and cost a bounded amount at 100 times the anchors', () => {
+    const s = scene()
+    const bad = structuredClone(s.g)
+    ;(bad as { year: unknown }).year = 'x'
+    expect(() => releaseKinFlags(bad)).not.toThrow()
+    ;(bad as { people: unknown }).people = null
+    expect(() => releaseKinFlags(bad)).not.toThrow()
+    const frozen = deepFreeze(structuredClone(s.g))
+    expect(() => releaseKinFlags(frozen)).not.toThrow()
+    // 100 times the anchors: the shard and the edge map stop it at their caps, and a departure is one pass over the list
+    const big = kinGame(21, 3)
+    for (let i = 0; i < 400; i++) {
+      const f = cast(big, 50, 'friend', { age: 40 + (i % 20) })
+      married(big, f, SPOUSE_NAMES[i % SPOUSE_NAMES.length]!)
+    }
+    nextYear(big)
+    const t = performance.now()
+    for (const p of big.people.filter((x) => x.relation === 'friend')) removePerson(big, p.id)
+    const ms = performance.now() - t
+    expect(ms, `400 departures took ${ms.toFixed(0)} ms`).toBeLessThan(5000 * machineFactor())
+    expect(kinProblems(big)).toEqual([])
+    expect(kinSidsOf(big).length).toBeLessThanOrEqual(KIN_CAPS.records)
+  }, 60_000)
 })
 
 describe('the source', () => {
