@@ -920,7 +920,13 @@ imports. The detail is in `docs/SOCIAL.md` section 14.
 R4-E11 (part A) added secrets and gossip. A secret is a record `secret:<n>` in the edges map (written only by `putSecret` in
 `world/edge-write.ts`, read with `readSecrets`); `society/secret.ts` begins them (`addSecret`) and runs the yearly leak (`leakPass`, a step
 inside the one `society.acts` entry), `society/gossip.ts` is the pure spread of a leak (two people told, one more through each, hop cap 2). The
-module declares the fact `social.leak`. Betrayal, reconciliation and mentorship are part B. The detail is in `docs/SOCIAL.md` section 15.
+module declares the fact `social.leak`. The detail is in `docs/SOCIAL.md` section 15.
+
+R4-E11 (part B) added betrayal, reconciliation and mentorship. `betray` (`society/secret.ts`) is the cost of a betrayal and begins the secret of a
+found affair; `love.ts` and the leak call it, `love.ts` through the door only. `reconcileOdds` (`society/reconcile.ts`) is added to the will's
+`peaceOdds` in `events/will-amends.ts`, through the door, for a stamped pair that owes the player. `society/mentor.ts` enrols up to 3 proteges and
+settles their bonus (0.15 of the year's gain) inside the one `society.acts` entry; it reaches the NPC life through the seam, so the
+`society->life` pair stays at two files. The detail is in `docs/SOCIAL.md` section 16.
 
 ### Main Character Syndrome and instant mastery
 

@@ -6,6 +6,7 @@ import { addRelationship, addStat, canAfford, clamp, count, getPerson, log, noti
 import { flagOn } from '../flags'
 import { isExact } from '../knowledge/contract'
 import { chance, randInt } from '../rng'
+import { reconcileOdds } from '../society/contract'
 import type { GameState, MenuNode, Person } from '../types'
 import { remember } from '../world/edge-write'
 import { entitlement } from './wealth-core'
@@ -90,7 +91,7 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
   }
 
   const known = w.known
-  const odds = peaceOdds(g, p)
+  const odds = talkOdds(g, p)
   nodes.push({
     type: 'action',
     id: 'will.peace',
@@ -219,11 +220,22 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
   return nodes
 }
 
+/**
+ * The odds that a heart-to-heart gets through, as the row shows them and the roll uses them: the will's own (`peaceOdds`) and, on a stamped
+ * life, what the society side adds for the obligation the person owes (R4-E11, `reconcileOdds` through the contract door), held between
+ * 0.05 and 0.85. With no obligation, or on a life that is not stamped, the addition is 0 and the odds are `peaceOdds` to the digit.
+ */
+function talkOdds(g: GameState, p: Person): number {
+  const base = peaceOdds(g, p)
+  const extra = reconcileOdds(g, p)
+  return extra > 0 ? clamp(base + extra, 0.05, 0.85) : base
+}
+
 function heartToHeart(g: GameState, p: Person): void {
   const w = readWl(g, p)
   if (w.talkY === g.year) return
   if (w.estr && w.anger > 55) return
-  const odds = peaceOdds(g, p)
+  const odds = talkOdds(g, p)
   const t = temper(p)
   updateWl(g, p, (x) => {
     x.talkY = g.year

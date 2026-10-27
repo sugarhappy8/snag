@@ -32,7 +32,21 @@
 // Reputation by group, the timing of a leak beyond this pass and scandal stories are R5's, on storage it adds itself; this file stores
 // nothing but the records. It draws no number but the roll of the stream, writes no money and reads no clock.
 //
-// Part B of R4-E11 adds `betray` (the leaker's own cost, and the secret a found affair begins) to this file.
+// Betrayal (R4-E11 part B). `betray(g, key, severity)` is the cost of a betrayal and the one door the rest of the game uses for it (love.ts and
+// the leak; society/contract.ts exports it, C39). The key is an edge of the current player, and the severity a whole number from 1 to 5:
+//
+//   key `person > player`   the player wronged the person (an affair found out): the memory `betrayal` (pinned, weight by severity) goes on the
+//                      person's edge toward the player, and the person is the holder of a new secret about the player (`affair`, the severity
+//                      given, begun this year: what the person might tell next year, addSecret)
+//   key `player > person`   the person wronged the player (the holder who told): the memory goes on the player's edge toward the person
+//
+// and in both cases the person's relationship falls by 15 + 5 x severity (20 to 40), through the shim: as an offence when the player did it (the
+// person's resentment rises with what they lost), as a cooling (`decay`) when the person did it (it adds no resentment). A betrayal is one event a
+// year on an edge: the memory is made once for a (kind, edge, year), and only the call that makes it pays the cost, so a second call the
+// same year changes nothing, and love.ts, which pins the memory and takes its own hit, asks for the secret alone. Nothing is written for a
+// life that is not stamped, a player who is dead, a severity that is not 1 to 5, a person who is dead, a pet or not in the game, or a key that is
+// not an edge of the player. A full table of secrets leaves the secret out and keeps the memory and the cost. The leak asks for the holder's
+// cost out of the same allowance as the people told (LEAK.damageYear a pass), so no person loses more than that to leaks in a pass.
 //
 // Layer 3 (society). It imports core, the kernel, the text kit, world/ and society/ itself; no events/, no business/.
 import { addRelationship, log, notice } from '../core'
@@ -46,11 +60,11 @@ import { LEAK_LINES } from '../text/pools'
 import { fillSlots } from '../text/state'
 import type { GameState, Person } from '../types'
 import { putSecret, remember } from '../world/edge-write'
-import { readEdge, readSecrets, type SecretRecord } from '../world/edges'
+import { edgeKey, readEdge, readSecrets, type SecretRecord } from '../world/edges'
 import { playerRef } from '../world/people'
 import { SEEN_MAX, SEEN_MIN } from '../world/rows'
 import { socialOn } from '../world/social'
-import { actRoll } from './acts'
+import { actRoll, endsOfKey } from './acts'
 import { DEBT_KIND, debtsOf } from './debt'
 import { my } from './favor'
 import { tellings } from './gossip'
@@ -202,6 +216,48 @@ function owesAnyone(g: GameState): boolean {
   return debtsOf(g, playerRef(g)).some((d) => d.owedBy && d.kind === DEBT_KIND.loan && d.owed >= 1)
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Betrayal
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/** Relationship points a betrayal costs: 15 + 5 x severity, so 20 for the lightest and 40 for the heaviest. */
+export const BETRAY = Object.freeze({ base: 15, perPoint: 5 })
+export const betrayCost = (severity: number): number => BETRAY.base + BETRAY.perPoint * severity
+
+/**
+ * The betrayal of `key` with at most `room` points of cost (the leak passes what is left of its allowance, a direct call has all of it).
+ * Answers the points taken. See the header for the rules; nothing is written when it answers 0 for a refusal.
+ */
+function betrayWithin(g: GameState, key: string, severity: number, room: number): number {
+  if (!socialOn(g) || !g.character.alive) return 0
+  if (typeof severity !== 'number' || !Number.isInteger(severity) || severity < 1 || severity > 5) return 0
+  const ends = endsOfKey(key)
+  if (ends === null) return 0
+  const ego = playerRef(g)
+  if (ends[0] === ends[1] || (ends[0] !== ego && ends[1] !== ego)) return 0
+  const other = ends[0] === ego ? ends[1] : ends[0]
+  const person = holderOf(g, other)
+  if (person === undefined) return 0
+  // key `person > player`: the player did it. key `player > person`: the person did it. `by: 'ego'` is the second end of the edge.
+  const playerDid = ends[1] === ego
+  const w = weightOf(severity)
+  const pinned = playerDid ? remember(g, person, 'betrayal', { w, by: 'ego' }) : remember(g, ego, 'betrayal', { w, by: 'ego', with: other })
+  let taken = 0
+  if (pinned) {
+    taken = Math.max(0, Math.min(betrayCost(severity), room))
+    // the person who was wronged is offended (the mirror raises their resentment by what they lost); the person who wronged the player has
+    // their bond cooled (`decay`: it adds no resentment, so a holder who told is not made likelier to tell the next secret by the telling)
+    if (taken > 0) feel(g, person, -taken, playerDid ? 'offence' : 'decay')
+  }
+  if (playerDid) addSecret(g, ego, 'affair', severity, [person])
+  return taken
+}
+
+/** The betrayal of `key` (an edge of the player), severity 1 to 5: see the header. The door of society/contract.ts. */
+export function betray(g: GameState, key: string, severity: number): void {
+  betrayWithin(g, key, severity, Infinity)
+}
+
 /**
  * One holder tells one secret. Answers how it went: `leaked` is false, with nothing written, when there is nobody to tell or the record can't
  * be marked; `said` is true when the bus took the fact. The record is marked first (`p`), so whatever happens after it the secret has leaked
@@ -225,6 +281,10 @@ function leak(g: GameState, row: SecretRow, holder: Person, lost: Map<string, nu
     }
     remember(g, t.who, 'gossiped_about_me', { w: weightOf(s.v), by: 'them' })
   }
+  // the holder pays for telling: a betrayal of the player (the player's edge to them), out of the allowance the people told have
+  const room = Math.max(0, LEAK.damageYear - (lost.get(holder.id) ?? 0))
+  const paid = betrayWithin(g, edgeKey(playerRef(g), personEntity(holder))!, s.v, room)
+  if (paid > 0) lost.set(holder.id, (lost.get(holder.id) ?? 0) + paid)
   const line = fillSlots(pickLine(g, LEAK_LINES), { who: my(holder), whom: my(told[0]!.who) })
   log(g, line, 'bad')
   const family = paceKey('kin', 'leak')
@@ -265,13 +325,4 @@ export function leakPass(g: GameState): void {
       if (out.leaked) break
     }
   }
-}
-
-/**
- * The cost of a betrayal (part B of R4-E11 writes this): a pinned memory `betrayal` on the edge `key` and a relationship hit of 20 to 40 by
- * severity. Not written yet. The door (society/contract.ts) already exports it, so that the red tests of part B (test/social-reconcile.test.ts)
- * compile; nothing calls it yet, and part B also makes the leak call it for the holder who told.
- */
-export function betray(_g: GameState, _key: string, _severity: number): void {
-  // R4-E11 part B
 }

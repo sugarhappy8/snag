@@ -610,12 +610,13 @@ describe('leakPass', () => {
     makeLeak(g, id, h)
     const before = new Map(list.map((p) => [p.id, p.relationship]))
     leakPass(g)
-    const hit = list.filter((p) => p.relationship < before.get(p.id)!)
+    const hit = list.filter((p) => p !== h && p.relationship < before.get(p.id)!)
     expect(hit.map((p) => p.id).sort()).toEqual([a, b, c, d].map((p) => p.id).sort())
     for (const p of hit) expect(hitOf(p, before.get(p.id)!)).toBe(3 * 4)
-    // the holder, and the ones not told, are untouched
-    expect(h.relationship).toBe(before.get(h.id))
+    // the ones not told are untouched; the holder pays for telling (R4-E11 part B: `betray`, 15 + 5 x 4 = 35, held to the 30 a pass allows)
     expect(e.relationship).toBe(before.get(e.id))
+    expect(hitOf(h, before.get(h.id)!)).toBe(LEAK.damageYear)
+    expect(memoriesOf(readEdge(g, playerRef(g), personEntity(h))!).some((m) => m.kind === 'betrayal')).toBe(true)
     // each told person remembers it, and the edge follows the number (the shim's mirror) with the grudge raised
     for (const p of [a, b, c, d]) {
       expect(memoriesOf(edgeOf(g, p)!).some((m) => m.kind === 'gossiped_about_me')).toBe(true)
@@ -824,8 +825,10 @@ describe('leakPass', () => {
     }
     expect(leakYear.size).toBe(2)
     // the yearly step also drifts a relationship (v5.2.0 does not, the test game has no drift entry); what the leaks cost is bounded by the severities
+    // (R4-E11 part B: a holder who tells pays for it out of the same allowance, so the worst year of any one person is the allowance, and not
+    // the 3 x 2 + 3 x 5 the people told could lose in all)
     const worst = Math.max(...[...drops.values()].map((d) => Math.max(...d)))
-    expect(worst).toBeLessThanOrEqual(3 * 2 + 3 * 5)
+    expect(worst).toBeLessThanOrEqual(LEAK.damageYear)
     // each told person was told of each secret at most once: at most two gossiped_about_me memories in all, one per secret year
     for (const p of list) {
       const m = memoriesOf(edgeOf(g, p) ?? ({} as Edge)).filter((x) => x.kind === 'gossiped_about_me')

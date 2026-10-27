@@ -8,6 +8,9 @@
 //   Ask {name} to Speak ...  on a CUT-OUT or estranged relative: a brokered peace through the best giver who can be asked now
 //   Ask {name} for a Loan    on the same person (R4-E10b): a slider from the least to the most the person will lend, the rate and the odds
 //                            in the subtitle (loan.ts); it shares the call-in cooldown of the favors, and comes after their rows
+//   Take {name} Under Your Wing   on a younger relative or coworker of 14 to 40 who has a career to learn from (R4-E11, mentor.ts): up to 15%
+//                            more of what they learn each year, 3 at most; it greys out with the reason when 3 are taken, and shows an info row
+//                            once the person is one
 //   You owe {name} ...       an info row, while the player owes that person a loan
 //
 // The rows are visible for a living person who is not a pet while the player is alive and 16 or older, and the heading 'Favors' with
@@ -36,6 +39,7 @@ import {
 } from './favor'
 import { socialOn } from '../world/social'
 import { LOAN_AGE, askLoan, debtTo, loanAct, loanTerms } from './loan'
+import { MENTOR, enrolMentor, isProtege, mentorAct, protegeBlock } from './mentor'
 
 /** A person the player feels this much for or more gets the favor rows (20 under the 50 a favor needs); below it the row would never be anything but grey. */
 const SHOW_FROM = 30
@@ -133,6 +137,25 @@ function loanRow(g: GameState, p: Person): MenuAction {
   }
 }
 
+function mentorRow(p: Person): MenuAction {
+  return {
+    type: 'action',
+    id: 'social.mentor',
+    label: `Take ${p.firstName} Under Your Wing`,
+    emoji: '\u{1F393}',
+    subtitle: `Up to ${Math.round(MENTOR.bonus * 100)}% more of what ${p.firstName} learns each year · ${MENTOR.proteges} at a time`,
+    disabledReason: (s) => reason(s, mentorAct, p),
+    run: (s) => {
+      const q = getPerson(s, p.id)
+      if (q) enrolMentor(s, q)
+    },
+  }
+}
+
+function learningRow(p: Person): MenuInfo {
+  return { type: 'info', id: 'social.mentoring', emoji: '\u{1F393}', text: `${p.firstName} is learning from you.` }
+}
+
 function oweRow(g: GameState, p: Person): MenuInfo | null {
   const d = debtTo(g, p)
   if (d === null) return null
@@ -153,6 +176,7 @@ export function socialNodes(g: GameState, p: Person): MenuNode[] {
     const third = thirdFor(g, p)
     if (third !== null) rows.push(vouchRow(g, p, third))
     if (g.character.age >= LOAN_AGE && p.age >= LOAN_AGE) rows.push(loanRow(g, p))
+    if (protegeBlock(g, p) === null) rows.push(isProtege(g, p) ? learningRow(p) : mentorRow(p))
   }
   const owe = oweRow(g, p)
   if (owe !== null) rows.push(owe)

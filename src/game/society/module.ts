@@ -8,7 +8,8 @@
 //
 // The step list below was EMPTY in R4-E10a. The tasks of the acts lane append their steps in this order, each inside this one entry:
 //   R4-E10b   serviceDebts: the interest and the service of the loans the player owes (kind 0 only; L7 serves the divorce debts)
-//   R4-E11    leakPass (society/secret.ts, part A: the module's `facts` declare social.leak), then the mentor settle (part B)
+//   R4-E11    leakPass (society/secret.ts: the module's `facts` declare social.leak), then mentorSettle (society/mentor.ts, against the baseline
+//             `ms` of the social shard; the NPC year it measures ran inside `relationships` at life 40, before this close phase)
 //   R4-E12    stepFeuds (and social.feud)
 // A step takes the state and draws only from the stream `social` (actRoll in society/acts.ts; the lines it logs come from the text kit,
 // which has a stream of its own), books money through cash.moveCash and writes through putEdge; it must be idempotent on its own,
@@ -20,13 +21,14 @@ import type { GameState } from '../types'
 import { SEEN_MAX, SEEN_MIN } from '../world/rows'
 import { patchSocial, readSocial } from '../world/social'
 import { serviceDebts } from './debt'
+import { mentorSettle } from './mentor'
 import { leakPass } from './secret'
 
 /** One yearly step of the acts. */
 type Step = (g: GameState) => void
 
 /** The steps, in order. A function and not a list: a module-level const would read the imports while this module loads (layer rule d). */
-const steps = (): readonly Step[] => [serviceDebts, leakPass]
+const steps = (): readonly Step[] => [serviceDebts, leakPass, mentorSettle]
 
 const isYear = (x: unknown): x is number => typeof x === 'number' && Number.isInteger(x) && x >= SEEN_MIN && x <= SEEN_MAX
 

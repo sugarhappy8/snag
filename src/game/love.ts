@@ -44,7 +44,11 @@ import { common, eraPick, eraPickPlain, landline, texting } from './events/era'
 import { stableRng } from './activities/common'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 import { businessGone } from './assetHooks'
+import { personEntity } from './kernel/person-ref'
+import { betray } from './society/contract'
 import { remember as rememberEdge } from './world/edge-write'
+import { edgeKey } from './world/edges'
+import { playerRef } from './world/people'
 
 // ---------------------------------------------------------------------------
 // Small shared helpers (also used by relationships.ts)
@@ -912,6 +916,10 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
     if (chance(g, cheatDetectionOdds(g))) {
       addRelationship(g, partner, -randInt(g, 25, 45))
       rememberEdge(g, partner, 'betrayal', { w: 3, by: 'ego' })
+      // R4-E11: on a stamped life the partner now holds a secret about the player (an affair, severity 4), which they might tell. The hit above and the
+      // memory are this event's cost, so `betray` finds the betrayal made and adds the secret alone; it writes nothing on a life that is not stamped.
+      const asKey = edgeKey(personEntity(partner), playerRef(g))
+      if (asKey !== null) betray(g, asKey, 4)
       if (partner.relationship < 30 && chance(g, 0.6)) {
         breakUp(g, partner, 'them', `found out you hooked up with ${name}`)
       } else {
