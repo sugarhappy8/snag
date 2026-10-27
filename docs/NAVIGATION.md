@@ -16,7 +16,7 @@ use it, never in a module-level const, and set it in tests with `withFlags` or `
 `test/nav-release.test.ts` runs the aggregate checks with all three on. It also checks that the legacy path (all three off)
 still equals v4.0.2.
 
-A fourth build flag, `peopleProfile` (R4, off until the release commit flips it), gates the People tiles of the Relationships
+A fourth build flag, `peopleProfile` (R4, on since 5.3.0, when the release commit flipped it), gates the People tiles of the Relationships
 cockpit and the badge words `Estranged` and `Owes you`, and nothing else on these screens. It reads the flag and not the mode, so it
 works the same in Exact and Realistic. With it off the Relationships tab is what the three flags above made it. A test of the
 People cockpit or badges names the flag with `withFlags`, on or off, and never leans on the default.
