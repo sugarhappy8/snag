@@ -152,6 +152,13 @@ bonus, adaptation fees and royalties, the studio tail and copies) and seven from
 100 on a pull request and up to 1000 in the nightly (`CEILING_PROBE=deep`); `lod-caps` walks at most 1,000 ids through
 `promote` (it rewrites a shard on every call) and feeds the rest of its `scale * 400` rows to the readers as a hostile save.
 
+A row runs once at each scale. `probeFailures` keeps what every run measured, and the two tests that want the same number again
+(every row measures something at every scale, and the rows that touch their cap at 100 times) read it with `measured` in
+`test/ceiling-kit.ts` instead of running every row a second time, so the file costs the sum of the rows once. Run alone, a test
+that finds nothing kept runs the rows itself. The test that no row leaves a country's wealth changed still runs every live row
+fresh at 100 times, because the run is what it proves. Before the cache the nightly's aggregate test paid for a whole second pass
+and ran into the 300 seconds a single row is given.
+
 ## The nightly deep tier
 
 `.github/workflows/nightly.yml` (named `Nightly`) runs what is too slow or too wide for a pull request: 40 fuzzed lives of

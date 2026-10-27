@@ -122,12 +122,41 @@ export const isExempt = (p: CeilingProbe): boolean => p.exempt !== undefined
 
 // ---------------------------------------------------------------------------------------------- the harness
 
-/** One message for each scale where the row's value is not at most its limit, or where it threw. Empty when the row holds. */
+type Measure = ReturnType<CeilingProbe['run']>
+
+/**
+ * What each row has measured at each scale in this run. A deep row is minutes of work at 1000 times (met-caps takes about four minutes
+ * by itself), so a test that wants the number a row has already given reads it here instead of running the row again. It is keyed by
+ * the row itself and not by its id: the kit's own tests make several rows that share an id. It lives as long as the test file does.
+ */
+const MEASURED = new WeakMap<CeilingProbe, Map<number, Measure>>()
+
+function keepAnswer(p: CeilingProbe, scale: number, r: Measure): void {
+  let rows = MEASURED.get(p)
+  if (rows === undefined) MEASURED.set(p, (rows = new Map()))
+  rows.set(scale, r)
+}
+
+/**
+ * What the row measures at `scale`: the answer of an earlier run when probeFailures (or this function) has made one, else the row is run
+ * now and its answer kept. A row that throws is never kept, so asking again runs it again and it throws again. Only a run of the row
+ * itself fills the cache: `probeFailures` always runs fresh, so a row's own test never passes on an answer it did not just get.
+ */
+export function measured(p: CeilingProbe, scale: number): Measure {
+  const have = MEASURED.get(p)?.get(scale)
+  if (have !== undefined) return have
+  const r = p.run(scale)
+  keepAnswer(p, scale, r)
+  return r
+}
+
+/** One message for each scale where the row's value is not at most its limit, or where it threw. Empty when the row holds. Every run it makes is kept for `measured`. */
 export function probeFailures(p: CeilingProbe, scales: readonly number[]): string[] {
   const out: string[] = []
   for (const scale of scales) {
     try {
       const r = p.run(scale)
+      keepAnswer(p, scale, r)
       if (!(r.value <= r.limit)) {
         out.push(`${p.id} at ${scale}x: the value ${String(r.value)} is not at most the limit ${String(r.limit)}${r.at ? ` (${r.at})` : ''}. The cap: ${p.cap}`)
       }
