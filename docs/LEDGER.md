@@ -53,7 +53,7 @@ row that is not in the table drops that row on load.
 
 | Group | Reason | Pays to | Paid by | Use |
 |---|---|---|---|---|
-| Work | `wage` | employers | employers | salary, job pay, prison wages |
+| Work | `wage` | employers | employers | salary, job pay, prison wages; also what an NPC earns, from `pool:employers`, at most 2.5 times the typical income of the country for one person in a year (the ceiling row `npc-wage`, R4-L12; the named employer is R6 A.K3) |
 | | `severance` | employers | employers | a payout on losing a job |
 | | `pension` | gov | gov | state and private pension |
 | | `benefit` | gov | gov | welfare, allowance, subsidy, royal allowance |
@@ -99,7 +99,7 @@ row that is not in the table drops that row on load.
 | | `inheritance` | family | family | what an heir receives |
 | | `support` | family | family | money sent to relatives; also a loan between people and, on a stamped life, what the estate pays a person the late player borrowed from (R4-L6, token `debtToken('estate', ...)`) |
 | | `divorce` | family | family | a divorce settlement; also the part of it the player pays the ex a fifth of the cash at a time (R4-L7) and the unpaid part that the estate pays before the shares (R4-L6) |
-| | `estate` | family | family | an estate passed on; also the NPC estate: the cash a dead relative leaves when no heir is modeled (R4-L5) |
+| | `estate` | family | family | an estate passed on; also the NPC estate: the cash a dead relative leaves when no heir is modeled (R4-L5). A hand-over books its estate tax (`tax.estate`) once, and an adopted child shares like any other (R4-L12) |
 | | `donation` | charity | charity | gifts to charity |
 | Crime | `crime.take` | crime | crime | what a crime brings in |
 | | `crime.cost` | crime | crime | what a crime costs its author |

@@ -165,6 +165,17 @@ dead player's account is folded, so the books still balance, and every shard of 
 that went in the same year (the dead player, a company the estate took) go back to last year, so no row says "seen this year" for a
 record the heir does not have.
 
+On a life the social flag stamps (v5.3.0) the hand-over also carries what the family felt and owed, and nothing else changes in the shards
+(`docs/KIN.md`, sections 11 to 15). The Met store, the edges and the stamp reach the heir by clone, and the same call then does, in this
+order: the late player's debts to people are paid from the estate, oldest first, and every debt edge that was listed is closed; the estate is
+closed; the character becomes the heir; the claims people owed the late player pass to the heir at the will's share; the edges of the people
+who stay cross to the heir through `heirEdges` (trust and respect at half, resentment at 0.6, a direct kin's feeling the blend of the old
+number and the new dice) and every edge that ended at the dead ego goes; and the account of a heir with a sid is folded into the player's
+account, a relabel and no flow. The relatives the will cut out quarrel with the ones it favored, as edges between two NPCs, at most 3 for a
+person and 36 in a reading. The Met names are the same before and after, so a person met is the same person in every generation
+(`test/life-acceptance.test.ts`: 120 years, three lives, two hand-overs or more). An unstamped life, a v5.2.0 save and every heir of one get
+the old statements and write none of it.
+
 ## Hostile loads
 
 The save loader (`isLoadableGame`) bounds a save by 500,000 JSON nodes and does not look inside `g.world`; every reader normalizes.

@@ -456,16 +456,21 @@ function stepAnchor(g: GameState, p: Person, year: number): void {
   if (readKin(p).spouse !== null || readKin(p).kids.length > 0) p.data.kinY = year
 }
 
-/** The kin sid at the far end of an edge key, and the other end; null when the key has no kin sid or is not an edge key. */
-function kinEnds(key: string): { sid: string; other: string } | null {
-  if (!key.includes('person:kin.')) return null
+/**
+ * The kin sids at the ends of an edge key, each with the entity at the other end; none when the key has no kin sid or is not an edge key. A
+ * relative made a Person by an estate (X38) has her own record's sid as her entity, so the edge between her and her husband's record has a kin
+ * sid at both ends: it is a link of either, and the sweep must ask about both.
+ */
+function kinEnds(key: string): { sid: string; other: string }[] {
+  if (!key.includes('person:kin.')) return []
   const at = key.indexOf('>')
-  if (at < 0) return null
+  if (at < 0) return []
   const a = key.slice(0, at)
   const b = key.slice(at + 1)
-  if (a.startsWith('person:kin.')) return { sid: a.slice('person:'.length), other: b }
-  if (b.startsWith('person:kin.')) return { sid: b.slice('person:'.length), other: a }
-  return null
+  const out: { sid: string; other: string }[] = []
+  if (a.startsWith('person:kin.')) out.push({ sid: a.slice('person:'.length), other: b })
+  if (b.startsWith('person:kin.')) out.push({ sid: b.slice('person:'.length), other: a })
+  return out
 }
 
 /**
@@ -515,10 +520,10 @@ export function syncKin(g: GameState): void {
   for (const key of Object.keys(edges)) {
     if (isSecretKey(key)) continue
     const ends = kinEnds(key)
-    if (ends === null) continue
+    if (ends.length === 0) continue
     const k = edges[key]!.k
     if (k !== 'pair' && k !== 'kin') continue
-    if (linked.get(ends.sid)?.entity !== ends.other) orphans.push(key)
+    if (!ends.some((e) => linked.get(e.sid)?.entity === e.other)) orphans.push(key)
   }
   for (const key of orphans) putEdge(g, key, null)
 }
