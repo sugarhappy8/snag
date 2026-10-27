@@ -229,8 +229,8 @@ describe('docs/PEOPLE.md: the eight named-person shapes', () => {
 
   // [name in the doc, file, the text the line at the cited number must hold]
   const ANCHORS: readonly (readonly [name: string, file: string, line: number, holds: string])[] = [
-    ['Candidate', 'src/game/love.ts', 258, 'interface Candidate'],
-    ['makeCandidate', 'src/game/love.ts', 292, 'function makeCandidate'],
+    ['Candidate', 'src/game/love.ts', 259, 'interface Candidate'],
+    ['makeCandidate', 'src/game/love.ts', 293, 'function makeCandidate'],
     ['strangerName', 'src/game/events/helpers.ts', 454, 'function strangerName'],
     ['opponent', 'src/game/special/politics.ts', 583, 'opponent: string'],
     ['opponentName', 'src/game/special/politics.ts', 594, 'function opponentName'],
