@@ -771,7 +771,87 @@ for one suit; sabotage 3 happiness and 2 performance a year in all; gossip 3 a p
 cooling, the scene, Make peace, the fact, the fee, the 100 times and 60-year probes, purity), `test/social-act-auth.test.ts` (Make peace and
 `stepFeuds` in the states that block them).
 
-## 19. What the next tasks add here
+## 19. Staff loyalty (R4-E13, D.4, X1, X22)
 
-- R4-E13 and E15: staff loyalty (`business/`, not `society/`) and the acceptance tests. A task that queues a choice calls `useFamilyAct` with its own
-  source (`social` at the close) and adds its export line to `society/contract.ts`.
+What the people who run a company feel about the player, and the year-end rule that lets them go (`business/staff-loyalty.ts`, a leaf of the business
+cycle: it imports no other business module at run time). A key person (`KeyStaff`) and a hired CEO (`Manager`) are not people of the game, so their edges
+name them by a ref of their own: `staff:<ks id>` and `mgr:<asset id>` (a Manager has no id; the company is what it follows). Every edge is `ref > player`,
+like the edge of a relative. `staffRef(s)` and `mgrRef(a)` make the refs and answer `pool:other` for an id that is no name.
+
+**The year end**, `staffLoyaltyYear(g, a, b)`, called by `staffTurnover` (`business/staff.ts`) on a stamped life; an unstamped life keeps the old rule
+(morale under 30 and a 35% roll from `g.rng`) byte for byte. In order: a manager edge that was written for another manager is reset; a staff edge whose
+person is in no company any more drops; each key person gets two numbers from the stream `social` (`outcomeStream(g, 'social', year, 'staff|<id>')`). The first
+decides a quit, with odds `clamp(0.04 + (35 - morale)/150 + s/500 - (f - 50)/600, 0, 0.6)`, where `s` and `f` are the resentment and the affection of the edge
+(0 and 50 when there is none). The second decides a poaching, for a person of skill 70 or more who is resentful (`s` 40 or more) or paid under the going
+rate, with odds `0.03 + 0.10 x s/100 x (1 - honesty)`. A person who quits leaves the old line and their edge goes; a person who is poached leaves a line of
+four phrasings and a plain edge that holds `poached_me`. The rule is idempotent without a stamp of its own: its two numbers are a function of the year and the
+person, and a person who left is gone from the list.
+
+**What the player does**, written by the callers: a hire leaves `hired_me` (weight 2), a raise `gift_given`, a yell `told_bluntly` (3, with resentment), a
+firing, a walk-out or a lawsuit drops the edge, and a hired CEO who is poached leaves `poached_me` on `mgr:<asset id>`. Wages and severance stay on the
+company's books (`firmCash`, `payroll`); nothing here books money. A staff edge is bound (`k: 'staff'`) while the person works there, so a hire into a map of
+1,200 bound edges simply has no edge and the rule reads that person as resentment 0 and affection 50. Both odds are clamped, so 100 times any input gives the
+same ceiling.
+
+## 20. The acceptance (R4-E15, D.12, X14, X30, X50, X56)
+
+Six files hold the track to the plan's lines. None of them is `// ci: fast` but the scan, the purity test and the ceiling test.
+
+| File | What it proves |
+|---|---|
+| `test/social-acceptance.test.ts` | the 120-year probe of three stamped lives; determinism; the yearly step at the caps; the size of a save; the sid-born debtor; marriage for wealth; the old-save matrix; twelve hostile worlds; the hand-over; every yearly entry twice |
+| `test/social-accept-kit.ts` | the lives (a family founder, a romantic life, a rich life with a will fight), the scripted caller and the audit that runs after every year |
+| `test/social-money-scan.test.ts` | the token scan of the files of the track (X50), with three self-tests and a non-empty list |
+| `test/edge-purity.test.ts` | every menu and reader of the track on a state frozen all the way down with a g.rng that throws |
+| `test/social-ceilings.test.ts` and the seven rows of `test/ceiling-kit.ts` | the ceilings below, at 1, 10, 30 and 100 times |
+| `test/social-act-auth.test.ts` | the table of authorization (E10a to E13), run by this task's command (invariant 4) |
+
+**The probe.** Each life is played 120 years, one year at a time, with a scripted caller between the years that does what a player and the popups do: asks for
+favors, loans and vouches, betrays and keeps secrets, tries peace, takes a mentee, marries, bears children, divorces, has flings, hires a child into the company,
+writes one out of the will and hands the life over (twice by age and again when the player dies). Twice a life is flooded with more edges, memories, debts, feuds,
+secrets and talk records than the caps hold. After every year: `worldProblems` is empty, `checkLedger` holds, no number is not finite, the world is inside its
+budget, the edges are inside their caps as stored, and `edge.f` equals `Person.relationship` for the current ego. A kin record that still carries a spouse or
+heir flag after the year's sweep may show for one audit and no more. At the end the ledger has strict drift 0.
+
+**What the probe found.** The hand-over left the edges that start at the late player. The late player stays in the list as the heir's dead parent, so an edge
+`late player > heir` (a loan the heir once had repaid, a leak the heir told) read as the parent's edge to the new ego with an affection that was not the
+parent's relationship. `carryEdges` (`modules/heirs.ts`) now removes every edge of the late ego, the ones that end at them and the ones that start at them.
+
+**Determinism.** A life continued from year 60 by a `structuredClone`, by a JSON reload through the save loader, and (for the romantic life) from a copy of its
+first year, ends at the very JSON of the original. A Time Machine jump to year 60 keeps the rolls of the stream `social` for the years that ended before it and
+re-rolls the year it lands in and every one after it; the fork plays 20 years on with every check of the audit holding.
+
+**The year at the caps (X56).** A stamped life of 40 holding 1,200 edges (4,000 memories, 40 debts, 12 feuds, 120 edges with talk, 40 secrets of 6 holders) and a
+Met store of 400 records, 160 of them of the kin kind, ages up in the budget of `test/save-perf.test.ts` (160 ms, and 200 ms for the clone, the age-up and the
+encode, both times the machine factor). Every edge holds resentment, so the step rewrites all 8 chunks `e.edge.0` to `e.edge.7` each year. Measured on a busy
+machine (factor 2.5): the year takes 224 ms against 31 ms for the same life with no web, so the web at its caps adds about 75 ms on the reference desktop. The
+save of that life has a head of 26,170 characters, a world chunk of 395,939 (104,310 gzipped), eight edge chunks of 200,626 characters together, ten taps that write
+no chunk, and ten Time Machine snapshots of ten years of it that take 764,837 characters, 51% of the localStorage budget and less than the 1,227,273 of v4.1.1.
+
+**Across the two tracks (X14).** A sid-born debtor (a Met record, no Person) with an edge `person:<sid> > player` that carries a debt keeps its record, as a
+record and not as a tombstone, through 30 years of the Met sweep of a played life, while 150 idle strangers around it are let go.
+
+**Marriage for wealth.** Marrying an NPC with $50M and playing ten years does not make the player rich. A divorce pays from the ex's own cash (half the gap, 0.5 to
+1 of it); a widowing inherits 0.7 to 1 of the estate the death turns to cash (cash and holdings less debt); in both the books balance and nothing is minted or
+burned. 100 times the spouse's wealth raises what the rule allows at most 100 times and the gain stays under it. The gain is not linear in the spouse's wealth
+(it is the gap), so the test bounds it by the rule and not by 100 times the small gain. Wealth that is only shown, behind a prenup, moves nothing.
+
+**The old saves.** Every `save-*.json.gz` loads and plays five years with no `edges` key, no `social` key and an unstamped life; the 22-exes life keeps its debtor
+and its cut-out child. Twelve hostile `edges` and `social` worlds are put into the oldest fixture and played three years: a stamp that is not a valid one is no
+stamp and the life plays as it always did (the world names it as a `social:` line and leaves the edges beside it as they were loaded); a valid stamp with a hostile
+map ends with a map inside its caps and the books balanced.
+
+**Ceilings.** Seven rows, each probed at 1 and 100 times (and 10 and 1,000 in the nightly): `edge-caps` (1,200 edges, 40 debts, 12 feuds, 120 edges with talk, 40
+secrets of 6 holders, 24,000 nodes; a world full of bound edges refuses a new one), `memory-total` (25 points a memory, 8 an edge, 4,000 in all), `loan-cap` (2
+typical incomes, a quarter of a small purse, 3 open loans, 40 years of default under 3 times the principal), `favor-callin` (one call-in a person in 3 years, 2
+points of regard, no more than 100 owed), `gossip-hops` (2 hops, 4 people told, 30 points a person a year), `feud-live` (12 live feuds, a suit at 3 typical incomes
+and a quarter of the cash at most, sabotage 3 happiness a year in all) and `mentor-gain` (3 proteges, 15 percent). At 100 times the tightest case of each row is
+exactly at its limit.
+
+**Idempotence.** `stepEdges`, `yearlyActs` and each of its steps (`serviceDebts`, `leakPass`, `mentorSettle`, `stepFeuds`) run twice in the year they ran and in the
+next change nothing the second time, and so does `staffLoyaltyYear`.
+
+## 21. What the next task adds here
+
+- R4-E16 flips the stamp (`social` at `default: true` with the 5.3.0 bump) and re-records the golden lives; nothing in this note changes, but every test that
+  asserted an unstamped state on a `createNewLife` life gives the flag explicitly.

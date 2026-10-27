@@ -88,6 +88,10 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   same commit, and the tag must be a string literal so the table can see it. A leak outside the row is a bug, never a reason to
   widen the row. A stream that a module draws from but no played life reaches yet (`lod`, in `seededEntity`) is marked `driven`: the
   test calls the module itself in the tapped year, and `year: 0` says the module passes 0 instead of the calendar year.
+- `test/social-acceptance.test.ts` (R4-E15) plays three stamped lives for 120 years and continues each from year 60 by a `structuredClone`, by a JSON reload and by a
+  Time Machine jump. The first two end at the very JSON of the original. The jump compares the rolls of the stream `social`: the years that ended before the jump
+  keep theirs and the year it lands in and every one after it roll again. `test/social-money-scan.test.ts` forbids `Math.random` and any draw from `g.rng` in the
+  files of the track, so the stream is the only luck it has.
 - `test/replay-purity.test.ts` ages one life five more years four ways (a `structuredClone`, a JSON reload through `migrateSave`,
   a Time Machine snapshot loaded at the same age, and `saveGame` then `loadGame` on a memory backend, a chunked save v3) and
   compares the nine slice digests each year. A failure is a purity bug.

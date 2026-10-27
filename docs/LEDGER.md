@@ -70,7 +70,7 @@ row that is not in the table drops that row on load.
 | | `tax.transaction` | gov | gov | the nation's tax on trades |
 | | `fine` | gov | gov | penalties paid to the state |
 | | `fee.gov` | gov | gov | licences, permits, visas |
-| | `legal` | legal | legal | lawyers, settlements, court costs |
+| | `legal` | legal | legal | lawyers, settlements, court costs; also the fee of a feud's suit and the answer "pay it off" (R4-E12, to `pool:legal`, token `feudToken`) |
 | | `bribe` | crime | crime | money slipped to someone for a favour |
 | Living | `rent` | landlords | households | paying rent goes to landlords, receiving it comes from households |
 | | `living` | retail | retail | cost of living |
@@ -97,7 +97,7 @@ row that is not in the table drops that row on load.
 | | `luck` | other | other | an event's money effect with no named party |
 | Family | `gift` | family | family | a gift between people |
 | | `inheritance` | family | family | what an heir receives |
-| | `support` | family | family | money sent to relatives; also a loan between people and, on a stamped life, what the estate pays a person the late player borrowed from (R4-L6, token `debtToken('estate', ...)`) |
+| | `support` | family | family | money sent to relatives; also a loan between people: the principal a lender hands the player and every payment back (R4-E10b, `serviceDebt`, token `debtToken('loan', ...)`; the debt is a record on `Edge.dv`, so a loan mints nothing and burns nothing) and, on a stamped life, what the estate pays a person the late player borrowed from (R4-L6, token `debtToken('estate', ...)`) |
 | | `divorce` | family | family | a divorce settlement; also the part of it the player pays the ex a fifth of the cash at a time (R4-L7) and the unpaid part that the estate pays before the shares (R4-L6) |
 | | `estate` | family | family | an estate passed on; also the NPC estate: the cash a dead relative leaves when no heir is modeled (R4-L5) |
 | | `donation` | charity | charity | gifts to charity |
@@ -187,6 +187,12 @@ may write no `.cash` or `.money`. Every prefix in `MIGRATED` holds no counted si
 each. Shrink the baseline after a migration with `UPDATE_MONEY_RATCHET=1 /Users/saeed/projects/anotherlife/wt/bin/vt22
 test/money-ratchet.test.ts`; it refuses to raise or add. The token scan cannot see a write through `Object.assign`, a
 destructuring or a bracket key: the probe measures that gap as drift.
+
+The social track has a scan of its own, `test/social-money-scan.test.ts` (R4-E15): over `society/`, `world/edge*.ts`, `world/social.ts`, `business/staff-loyalty.ts`,
+`kernel/relations.ts` and `kernel/person-ref.ts` it finds a call of `earnIncome`, `spend`, `addMoney`, `payForAction`, `bookMint` or `bookBurn`, a write of `.money`
+or `.cash` or of `['money']`, an `Object.assign` that is not on a patch the file just made, an `.add(` on a purse, `Math.random` and any draw from `g.rng`, and the
+acceptance probe (`test/social-acceptance.test.ts`) measures the gap the scan cannot see: three stamped lives of 120 years end with strict drift 0, and every
+year of them passes `checkLedger`.
 
 The type of `why` stays optional. Source holds no unreasoned call any more, but a required `why` also means a reason on every call in
 the tests, and the lead decides when that is worth it.
