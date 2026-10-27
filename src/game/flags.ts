@@ -49,11 +49,11 @@ export const FLAG_DEFS = {
   // into the save at life creation (createNewLife writes the world shard `social` when this key is on) and is NEVER read from FLAGS
   // at run time: everything after creation asks socialOn(g). A v5.2.0 save, an unstamped life and the heirs of one keep v5.2.0
   // behaviour byte for byte. Off until the release commit flips it together with the version.
-  social: { default: false, ships: '5.3.0' },
+  social: { default: true, ships: '5.3.0' },
   // The People profile, the staff and CEO reads and the cockpit tiles of R4 (X8). Presentation only, so it is read at the place of
   // use and applies to every life, stamped or not. It stays off until the exit-gate walk passes; if the walk fails, the release
   // commit leaves it at `ships: '5.4.0'` and `default: false`.
-  peopleProfile: { default: false, ships: '5.3.0' },
+  peopleProfile: { default: true, ships: '5.3.0' },
 } as const satisfies Record<string, FlagDef>
 
 export type FlagKey = keyof typeof FLAG_DEFS
