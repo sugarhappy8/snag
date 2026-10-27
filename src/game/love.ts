@@ -44,7 +44,9 @@ import { common, eraPick, eraPickPlain, landline, texting } from './events/era'
 import { stableRng } from './activities/common'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 import { businessGone } from './assetHooks'
+import { DIVORCE_MAX, openDivorceDebt } from './divorce-debt'
 import { remember as rememberEdge } from './world/edge-write'
+import { socialOn } from './world/social'
 
 // ---------------------------------------------------------------------------
 // Small shared helpers (also used by relationships.ts)
@@ -1673,8 +1675,12 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
       remaining -= share
       taken.push(a.name)
     }
+    // R4-L7: what the cash and the sale could not cover is owed and paid over years on a stamped life (divorce-debt.ts, called while the partner is still
+    // a spouse); a life the social stamp does not mark forgives it as before
+    const owing = remaining > 0 && socialOn(g) && openDivorceDebt(g, p, remaining)
     lines.push(`The judge ordered you to pay ${money(owed)} to your ex.`)
     if (taken.length) lines.push(`${p.firstName} also got your ${taken.join(', ')}.`)
+    if (owing) lines.push(`You still owe ${p.firstName} ${money(Math.min(DIVORCE_MAX, Math.round(remaining)))}.`)
   } else if (owed < 0) {
     const receive = Math.min(-owed, Math.max(0, p.money))
     if (receive > 0) {

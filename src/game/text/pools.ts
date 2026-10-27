@@ -322,3 +322,13 @@ export const STAFF_POACHED_LINES = defineLines('business.staffPoached', [
   'A competitor hired {who} away, and {company} lost its {role}.',
   '{who} left {company} for a rival, and our {role} went with them.',
 ])
+
+// R4-L7 (A.K8 b): what is left of a divorce settlement the player owes an ex lapses (divorce-debt.ts): ten years have gone by, or the ex is dead or
+// gone. {money} is what was still owed. A line never opens on a slot.
+/** The rest of a divorce debt lapses: {money}. Said once for the debt, on a stamped life. */
+export const DIVORCE_LAPSE = defineLines('life.divorceLapse', [
+  'The last {money} I owed from the divorce lapsed.',
+  'The last {money} of the divorce debt was never collected.',
+  'I was let off the last {money} of the divorce settlement.',
+  'The {money} still left on the divorce debt lapsed.',
+])
