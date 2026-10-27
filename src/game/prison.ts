@@ -2371,7 +2371,7 @@ function letterNodes(g: GameState): MenuNode[] {
         const p = pronouns(target.gender)
         const reply = target.relationship >= 30 || chance(gg, 0.5)
         if (reply) {
-          addRelationship(g, target, randInt(gg, 4, 10))
+          addRelationship(gg, target, randInt(gg, 4, 10))
           addStat(gg, 'happiness', randInt(gg, 2, 5))
           notePerson(target, 'Wrote to me from prison.')
           log(gg, `I wrote a letter to my ${relationLabel(target).toLowerCase()} ${target.firstName} from prison.`, 'good')
