@@ -27,6 +27,7 @@ import { personCash } from '../src/game/cash'
 import { CHARITY } from '../src/game/events/will-core'
 import { playerAcct } from '../src/game/kernel/ledger'
 import { adoptChild, adoptSpouse, syncKin } from '../src/game/kin'
+import { withFlags } from '../src/game/flags'
 import { continueAsChild } from '../src/game/life'
 import { npcCompany, startNpcCompany } from '../src/game/npc-lives'
 import { createPerson } from '../src/game/people'
@@ -44,6 +45,9 @@ import { kid, world } from './nepo-kit'
 import { cast } from './social-kit'
 
 const YEARS = 10
+
+/** The kit's family business on a life that is NOT stamped, whatever the build default says; a scene that wants the stamp calls stampSocial itself (R4-E16, step 0). */
+const plainWorld: typeof world = (seed, opts) => withFlags({ social: false }, () => world(seed, opts))
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The scenes
@@ -72,7 +76,7 @@ interface Scene {
 
 /** The designated sibling takes the firm; relatives hired there (a child and a sibling of the player) hold a record of a job at it. */
 function siblingFirm(stamped: boolean): Built {
-  const { g, a, b } = world(135, { age: 78 })
+  const { g, a, b } = plainWorld(135, { age: 78 })
   if (stamped) stampSocial(g)
   const successor = kid(g, 39, { smarts: 88 })
   const heir = kid(g, 36, { smarts: 65 })
@@ -98,7 +102,7 @@ function siblingFirm(stamped: boolean): Built {
 
 /** The heir has a company of their own, held as an NPC; the hand-over claims it as the heir's asset. */
 function heirCompany(stamped: boolean): Built {
-  const { g } = world(136, { age: 78 })
+  const { g } = plainWorld(136, { age: 78 })
   if (stamped) stampSocial(g)
   const heir = kid(g, 34, { smarts: 80 })
   heir.money = 8_000_000
@@ -145,7 +149,7 @@ function conglomerate(stamped: boolean): Built {
 /** A relative is the firm's CEO. `asHeir`: the CEO is the child who carries on; else a sibling of the heir is. */
 function relativeManager(asHeir: boolean): (stamped: boolean) => Built {
   return (stamped) => {
-    const { g, a, b } = world(91, { age: 78 })
+    const { g, a, b } = plainWorld(91, { age: 78 })
     if (stamped) stampSocial(g)
     const ceo = kid(g, 30, { smarts: 80, traits: ['ambitious', 'serious'] })
     const heir = asHeir ? ceo : kid(g, 36, { smarts: 60 })
@@ -164,7 +168,7 @@ function relativeManager(asHeir: boolean): (stamped: boolean) => Built {
 
 /** A co-owner with 30% who is a friend of the player, kept by the hand-over as a friend of the heir, and who dies in the first year. */
 function coOwner(stamped: boolean): Built {
-  const { g, b } = world(135, { age: 78 })
+  const { g, b } = plainWorld(135, { age: 78 })
   if (stamped) stampSocial(g)
   const heir = kid(g, 36, { smarts: 60 })
   const co = createPerson(g, { relation: 'friend', age: 62, relationship: 70, traits: ['kind'], stats: { smarts: 60, health: 70 }, money: 50_000, occupation: 'Clerk' })

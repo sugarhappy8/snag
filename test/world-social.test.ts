@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
+import { withFlags } from '../src/game/flags'
 import type { EntityRef } from '../src/game/kernel/ids'
 import { createNewLife } from '../src/game/life'
 import type { GameState } from '../src/game/types'
@@ -403,7 +404,8 @@ describe('socialProblems and the invariants', () => {
 
 describe('a stamped life', () => {
   it('keeps the stamp through three played years, a clone and a JSON reload, and has no problem (y and ay follow the years)', () => {
-    const g = createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR })
+    // made with the social key off, whatever the build default says: the stamp is written below, by hand (R4-E16, step 0)
+    const g = withFlags({ social: false }, () => createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR }))
     expect(socialOn(g)).toBe(false)
     expect(g.world === undefined || !('social' in (g.world as object))).toBe(true)
     stampSocial(g)
@@ -429,7 +431,7 @@ describe('a stamped life', () => {
   }, 120_000)
 
   it('is unaffected for a life that was never stamped: no social key after three played years', () => {
-    const g = createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR })
+    const g = withFlags({ social: false }, () => createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR }))
     for (let i = 0; i < 3; i++) {
       g.queue = []
       g.character.stats.health = 100

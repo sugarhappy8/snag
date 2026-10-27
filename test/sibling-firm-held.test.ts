@@ -21,6 +21,7 @@ import { valuationOf } from '../src/game/business/economy'
 import { bizOf, findBusiness, stakeValue } from '../src/game/business/state'
 import { personPurse } from '../src/game/cash'
 import { killCharacter } from '../src/game/death'
+import { withFlags } from '../src/game/flags'
 import { flowsOf } from '../src/game/kernel/ledger'
 import { continueAsChild } from '../src/game/life'
 import { adoptNpcCompany, npcCompany, npcLife, startNpcCompany } from '../src/game/npc-lives'
@@ -53,9 +54,12 @@ interface Options {
   before?: (s: Scene) => void
 }
 
-/** A $12M family firm, a designated successor (employed at it) and a different sole will heir; stamped on request. */
+/**
+ * A $12M family firm, a designated successor (employed at it) and a different sole will heir; stamped on request. The life is made
+ * with the social key off, whatever the build default says, so only `stamped` marks it (R4-E16, step 0).
+ */
 function scene(life: number, o: Options = {}): Scene {
-  const { g, a, b } = world(life, { age: 78 })
+  const { g, a, b } = withFlags({ social: false }, () => world(life, { age: 78 }))
   if (o.stamped) stampSocial(g)
   const successor = kid(g, 39, { smarts: 88 })
   const willHeir = kid(g, 36, { smarts: 65 })

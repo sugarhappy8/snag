@@ -204,7 +204,10 @@ function audit(g: GameState, s: Script): void {
   const where = `step ${s.step} (${g.year}, generation ${g.generation}, age ${g.character.age})`
   const bad = (m: string): void => void (s.problems.length < 20 && s.problems.push(`${where}: ${m}`))
 
-  for (const p of worldProblems(g).slice(0, 3)) bad(`world: ${p}`)
+  // `live: false`, as the fuzzer and the life probe check a played life (test/fuzz-kit.ts, test/life-acceptance.test.ts): the player acts after
+  // the world step has indexed the year (a choice that cuts a friend off removes the person, and the row stays until the next step), so the
+  // freshness half of the invariant is for a game that was just indexed. Every other half of it is checked here, every year (R4-E16).
+  for (const p of worldProblems(g, { live: false }).slice(0, 3)) bad(`world: ${p}`)
   const books = checkLedger(g)
   if (!books.ok) bad(`books: ${books.problems.slice(0, 2).join('; ')}`)
   const stray = firstNonFinite(g)

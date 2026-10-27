@@ -511,7 +511,8 @@ const LIVES: readonly LifeSpec[] = [
     seed: SEEDS[0],
     years: 40,
     make: () => {
-      const g = adult(SEEDS[0], 2026, 'us')
+      // not stamped, whatever the build default says: the unstamped half of the case (R4-E16, step 0)
+      const g = withFlags({ social: false }, () => adult(SEEDS[0], 2026, 'us'))
       g.character.age = 25
       const a = company(g, 'restaurant', { cash: 5_000_000 })
       addStaff(g, a)

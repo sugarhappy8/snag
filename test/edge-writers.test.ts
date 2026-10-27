@@ -24,6 +24,7 @@ import { yearlyWillFeuds } from '../src/game/events/will-feud'
 import { willPersonNodes } from '../src/game/events/will-amends'
 import { S_TELL, queueTells } from '../src/game/events/will-scenes'
 import { angerOnLearning, readWl, updateWl, type Learn } from '../src/game/events/will-core'
+import { withFlags } from '../src/game/flags'
 import type { EntityRef } from '../src/game/kernel/ids'
 import { personEntity } from '../src/game/kernel/person-ref'
 import { breakUp, divorce, hookUpWith, partnerProposes, proposeTo } from '../src/game/love'
@@ -212,8 +213,11 @@ function answerQueue(g: GameState, id: string, choice: string): void {
 
 // the family business ---------------------------------------------------------------------------------------------------
 
+/** The kit's family business on a life that is NOT stamped, whatever the build default says: a case that wants the stamp calls stampSocial itself (R4-E16, step 0). */
+const plainNepoWorld = (seed: number): ReturnType<typeof nepoWorld> => withFlags({ social: false }, () => nepoWorld(seed))
+
 function hired(stamped: boolean, seed: number, age: number, rank: number, relation: 'child' | 'sibling' = 'child') {
-  const w = nepoWorld(seed)
+  const w = plainNepoWorld(seed)
   if (stamped) stampSocial(w.g)
   const p = nepoKid(w.g, age, { relation })
   const r = hireRelative(w.g, w.a, w.b, p, { rank }, { quiet: true })
@@ -503,7 +507,7 @@ describe('the weight of a cut', () => {
 describe('the family business after a year', () => {
   it('a relative who was passed over remembers it (the sibling drama of the yearly step)', () => {
     const play = (stamped: boolean, seed: number): Played => {
-      const w = nepoWorld(seed)
+      const w = plainNepoWorld(seed)
       if (stamped) stampSocial(w.g)
       const boss = nepoKid(w.g, 34, { relation: 'child' })
       const left = nepoKid(w.g, 30, { relation: 'child', relationship: 70 })

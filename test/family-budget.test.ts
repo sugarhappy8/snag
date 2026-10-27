@@ -35,6 +35,7 @@ import { changeWill, learn, removeHeir } from '../src/game/events/will-act'
 import { updateWl } from '../src/game/events/will-core'
 import { yearlyWillFeuds } from '../src/game/events/will-feud'
 import { yearlyNepoLife } from '../src/game/events/nepo-life'
+import { withFlags } from '../src/game/flags'
 import { DEFERRABLE_SCRIPTS } from '../src/game/hubs/year-close'
 import { personEntity } from '../src/game/kernel/person-ref'
 import { yearlyEntries } from '../src/game/kernel/registry'
@@ -57,6 +58,12 @@ import { kid, world } from './nepo-kit'
 import { findSeed } from './seed-kit'
 import { cast, socialGame } from './social-kit'
 import { oracle, readRows, scene, trapRng, type CastSpec, type Tuple } from './social-parity-kit'
+
+/**
+ * The kit's family business on a life that is NOT stamped, whatever the build default says: a household that wants the stamp calls
+ * stampSocial itself, so the stamped and the plain one are the very same life but for the mark (R4-E16, step 0).
+ */
+const plainWorld: typeof world = (seed, opts) => withFlags({ social: false }, () => world(seed, opts))
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Helpers
@@ -393,13 +400,13 @@ describe('familyLive', () => {
 function firmOnly(): { g: GameState; a: Asset; staff: Person[]; restore: () => void } {
   const seed = findSeed((s) => {
     try {
-      world(s, { age: 66, money: 5_000_000 })
+      plainWorld(s, { age: 66, money: 5_000_000 })
       return true
     } catch {
       return false
     }
   })
-  const w = world(seed, { age: 66, money: 5_000_000 })
+  const w = plainWorld(seed, { age: 66, money: 5_000_000 })
   stampSocial(w.g)
   const staff = [kid(w.g, 31, { smarts: 80 }), kid(w.g, 27, { smarts: 60 })]
   for (const p of staff) expect(hireRelative(w.g, w.a, w.b, p, { rank: 2 }).ok).toBe(true)
@@ -436,7 +443,7 @@ interface Home {
  * player. `stamp` false builds the very same life without the social mark.
  */
 function home(stamp: boolean, seed = HOME_SEED()): Home {
-  const w = world(seed, { age: 66, money: 400_000_000 })
+  const w = plainWorld(seed, { age: 66, money: 400_000_000 })
   const g = w.g
   const a = w.a
   if (stamp) stampSocial(g)
@@ -1018,7 +1025,7 @@ describe('the saturated year', () => {
 
 /** The company and the children of the household, and nothing live: built the same way with the stamp and without it. */
 function quiet(stamp: boolean): GameState {
-  const w = world(HOME_SEED(), { age: 50, money: 400_000_000 })
+  const w = plainWorld(HOME_SEED(), { age: 50, money: 400_000_000 })
   if (stamp) stampSocial(w.g)
   for (const age of [31, 27, 22, 17]) kid(w.g, age, { smarts: 60 })
   w.g.queue = []

@@ -19,6 +19,7 @@
 import { describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
 import { killCharacter } from '../src/game/death'
+import { withFlags } from '../src/game/flags'
 import { personEntity } from '../src/game/kernel/person-ref'
 import { yearlyEntries } from '../src/game/kernel/registry'
 import { MODULES } from '../src/game/modules/index'
@@ -703,16 +704,19 @@ describe('through ageUp', () => {
   }, 120_000)
 
   it('a life that is not stamped writes no edge and no shard in 25 years', () => {
-    const { g } = playLife({
-      seed: LIFE_SEED,
-      birthYear: BIRTH,
-      untilAge: 25,
-      onYear: (game) => {
-        const w = (game.world ?? {}) as Record<string, unknown>
-        expect(w.edges).toBeUndefined()
-        expect(w.social).toBeUndefined()
-      },
-    })
+    // made with the social key off, whatever the build default says (R4-E16, step 0)
+    const { g } = withFlags({ social: false }, () =>
+      playLife({
+        seed: LIFE_SEED,
+        birthYear: BIRTH,
+        untilAge: 25,
+        onYear: (game) => {
+          const w = (game.world ?? {}) as Record<string, unknown>
+          expect(w.edges).toBeUndefined()
+          expect(w.social).toBeUndefined()
+        },
+      }),
+    )
     expect(g.character.age).toBeGreaterThanOrEqual(25)
   }, 240_000)
 })

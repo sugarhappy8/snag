@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
+import { withFlags } from '../src/game/flags'
 import type { EntityRef } from '../src/game/kernel/ids'
 import { countNodes, listSlices, sliceOf } from '../src/game/kernel/slices'
 import { personEntity } from '../src/game/kernel/person-ref'
@@ -147,9 +148,12 @@ function worstMap(year = 2030): Rec {
   return mapOf(entries)
 }
 
-/** A life of twelve years: it has a real world (people, firms, homes, holdings, lod, a ledger), so a world chunk exists. */
+/**
+ * A life of twelve years: it has a real world (people, firms, homes, holdings, lod, a ledger), so a world chunk exists. It is made with the
+ * social key off, whatever the build default says, so a case that wants the stamp calls stampSocial itself (R4-E16, step 0).
+ */
 function baseLife(): GameState {
-  const g = createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR })
+  const g = withFlags({ social: false }, () => createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR }))
   for (let i = 0; i < 12; i++) {
     g.queue = []
     g.character.stats.health = 100
