@@ -55,6 +55,23 @@ export function industryPitch(g: GameState, industry: Industry): string {
   return def.blurb
 }
 
+/**
+ * Trades whose market opens before the word on their door exists. Drone & Air Taxi opens in 2005 (competition-data.ts), but 'drone' is
+ * no word before 2012 (the shared era rules), and a company in it says the word on every screen: its rows, its rivals, its market,
+ * its labs. A period name for the door would only move the finding to the next screen, so nobody founds one until the same detector
+ * as the anachronism lint says the name fits. Only the founding waits: the market is untouched (it still opens in 2005, and a
+ * company already running in it carries on), nothing here draws, and the row keeps its place in the menu as "Not invented yet".
+ */
+const WORD_TRADES: readonly Industry[] = ['drones']
+
+/** Why a trade can't be founded yet though its market is open (its own name is a word from the future), or null. */
+export function tradeWordBlock(g: GameState, industry: Industry): string | null {
+  if (!WORD_TRADES.includes(industry)) return null
+  const def = industryDef(industry)
+  if (eraFits(g, g.character.countryId, `${def.label}. ${def.blurb}`)) return null
+  return marketDef(industry).notYet ?? 'Nobody has invented this business yet.'
+}
+
 /** Why the player can't run this industry here (not counting money), or null. */
 export function industryProblem(g: GameState, industry: Industry): string | null {
   const c = g.character
@@ -63,7 +80,7 @@ export function industryProblem(g: GameState, industry: Industry): string | null
   const financialEra = financeEraBlock(g, industry)
   if (financialEra) return financialEra
   if (!isIndustryLegal(c.countryId, industry, g)) return `Not allowed in ${country.name}. ${eraNote(g, c.countryId, marketOf(c.countryId).businessNote)}`.trim()
-  const era = industryEraBlock(industry, c.countryId, g.year)
+  const era = industryEraBlock(industry, c.countryId, g.year) ?? tradeWordBlock(g, industry)
   if (era) return era
   if (def.needs === 'drinking' && c.age < country.drinkingAge) return `You must be ${country.drinkingAge} to hold a liquor license in ${country.name}.`
   if (def.needs === 'driver' && !c.licenses.includes('driver')) return `You need a driver's license to run ${aIndustry(def.label)}.`
@@ -858,7 +875,7 @@ function industryRow(industry: Industry): MenuAction {
       const c = g.character
       const city = homeCity(g)
       if (!isIndustryLegal(c.countryId, industry, g)) return 'Not allowed here'
-      if (industryEraBlock(industry, c.countryId, g.year)) return 'Not invented yet'
+      if (industryEraBlock(industry, c.countryId, g.year) || tradeWordBlock(g, industry)) return 'Not invented yet'
       const cost = startupCost(industry, c.countryId, city)
       if (deep) {
         const note = backgroundNote(g, industry as DeepTechIndustry)
