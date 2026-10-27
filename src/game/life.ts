@@ -9,6 +9,8 @@ import { refreshValue } from './business/economy'
 import { keptFundHolders, payOutDroppedFunds, settleFundsAtDeath } from './business/hedge-year'
 import { heirCitizenships } from './activities/immigration-state'
 import { personCash } from './cash'
+import { foldAccount, playerAcct } from './kernel/ledger'
+import { personSid } from './kernel/person-ref'
 import {
   addHidden,
   addMoney,
@@ -1569,6 +1571,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   n.character = heir
   const claims = heirShare === null ? null : carryReceivables(n, old, heirShare)
   carryEdges(n, oldEgo, playerRef(n), n.people)
+  // The belt (R4-L11, X39). No writer gives a child a sid (X15); if one ever did, the heir's money would sit in person:<sid> while the player's account is person:<id>. A relabel, no flow.
+  const heirSid = personSid(heirP)
+  if (stamped && heirSid !== null) foldAccount(n, `person:${heirSid}`, playerAcct(n), `estate:${old.id}:${n.year}:sidfold`)
   // The inheritance and the heir's first lines are written in the heir's currency (they may
   // live abroad), not the late parent's.
   bindMoneyContext(n)
