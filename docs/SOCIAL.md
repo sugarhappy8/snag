@@ -704,12 +704,12 @@ that block them).
 
 What a grudge becomes when nobody stops it. A feud is the rung `q = [rung, since, cause]` of the edge `person > player` (the only thing it saves):
 rung 1 cold, 2 gossip, 3 sabotage, 4 legal. At most 12 are live in the map (`EDGE_CAPS.feuds`); Life's strife edges between two relatives carry a rung
-too and count toward the 12 (X31, C12), but `stepFeuds` plays only the feuds that are the player's. The will keeps its own ladder
+too and count toward the 12 (X31, C12), but `stepFeuds` plays only the feuds that are the player's and only cools the others (below). The will keeps its own ladder
 (`events/will-feud.ts`): a pair whose person is cut out or estranged under the will (`cutOff` of `society/favor.ts`, the raw record) belongs to it, so
 this ladder neither starts a feud on such a pair nor plays one that is already there (it ends quietly, handed back to the will).
 
 **The step.** `stepFeuds(g)` in `society/feud.ts` is the last step of the one `society.acts` entry (`close` 6, after the debts, the leak and the mentor):
-the live feuds first, in key order, then the new ones, so a feud that ends frees its slot before a new one asks for it. For each live feud not yet
+the live feuds first, in key order, then the cooling of the strife rungs of others (below), then the new ones, so a feud that ends frees its slot before a new one asks for it. For each live feud not yet
 stepped this year (the tick, below):
 
 | Case | What happens |
@@ -738,7 +738,20 @@ grudges are asked first (resentment, then key). The chance is `0.10 + (s - 45) /
 `unpackCause`, `tickOf`): bits 0 to 2 the cause (0 none, 1 betrayal, 2 loan_unpaid, 3 cut_from_will), bits 3 and 4 the calm years (0 to 3), bits 5 to
 7 the tick of the year the feud was last stepped (`1 + year mod 7`, never 0). The tick makes the step idempotent in a year on its own, whatever the
 stamp of the entry says: a second call finds every feud already stepped, and the new feuds are the same ones because every roll is the stream's. A rung
-written by another task (the strife edges write `[1, year, 0]`) is a feud with no cause, no calm years and no tick, stepped at its first chance.
+written by another task (the strife edges write `[1, year, 0]`) is a feud with no cause, no calm years and no tick, stepped at its first chance when
+it is the player's (an edge `person > player`) and cooled when it is not (below).
+
+**Strife rungs of others** (the whole-diff review). A strife edge `a > b` between two relatives, neither the player, carries a cold rung that counts
+toward the 12, and nothing played or ended it: `stepFeuds` reads only the edges `person > player`, the edge step keeps an edge with a rung (it is bound),
+and the hand-over removes only the late player's own edges. A reading with 4 cut-out relatives and 3 favored each wrote all 12 rungs, and they held every
+slot of the map for the rest of the lineage: the player could never start a feud, and `familyLive` kept one of the year's three family choices reserved
+for a quarrel the player has no part in. So `coolStrife` (after the live feuds, before the new ones) ends such a rung quietly, with no notice, line,
+fact or stamp, and leaves the edge as it is: at once when either person is dead, a pet or no longer in the game, and by the rule of the ladder when
+resentment is under 25 for 2 years in a row (the calm years sit in the same cause byte, and the tick keeps the count to once a year). A rung whose
+grudge is 25 or more is written nothing. The edge step fades a grudge a tenth a year and a reading writes at most 50, so a rung is over within about 9
+years. A rung on an edge that starts at the player is not a quarrel between two relatives and is left alone. The probe `strife-edges` presses on it at
+100 times: with the 12 rungs of a reading live and 100 people at resentment 100 against the heir, the heir's own feuds start within 40 years and the map
+never holds more than 12.
 
 **The stamp `Edge.c`.** The year of the last call-in on the edge (section 13). This task also writes it for a peace tried (it holds the next try off 3
 years, the cooldown of the favors) and for a settlement or a peace made (it holds a new feud off 5 years). The favors read it the same way, so a pair

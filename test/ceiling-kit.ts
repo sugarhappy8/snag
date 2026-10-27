@@ -52,7 +52,7 @@ import { PEOPLE_CAPS, exposureOf, lookKeysOf } from '../src/game/people-fog'
 import { playerEdgeKey, runAct } from '../src/game/society/acts'
 import { INTEREST_CEILING, debtsOf } from '../src/game/society/debt'
 import { FAVOR_BOND, FAVOR_COOLDOWN, helpAct } from '../src/game/society/favor'
-import { FEUD, legalFee, stepFeuds } from '../src/game/society/feud'
+import { FEUD, feudOf, legalFee, stepFeuds } from '../src/game/society/feud'
 import { HOP_CAP, MAX_TOLD, spread } from '../src/game/society/gossip'
 import { LOAN_OPEN_MAX, lend, loanTerms, openLoans } from '../src/game/society/loan'
 import { MENTOR, enrolMentor, mentorSettle, protegesOf } from '../src/game/society/mentor'
@@ -79,6 +79,7 @@ import { edgeKey, edgeMap, liveFeuds, normalizeEdges, openDebts, readEdge, type 
 import { readFacts } from '../src/game/world/facts'
 import { KIN_CAPS, kinProblems, readKin } from '../src/game/world/kin'
 import { LIFE_MAX_AGE, ageTo, type KinBase } from '../src/game/world/life-path'
+import { stepEdges } from '../src/game/world/edge-step'
 import { putEdge, putSecret, remember } from '../src/game/world/edge-write'
 import { applyDisclosure, frontierLead, frontierRows, readFrontier } from '../src/game/world/frontier'
 import { FIELD_IDS, FIELDS, fieldOfKind } from '../src/game/world/frontier-fields'
@@ -1685,8 +1686,10 @@ function keptContactsRow(): CeilingProbe {
 function strifeEdgesRow(): CeilingProbe {
   return {
     id: 'strife-edges',
-    cap: 'one reading of a will writes at most 3 quarrel edges for one relative and 36 in all, and at most 12 cold feuds live, whatever the plan holds: only the first 400 entries of a list are read (R4-L10)',
-    // `load` relatives cut out of the will, each at an anger of 30 to 99, and four who take a quarter each (100 cut-out relatives at 100 times).
+    cap: 'one reading of a will writes at most 3 quarrel edges for one relative and 36 in all, and at most 12 cold feuds live, whatever the plan holds: only the first 400 entries of a list are read; and the quarrels cool, so the 12 rungs of a reading do not keep the heir from starting a feud of their own (R4-L10, the whole-diff review)',
+    // `load` relatives cut out of the will, each at an anger of 30 to 99, and four who take a quarter each (100 cut-out relatives at 100 times). Then
+    // the real year steps (the edge step fades the grudges, the feud step cools the rungs that nobody plays) with `load` people who hold a grudge
+    // of 100 and a betrayal against the heir: the 12 rungs hold every slot at first, and the heir's own feuds start once the rungs have gone.
     run: (scale) => {
       const t = tightest()
       const load = loadOf(scale)
@@ -1709,6 +1712,21 @@ function strifeEdgesRow(): CeilingProbe {
         t.add(mine, STRIFE.perPerson, `quarrel edges of ${p.firstName}`)
       }
       t.add(liveFeuds(n), EDGE_CAPS.feuds, 'cold feuds that live')
+      const wronged = Array.from({ length: load }, () => cast(n, 30, 'friend'))
+      const YEARS = 40
+      let firstOwn = 0
+      for (let y = 1; y <= YEARS; y++) {
+        for (const p of wronged) {
+          const grudge = { t: 30, f: 30, r: 40, s: 100, o: 0, y: n.year - 3, l: n.year, m: [formatMemory({ kind: 'betrayal', year: n.year - 1, w: 2, by: 'ego' })] }
+          if (!putEdge(n, `${personEntity(p)}>${playerRef(n)}`, grudge)) throw new Error('the grudge was refused')
+        }
+        n.year += 1
+        stepEdges(n)
+        yearlyActs(n)
+        t.add(liveFeuds(n), EDGE_CAPS.feuds, `feuds that live in year ${y} with ${load} people at resentment 100`)
+        if (firstOwn === 0 && wronged.some((p) => feudOf(n, p) !== null)) firstOwn = y
+      }
+      t.add(firstOwn === 0 ? Number.POSITIVE_INFINITY : firstOwn, YEARS, `years until the heir's own grudge started a feud, with the 12 rungs of a reading of ${load} cut-out relatives live`)
       return t.result()
     },
   }

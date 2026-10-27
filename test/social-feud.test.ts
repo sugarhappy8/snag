@@ -57,6 +57,7 @@ import { EDGE_CAPS } from '../src/game/world/caps'
 import { memoryOdds } from '../src/game/world/edge-odds'
 import { formatMemory, type MemoryKind } from '../src/game/world/edge-memory'
 import { liveFeuds, memoriesOf, readEdge, type Edge } from '../src/game/world/edges'
+import { stepEdges } from '../src/game/world/edge-step'
 import { putEdge } from '../src/game/world/edge-write'
 import { readFacts } from '../src/game/world/facts'
 import { worldProblems } from '../src/game/world/invariants'
@@ -256,7 +257,8 @@ describe('a feud starts', () => {
 
   it('fills the slots of the 12 live feuds and no more, strife edges of Life included, and starts the next one when a slot is free', () => {
     const g = world()
-    const strife = Array.from({ length: 12 }, (_, i) => `person:s${i}>person:t${i}`)
+    // twelve quarrels between living relatives, angry enough to stay (the people are in the game: a rung of people who are gone ends, section 4)
+    const strife = Array.from({ length: 12 }, () => `${ref(cast(g, 50, 'sibling'))}>${ref(cast(g, 50, 'sibling'))}`)
     for (const key of strife) expect(putEdge(g, key, { t: 50, f: 50, r: 50, s: 60, o: 0, y: g.year, l: g.year, q: [1, g.year, 0] })).toBe(true)
     expect(liveFeuds(g)).toBe(12)
     const p = foe(g, { s: 100 })
@@ -275,7 +277,8 @@ describe('a feud starts', () => {
     const g = world()
     const grudges = [50, 100, 70, 90, 60]
     const people = grudges.map((s) => foe(g, { s }))
-    for (let i = 0; i < 11; i++) expect(putEdge(g, `person:s${i}>person:t${i}`, { t: 50, f: 50, r: 50, s: 60, o: 0, y: g.year, l: g.year, q: [1, g.year, 0] })).toBe(true)
+    // eleven quarrels between living relatives, angry enough to stay
+    for (let i = 0; i < 11; i++) expect(putEdge(g, `${ref(cast(g, 50, 'sibling'))}>${ref(cast(g, 50, 'sibling'))}`, { t: 50, f: 50, r: 50, s: 60, o: 0, y: g.year, l: g.year, q: [1, g.year, 0] })).toBe(true)
     // one slot is free: the biggest grudge (s 100) takes it if its roll allows, then nobody else can
     for (const p of people) rollUnder(g, START, toPlayer(g, p), 0.1)
     const biggest = people[1]!
@@ -621,10 +624,145 @@ describe('escalation and cooling', () => {
     expect(logText(g)).toEqual([])
   })
 
-  it('leaves the feuds that are not the player\'s alone (Life\'s strife edges between two relatives)', () => {
+  it('leaves the feuds that are not the player\'s alone while the two relatives are in the game and the grudge is 25 or more (Life\'s strife edges)', () => {
     const g = world()
-    expect(putEdge(g, 'person:s1>person:t1', { t: 50, f: 50, r: 50, s: 60, o: 0, y: g.year, l: g.year, q: [1, g.year - 3, 0] })).toBe(true)
+    const { a, b } = strifePair(g, { s: 60, q: [1, g.year - 3, 0] })
     const json = JSON.stringify(g.world)
+    stepFeuds(g)
+    expect(JSON.stringify(g.world)).toBe(json)
+    for (let i = 0; i < 5; i++) nextYear(g)
+    expect(strifeRung(g, a, b)).toEqual([1, g.year - 8, 0])
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 4b. Life's strife rungs between two relatives (the whole-diff review)
+
+/** A strife edge of Life between two living relatives, neither of them the player: a > b, resentment 60 and a cold rung that no step has stamped. */
+function strifePair(g: GameState, over: Partial<Edge> = {}): { a: Person; b: Person; key: string } {
+  const a = cast(g, 50, 'sibling')
+  const b = cast(g, 50, 'sibling')
+  const key = `${ref(a)}>${ref(b)}`
+  expect(putEdge(g, key, { t: 50, f: 50, r: 50, s: 60, o: 0, y: g.year, l: g.year, q: [1, g.year, 0], ...over })).toBe(true)
+  return { a, b, key }
+}
+const strifeRung = (g: GameState, a: Person, b: Person): readonly number[] | undefined => readEdge(g, ref(a), ref(b))?.q
+
+describe('Life\'s strife rungs between two relatives cool, so they do not hold a feud slot for the rest of the lineage', () => {
+  it('cools the way the ladder cools a feud: resentment under 25 for 2 years in a row ends the rung, quietly', () => {
+    const g = world()
+    const { a, b } = strifePair(g, { s: 10 })
+    expect(liveFeuds(g)).toBe(1)
+    stepFeuds(g)
+    expect(unpackCause(strifeRung(g, a, b)![2]!)).toEqual({ code: 0, calm: 1, tick: tickOf(g.year) })
+    expect(liveFeuds(g)).toBe(1)
+    g.year += 1
+    stepFeuds(g)
+    expect(strifeRung(g, a, b)).toBeUndefined()
+    expect(liveFeuds(g)).toBe(0)
+    // nobody is told: no notice, no line, no fact, no stamp that holds the pair off a feud
+    expect(notices(g)).toHaveLength(0)
+    expect(logText(g)).toEqual([])
+    expect(readFacts(g)).toEqual([])
+    expect(readEdge(g, ref(a), ref(b))).toMatchObject({ s: 10 })
+    expect(readEdge(g, ref(a), ref(b))!.c).toBeUndefined()
+  })
+
+  it('counts a calm year only when it is in a row: a grudge back at 25 or more starts the count again', () => {
+    const g = world()
+    const { a, b, key } = strifePair(g, { s: 10 })
+    stepFeuds(g)
+    expect(unpackCause(strifeRung(g, a, b)![2]!).calm).toBe(1)
+    g.year += 1
+    expect(putEdge(g, key, { s: 30 })).toBe(true)
+    stepFeuds(g)
+    expect(unpackCause(strifeRung(g, a, b)![2]!).calm).toBe(0)
+    g.year += 1
+    expect(putEdge(g, key, { s: 10 })).toBe(true)
+    stepFeuds(g)
+    expect(unpackCause(strifeRung(g, a, b)![2]!).calm).toBe(1)
+    g.year += 1
+    stepFeuds(g)
+    expect(strifeRung(g, a, b)).toBeUndefined()
+  })
+
+  it('is idempotent in a year: a second call counts nothing', () => {
+    const g = world()
+    const { a, b } = strifePair(g, { s: 10 })
+    stepFeuds(g)
+    const once = JSON.stringify(g.world)
+    stepFeuds(g)
+    expect(JSON.stringify(g.world)).toBe(once)
+    expect(unpackCause(strifeRung(g, a, b)![2]!).calm).toBe(1)
+  })
+
+  it('ends at the first step a rung whose person has died, left the game or become a pet, quietly and whatever the grudge', () => {
+    for (const how of ['died', 'left', 'pet'] as const) {
+      const g = world()
+      const { a, b } = strifePair(g, { s: 90 })
+      if (how === 'died') b.alive = false
+      else if (how === 'left') g.people = g.people.filter((x) => x.id !== a.id)
+      else a.relation = 'pet'
+      stepFeuds(g)
+      expect(strifeRung(g, a, b), how).toBeUndefined()
+      expect(liveFeuds(g), how).toBe(0)
+      expect(notices(g), how).toHaveLength(0)
+      expect(logText(g), how).toEqual([])
+      expect(readEdge(g, ref(a), ref(b)), 'the edge itself stays').toMatchObject({ s: 90 })
+    }
+  })
+
+  it('draws nothing from g.rng, makes no id, books no dollar and touches no person', () => {
+    const g = world()
+    strifePair(g, { s: 10 })
+    strifePair(g, { s: 90 })
+    const before = { nextId: g.nextId, cash: g.character.money, people: JSON.stringify(g.people), queue: JSON.stringify(g.queue), log: JSON.stringify(g.log) }
+    // a read or a write of g.rng throws (the trap), so a step that returns drew nothing
+    trapRng(g)
+    for (let i = 0; i < 3; i++) {
+      expect(() => stepFeuds(g)).not.toThrow()
+      g.year += 1
+    }
+    expect({ nextId: g.nextId, cash: g.character.money, people: JSON.stringify(g.people), queue: JSON.stringify(g.queue), log: JSON.stringify(g.log) }).toEqual(before)
+    expectConserved(g)
+  })
+
+  it('frees the slots of 12 quarrels for the player\'s own grudge: it cannot start while they hold the 12, and starts once they have cooled', () => {
+    const g = world()
+    // twelve quarrels at the strongest a reading writes (anger 100 is a grudge of 50), then the real year step: the edge step fades the grudge a
+    // tenth a year (world/edge-step.ts, close 5) and the feud step (close 6) cools the rung after 2 calm years
+    const pairs = Array.from({ length: EDGE_CAPS.feuds }, () => strifePair(g, { s: 50 }))
+    expect(liveFeuds(g)).toBe(EDGE_CAPS.feuds)
+    const wronged = foe(g, { s: 100 })
+    const wrong = (): void => void expect(putEdge(g, toPlayer(g, wronged), { s: 100, m: [mem(g, 'betrayal')] })).toBe(true)
+    rollUnder(g, START, toPlayer(g, wronged), 0.1)
+    stepFeuds(g)
+    expect(feudOf(g, wronged), 'no slot').toBeNull()
+    let free = 0
+    while (liveFeuds(g) >= EDGE_CAPS.feuds && free < 30) {
+      g.year += 1
+      stepEdges(g)
+      yearlyActs(g)
+      wrong()
+      free += 1
+    }
+    expect(liveFeuds(g), `after ${free} years`).toBeLessThan(EDGE_CAPS.feuds)
+    expect(free, 'a quarrel at its strongest is over within 10 years').toBeLessThanOrEqual(10)
+    for (const { a, b } of pairs) expect(strifeRung(g, a, b), 'every rung of the same strength goes in the same year').toBeUndefined()
+    wrong()
+    rollUnder(g, START, toPlayer(g, wronged), 0.1)
+    stepFeuds(g)
+    expect(feudOf(g, wronged), 'the slot is theirs').not.toBeNull()
+    expect(worldProblems(g)).toEqual([])
+  })
+
+  it('leaves a rung on an edge that starts at the player alone: it is not a quarrel between two relatives', () => {
+    const g = world()
+    const p = cast(g, 50, 'sibling')
+    const key = `${playerRef(g)}>${ref(p)}`
+    expect(putEdge(g, key, { t: 50, f: 50, r: 50, s: 5, o: 0, y: g.year, l: g.year, q: [1, g.year - 1, 0] })).toBe(true)
+    const json = JSON.stringify(g.world)
+    stepFeuds(g)
     stepFeuds(g)
     expect(JSON.stringify(g.world)).toBe(json)
   })

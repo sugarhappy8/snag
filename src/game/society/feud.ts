@@ -1,11 +1,11 @@
 // The feud ladder (R4-E12, D.4, X29, X31, X40, X54, C12): what a grudge becomes when nobody stops it. A feud is a rung `q = [rung, since, cause]` on
 // the edge person > player, the only thing it saves. Rung 1 is cold, 2 gossip, 3 sabotage, 4 legal. At most 12 are live in the whole map (EDGE_CAPS.feuds);
 // Life's strife edges between two relatives carry a rung too (X31, C12) and count toward the 12, but this file only plays the feuds that are the
-// player's. The will keeps its own ladder (events/will-feud.ts): a pair whose person is cut out or estranged under the will (favor.ts cutOff, the raw
+// player's, and it cools those rungs (coolStrife, below), so that a reading's 12 do not hold every slot for the rest of the lineage. The will keeps its own ladder (events/will-feud.ts): a pair whose person is cut out or estranged under the will (favor.ts cutOff, the raw
 // record read by world/edge-legacy.ts) belongs to it, and this file neither starts a feud on such a pair nor plays one that is already there.
 //
 // The yearly step, `stepFeuds`, runs inside the one `society.acts` entry (society/module.ts) after the debts, the leak and the mentor. First the live
-// feuds, then the new ones, so a feud that ends frees its slot before a new one asks for it:
+// feuds, then the strife rungs of others, then the new ones, so a feud that ends frees its slot before a new one asks for it:
 //
 //   a feud already stepped this year is skipped (the tick, below); a person who has left the game ends the feud quietly; one who died ends it with
 //   a line; a pair the will has come to own is handed back to it, quietly. Otherwise:
@@ -18,6 +18,8 @@
 //             4 legal   the suit is decided: a one-off fee through the ledger, then the settlement, below
 //   the rise  25% a year while resentment is at least 40 + 10 x the rung (50, 60, 70); the legal rung is the last. A rise into 3 or 4 says the fact and
 //             asks the player (`A Falling Out`)
+//   strife    a rung on an edge between two other people (Life's, X31) is nobody's to play: it ends when either person is dead, a pet or gone from
+//             the game, and when resentment is under 25 for 2 years in a row (the rule of `calm`, in the same cause byte); quietly, and the edge stays
 //   new       resentment 45 or more, a betrayal, an unpaid loan or a cut from the will on the edge from the last 5 years, no stamp of a settlement or
 //             a peace in the last 5 years (`Edge.c`), fewer than 12 live feuds, a person the will does not own; the chance is 0.10 + (s - 45) / 200 a
 //             year, drawn from the stream `social` (id `feud.start|<key>`). The biggest grudges are asked first. A new feud is cold and is not played
@@ -35,7 +37,7 @@
 // opaque code; nothing outside this file does): bits 0 to 2 the cause (0 none, 1 betrayal, 2 loan_unpaid, 3 cut_from_will), bits 3 and 4 the calm years
 // (0 to 3), bits 5 to 7 the tick of the year the feud was last stepped (1 to 7, `1 + year mod 7`; 0 for a feud nobody has stepped). The tick is what makes the
 // step idempotent in a year on its own, whatever the stamp of the entry says, and what keeps a feud from being played in the year it began. A rung written
-// by another task (Life's strife edges write [1, year, 0]) is a feud with no cause, no calm years and no tick.
+// by another task (Life's strife edges write [1, year, 0]) is a feud with no cause, no calm years and no tick, until coolStrife counts a first calm year.
 //
 // The stamp `Edge.c` is the year of the last call-in on the edge. This task also writes it for a peace tried (a try holds the next try off 3 years, the
 // cooldown of the favors) and for a settlement or a peace made (it holds a new feud off 5 years). The favors read it the same way, so a settled pair can't
@@ -73,7 +75,7 @@ import type { GameState, Json, Person } from '../types'
 import { EDGE_CAPS } from '../world/caps'
 import { memoryOdds } from '../world/edge-odds'
 import { putEdge, remember } from '../world/edge-write'
-import { edgesOf, liveFeuds, memoriesOf, readEdge, type Edge, type EdgeKey } from '../world/edges'
+import { edgeMap, edgesOf, isSecretKey, liveFeuds, memoriesOf, readEdge, type Edge, type EdgeKey } from '../world/edges'
 import { playerRef } from '../world/people'
 import { SEEN_MAX, SEEN_MIN } from '../world/rows'
 import { socialOn } from '../world/social'
@@ -552,6 +554,48 @@ function triggerOf(e: Readonly<Edge>, year: number): number {
   return best
 }
 
+/** The two person refs of an edge key when neither is the ego: a quarrel between two other people (Life's strife edges). Null for any other key. */
+function strifeEnds(key: string, ego: EntityRef): readonly [EntityRef, EntityRef] | null {
+  const at = key.indexOf('>')
+  if (at < 1) return null
+  const from = key.slice(0, at) as EntityRef
+  const to = key.slice(at + 1) as EntityRef
+  return from.startsWith('person:') && to.startsWith('person:') && from !== ego && to !== ego ? [from, to] : null
+}
+
+/**
+ * The rungs that are nobody's to play (the whole-diff review): the strife edges of Life, `a > b` between two relatives with a cold rung that
+ * count toward the 12 (X31, C12). Nobody plays one, because `stepFeuds` reads only the edges `person > player`, and nothing else ended it, so a
+ * reading's 12 rungs held every slot for the rest of the lineage: the player could never start a feud, and one of the year's three family
+ * choices stayed reserved (budget.ts familyLive) for a quarrel the player has no part in. So such a rung only cools, by the rule of the ladder:
+ * resentment under 25 for 2 years in a row ends it (the calm years in the cause byte, the tick of the year for idempotence), and a rung ends at
+ * once when either person is dead, a pet or no longer in the game, for there is nobody left to hold the grudge. It ends quietly (no notice, no
+ * line, no fact, no stamp: the player was never told of it) and the edge itself stays. The edge step fades a grudge a tenth a year (the strongest
+ * a reading writes is 50), so a rung is over within about 9 years. A rung that is still angry is written nothing: it is left as it is. If one
+ * end later becomes the player the rung is a feud of the player's and `stepOne` plays it with the calm years it has. A no-op with no feud live.
+ */
+function coolStrife(g: GameState, ego: EntityRef, people: Map<EntityRef, Person>, year: number): void {
+  if (liveFeuds(g) === 0) return
+  const map = edgeMap(g)
+  for (const key of Object.keys(map)) {
+    if (isSecretKey(key)) continue
+    const ends = strifeEnds(key, ego)
+    if (ends === null) continue
+    const edge = map[key]!
+    const feud = feudOfEdge(edge)
+    if (feud === null || feud.tick === tickOf(year)) continue
+    const a = people.get(ends[0])
+    const b = people.get(ends[1])
+    if (a === undefined || b === undefined || !present(a) || !present(b)) {
+      endFeud(g, key as EdgeKey, false)
+      continue
+    }
+    const calm = clamp(num(edge.s, 0), 0, 100) < FEUD.calmBelow ? Math.min(3, feud.calm + 1) : 0
+    if (calm >= FEUD.calmYears) endFeud(g, key as EdgeKey, false)
+    else if (calm !== feud.calm) putEdge(g, key as EdgeKey, { q: [feud.rung, feud.since, packCause(feud.code, calm, tickOf(year))] })
+  }
+}
+
 /** New feuds: the biggest grudges first, while there is a slot. */
 function startFeuds(g: GameState, ego: EntityRef, people: Map<EntityRef, Person>, year: number): void {
   const suffix = `>${ego}`
@@ -586,5 +630,6 @@ export function stepFeuds(g: GameState): void {
   const people = peopleByRef(g)
   const pass: Pass = { lost: new Map(), sabotaged: false, legalRoom: affordable(g, Number.POSITIVE_INFINITY) }
   for (const row of liveRows(g, ego)) stepOne(g, row, people, year, pass)
+  coolStrife(g, ego, people, year)
   startFeuds(g, ego, people, year)
 }

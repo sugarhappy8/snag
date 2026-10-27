@@ -16,6 +16,10 @@
 // (edgeLocalBound) and may be evicted like any other at the 1,200 edges, by design; one with a live `q` is bound. When the map is full
 // of bound edges the write is refused (putEdge) and the pair is simply not written.
 //
+// Who ends the rung. Nobody plays a quarrel between two relatives, so society/feud.ts (coolStrife) cools it: it ends when either person is
+// dead or gone from the game, and when the grudge is under 25 for 2 years in a row (the edge step fades it a tenth a year, and the strongest a
+// reading writes is 50, so within about 9 years). The edge stays; only the rung and the slot go.
+//
 // Order. The cut-out are taken by anger, then id, the favored by share, then id; the first writes come to the strongest. A plan is read as
 // data: a list that is not a list, an entry that is not a plain object, an id that is not a living Person of the game (a pet, the dead,
 // the heir), an anger or a share that is not a finite number, a repeated id: each is skipped, never thrown on. Only the first 400
