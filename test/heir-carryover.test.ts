@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { relationLabel } from '../src/game/core'
 import { killCharacter } from '../src/game/death'
 import { readTies, updateTies } from '../src/game/events/wealth-core'
 import { readWl, updateWl } from '../src/game/events/will-core'
@@ -572,6 +573,24 @@ describe('the kept contacts (part B)', () => {
     expect(byId(n, f.who.uncle!.id)?.data.kin).toBe('uncle')
     expect(byId(n, f.who.aunt!.id)?.data.kin).toBe('aunt')
     for (const p of n.people) if (typeof p.data.kin === 'string') expect(p.data.kin.length).toBeLessThanOrEqual(20)
+  })
+
+  it('reads a nepo outsider kept as a friend as Friend, stamped or not, and the late player\'s sibling as Uncle only on a stamped life (the whole-diff review)', () => {
+    for (const stamped of [false, true]) {
+      const { n, f } = over(1, {
+        stamped,
+        prepare: (x) => {
+          // what materialize (business/nepo-actions.ts) makes for a cousin hired at the firm: a coworker with the kin word and the nepo seed
+          x.who.cousin = withLife(cast(x.g, 60, 'coworker', { age: 38, countryId: 'us', data: { kin: 'cousin', nepoSeed: 'out.Dele.Okoro.cousin.38.60' } }))
+          x.who.uncle = withLife(cast(x.g, 60, 'sibling', { age: 66, gender: 'male', countryId: 'us' }))
+        },
+      })
+      const cousin = byId(n, f.who.cousin!.id)!
+      expect(cousin.relation, `stamped ${stamped}`).toBe('friend')
+      expect(cousin.data.kin).toBe('cousin')
+      expect(relationLabel(cousin), `a nepo cousin, stamped ${stamped}`).toBe('Friend')
+      expect(relationLabel(byId(n, f.who.uncle!.id)!), `the uncle, stamped ${stamped}`).toBe(stamped ? 'Uncle' : 'Friend')
+    }
   })
 })
 

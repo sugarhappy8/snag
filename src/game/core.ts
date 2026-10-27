@@ -874,10 +874,19 @@ export function removePerson(g: GameState, id: string): void {
 /** What a relative who became a Person is called: lower-case letters, spaces and hyphens, 20 characters at most (`niece`, `sister-in-law`; KIN.md). */
 const KIN_WORD = /^[a-z][a-z -]{0,19}$/
 
-/** The kin word of a friend, with its first letter capitalized ("niece" reads "Niece"), or undefined for no word and for a value that is not one (R4-U9, X38). */
+/**
+ * The kin word of a friend, with its first letter capitalized ("niece" reads "Niece"), or undefined for no word and for a value that is not one
+ * (R4-U9, X38). A nepo outsider has none: the cousin or in-law that business/nepo-actions.ts hires is a coworker with `data.kin` and a
+ * `data.nepoSeed` (since v1.7.0), and Befriend, Make Peace and the hand-over (which keeps the data) can make that person a friend on a life that
+ * was never stamped. Their `data.kin` is the nepo code's word for who they are to the firm, not a label for the people screens, and that life reads
+ * "Friend" as it did on v5.2.0. The Life track's kin (a niece made a Person, the late player's sibling who is now an uncle) never has a seed.
+ */
 function kinWord(p: Person): string | undefined {
   const data: unknown = p.data
-  const kin = typeof data === 'object' && data !== null ? (data as Record<string, unknown>).kin : undefined
+  if (typeof data !== 'object' || data === null) return undefined
+  const d = data as Record<string, unknown>
+  if (typeof d.nepoSeed === 'string' && d.nepoSeed !== '') return undefined
+  const kin = d.kin
   return typeof kin === 'string' && KIN_WORD.test(kin) ? kin.charAt(0).toUpperCase() + kin.slice(1) : undefined
 }
 

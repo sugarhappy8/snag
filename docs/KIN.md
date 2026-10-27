@@ -122,8 +122,11 @@ When an estate is settled (R4-L5) a relative that was a record becomes a Person 
 `kinLabel`; no `RelationKind` is added, because that would touch every exhaustive switch. A string `data.kin` makes `yearlyNpcLife`
 (`npc-lives.ts`) give the person a full NpcLife every year, with keyed decisions, wages from `pool:employers` and marriage rolls. That
 is deliberate, a niece has a life, and it is bounded by `KIN_CAPS.persons` and the `npc-wage` ceiling. `data.kin` is not new: the
-nepo code (`business/nepo-state.ts`) already puts a string there for in-laws and cousins it hires, on a `coworker`; the two uses do
-not meet, because a materialized relative is a `friend`.
+nepo code (`business/nepo-state.ts`) already puts a string there for in-laws and cousins it hires, on a `coworker`. The two uses can meet:
+Befriend, Make Peace and the hand-over (which keeps the data) make such a coworker a `friend`, on a life that was never stamped. Those people
+carry `data.nepoSeed`, which a relative of the Life track never has, so `relationLabel` gives them no kin word and an unstamped life reads
+"Friend" as it did on v5.2.0 (the whole-diff review of R4). The late player's siblings who stay as 'uncle' or 'aunt' have no sid, and read
+as the word all the same.
 
 ## 8. Where it is used
 

@@ -812,6 +812,26 @@ describe('relationLabel reads data.kin for a friend (C19, X38)', () => {
     expect(relationLabel(p)).toBe('Coworker')
   })
 
+  it('a nepo outsider who became a friend is a Friend, as on v5.2.0: its data.kin is the nepo code\'s word, not a label (the whole-diff review)', () => {
+    // materialize (business/nepo-actions.ts) writes data.kin and data.nepoSeed on a cousin or an in-law it hires, as a coworker; Befriend, Make Peace
+    // and the hand-over (reset in life.ts keeps the data) make that person a friend, on a life that was never stamped
+    for (const kin of ['cousin', 'brother-in-law', 'sister-in-law']) {
+      const p = friend(kin)
+      p.data = { ...p.data, nepoSeed: `out.Dele.Okoro.${kin}.38.60` }
+      expect(relationLabel(p), kin).toBe('Friend')
+      p.relation = 'bestFriend'
+      expect(relationLabel(p), `${kin} as a best friend`).toBe('Best Friend')
+    }
+  })
+
+  it('a friend whose data.kin the Life track wrote reads as the word: a niece with a sid, and an uncle or an aunt of the hand-over with none', () => {
+    const niece = friend('niece')
+    niece.data = { ...niece.data, sid: 's77' }
+    expect(relationLabel(niece)).toBe('Niece')
+    expect(relationLabel(friend('uncle', 'male'))).toBe('Uncle')
+    expect(relationLabel(friend('aunt'))).toBe('Aunt')
+  })
+
   it('every screen that prints a relation gets it: the hero, the sheet, the Relationships group and the lower-case sentences', () => {
     const g = base()
     const niece = add(g, 'friend', { age: 12, firstName: 'Ivy', lastName: 'Reed', data: { kin: 'niece' } })
