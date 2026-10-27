@@ -314,6 +314,59 @@ export const LEAK_LINES = defineLines('social.leak', [
   'What I kept quiet is out now. {who} told {whom}.',
 ])
 
+// R4-E12 (D.4, X29, X31): the log lines of a feud (society/feud.ts), four to a rung, each naming the person. {who} is "my sister Fatima" (the enemy),
+// {whom} the first person the gossip reached, {money} the lawyers' fee. A line never opens on a slot, because {who} starts with "my". The cold rung is the
+// status row `feud.cold` of the state table, which speaks sparingly; the rest are drawn from these with the text kit's own stream.
+/** The gossip rung: {who} ran the player down to {whom}. */
+export const FEUD_GOSSIP_LINES = defineLines('social.feudGossip', [
+  'I heard {who} has been running me down to {whom}.',
+  "It's all over town that {who} badmouthed me to {whom}.",
+  'Now {whom} knows what {who} really thinks of me.',
+  'Word is {who} has been telling {whom} the worst of me.',
+])
+/** The sabotage rung: {who} made the year harder. */
+export const FEUD_SABOTAGE_LINES = defineLines('social.feudSabotage', [
+  'This year {who} went out of the way to hurt me.',
+  'I keep running into trouble, and {who} is behind it.',
+  'At work and at home, {who} made my year harder.',
+  'Everything that went wrong this year traced back to {who}.',
+])
+/** The legal rung: the suit with {who} was decided and the lawyers took {money}. */
+export const FEUD_LEGAL_LINES = defineLines('social.feudLegal', [
+  'My feud with {who} ended in court. The lawyers got {money}.',
+  'I paid {money} in legal fees over my fight with {who}.',
+  'In the end {who} and I settled. The lawyers took {money}.',
+  'The suit with {who} cost me {money} before it was done.',
+])
+/** The legal rung for a payer with nothing to pay, and the answer "pay it off" with nothing left over: {who}. */
+export const FEUD_SETTLED_LINES = defineLines('social.feudSettled', [
+  'The suit with {who} was settled, and neither of us won.',
+  'I settled things with {who} through the lawyers.',
+  'The lawyers ended my fight with {who}.',
+  'My fight with {who} ended in a settlement.',
+])
+/** A peace made with {who}. */
+export const FEUD_PEACE_LINES = defineLines('social.feudPeace', [
+  'I sat down with {who}, and we made peace.',
+  'I called {who}, and we talked it out.',
+  'After all this time, {who} took my hand.',
+  'I made the first move, and {who} met me halfway.',
+])
+/** A feud that burned out: the text of the notice `Feud Cooled`, {who}. */
+export const FEUD_COOLED_LINES = defineLines('social.feudCooled', [
+  'The anger between {who} and me has died down.',
+  "These days {who} and I don't keep score.",
+  "I don't think about the fight with {who} anymore.",
+  'The fight with {who} burned itself out.',
+])
+/** A feud that ended because {who} died. */
+export const FEUD_GONE_LINES = defineLines('social.feudGone', [
+  'With {who} gone, the old fight is over.',
+  "I lost {who}, and there's no one left to fight.",
+  'My fight with {who} ended when they died.',
+  "There's no making peace now. I lost {who}.",
+])
+
 /** A close relative loses a spouse: {who} is "my sister Fatima", {spouse} is the first name of the one who died. Said once, on a stamped life (R4-L4). */
 export const KIN_WIDOWED = defineLines('life.kinWidowed', [
   '{spouse} died this year, and {who} is on their own now.',

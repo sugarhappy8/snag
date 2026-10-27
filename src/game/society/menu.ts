@@ -12,6 +12,9 @@
 //                            more of what they learn each year, 3 at most; it greys out with the reason when 3 are taken, and shows an info row
 //                            once the person is one
 //   You owe {name} ...       an info row, while the player owes that person a loan
+//   Make Peace with {name}   on a person the player is in a feud with (R4-E12, feud.ts), whatever the person feels for the player, unless the will
+//                            owns the pair (a cut-out or estranged person has the will's own rows): the odds in the subtitle, and a try greys
+//                            the row out for 3 years
 //
 // The rows are visible for a living person who is not a pet while the player is alive and 16 or older, and the heading 'Favors' with
 // them. A row whose act is blocked stays and greys itself out with the reason (cooldown, trust); a person the player has no feeling
@@ -38,6 +41,7 @@ import {
   vouch,
 } from './favor'
 import { socialOn } from '../world/social'
+import { feudOf, makePeace, peaceAct, peaceOdds } from './feud'
 import { LOAN_AGE, askLoan, debtTo, loanAct, loanTerms } from './loan'
 import { MENTOR, enrolMentor, isProtege, mentorAct, protegeBlock } from './mentor'
 
@@ -137,6 +141,21 @@ function loanRow(g: GameState, p: Person): MenuAction {
   }
 }
 
+function peaceRow(g: GameState, p: Person): MenuAction {
+  return {
+    type: 'action',
+    id: 'social.peace',
+    label: `Make Peace with ${p.firstName}`,
+    emoji: '\u{1F54A}\u{FE0F}',
+    subtitle: `About ${pct(peaceOdds(g, p))}% to get through · it ends the feud · once in ${FAVOR_COOLDOWN} years`,
+    disabledReason: (s) => reason(s, peaceAct, p),
+    run: (s) => {
+      const q = getPerson(s, p.id)
+      if (q) makePeace(s, q)
+    },
+  }
+}
+
 function mentorRow(p: Person): MenuAction {
   return {
     type: 'action',
@@ -171,6 +190,7 @@ export function socialNodes(g: GameState, p: Person): MenuNode[] {
     const giver = brokerFor(g, p)
     if (giver !== null) rows.push(brokerRow(g, p, giver))
   }
+  if (feudOf(g, p) !== null && !cutOff(g, p)) rows.push(peaceRow(g, p))
   if (!estranged(g, p) && p.relationship >= SHOW_FROM) {
     rows.push(favorRow(g, p))
     const third = thirdFor(g, p)

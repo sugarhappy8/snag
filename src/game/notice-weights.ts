@@ -135,6 +135,7 @@ export const NOTICE_WEIGHTS: Readonly<Record<string, 0 | 1 | 2 | 3>> = Object.fr
   'Eye Contact': 1,
   'Cozy': 1,
   'Philosopher': 1,
+  'Feud Cooled': 1,
   // 2 notable
   'Rest in Peace': 2,
   'Debt Collectors': 2,

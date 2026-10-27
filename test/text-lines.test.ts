@@ -27,6 +27,13 @@ import {
   ENDORSE_RENEWED_LINES,
   FAVOR_DONE_LINES,
   FAVOR_REFUSED_LINES,
+  FEUD_COOLED_LINES,
+  FEUD_GONE_LINES,
+  FEUD_GOSSIP_LINES,
+  FEUD_LEGAL_LINES,
+  FEUD_PEACE_LINES,
+  FEUD_SABOTAGE_LINES,
+  FEUD_SETTLED_LINES,
   GAVE_LINES,
   HOME_BOUGHT_LINES,
   HOMELESS_LINES,
@@ -117,6 +124,8 @@ const SITE_SLOTS: Readonly<Record<string, readonly string[]>> = {
   'debt.owe': ['who', 'money'],
   // R4-L7: a payment on the divorce settlement the player owes an ex (divorce-debt.ts); {who} is "my ex Dana", {money} the year's payment.
   'divorce.pay': ['who', 'money'],
+  // R4-E12: the cold rung of a feud (society/feud.ts); {who} is "my sister Fatima".
+  'feud.cold': ['who'],
 }
 
 describe('the rows of R2-P9', () => {
@@ -297,6 +306,15 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'social.default', lines: DEBT_DEFAULT_LINES, role: 'log', slots: ['who'] },
   // R4-E11: a secret gets out; the line names the holder who told and the first person told.
   { id: 'social.leak', lines: LEAK_LINES, role: 'log', slots: ['who', 'whom'] },
+  // R4-E12: a feud with a person. {who} is "my sister Fatima": the gossip rung also names the first person told ({whom}), the legal rung the fee
+  // ({money}); the settled line is the legal rung for a payer with nothing to pay. Each rung has its own four lines and each names the person.
+  { id: 'social.feudGossip', lines: FEUD_GOSSIP_LINES, role: 'log', slots: ['who', 'whom'] },
+  { id: 'social.feudSabotage', lines: FEUD_SABOTAGE_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.feudLegal', lines: FEUD_LEGAL_LINES, role: 'log', slots: ['money', 'who'] },
+  { id: 'social.feudSettled', lines: FEUD_SETTLED_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.feudPeace', lines: FEUD_PEACE_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.feudCooled', lines: FEUD_COOLED_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.feudGone', lines: FEUD_GONE_LINES, role: 'log', slots: ['who'] },
   // R4-L4: a close relative is widowed ({who} is "my sister Fatima", {spouse} the first name of the one who died).
   { id: 'life.kinWidowed', lines: KIN_WIDOWED, role: 'log', slots: ['spouse', 'who'] },
   // R4-E13: a key person poached at the year's end ({who} the full name, {role} the title, {company} the company).
