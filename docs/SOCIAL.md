@@ -162,6 +162,15 @@ holds the edge as asked (written, already so, or nothing to remove) and false wh
 - A root this file wrote is known to be valid and is not read again; any other root (a load, a clone, a hostile save) is normalized
   once before it is trusted.
 
+**`putEdges(g, writes)`** (CP4) takes a list of `[key, patch]` pairs and answers one boolean for each, in order. The answers and the map it
+leaves are exactly what `putEdge` gives for the same pairs one after the other; the only difference is the cost. `putEdge` copies the
+root (1,240 keys at the cap), so a year that wrote 1,200 edges one by one copied about 1.5 million entries. A write that changes or
+removes an edge the map holds can't add an edge and can't push a count over a cap, so these are gathered and stored with one copy.
+The rest goes to `putEdge` on the root as the gathered writes leave it: a write for an edge the map doesn't hold (a new edge may evict
+another), a write that would leave more than 4,000 memories (the trim), and a key that's already waiting in the batch (it has to read the
+earlier write). Nothing changes for a caller that writes one edge. `test/edge-write-batch.test.ts` proves the equality on 500 random
+batches, a full map of edges and a full map of memories, and that the yearly step stores the root once.
+
 **`remember(g, who, kind, o)`** makes a memory and applies what the kind does, once. `who` is a Person (named by `personEntity`) or an
 `EntityRef`; the edge is `who > (o.with ?? the player)`. `o.w` is 1 (the default), 2 or 3 and `o.by` is `'ego'` (the default) or `'them'`.
 
@@ -264,7 +273,8 @@ integration test (X42). Once a year, on a stamped life, and idempotent by `socia
 
 It draws nothing, makes no id, books no dollar and logs nothing. A stamp from the future is stepped once and put right. A calm map is
 left as it is, the very object. A tap of 10 writes at 1,200 edges is measured by the test and stays under a millisecond on the
-reference machine; the step itself writes only the edges that changed.
+reference machine; the step itself writes only the edges that changed, and writes them with one `putEdges` call, so the root is copied
+once a year and not once for every edge that faded (CP4, section 20).
 
 ## 11. The memory writers, the odds terms and the heir copy (R4-E8, X22, X27, X28, X33, C10)
 
@@ -824,7 +834,12 @@ re-rolls the year it lands in and every one after it; the fork plays 20 years on
 **The year at the caps (X56).** A stamped life of 40 holding 1,200 edges (4,000 memories, 40 debts, 12 feuds, 120 edges with talk, 40 secrets of 6 holders) and a
 Met store of 400 records, 160 of them of the kin kind, ages up in the budget of `test/save-perf.test.ts` (160 ms, and 200 ms for the clone, the age-up and the
 encode, both times the machine factor). Every edge holds resentment, so the step rewrites all 8 chunks `e.edge.0` to `e.edge.7` each year. Measured on a busy
-machine (factor 2.5): the year takes 224 ms against 31 ms for the same life with no web, so the web at its caps adds about 75 ms on the reference desktop. The
+machine (factor 2.5): the year takes 224 ms against 31 ms for the same life with no web, so the web at its caps adds about 75 ms on the reference desktop.
+That figure hid a cost: the factor of a busy machine stretched the budget, and on a CI runner (factor 1.28) the year took 223 ms against a budget
+of 205. The step wrote its 1,200 faded edges with 1,200 calls of `putEdge`, and each call copied the 1,240 keys of the root; two thirds of the
+year went there. Since CP4 the step makes one `putEdges` call (section 6), and the same life measures 56 ms against 17 ms with no web on a machine
+of factor 1.91 (it was 131 ms): the web adds about 39 ms, and the clone, the age-up and the encode take 70 ms (they took 148). The save is the
+same bytes. The
 save of that life has a head of 26,170 characters, a world chunk of 395,939 (104,310 gzipped), eight edge chunks of 200,626 characters together, ten taps that write
 no chunk, and ten Time Machine snapshots of ten years of it that take 764,837 characters, 51% of the localStorage budget and less than the 1,227,273 of v4.1.1.
 

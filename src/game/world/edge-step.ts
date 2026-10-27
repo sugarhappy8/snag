@@ -21,8 +21,10 @@
 //     with nothing to fade;
 //   - it draws nothing from g.rng, makes no id, books no dollar and logs nothing: the player sees the edges through the screens that read
 //     them, not through a line;
-//   - bounded: every write is putEdge's, so the caps hold and a field is cut to its range; the fade only lowers resentment, the decay only
-//     lowers a weight, the orphan rule only removes. The sync raises obligation to at most 100 and writes a debt of at most 1e12.
+//   - bounded: every write is putEdge's, so the caps hold and a field is cut to its range (the fade, the decay and the removals of the
+//     year go through putEdges, which gives the answers and the map that the same writes one at a time give, with one copy of the root);
+//     the fade only lowers resentment, the decay only lowers a weight, the orphan rule only removes. The sync raises obligation to at
+//     most 100 and writes a debt of at most 1e12.
 //
 // syncLegacy(g, p) follows the two legacy records of one person into the edge `person > player` (R4-E7, X22). The records stay the
 // authority; this is the mirror's second half, called after updateTies and updateWl write (so a loan or an anger is on the edge at once)
@@ -43,7 +45,7 @@ import { boundTest } from './edge-bound'
 import { legacyTies, legacyWl } from './edge-legacy'
 import './edge-mirror'
 import { MEMORY_FX, formatMemory, parseMemory } from './edge-memory'
-import { putEdge } from './edge-write'
+import { putEdge, putEdges } from './edge-write'
 import { edgeKey, isSecretKey, readEdge, type Edge, type EdgeMap } from './edges'
 import { playerRef } from './people'
 import { SEEN_MAX, SEEN_MIN } from './rows'
@@ -194,7 +196,8 @@ export function stepEdges(g: GameState): void {
     }
     if (Object.keys(patch).length > 0) edits.push([key, patch])
   }
-  for (const [key, patch] of edits) putEdge(g, key, patch)
+  // one copy of the root for the whole year: 1,200 faded edges were 1,200 copies of 1,240 keys, the most of what a year at the caps cost
+  putEdges(g, edits)
 
   for (const p of g.people) syncLegacy(g, p)
   patchSocial(g, { y: year })

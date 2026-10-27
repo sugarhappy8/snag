@@ -133,7 +133,7 @@ chunks and 85,964 characters in all, the largest 12,318.
 `world.edges` (R4-E6b, `world/edges-slice.ts`) is the second entity slice and copies this row: kind `edge`, 8 shards (`e.edge.0` to
 `e.edge.7`), version 1, `write: 'replace'`, caps of 24,000 nodes and 420,000 characters, `normalize` the shard's own reader
 (`normalizeEdges`). Its writer is `putEdge` (`world/edge-write.ts`), which replaces the root, keeps every untouched entry by identity
-and seals what it stores. The map holds the secrets (`secret:<n>`) too, so they share its chunks. A save with no `edges` key (every save
+and seals what it stores; `putEdges` writes many edges with one copy of the root and leaves the map that the same writes one at a time leave. The map holds the secrets (`secret:<n>`) too, so they share its chunks. A save with no `edges` key (every save
 before v5.3.0 and every life the social stamp has not touched) has no `e.edge` chunk and saves again byte for byte. The hash is FNV-1a
 modulo the shard count, which reads only the low bits of each character: keys that differ in a few characters can fall unevenly, so the
 bytes of a tap depend on the keys (`docs/SOCIAL.md`, section 8). Measured at R4-E6b with 1,200 edges at their worst (link kind, call-in,

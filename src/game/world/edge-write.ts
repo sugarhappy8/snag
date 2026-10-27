@@ -7,6 +7,8 @@
 //                            characters at most; a secret key is no edge), a patch that is not a plain object, a patch that leaves a
 //                            required field unreadable, a feud, a debt or a dialogue store the map has no room for, and a new edge
 //                            when the map is full of bound edges.
+//   putEdges(g, writes)     (CP4) many putEdge writes with one copy of the root: the answers, one for each pair in order, and the map are
+//                            what the same writes one at a time give. The yearly step writes its 1,200 faded edges this way.
 //   remember(g, who, kind, o)  makes a memory on the edge `who > (o.with ?? the player)` and applies what the kind does to it, once.
 //   putSecret(g, key, secret)  (R4-E11) the same for a secret under 'secret:<n>': the record, or null to remove it. A secret is no edge, so
 //                            putEdge refuses its key and this refuses an edge key; it is the only writer of the records. The record is
@@ -347,6 +349,94 @@ export function putEdge(g: GameState, key: EdgeKey, patch: Partial<Edge> | null)
   // the counts are the new map's own unless memories were trimmed (then the next write walks the map once)
   commit(g, cur, edits, old === undefined ? key : null, tally.memories <= EDGE_CAPS.memTotal ? tally : undefined)
   return true
+}
+
+/**
+ * Writes many edges with one copy of the root (R4 fix, CP4). Each pair is a key and what putEdge takes for it, a patch or `null`; the
+ * answers, one for each pair in order, and the map left behind are exactly what putEdge gives for the same pairs one after the other.
+ * Why it exists: putEdge copies the root, so a year that fades the resentment of 1,200 edges made 1,200 copies of 1,240 keys.
+ *
+ * A write that changes or removes an edge the map holds can neither add an edge (no eviction) nor push a count over a cap it was not
+ * over, unless it adds memories, so these are gathered and stored by one commit. Everything else is handed to putEdge on the root as the
+ * gathered writes leave it: a write for an edge the map does not hold (a new edge may evict another), a write that would leave more than
+ * 4,000 memories (the trim), and a key that is already waiting in the batch (it must read the earlier write). The refusals are the same
+ * ones: a key that is no edge key, a patch that is not a plain object, a patch that leaves a required field unreadable, and a feud, a
+ * debt or a dialogue store over its cap. A write that comes out as the edge was changes nothing.
+ */
+export function putEdges(g: GameState, writes: readonly (readonly [EdgeKey, Partial<Edge> | null])[]): boolean[] {
+  const answers: boolean[] = []
+  if (!Array.isArray(writes)) return answers
+  const waiting = new Map<string, Edge | null>()
+  let cur = current(g)
+  /** The counts of `cur` with the waiting writes in them, copied from the root's own the first time one is needed. */
+  let tally: Tally | undefined
+  const counts = (): Tally => (tally ??= { ...(TALLIES.get(cur) ?? tallyOf(cur)) })
+  const flush = (): void => {
+    if (waiting.size === 0) return
+    commit(g, cur, new Map(waiting), null, tally)
+    waiting.clear()
+    cur = current(g)
+    tally = undefined
+  }
+  /** The single writer, on the root as the waiting writes leave it. */
+  const alone = (key: EdgeKey, patch: Partial<Edge>): boolean => {
+    flush()
+    const ok = putEdge(g, key, patch)
+    cur = current(g)
+    tally = undefined
+    return ok
+  }
+  for (const w of writes) {
+    if (!Array.isArray(w)) {
+      answers.push(false)
+      continue
+    }
+    const key = w[0] as EdgeKey
+    const patch = w[1] as Partial<Edge> | null
+    if (endsOf(key) === null || (patch !== null && !isPlain(patch))) {
+      answers.push(false)
+      continue
+    }
+    if (waiting.has(key)) flush()
+    const old = hasOwn(cur, key) ? cur[key] : undefined
+    if (patch === null) {
+      if (old !== undefined) {
+        count(counts(), old, -1)
+        waiting.set(key, null)
+      }
+      answers.push(true)
+      continue
+    }
+    if (old === undefined) {
+      answers.push(alone(key, patch))
+      continue
+    }
+    const e = cleaned(key, { ...old, ...patch })
+    if (e === null) {
+      answers.push(false)
+      continue
+    }
+    if (sameEdge(old, e)) {
+      answers.push(true)
+      continue
+    }
+    const next = { ...counts() }
+    count(next, old, -1)
+    count(next, e, 1)
+    if (next.feuds > EDGE_CAPS.feuds || next.debts > EDGE_CAPS.debts || next.talkers > EDGE_CAPS.talkEdges) {
+      answers.push(false)
+      continue
+    }
+    if (next.memories > EDGE_CAPS.memTotal) {
+      answers.push(alone(key, patch))
+      continue
+    }
+    waiting.set(key, sealEdge(e))
+    tally = next
+    answers.push(true)
+  }
+  flush()
+  return answers
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
