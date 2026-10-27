@@ -222,7 +222,7 @@ no clock and takes no id, and every write hands the next shard to `writeMet`, wh
 | `tombstoneMet(g, key, stake?)` | Makes the tombstone of a key whatever holds it, setting the stake given. A legacy id `p<digits>` is allowed, so a debt outlives its Person; for a key with no entry the names are read from the Person still in `g.people`, so call it before the Person is removed. False for a full list of held tombstones: the cap never drops an obligation |
 | `sweepMet(g)` | The yearly clean-up, called by `lodSweep` inside the `lod.y` stamp. A life with no shard writes nothing and returns 0 |
 | `isProtected(g, key)`, `salienceOf(g, key)` | Pure reads |
-| `registerProtector(id, fn)`, `registerSalience(id, fn)` | The two hooks E14 fills at module load (X13) |
+| `registerProtector(id, fn)`, `registerSalience(id, fn)` | The two hooks the Edges track fills at module load: `edges.bound` and `edges.salience` of `world/edge-bound.ts` (R4-E14, X13; `docs/SOCIAL.md` section 15) |
 
 Stake bits (`STAKE`, `MetRecord.fl`): 1 debt, 2 spouse, 4 heir, 8 company, 16 feud, 32 will. Who writes what (X14): Life writes only
 bits 2 and 4 with `markMet` (L4); Edges write none and protect through `registerProtector`; by that rule `gr` and `ob` are written only

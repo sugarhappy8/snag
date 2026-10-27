@@ -8,9 +8,9 @@
 //      petty one), counted from the year it was made; at 0 it goes. The pinned five (decay 0) never lose any. A gap of years is counted
 //      exactly: the decays that fall in the years since the last step are all paid;
 //   3. the legacy records are followed for every person of the game (syncLegacy, below);
-//   4. orphan edges are removed: the person is gone from the game, the edge is not bound by its own fields (edgeLocalBound: a link kind, a
-//      feud, an unpaid debt, a pinned memory), has no debt at all (a debt that was paid is still a record), was last touched five years
-//      ago or more, and its salience (f + s + |o|) is under 40. E14 widens "bound" to isBound, which knows the person-level cases.
+//   4. orphan edges are removed: the person is gone from the game, the edge is not bound (isBound of world/edge-bound.ts: a link kind, a
+//      feud, an unpaid debt or a pinned memory on the edge, or a held person at one of its ends), has no debt at all (a debt that was
+//      paid is still a record), was last touched five years ago or more, and its salience (f + s + |o|) is under 40.
 // Resentment fades before the legacy sync raises it, so a will that is still angry holds s at its anger year after year.
 //
 // Why it is safe:
@@ -34,15 +34,17 @@
 //   - the anger: s is at least the anger of the ego's will record, never lowered. A record stamped by another owner syncs nothing.
 // The numbers 20 and 10 are the planner's; the tests prove the range. An edge is made only when there is something to write.
 //
-// Layer 2: it imports the kernel's registry type and person key, the edge model, writer and legacy readers, the stamp and the world root.
+// Layer 2: it imports the kernel's registry type and person key, the edge model, writer, bound predicate and legacy readers, the stamp and
+// the world root.
 import { personEntity } from '../kernel/person-ref'
 import type { ModuleDef } from '../kernel/registry'
 import type { GameState, Person } from '../types'
+import { boundTest } from './edge-bound'
 import { legacyTies, legacyWl } from './edge-legacy'
 import './edge-mirror'
 import { MEMORY_FX, formatMemory, parseMemory } from './edge-memory'
 import { putEdge } from './edge-write'
-import { edgeKey, edgeLocalBound, isSecretKey, readEdge, type Edge, type EdgeMap } from './edges'
+import { edgeKey, isSecretKey, readEdge, type Edge, type EdgeMap } from './edges'
 import { playerRef } from './people'
 import { SEEN_MAX, SEEN_MIN } from './rows'
 import { patchSocial, readSocial, socialOn } from './social'
@@ -166,18 +168,20 @@ export function stepEdges(g: GameState): void {
   for (const p of g.people) here.add(personEntity(p))
 
   const map: EdgeMap = worldShard<EdgeMap>(g, 'edges') ?? {}
+  const bound = boundTest(g, map)
   const edits: [string, Partial<Edge> | null][] = []
   for (const key of Object.keys(map)) {
     if (isSecretKey(key)) continue
     const e = map[key]!
     const s = e.s > 0 ? Math.floor(e.s * FADE_PCT) / 100 : 0
-    // an orphan: a person end that is not the ego and is not in the game, with nothing binding the edge
+    // an orphan: a person end that is not the ego and is not in the game, with nothing binding the edge (the held people are read only
+    // when every other condition holds, so a calm map costs no look at the people)
     if (
       year - e.l >= ORPHAN_YEARS &&
       e.dv === undefined &&
-      !edgeLocalBound(e) &&
       e.f + s + Math.abs(e.o) < ORPHAN_SALIENCE &&
-      personEnds(key).some((end) => end !== ego && !here.has(end))
+      personEnds(key).some((end) => end !== ego && !here.has(end)) &&
+      !bound(key)
     ) {
       edits.push([key, null])
       continue

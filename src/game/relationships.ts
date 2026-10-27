@@ -81,7 +81,13 @@ import { pickLine, pickSite } from './text/pick'
 import { defineScript } from './scripts'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import { npcMortality } from './world/mortality'
+import { personEntity } from './kernel/person-ref'
 import { remember as rememberEdge } from './world/edge-write'
+import { EDGE_CAPS } from './world/caps'
+import { boundTest } from './world/edge-bound'
+import { legacyTies } from './world/edge-legacy'
+import { edgeKey } from './world/edges'
+import { playerRef } from './world/people'
 import { socialOn } from './world/social'
 import { locale, localeOf } from './data/locales'
 import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, texting, venueExists } from './events/era'
@@ -91,7 +97,7 @@ import { lookCloser } from './knowledge/contract'
 import { lookKeysOf, peopleFog, readPerson, usesProfile } from './people-fog'
 import { holdsFamilyJob, nepoPersonNodes } from './business/nepo'
 import { willPersonNodes } from './events/will-amends'
-import { socialNodes } from './society/contract'
+import { debtsOf, socialNodes } from './society/contract'
 import { isEstranged, keptAwayBy } from './events/will-core'
 import { familyUseNodes } from './shops/luxury-family'
 import { noteCashGift } from './events/wealth-core'
@@ -2118,16 +2124,77 @@ defineScript('rel.pet.escape', (g, choice, data) => {
 
 // --- Cleanup ---------------------------------------------------------------
 
+/** The most live exes the list keeps: the old limit, which a held ex (a debtor, a feud, a holder) may pass up to HELD_EXES_MAX. */
+const EXES_KEPT = 20
+/** The ceiling for exes held by the edge model (R4-E14): the list never grows past twice the old limit, however many are held. */
+const HELD_EXES_MAX = 40
+
+/**
+ * The dead who still owe the player, by id (R4-E14, X14): a loan on the ties record (data.w, read through edge-legacy.ts) or an open debt
+ * on the edge person>player (debtsOf, E10b). cleanupPeople runs in `life` (life 40) and settleTheDead in `money`, later in the same year, so
+ * a friend who died this year and owed would be gone before the loan is written off and told; they stay until the record says nothing is
+ * owed. At most EDGE_CAPS.debts of them (the edge model's own cap on open debts), in the order of the list, so a hundred times the debtors
+ * cannot hold a hundred times the dead.
+ */
+function deadDebtors(g: GameState): Set<string> {
+  const out = new Set<string>()
+  // only the dead the old rule could drop: a friend, a coworker (not in KEEP_WHEN_DEAD) or an ex over the limit of ten
+  const dead = g.people.filter((p) => !p.alive && (!KEEP_WHEN_DEAD.includes(p.relation) || p.relation === 'ex' || p.relation === 'exSpouse'))
+  if (dead.length === 0) return out
+  const ego = g.character.id
+  const open = debtsOf(g, playerRef(g)).filter((d) => !d.owedBy && d.owed > 0)
+  const debtors = new Set(open.map((d) => d.key.slice(0, d.key.indexOf('>'))))
+  for (const p of dead) {
+    if (out.size >= EDGE_CAPS.debts) break
+    if (legacyTies(p, ego).owes > 0 || debtors.has(personEntity(p))) out.add(p.id)
+  }
+  return out
+}
+
+/**
+ * Which live exes go when there are more than EXES_KEPT, on a stamped life (R4-E14). The order is the old one (flings first, then the least
+ * regarded); an ex the edge model holds (isBound of the edge person>player: an unpaid debt, a feud, a pinned memory, or a held person) is
+ * skipped, so the next in line goes and the list still ends at 20 when it can. If held exes alone pass HELD_EXES_MAX, the least regarded
+ * of them go too, so a hundred debtors cannot grow the list.
+ */
+function dropExes(g: GameState, sorted: readonly Person[], drop: Set<string>): void {
+  const bound = boundTest(g)
+  const ego = playerRef(g)
+  const held = (p: Person): boolean => {
+    const key = edgeKey(personEntity(p), ego)
+    return key !== null && bound(key)
+  }
+  let over = sorted.length - EXES_KEPT
+  let gone = 0
+  for (const p of sorted) {
+    if (over <= 0) break
+    if (held(p)) continue
+    drop.add(p.id)
+    over--
+    gone++
+  }
+  for (const p of sorted) {
+    if (sorted.length - gone <= HELD_EXES_MAX) break
+    if (drop.has(p.id)) continue
+    drop.add(p.id)
+    gone++
+  }
+}
+
 function cleanupPeople(g: GameState): void {
-  g.people = g.people.filter((p) => p.alive || KEEP_WHEN_DEAD.includes(p.relation))
+  // A life the social stamp marks keeps its debtors (R4-E14): the dead who still owe stay until settleTheDead has written the loan off,
+  // and a live ex the edge model holds is not dropped for the limit of 20. An unstamped life runs the old statements and nothing else.
+  const owing = socialOn(g) ? deadDebtors(g) : null
+  g.people = g.people.filter((p) => p.alive || KEEP_WHEN_DEAD.includes(p.relation) || (owing !== null && owing.has(p.id)))
   const byDeath = (a: Person, b: Person) => pNum(b, 'diedAge') - pNum(a, 'diedAge')
   const deadExes = g.people.filter((p) => !p.alive && (p.relation === 'ex' || p.relation === 'exSpouse')).sort(byDeath)
   const deadPets = g.people.filter((p) => !p.alive && p.relation === 'pet').sort(byDeath)
-  const drop = new Set<string>([...deadExes.slice(10), ...deadPets.slice(12)].map((p) => p.id))
+  const drop = new Set<string>([...deadExes.slice(10).filter((p) => owing === null || !owing.has(p.id)), ...deadPets.slice(12)].map((p) => p.id))
   const liveExes = g.people.filter((p) => p.alive && p.relation === 'ex' && p.data.babyParent !== true && !p.data.npcCompany)
-  if (liveExes.length > 20) {
+  if (liveExes.length > EXES_KEPT) {
     const sorted = [...liveExes].sort((a, b) => (a.data.fling === true ? 0 : 1) - (b.data.fling === true ? 0 : 1) || a.relationship - b.relationship)
-    for (const p of sorted.slice(0, liveExes.length - 20)) drop.add(p.id)
+    if (owing === null) for (const p of sorted.slice(0, liveExes.length - EXES_KEPT)) drop.add(p.id)
+    else dropExes(g, sorted, drop)
   }
   if (drop.size) g.people = g.people.filter((p) => !drop.has(p.id))
 }

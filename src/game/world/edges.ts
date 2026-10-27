@@ -9,7 +9,7 @@
 // 'secret:<n>' (a record { a, k, v, h, y, p? }, written by E11, checked here); they are not edges and every reader below skips them.
 //
 //   normalizeEdges(raw)   TOTAL: any value in, a valid map out, never a throw. A map that is already valid comes back as itself.
-//   edgeKey / readEdge / edgesOf / memoriesOf / salience / liveFeuds / openDebts   the pure reads.
+//   edgeKey / readEdge / edgesOf / edgeMap / memoriesOf / salience / liveFeuds / openDebts   the pure reads.
 //   edgeLocalBound(e)     bound by the edge alone: a link kind, an unpaid debt, a feud or a pinned memory.
 //   edgeProblems(raw, people?, ego?)   every fault of a stored map, named, for the world invariant (world/invariants.ts wires it).
 //
@@ -550,6 +550,15 @@ function derived(map: EdgeMap): Derived {
     DERIVED.set(map, d)
   }
   return d
+}
+
+/**
+ * The whole edge map as the reads see it (R4-E14): normalized, cached by the identity of the stored root, secrets included. Pure; an
+ * absent or garbage root reads as the empty map and nothing is created. For code that has to walk every edge (isBound's protector);
+ * everything that names an edge or a person goes through readEdge and edgesOf.
+ */
+export function edgeMap(g: Pick<GameState, 'world'>): EdgeMap {
+  return storedMap(g)
 }
 
 /** The edge `from > to`, or null. Pure. */
