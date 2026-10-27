@@ -5,9 +5,9 @@ three fields on the relative (`married`, `spouseName`, `kids`) and a log line. R
 (`docs/PEOPLE.md`, section 5), so their faces never change, and links the relative to them. This file is the saved shape of the
 links, the caps, the pure readers and the problems list (R4-L3, `src/game/world/kin.ts`), from section 9, the writers, the yearly
 step and the frozen table of the face (R4-L4, `src/game/kin.ts`), from section 10 the estate (R4-L5, `src/game/modules/kin-estates.ts`) and
-from section 11 the debts and claims of the hand-over (R4-L6, `src/game/modules/heirs.ts`) and from section 12 the divorce debt (R4-L7,
-`src/game/divorce-debt.ts`).
-Later tasks add their sections: the rest of the hand-over (R4-L9) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
+from section 11 the debts and claims of the hand-over (R4-L6, `src/game/modules/heirs.ts`), from section 12 the divorce debt (R4-L7,
+`src/game/divorce-debt.ts`) and from section 13 the people and the edges of the hand-over (R4-L9, `life.ts` and `modules/heirs.ts`).
+Later tasks add their sections: the heir's reading of the will (R4-L10), the sid fold (R4-L11) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
 
 ## 1. The rules
 
@@ -294,8 +294,8 @@ test stays true and green, because the allowance and the history are still the l
 **Limits.**
 
 - The mirror of a claim the late player held, the edge person > late ego with its `dv`, is not touched here. The edge carry of the
-  hand-over (R4-L9) removes every edge that ends at the late ego, so the stale copy stays until that task, and the heir's own edge
-  person > heir is the one `updateTies` writes (a new edge starts at trust 50, respect 50, with the person's relationship as affection).
+  hand-over (section 13) removes every edge that ends at the late ego, and the heir's own edge person > heir is the one `updateTies`
+  writes (a new edge starts at trust 50, respect 50, with the person's relationship as affection); the carry merges into it.
 - A creditor the hand-over would not keep as a contact is still paid: the payment is booked to their account before the list is
   rebuilt, and the person is gone from the heir's list afterwards.
 - A person's loan is paid from the cash and from the equity of the property that is sold, as the bank's is. A sole keeper keeps the
@@ -321,3 +321,46 @@ keep the old forgiveness to the byte) the shortfall is a debt of the player's, o
 The ex's shortfall to the player (the richer ex who cannot pay what the judge orders) stays forgiven: an NPC ex has no income path in R4 (X35).
 The ex is never dropped while the debt stands: `cleanupPeople` drops only dead exes past 10 and live `ex` rows past 20, and an `exSpouse` is
 neither. The step draws nothing from `g.rng`, uses no stream and writes no money outside the ledger.
+
+## 13. People and edges at the hand-over (R4-L9, `life.ts` and `modules/heirs.ts`)
+
+A hand-over used to rebuild the family from the heir's seat with fresh dice and forget what anyone felt. On a stamped life (X6; an
+unstamped life, a v5.2.0 save and every heir of one get the old statements to the byte) it keeps what the family felt and the people the
+late player was bound to. It draws nothing new: the seven `randInt` re-rolls of `continueAsChild` keep their order and count, so `n.rng`
+and `n.nextId` after the block equal the unstamped twin's. Nothing is booked (no dollar moves here) and no ledger reason is new.
+
+**The blend (X33).** The other parent, the late player's spouse (now a stepparent), the siblings, the grandparents and the heir's own
+children start at `round((roll + old) / 2)`, where `roll` is the old random re-roll (55 to 95, 30 to 75, 35 to 85, 50 to 90, 60 to 95) and
+`old` the relationship before the hand-over. A sibling at 10 becomes about 42, not 5: this is not half of the old number, and the
+re-roll survives half-way. It is the owner's call (Life Q2); if the owner picks the strict 0.5, keep the seven draws, discard the rolled
+value for kept kin and set `relationship = round(0.5 x old)`. The heir's spouse and the pets are as before.
+
+**The heir's spouse (C21, X15).** With a valid `spouseSid` and a Met record, `heirSpouseOverrides(n, heirP)` gives the record's name,
+gender and age and `data: { sid }`; the legacy `createPerson` call and every legacy expression in it are still evaluated, so the dice are
+the same, and the face replaces their results. A Person that already holds the sid (a materialized relative) is reset to spouse and no
+second Person is made: two Persons never share the ledger account `person:<sid>`. A garbage link, a tombstone, a dead record and an
+unstamped life take the old path. `data.sid` is written here and in `materializePerson` only.
+
+**Kept contacts.** The old rule (an NpcLife, or a co-owner of the family company) stays inline. On a stamped life every kept contact, the
+old-rule ones included, starts at `keptStart`: `min(60, max(25 if bound, round(0.5 x old)))`, an enemy at `min(old, 30)`; an NpcLife
+friend at 80 starts at 40, not 60. `keptContacts(n, childId, oldEgo, taken)` then ADDS, up to 40 in all and none that is already in the
+rebuilt list: the persons held at the person level (they owe the late player, hold a share of a company, own an old NPC firm, hold a
+family job, are a living spouse or fiance, or are cut out of the will or estranged), the persons in a live feud (an edge `person > ego`
+with a rung of 2 or more, kept as 'enemy'), and the 12 best friends, best friends and lovers by the salience of that edge (60 or more).
+"Held" is the person-level half of `isBound` (`boundTest` over an empty edge map): an edge's own link kind, cold feud, debt or memory
+names the late player's standing and keeps nobody (X28). The late player's siblings that stay get `data.kin` 'uncle' or 'aunt'.
+
+**The edges.** `carryEdges(n, oldEgo, heirRef, kept)` runs right after `n.character = heir` and `carryReceivables`. Every edge
+`person > late ego` of a kept Person crosses through `heirEdges` as `person > heir`: trust, respect and a non-kin's affection at 0.5,
+resentment at 0.6, nothing raised, memories one point lighter, `q` and `k` for a kin link only, `dv`, `n`, `d` and `c` dropped. Then
+every edge that ends at the late ego is removed (kept or not), each crossed edge is written with `f` set to the Person's final
+`relationship` (so a direct kin's `f` is the blend), and an edge `person > heir` that was already there (a strife edge, the pair edge of
+the heir's spouse, the claim the receivables made) is merged into: the larger `s`, the union of both memories at most 8 (C12), a link
+kind or feud rung it lacked taken over, the rest its own. Every other edge of a kept person to the heir also gets `f` = relationship,
+so `edge.f === Person.relationship` holds for the spouse too. `syncLegacy` runs last, so the legacy records win. Writes go through
+`putEdge`, so every cap holds and the edges after are never more than the edges before.
+
+**Limits.** Anger travels as `Edge.s` x 0.6 (the will's record `data.wl` stays the late player's and reads blank for the heir); a rival's
+feud ends at the hand-over even though the enemy stays as a contact. The relatives the hand-over drops and the heir's own anchor leave
+kin records with a spouse or heir flag and no living anchor until the orphan sweep of `life.kin` runs at the next year, so `kinProblems`
+can name them between `continueAsChild` and the next year step.

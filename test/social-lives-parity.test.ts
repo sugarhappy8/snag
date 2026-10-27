@@ -33,7 +33,7 @@ import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import type { GameState, MenuAction, Person } from '../src/game/types'
 import { drain, kid, world } from './nepo-kit'
-import { GAME_SLOT, expectRows, isRecording, oracle, recordRows, snapshot, type ParityRow, type Tuple, stampLife, stampStats, withStamped } from './social-parity-kit'
+import { GAME_SLOT, compareRows, expectRows, isRecording, oracle, readRows, recordRows, snapshot, type ParityRow, type Tuple, stampLife, stampStats, withStamped } from './social-parity-kit'
 
 const FAST = oracle('lives')
 const DEEP = oracle('lives-deep')
@@ -237,9 +237,20 @@ describe('the scripted lives', () => {
     else expectRows(FAST, rows)
   })
 
-  it('plays the same rows on stamped lives: the mirror, the step and the stamp move no number, no draw and no popup (R4-E7)', { timeout: 240_000 }, () => {
+  // R4-L9 (X33) narrows this replay in one place: the dynasty after its hand-over. A stamped hand-over starts a direct kin at
+  // round((roll + old) / 2) and keeps the people the late player was bound to, so the heir's life is another life from its first
+  // year: every relationship number, and with them the dice the later years roll, the popups and the ids differ from the unstamped
+  // recording (the first row to move is dynasty|10|up, the first year of the heir; 30 of 150 rows). Everything up to the hand-over
+  // is compared as before: the cradle, the firm, and the dynasty's rows of the first generation. The heir's rows are compared by
+  // their step labels only, and the replay still has to play them. The unstamped rows and the fixture are not touched (they move at R4-E16).
+  it('plays the same rows on stamped lives: the mirror, the step and the stamp move no number, no draw and no popup; the heir of the dynasty plays on its own numbers (R4-E7, R4-L9)', { timeout: 240_000 }, () => {
     const rows = withStamped(() => playAll(25))
-    expectRows(FAST, rows)
+    const recorded = readRows(FAST).rows
+    expect(rows.map((r) => r.label)).toEqual(recorded.map((r) => r.label))
+    const first = (r: ParityRow): boolean => r.x?.gen === 0
+    const report = compareRows(recorded.filter(first), rows.filter(first))
+    expect(report.lines, 'the rows of the first generation of each life').toEqual([])
+    expect(rows.filter((r) => !first(r)).length, 'the dynasty must hand over and the heir must play').toBeGreaterThan(0)
     expect(stampStats().stamped, 'the three lives must be stamped').toBe(3)
     expect(stampStats().checked, 'the replay must check the mirror').toBeGreaterThan(100)
   })
