@@ -19,11 +19,17 @@ import { bizOf } from '../src/game/business/state'
 import { valKey } from '../src/game/business/valuation-fog'
 import { rdCost, rdQuote } from '../src/game/business/rd'
 import { ECONOMY_VERSION, initialCountry } from '../src/game/economy/model'
-import { typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
+import { readTies, typicalIncome, US_TYPICAL_INCOME } from '../src/game/events/wealth-core'
+import { personCash } from '../src/game/cash'
+import { killCharacter } from '../src/game/death'
+import { DIVORCE_SHARE, DIVORCE_YEARS, openDivorceDebt, serveDivorceDebts } from '../src/game/divorce-debt'
+import { strifeEdges, STRIFE } from '../src/game/events/will-strife'
+import type { EstatePlan } from '../src/game/events/will-estate'
 import { withFlags } from '../src/game/flags'
 import { realWealthFactor } from '../src/game/history/events-people'
 import { buySecurity, investmentHoldings, investmentListing, yearlyInvestments } from '../src/game/investments'
 import { personFacts, DATA_STATS } from '../src/game/hubs/people-facts'
+import { adoptChild, adoptSpouse } from '../src/game/kin'
 import { memoryLines } from '../src/game/hubs/people-memory'
 import { connectionsOf } from '../src/game/hubs/people-web'
 import { KNOW_LIMITS, buyIntel, learn, offersFor, readKnow } from '../src/game/knowledge/contract'
@@ -32,14 +38,19 @@ import { withInfoMode } from '../src/game/knowledge/mode'
 import { yearlyKnowledge } from '../src/game/knowledge/module'
 import { SOURCES, SOURCE_IDS, priceOf, readingSd } from '../src/game/knowledge/sources'
 import { personEntity } from '../src/game/kernel/person-ref'
-import { BURNS, LEDGER_CAPS, MINTS, book, bookBurn, bookMint, checkLedger, peekLedger, playerAcct, type AcctRef } from '../src/game/kernel/ledger'
+import { BURNS, LEDGER_CAPS, MINTS, acctBalance, book, bookBurn, bookMint, checkLedger, flowsOf, peekLedger, playerAcct, type AcctRef } from '../src/game/kernel/ledger'
 import { REASONS, type BurnName, type MintName, type Reason } from '../src/game/kernel/reasons'
 import { SPREADS, ask, bid } from '../src/game/kernel/spreads'
 import { transactionsLevy } from '../src/game/nation/rates'
-import { saveNpcLife, type NpcLife } from '../src/game/npc-state'
+import { continueAsChild } from '../src/game/life'
+import { carryReceivables, keptContacts } from '../src/game/modules/heirs'
+import { settleKinEstates } from '../src/game/modules/kin-estates'
+import { yearlyNpcLife } from '../src/game/npc-lives'
+import { npcLife, saveNpcLife, type NpcLife } from '../src/game/npc-state'
 import { PEOPLE_CAPS, exposureOf, lookKeysOf } from '../src/game/people-fog'
 import { createPerson } from '../src/game/people'
 import { editPolicy, writePolicy } from '../src/game/nation/state'
+import { DEBT_KIND } from '../src/game/society/contract'
 import { authorAdaptationOffer } from '../src/game/special/author-career'
 import { normalizeAuthor } from '../src/game/special/author-state'
 import { ownerKey } from '../src/game/special/common'
@@ -54,6 +65,10 @@ import { readFirms } from '../src/game/world/firms'
 import { readHomes } from '../src/game/world/homes'
 import { EDGE_CAPS, FRONTIER_CAPS, MET_CAPS } from '../src/game/world/caps'
 import { formatMemory, MEMORY_KINDS } from '../src/game/world/edge-memory'
+import { edgeKey, edgeMap, liveFeuds, openDebts, readEdge } from '../src/game/world/edges'
+import { readFacts } from '../src/game/world/facts'
+import { KIN_CAPS, kinProblems, readKin } from '../src/game/world/kin'
+import { LIFE_MAX_AGE, ageTo, type KinBase } from '../src/game/world/life-path'
 import { putEdge } from '../src/game/world/edge-write'
 import { applyDisclosure, frontierLead, frontierRows, readFrontier } from '../src/game/world/frontier'
 import { FIELD_IDS, FIELDS, fieldOfKind } from '../src/game/world/frontier-fields'
@@ -71,8 +86,10 @@ import { addIdea, mutWorkshop } from '../src/game/workshop/notebook'
 import '../src/game/world/shards'
 import { EFFORT_ROWS } from './effort-ceilings'
 import { makeTestGame } from './helpers'
+import { kinGame, kinSidsOf, married, SPOUSE_NAMES, withLife } from './kin-kit'
 import { labGame, patchLab } from './lab-kit'
 import { flowTotal } from './ledger-kit'
+import { cast, socialGame } from './social-kit'
 
 export interface CeilingProbe {
   /** An id of test/ceiling-list.json, or 'extra.<name>' for a probe the list does not name. */
@@ -920,5 +937,468 @@ const KNOWLEDGE_ROWS: readonly CeilingProbe[] = [
 // R4-U11: the People UI and fog track.
 const PEOPLE_ROWS: readonly CeilingProbe[] = [peopleReadsRow()]
 
-/** Every row: the R0 and R1 growth terms, the world rows, the effort rows (R3-E9, test/effort-ceilings.ts), the Knowledge rows (R3-H4), then the People rows (R4-U11). */
-export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS, ...KNOWLEDGE_ROWS, ...PEOPLE_ROWS]
+// R4-L12: the Life rows. The kin links, the estate, the debts and claims of a hand-over, the divorce debt, the contacts a hand-over keeps,
+// the quarrel of the will, the life path of a record and the wages of NPCs are bounded by the constants named in test/ceiling-list.json,
+// whatever a life holds. Each row feeds the term a hundred times what a life reaches (the plan's table: 40,000 adoptions over 400 anchors,
+// 800 kin events in a year, debts 100 times the estate, 500 friends offered, 100 cut-out relatives, 100 times the people) and reports the
+// tightest case against the limit its cap sentence promises. A load past 100 times is held at 100 times, because the readers look at 5,000
+// entries and no more, so a bigger load adds time and nothing else (the same rule as met-caps).
+
+/** The load of a row: `scale`, held at 100 (the deep run asks for 1,000). */
+const loadOf = (scale: number): number => Math.max(1, Math.min(100, Math.floor(scale)))
+
+/** A married sibling or friend of the player with a name for the spouse; nothing else is written. */
+function kinAnchor(g: GameState, i: number, relation: 'sibling' | 'friend' = 'sibling'): Person {
+  const a = cast(g, 60, relation, { age: 25 + (i % 30), gender: i % 2 === 0 ? 'female' : 'male', firstName: `A${i}`, lastName: 'Lee' })
+  return married(g, a, SPOUSE_NAMES[i % SPOUSE_NAMES.length]!)
+}
+
+/** The sibling is dead the way handleDeath leaves them: not alive, the year and the cause written. Their cash is untouched. */
+function passAway(g: GameState, p: Person): Person {
+  p.alive = false
+  p.causeOfDeath = 'Old Age'
+  p.data.diedYear = g.year
+  return p
+}
+
+/** A married sibling with a spouse and `kids` children on record and `cash` dollars booked to them from a pool. */
+function kinFamily(g: GameState, kids: number, cash: number, i: number): { dead: Person; sids: string[] } {
+  const dead = withLife(kinAnchor(g, i))
+  const sids: string[] = []
+  const spouse = adoptSpouse(g, dead, { gender: 'male' })
+  if (spouse !== null) sids.push(spouse)
+  for (let k = 0; k < kids; k++) {
+    const kid = adoptChild(g, dead, { first: `Kid${k}`, last: 'Lee', gender: k % 2 === 0 ? 'female' : 'male' })
+    if (kid !== null) sids.push(kid)
+  }
+  if (cash > 0) personCash(g, dead, cash, 'prize')
+  return { dead, sids }
+}
+
+/** The people of the game that hold a given kin sid, in the order of the sids. */
+const holdersOf = (g: GameState, sids: readonly string[]): Person[] => sids.flatMap((s) => g.people.filter((p) => p.data.sid === s))
+
+function kinCapsRow(): CeilingProbe {
+  return {
+    id: 'kin-caps',
+    cap: 'an anchor has one spouse and at most 6 kids, the Met shard holds at most 160 kin records, every record has its two edges and no half link is left, and a Met that is full of held people refuses the adoption, however many adoptions are asked (R4-L4)',
+    // `400 x min(load, 10)` adoptions over `4 x load` anchors (4,000 over 400 at 100 times; the 160th record is the last one made, so every
+    // later ask is a refusal, and test/kin-records.test.ts asks all 40,000 of the plan), a fifth of them weddings, then a Met shard whose
+    // 400 records are all held (a debt stake each), where every adoption must be refused with nothing written.
+    run: (scale) => {
+      const t = tightest()
+      const load = loadOf(scale)
+      const g = kinGame(7, 0)
+      const anchors = Array.from({ length: 4 * load }, (_, i) => kinAnchor(g, i, i % 4 === 0 ? 'friend' : 'sibling'))
+      const asked = 400 * Math.min(load, 10)
+      for (let i = 0; i < asked; i++) {
+        const a = anchors[(i * 7) % anchors.length]!
+        if (i % 5 === 0) adoptSpouse(g, a, { gender: 'female' })
+        else adoptChild(g, a, { first: `K${i % 90}`, last: 'Lee', gender: i % 2 === 0 ? 'male' : 'female' })
+      }
+      const sids = kinSidsOf(g)
+      t.add(sids.length, KIN_CAPS.records, `${asked} adoptions over ${anchors.length} anchors: kin records`)
+      t.add(Object.keys(edgeMap(g)).length, KIN_CAPS.records * 2, 'edges of the links (two a record)')
+      for (const a of anchors) {
+        const raw: unknown = a.data.kidSids
+        t.add(Array.isArray(raw) ? raw.length : 0, KIN_CAPS.kids, `kids of ${a.firstName}`)
+        t.add(readKin(a).kids.length, KIN_CAPS.kids, `kids of ${a.firstName} as the reader keeps them`)
+      }
+      const faults = kinProblems(g)
+      if (faults.length > 0) t.add(faults.length, 0, `kinProblems: ${faults[0]}`)
+
+      // A Met shard that is full of held people refuses: no record, no link, no edge.
+      const full = kinGame(8, 0)
+      for (let i = 0; i < MET_CAPS.records; i++) {
+        const sid = floodSid(i)
+        if (touchMet(full, sid, { w: 5 })) markMet(full, sid, { fl: STAKE.debt })
+      }
+      const made = kinAnchor(full, 1)
+      let got = 0
+      for (let i = 0; i < 5 * Math.min(load, 10); i++) {
+        if (adoptSpouse(full, made, { gender: 'female' }) !== null) got++
+        if (adoptChild(full, made, { first: 'Sol', last: 'Lee', gender: 'female' }) !== null) got++
+      }
+      t.add(got, 0, 'adoptions into a Met that is full of held people')
+      t.add(Object.keys(edgeMap(full)).filter((k) => k.includes('person:kin.')).length, 0, 'kin edges left by a refused adoption')
+      const half = kinProblems(full)
+      if (half.length > 0) t.add(half.length, 0, `kinProblems after a full Met: ${half[0]}`)
+      return t.result()
+    },
+  }
+}
+
+function lifeFactsRow(): CeilingProbe {
+  return {
+    id: 'life-facts',
+    cap: 'Life says at most 8 facts a year (a wedding, a baby, a death, an estate), however many kin events a year holds, and the estates of the dead keep to the same count (R4-L4, R4-L5)',
+    // `8 x load` weddings and babies in one year (800 at 100 times, of which the 160-record cap lets 160 through), then the deaths of
+    // `load` anchors with cash, settled in the same year. The facts stored for the year and the counter of the year are read against 8.
+    run: (scale) => {
+      const t = tightest()
+      const load = loadOf(scale)
+      const g = kinGame(9, 0)
+      const events = 8 * load
+      const anchors = Array.from({ length: Math.max(2, Math.ceil(events / 2)) }, (_, i) => kinAnchor(g, i))
+      for (let i = 0; i < events; i++) {
+        const a = anchors[Math.floor(i / 2) % anchors.length]!
+        if (i % 2 === 0) adoptSpouse(g, a, { gender: 'female' })
+        else adoptChild(g, a, { first: `K${i % 90}`, last: 'Lee', gender: 'male' })
+      }
+      const said = (): number => readFacts(g).filter((f) => f.y === g.year && f.k.startsWith('life.')).length
+      t.add(said(), 8, `${events} kin events in a year: life facts stored`)
+      t.add(g.yearActions['life.facts'] ?? 0, 8, `${events} kin events in a year: the counter`)
+      const dying = anchors.slice(0, Math.min(anchors.length, 3 * load))
+      for (const a of dying) {
+        personCash(g, a, 1_000_000, 'prize')
+        passAway(g, a)
+      }
+      settleKinEstates(g)
+      t.add(said(), 8, `${dying.length} estates in the same year: life facts stored`)
+      t.add(g.yearActions['life.facts'] ?? 0, 8, `${dying.length} estates in the same year: the counter`)
+      return t.result()
+    },
+  }
+}
+
+/** A base for the life path: a kin sid, a birth year and a health. */
+const lifeBase = (i: number): KinBase => ({ sid: makeSid({ kind: 'kin', place: 'us', cohort: 1900 + (i % 100), ord: i % 10_000 }), born: 1900 + (i % 100), health: 20 + (i % 80) })
+
+function lifePathRow(): CeilingProbe {
+  return {
+    id: 'life-path-scan',
+    cap: 'ageTo scans at most 130 years of a record, two draws a year and one more for the last, whatever year is asked (1e9 included), and a step that gives the year it last looked at asks for at most 3 draws a call; a base that is not one asks for none (R4-L2)',
+    // The draws are counted at the door: every outcomeStream reads the Time Machine forks of the state once, and the state's flags are a
+    // counting proxy. `10 x load` full scans (the year 1e9), `1000 x load` incremental calls (100,000 at 100 times), and the hostile bases.
+    run: (scale) => {
+      const t = tightest()
+      const load = loadOf(scale)
+      let draws = 0
+      const flags = new Proxy({} as Record<string, never>, {
+        get: (_target, key) => {
+          if (key === 'timelineForks') draws++
+          return undefined
+        },
+      })
+      const g = { lifeId: 'life-path-ceiling', flags } as unknown as Parameters<typeof ageTo>[0]
+      const call = (base: KinBase | Record<string, unknown>, year: number, opts?: { since?: number; died?: number }): number => {
+        draws = 0
+        ageTo(g, base as KinBase, year, opts)
+        return draws
+      }
+      const full = 2 * LIFE_MAX_AGE + 1
+      for (let i = 0; i < 10 * load; i++) t.add(call(lifeBase(i), 1e9), full, `base ${i} asked for the year 1e9`)
+      for (let i = 0; i < 10 * load; i++) t.add(call(lifeBase(i), lifeBase(i).born + 60), full, `base ${i} asked for the age of 60`)
+      for (let i = 0; i < 1000 * load; i++) {
+        const b = lifeBase(i)
+        const year = b.born + 1 + (i % 100)
+        t.add(call(b, year, { since: year - 1 }), 3, `base ${i} stepped one year`)
+      }
+      for (const bad of [{ sid: '__proto__', born: 1900, health: 50 }, { sid: lifeBase(1).sid, born: 1e9, health: 50 }, { sid: lifeBase(1).sid, born: Number.NaN, health: 50 }, { sid: lifeBase(1).sid, born: 1900, health: 1e9 }, null, 7]) {
+        t.add(call(bad as never, 2000), 0, `a hostile base ${JSON.stringify(bad)}`)
+      }
+      t.add(call(lifeBase(2), Number.NaN), 0, 'the year NaN')
+      return t.result()
+    },
+  }
+}
+
+function kinEstateRow(): CeilingProbe {
+  return {
+    id: 'kin-estate',
+    cap: 'a death pays its cash in whole dollars, split exactly among at most 7 heirs and never more than the ledger books at once (1e15), a year makes at most 12 relatives Persons and at most 30 kin Persons are alive, and a second pass pays nothing, whatever the estate (R4-L5)',
+    // Three families of seven heirs, each with an estate of `1e10 x load` dollars (1e12 at 100 times), settled in one year: the first makes 7 Persons,
+    // the second 5, the third none. Then fixed estates of 1e12, 1e15 and 5e15 (past the booking cap). Then four years of two families each, which
+    // fill the 30 places. Then `20 x load` dead relatives with nobody to inherit, and a second pass over everything.
+    run: (scale) => {
+      const t = tightest()
+      const load = loadOf(scale)
+      const cash = 1e10 * load
+      const g = kinGame(15, 0)
+      const fams = [0, 1, 2].map((i) => kinFamily(g, 6, cash, i))
+      for (const f of fams) passAway(g, f.dead)
+      settleKinEstates(g)
+      fams.forEach((f, i) => {
+        const heirs = holdersOf(g, f.sids)
+        t.add(heirs.length, KIN_CAPS.heirs, `family ${i}: heirs of one death`)
+        if (heirs.length > 0) t.add(Math.abs(heirs.reduce((s, p) => s + p.money, 0) - cash), 0, `family ${i}: the split is not exact`)
+        t.add(f.dead.money > 0 && heirs.length > 0 ? f.dead.money : 0, 0, `family ${i}: cash left on the dead`)
+      })
+      t.add(g.yearActions['kin.persons'] ?? 0, 12, 'Persons made in a year')
+      const books = checkLedger(g)
+      if (!books.ok) t.add(books.problems.length, 0, `books: ${books.problems[0]}`)
+      const after = JSON.stringify(g.people.map((p) => p.money))
+      settleKinEstates(g)
+      t.add(JSON.stringify(g.people.map((p) => p.money)) === after ? 0 : 1, 0, 'a second pass in the same year paid')
+
+      for (const big of [1e12, 1e15, 5e15]) {
+        const e = kinGame(16, 0)
+        const f = kinFamily(e, 2, 0, 0)
+        f.dead.money = big
+        passAway(e, f.dead)
+        settleKinEstates(e)
+        const paid = holdersOf(e, f.sids).reduce((s, p) => s + p.money, 0)
+        t.add(paid, LEDGER_CAPS.maxBooking, `an estate of ${big}: cash paid`)
+        t.add(Math.abs(paid + f.dead.money - big), 0, `an estate of ${big}: the dollars on both sides`)
+      }
+
+      const years = kinGame(17, 0)
+      for (let y = 0; y < 4; y++) {
+        years.year += 1
+        years.yearActions = {}
+        for (let k = 0; k < 2; k++) passAway(years, kinFamily(years, 6, 100_000, 10 * y + k).dead)
+        settleKinEstates(years)
+        t.add(years.yearActions['kin.persons'] ?? 0, 12, `year ${y + 1}: Persons made`)
+        t.add(years.people.filter((p) => p.alive && typeof p.data.sid === 'string' && p.data.sid.startsWith('kin.')).length, KIN_CAPS.persons, `year ${y + 1}: kin Persons alive`)
+      }
+
+      const flood = kinGame(18, 0)
+      const roster = 20 * load
+      for (let i = 0; i < roster; i++) passAway(flood, withLife(cast(flood, 60, 'sibling', { age: 60, firstName: `D${i}`, lastName: 'Lee', money: 0 })))
+      for (const p of flood.people) if (!p.alive) personCash(flood, p, 1_000_000, 'prize')
+      settleKinEstates(flood)
+      t.add(flood.yearActions['kin.persons'] ?? 0, 12, `${roster} dead relatives with nobody: Persons made`)
+      const left = flood.people.filter((p) => !p.alive && p.money > 0).length
+      t.add(left, 0, `${roster} dead relatives with nobody: estates left unpaid`)
+      return t.result()
+    },
+  }
+}
+
+/** A stamped old player with `kids` adult children, `money` in cash and nothing else, alive and ready to be killed (the family of test/heir-debts.test.ts). */
+function oldFamily(money: number): { g: GameState; heir: Person; sibs: Person[] } {
+  const g = makeTestGame(1, { age: 78, money, countryId: 'us', residence: { status: 'renting', rent: 0 } })
+  g.log = [{ age: g.character.age, year: g.year, entries: [] }]
+  stampSocial(g)
+  const kids = [50, 47, 44].map((age) => cast(g, 70, 'child', { age, money: 20_000, countryId: 'us', traits: ['kind', 'calm'] }))
+  return { g, heir: kids[0]!, sibs: kids.slice(1) }
+}
+
+/** The late player owes `p` `owed` dollars of a kind since `since`: the edge player > person with its debt record. */
+function owes(g: GameState, p: Person, owed: number, since: number, kind: number): boolean {
+  const key = edgeKey(playerRef(g), personEntity(p))
+  return key !== null && putEdge(g, key, { t: 50, f: 50, r: 50, s: 0, o: 0, y: g.year, l: g.year, dv: [owed, 0, since, kind, 0] })
+}
+
+function estateDebtsRow(): CeilingProbe {
+  return {
+    id: 'estate-debts',
+    cap: 'the debts a hand-over pays out of the estate are at most the estate after the bank loans, oldest first, the heir is never liable and never loses cash they had, and every debt that was listed is closed, however large the debts (R4-L6)',
+    // Four creditors, a divorce and three loans, owed `50,000 x scale / 4` each by a late player with 50,000 (debts 100 times the estate at 100 times).
+    run: (scale) => {
+      const t = tightest()
+      const estate = 50_000
+      const each = Math.max(1, Math.round((estate * Math.min(scale, 1e6)) / 4))
+      const f = oldFamily(estate)
+      const people = [0, 1, 2, 3].map(() => cast(f.g, 40, 'friend', { age: 40, money: 0 }))
+      people.forEach((p, i) => owes(f.g, p, each, 2015 + i, i === 0 ? DEBT_KIND.divorce : DEBT_KIND.loan))
+      killCharacter(f.g, 'Old Age')
+      f.g.queue = f.g.queue.filter((m) => m.kind !== 'aiTask')
+      const n = continueAsChild(f.g, f.heir.id)
+      const paid = people.reduce((s, p) => s + acctBalance(n, personEntity(p)), 0)
+      t.add(paid, estate, `debts of ${4 * each} against an estate of ${estate}: paid`)
+      t.add(acctBalance(n, personEntity(people[0]!)), estate, 'the oldest creditor is paid first')
+      t.add(Math.max(0, 20_000 - n.character.money), 0, 'cash the heir lost')
+      t.add(openDebts(n), 0, 'debts still listed after the hand-over')
+      t.add(Math.max(0, -n.character.money), 0, 'the heir in debt')
+      const books = checkLedger(n)
+      if (!books.ok) t.add(books.problems.length, 0, `books: ${books.problems[0]}`)
+      return t.result()
+    },
+  }
+}
+
+function receivableRow(): CeilingProbe {
+  return {
+    id: 'receivable-carry',
+    cap: 'a claim passes to the heir as the will\'s share of it, never more than the claim and never more than the trillion an edge can hold, whatever the claim (1e300 included) and whatever the share says (R4-L6)',
+    // Three friends who owe the late player `1e10 x load` dollars (1e12 at 100 times) and one hostile claim of 1e300, carried at the shares 0 to 1,
+    // and at shares that are not (2, -1, NaN).
+    run: (scale) => {
+      const t = tightest()
+      const load = loadOf(scale)
+      const claims = [1e10 * load, 1e300]
+      const shares = [0, 0.25, 1 / 3, 0.5, 1, 2, -1, Number.NaN]
+      const CAP = 1e12
+      for (const claim of claims) {
+        for (const share of shares) {
+          const f = oldFamily(1)
+          const friends = [0, 1, 2].map(() => withLife(cast(f.g, 50, 'friend', { age: 40, money: 0 })))
+          for (const p of friends) p.data.w = { by: f.g.character.id, owes: claim, owesSince: 2020 } as never
+          const n = structuredClone(f.g)
+          const old = n.character
+          n.character = { ...old, id: 'heir-id' }
+          const r = carryReceivables(n, old, share)
+          const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0
+          const each = Math.min(claim, CAP)
+          t.add(r.carried, 3 * (each * s + 0.5), `a claim of ${claim} at the share ${share}`)
+          for (const p of friends) t.add(readTies(n, n.people.find((x) => x.id === p.id)!).owes, each, `the claim kept on ${p.firstName}`)
+          if (!(Number.isFinite(r.carried) && Number.isFinite(r.forgiven) && r.forgiven >= 0)) t.add(1, 0, `a claim of ${claim} at the share ${share}: carried ${r.carried}, forgiven ${r.forgiven}`)
+        }
+      }
+      return t.result()
+    },
+  }
+}
+
+function divorceDebtRow(): CeilingProbe {
+  return {
+    id: 'divorce-debt',
+    cap: 'a divorce debt is at most the order, a year pays at most a fifth of the cash (k debts at most 1 - 0.8^k of it) and never takes the cash below 0, it lapses in the tenth year, and at most 40 debts stand at once, however rich the player is (R4-L7)',
+    // The player holds `1e6 x load` dollars (net worth 100 times) and owes an ex five times that: twelve years of payments. Then 50 exes at once
+    // (the table of debts holds 40) in one year.
+    run: (scale) => {
+      const t = tightest()
+      const load = loadOf(scale)
+      const cash = 1e6 * load
+      const g = socialGame(21, { age: 50, money: cash, countryId: 'us' })
+      const ex = cast(g, 15, 'exSpouse', { age: 48, money: 0 })
+      const order = 5 * cash
+      if (!openDivorceDebt(g, ex, order)) t.add(1, 0, 'the debt was not opened')
+      let total = 0
+      let open = true
+      for (let year = 1; year <= DIVORCE_YEARS + 2; year++) {
+        g.year += 1
+        const before = g.character.money
+        const paidBefore = acctBalance(g, personEntity(ex))
+        serveDivorceDebts(g)
+        const paid = acctBalance(g, personEntity(ex)) - paidBefore
+        total += paid
+        t.add(paid, DIVORCE_SHARE * before, `year ${year}: paid out of ${before}`)
+        t.add(Math.max(0, -g.character.money), 0, `year ${year}: the cash went below 0`)
+        t.add(total, order, `year ${year}: paid in all against an order of ${order}`)
+        open = readEdge(g, playerRef(g), personEntity(ex))?.dv !== undefined
+        if (year > DIVORCE_YEARS) t.add(open ? 1 : 0, 0, `year ${year}: the debt is still open past ${DIVORCE_YEARS} years`)
+      }
+
+      const many = socialGame(22, { age: 50, money: cash, countryId: 'us' })
+      const exes = Array.from({ length: 50 }, () => cast(many, 15, 'exSpouse', { age: 48, money: 0 }))
+      let opened = 0
+      for (const e of exes) if (openDivorceDebt(many, e, order)) opened++
+      t.add(opened, EDGE_CAPS.debts, `${exes.length} debts asked for`)
+      t.add(openDebts(many), EDGE_CAPS.debts, 'debts that stand')
+      many.year += 1
+      const was = many.character.money
+      serveDivorceDebts(many)
+      t.add(was - many.character.money, was * (1 - Math.pow(1 - DIVORCE_SHARE, opened)), `${opened} debts served in one year`)
+      t.add(Math.max(0, -many.character.money), 0, 'the cash after 40 debts went below 0')
+      return t.result()
+    },
+  }
+}
+
+function keptContactsRow(): CeilingProbe {
+  return {
+    id: 'kept-contacts',
+    cap: 'a hand-over adds at most 40 contacts to the old rule, the same ones in the same order each time and none that is already kept, however many friends the late player had (R4-L9)',
+    // `5 x load` people (500 at 100 times) who were cut out of the will, which holds each of them to the late player, offered at once.
+    run: (scale) => {
+      const t = tightest()
+      const load = loadOf(scale)
+      const g = socialGame(3, { age: 70, money: 100_000, countryId: 'us', gender: 'male' })
+      for (let i = 0; i < 5 * load; i++) {
+        const p = cast(g, 70, 'friend', { age: 40, countryId: 'us' })
+        p.data.wl = { by: g.character.id, cut: true }
+      }
+      const ego = playerRef(g)
+      const taken = new Set<string>()
+      const kept = keptContacts(g, 'nobody', ego, taken)
+      t.add(kept.length, 40, `${5 * load} people offered`)
+      t.add(new Set(kept.map((c) => c.person.id)).size === kept.length ? 0 : 1, 0, 'a contact kept twice')
+      const again = keptContacts(g, 'nobody', ego, taken)
+      t.add(JSON.stringify(again.map((c) => c.person.id)) === JSON.stringify(kept.map((c) => c.person.id)) ? 0 : 1, 0, 'the same offer in the same order')
+      const some = new Set(kept.slice(0, 10).map((c) => c.person.id))
+      t.add(keptContacts(g, 'nobody', ego, some).filter((c) => some.has(c.person.id)).length, 0, 'a contact that was taken already')
+      return t.result()
+    },
+  }
+}
+
+function strifeEdgesRow(): CeilingProbe {
+  return {
+    id: 'strife-edges',
+    cap: 'one reading of a will writes at most 3 quarrel edges for one relative and 36 in all, and at most 12 cold feuds live, whatever the plan holds: only the first 400 entries of a list are read (R4-L10)',
+    // `load` relatives cut out of the will, each at an anger of 30 to 99, and four who take a quarter each (100 cut-out relatives at 100 times).
+    run: (scale) => {
+      const t = tightest()
+      const load = loadOf(scale)
+      const n = socialGame(5, { age: 50, money: 1_000_000, countryId: 'us', firstName: 'Heir', residence: { status: 'renting' as const, rent: 0 } })
+      const cut = Array.from({ length: load }, () => cast(n, 50, 'sibling', { age: 45, countryId: 'us', money: 20_000, traits: ['kind', 'calm'] }))
+      const favored = Array.from({ length: 4 }, () => cast(n, 50, 'sibling', { age: 41, countryId: 'us', money: 20_000, traits: ['kind', 'calm'] }))
+      const plan = {
+        cutOut: cut.map((p, i) => ({ id: p.id, anger: 30 + (i % 70), filed: false, outcome: '', award: 0 })),
+        recipients: favored.map((p) => ({ id: p.id, pct: 0.25 })),
+      } as unknown as EstatePlan
+      strifeEdges(n, plan, 'heir-before')
+      const ids = new Set([...cut, ...favored].map((p) => personEntity(p) as string))
+      const quarrels = Object.keys(edgeMap(n)).filter((k) => {
+        const at = k.indexOf('>')
+        return ids.has(k.slice(0, at)) && ids.has(k.slice(at + 1))
+      })
+      t.add(quarrels.length, STRIFE.total, `${load} relatives cut out: quarrel edges in one reading`)
+      for (const p of cut) {
+        const mine = quarrels.filter((k) => k.startsWith(`${personEntity(p)}>`)).length
+        t.add(mine, STRIFE.perPerson, `quarrel edges of ${p.firstName}`)
+      }
+      t.add(liveFeuds(n), EDGE_CAPS.feuds, 'cold feuds that live')
+      return t.result()
+    },
+  }
+}
+
+/** The multiple of the typical income that one NPC's wage may be: measured over the grid below, 2.13 at the engine's neutral economy and 2.43 at the highest wage index three 100-year lives reached (1.13), written in at 2.5. */
+const NPC_WAGE_MULTIPLE = 2.5
+
+function npcWageRow(): CeilingProbe {
+  return {
+    id: 'npc-wage',
+    cap: 'an NPC wage is booked from the pool of employers (or a firm), never from a mint, and is at most 2.5 times the typical income of the country, and all the NPC wages of a year are at most 2.5 times the typical income times the people who earned them, at 100 times the people (R4-L12, X37; the named employer is R6 A.K3)',
+    // A grid of skill (0 to 99), education (0 to 3) and experience (0 to 60 years): `20 x load` NPCs with a life in each of three countries and three
+    // eras (2,000 people each at 100 times), one yearly step each. The wage of a person is 0.8 of the income the step stored; the flow row of the
+    // year says who paid.
+    run: (scale) =>
+      withWealth(scale, () => {
+        const t = tightest()
+        const load = loadOf(scale)
+        const cells: { skill: number; education: number; experience: number }[] = []
+        for (const skill of [0, 30, 60, 99]) for (const education of [0, 1, 2, 3]) for (const experience of [0, 6, 36, 60]) cells.push({ skill, education, experience })
+        for (const [countryId, year] of [['us', 1950], ['ng', 2026], ['mc', 2100]] as const) {
+          const g = makeTestGame(1, { age: 30, countryId, birthCountryId: countryId, money: 0 })
+          g.year = year
+          const people = 20 * load
+          const typical = typicalIncome(g, countryId)
+          const formula = 0.8 * (0.65 + 0.99 + 0.18 * 3 + 0.5)
+          let sum = 0
+          let worst = 0
+          for (let i = 0; i < people; i++) {
+            const cell = cells[i % cells.length]!
+            const p = createPerson(g, { relation: 'sibling', age: 35, gender: 'female', firstName: `W${i}`, lastName: 'Lee', occupation: 'Clerk', traits: ['kind'], stats: { happiness: 60, health: 70, smarts: 90, looks: 50 }, relationship: 50, money: 0 })
+            p.data.countryId = countryId
+            saveNpcLife(p, { v: 1, lastYear: year - 1, country: countryId, field: 'Business', ...cell, study: 0, income: 0, debt: 0, investments: 0, housing: 0, ambition: 50, employer: 'Firm', history: [], achievements: [], housingQuality: 50 })
+            yearlyNpcLife(g, p)
+            const wage = 0.8 * (npcLife(p)?.income ?? 0)
+            sum += wage
+            worst = Math.max(worst, wage)
+          }
+          t.add(worst / typical, NPC_WAGE_MULTIPLE, `${countryId} in ${year}: the best wage of ${people} people, in typical incomes`)
+          t.add(worst / typical, formula + 1e-9, `${countryId} in ${year}: the best wage against the formula of the step (0.8 x 2.68 at a wage index of 1)`)
+          t.add(sum / (typical * people), NPC_WAGE_MULTIPLE, `${countryId} in ${year}: all the wages of a year, per person and per typical income`)
+          const row = flowsOf(g, year).find((r) => r.reason === 'wage' && r.country === g.character.countryId)
+          const net = row?.net
+          // who paid: the pool of employers, in full; nothing was minted, burned or taken from the state, a bank or abroad
+          t.add(Math.abs((net?.person ?? 0) + (net?.pool ?? 0) + (net?.firm ?? 0)), 0, `${countryId} in ${year}: the wage row does not net to zero`)
+          t.add(Math.abs((net?.mint ?? 0)) + Math.abs(net?.burn ?? 0) + Math.abs(net?.gov ?? 0) + Math.abs(net?.bank ?? 0) + Math.abs(net?.abroad ?? 0), 0, `${countryId} in ${year}: a wage paid by a mint, a burn, the state, a bank or abroad`)
+          t.add(Math.abs(acctBalance(g, 'pool:employers') + (net?.person ?? 0)), 0, `${countryId} in ${year}: pool:employers is not the counterparty of the wages`)
+          const books = checkLedger(g)
+          if (!books.ok) t.add(books.problems.length, 0, `${countryId} in ${year}: books: ${books.problems[0]}`)
+        }
+        return t.result()
+      }),
+  }
+}
+
+// R4-L12: the Life rows.
+const KIN_ROWS: readonly CeilingProbe[] = [kinCapsRow(), lifeFactsRow(), lifePathRow(), kinEstateRow(), estateDebtsRow(), receivableRow(), divorceDebtRow(), keptContactsRow(), strifeEdgesRow(), npcWageRow()]
+
+/** Every row: the R0 and R1 growth terms, the world rows, the effort rows (R3-E9, test/effort-ceilings.ts), the Knowledge rows (R3-H4), then the People rows (R4-U11), then the Life rows (R4-L12). */
+export const CEILING_PROBES: readonly CeilingProbe[] = [...LIFE_ROWS, ...WORLD_ROWS, ...EFFORT_ROWS, ...KNOWLEDGE_ROWS, ...PEOPLE_ROWS, ...KIN_ROWS]

@@ -52,3 +52,8 @@ pool, matching the game's existing specific-business-bequest treatment. Cash,
 ordinary property, will disputes, and probate retain their existing settlement rules.
 Co-owners' interests also survive an intentional division spin-off, and division
 sale/closure proceeds pay known family owners their share.
+
+On a life the social flag stamps (v5.3.0), the people around the dead player are real: a relative's spouse and children are records
+(`docs/KIN.md`), a dead co-owner's stake lands on them, a sibling named the successor keeps the family firm, the debts the player owed are
+paid from the estate before the shares and the claims the player held pass to the heir at the will's share, and the family quarrels over the
+will. The known limits of that hand-over, such as the relatives hired at an adopted firm, are in `docs/KIN.md`, section 15.

@@ -8,7 +8,8 @@ step and the frozen table of the face (R4-L4, `src/game/kin.ts`), from section 1
 from section 11 the debts and claims of the hand-over (R4-L6, `src/game/modules/heirs.ts`), from section 12 the divorce debt (R4-L7,
 `src/game/divorce-debt.ts`), from section 13 the people and the edges of the hand-over (R4-L9, `life.ts` and `modules/heirs.ts`) and from
 section 14 the quarrel at the reading of the will (R4-L10, `events/will-strife.ts` and `events/will-estate.ts`).
-Later tasks add their sections: the sid fold (R4-L11) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
+section 15 the safety belt of the hand-over (R4-L11) and the known limits and the acceptance (R4-L12, `test/life-acceptance.test.ts`).
+Plain hyphens only: no long dashes here.
 
 ## 1. The rules
 
@@ -396,3 +397,54 @@ back to the relatives it was taken from (no dollar is lost). Nothing is called w
 
 **What it does not do.** No draw (the order is by number and id; the line is one text draw, no `g.rng`), no dollar, no memory on the edge and
 no saved field of its own: the edges are inside E6a's caps.
+
+## 15. The safety belt, the known limits and the acceptance (R4-L11, R4-L12)
+
+**The belt of the hand-over (R4-L11, X15, X39).** No writer gives a child a sid, because a sid renames the ledger account of a person
+(`person:<sid>`, `docs/LEDGER.md`). If one ever did, the heir's money would sit in `person:<sid>` while the player's account is
+`person:<id>`. So `continueAsChild` ends the stamped hand-over with `foldAccount(n, 'person:<sid>', playerAcct(n), 'estate:<old.id>:<year>:sidfold')`:
+a relabel of one account into another, no flow, no cash moved, a token of the style of `closeEstate`. `heirUnsafe` (a child, a stepchild or a
+grandchild holding a sid) is already in `kinProblems`, and `test/heir-kit.ts` `danglingIds` names every id a state holds that names nobody (a
+manager, a family job, a co-owner, a founder, a spouse link, a kid link); `test/heir-invariants.test.ts` plays seven scenes through a hand-over
+and ten years and `test/heir-carryover-table.test.ts` gives every personal flag that holds money or a promise its outcome.
+
+**The acceptance (R4-L12).** `test/life-acceptance.test.ts` plays three stamped lives for 120 years each through two hand-overs or more (the
+siblings and a family firm, a divorce with a deficiency, a will fight; scripted lends, hires and wills between the years) and audits every
+year: the world, the kin links, the ids, the caps (6 kids, 160 records, 30 kin Persons), at most 8 facts a year, at most 12 live feuds, the
+books with nothing healed and the player's cash moved with the player's account (strict drift 0), each dead Person with an `estateY` under a
+dollar, and every NPC wage booked from the pool of employers and under the `npc-wage` multiple. A replay, a clone and a JSON reload of year 80
+give the same JSON; an heir, a reload, a clone and a fork keep the Met names; a Time Machine jump re-rolls the year it lands in and nothing
+before it. The ceiling rows (`test/ceiling-kit.ts`, 100 times the input) are `kin-caps`, `life-facts`, `life-path-scan`, `kin-estate`,
+`estate-debts`, `receivable-carry`, `divorce-debt`, `kept-contacts`, `strife-edges` and `npc-wage`. The static scan of the ten files is
+`test/life-money-scan.test.ts` (X50). What the probe found and fixed: the pair edge of a relative who was made a Person and marries (both ends of
+the edge are kin sids, and the orphan sweep of `syncKin` read only one, so it removed the edge from her to her husband every year).
+
+**Known limits.** None of these is a bug; each is a choice or a lag, and a test says what it does.
+
+- **Relatives hired at a firm the designated sibling adopts (L1 row e, X35).** When the player dies and the designated successor takes the
+  family firm (`npc-lives.ts` `adoptNpcCompany`), the relatives who were hired there keep their job record at the hand-over, and the first
+  family year closes every one of them (`cleanup` in `nepo-year.ts`, `how: 'closed'`, the person `Unemployed`). R4 changes nothing there, on a stamped or an unstamped
+  life; a stamped hand-over also keeps the hired sibling as a contact, because the late player was bound to them by the job. Pinned by
+  `test/heir-invariants.test.ts` (the section "relatives employed at a firm the designated sibling adopts").
+- **The materialized-kin life (X38).** A relative made a Person by an estate is a `friend` with `data.kin` and a kin sid, so `yearlyNpcLife`
+  gives them a full NpcLife: a wage from `pool:employers`, expenses, a marriage roll and babies of their own. Bounded by `KIN_CAPS.persons`
+  (30) and by the `npc-wage` ceiling; none of it draws from `g.rng`. When such a relative dies as a `friend`, `cleanupPeople` drops them with
+  the links they held.
+- **A flag may outlive its anchor by one year step.** `cleanupPeople` runs inside `relationships` (order 40), after the kin step (37) of the
+  same year, so a record whose last anchor was just dropped keeps its spouse or heir flag until the next year's orphan sweep, and
+  `kinProblems` can name it once (and between `continueAsChild` and the next year step, section 13). The acceptance allows the line for one
+  year step and fails it the second time running.
+- **A job record may outlive its firm by one family year.** A company that fails or is sold leaves its relatives' `FamilyJob.assetId` until
+  the next family year's `cleanup` closes them (the same X35 rule); `danglingIds` names it once and the acceptance fails it the second time running.
+- **The ex's shortfall to the player stays forgiven (X35).** An NPC ex has no income path in R4, so a settlement the richer ex cannot pay is
+  not a debt of theirs. The player's own shortfall is (section 12).
+- **Houses and cars of non-heir siblings, and a sibling who already owns a firm, stay cash (X35)** until an NPC property entity exists.
+- **NPC wages (F18, X37) are only partly closed.** The payer is a named pool, `pool:employers`, and the booking is bounded: one wage is at
+  most 2.5 times the typical income of the country (measured: 2.13 at the engine's neutral economy, 2.43 at the highest wage index three
+  100-year lives reached, written in at 2.5) and all the wages of a year are at most 2.5 times the typical income times the people who earned
+  them. An NPC who owns a company is paid the owner's pay of the company, which the ceiling does not cover. The named employer, a firm
+  that pays and a job that is held, is R6 A.K3.
+- **Cousins and the popup in-laws of the player's own spouse stay per-popup names (X46).** Real in-laws and nieces exist for NPC weddings,
+  babies and estates only.
+- **Adoption is a mark, not an act.** An adopted child is a child of the player (`data.adopted`) or a relative's child whose record became a
+  Person; the will counts both, the kin heirs name both, and the estate tax is booked once.
