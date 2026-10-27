@@ -6,8 +6,9 @@ three fields on the relative (`married`, `spouseName`, `kids`) and a log line. R
 links, the caps, the pure readers and the problems list (R4-L3, `src/game/world/kin.ts`), from section 9, the writers, the yearly
 step and the frozen table of the face (R4-L4, `src/game/kin.ts`), from section 10 the estate (R4-L5, `src/game/modules/kin-estates.ts`) and
 from section 11 the debts and claims of the hand-over (R4-L6, `src/game/modules/heirs.ts`), from section 12 the divorce debt (R4-L7,
-`src/game/divorce-debt.ts`) and from section 13 the people and the edges of the hand-over (R4-L9, `life.ts` and `modules/heirs.ts`).
-Later tasks add their sections: the heir's reading of the will (R4-L10), the sid fold (R4-L11) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
+`src/game/divorce-debt.ts`), from section 13 the people and the edges of the hand-over (R4-L9, `life.ts` and `modules/heirs.ts`) and from
+section 14 the quarrel at the reading of the will (R4-L10, `events/will-strife.ts` and `events/will-estate.ts`).
+Later tasks add their sections: the sid fold (R4-L11) and the known limits (R4-L12). Plain hyphens only: no long dashes here.
 
 ## 1. The rules
 
@@ -364,3 +365,34 @@ so `edge.f === Person.relationship` holds for the spouse too. `syncLegacy` runs 
 feud ends at the hand-over even though the enemy stays as a contact. The relatives the hand-over drops and the heir's own anchor leave
 kin records with a spouse or heir flag and no living anchor until the orphan sweep of `life.kin` runs at the next year, so `kinProblems`
 can name them between `continueAsChild` and the next year step.
+
+## 14. The family quarrels over the will (R4-L10, `events/will-strife.ts` and `events/will-estate.ts`)
+
+The reading of the will (`settleReading`, once a life, after the heir has become the player) already moved the player's own numbers: each
+cut-out relative's affection fell with their anger. On a stamped life (X6; an unstamped life, a v5.2.0 save and every heir of one read the
+will as they always did) the relatives also hold it against each other. `planEstate` sets `plan.recipients`, the slices of the people other
+than the heir (no charity, fractions of the estate; empty unstamped), because the will state does not reach the heir. `strifeEdges(n, plan,
+heirId)` then writes, for each relative the will cut out, other than the heir, with anger 30 or more who did not win or settle a contest, and
+each recipient of 25% or more, the edge `cut > favored` (Person ids; `personEntity`): resentment `s = max(s, round(anger / 2))` always, and a
+cold feud rung `q = [1, year, 0]` only while `liveFeuds(g)` is under 12 (E6a's pure count) and the edge has none. A new edge starts at the
+middle (`t`, `f`, `r` 50, `o` 0). The edge is one way: the favored hold nothing against the cut-out.
+
+**Caps.** At most 3 strife edges for one person (the biggest shares first, ties by id) and 36 in one reading (the strongest anger first, ties
+by id). These are edge caps, not feud caps (X31): the rung shares the 12 of `EDGE_CAPS.feuds` with every other feud, so a reading with 12 feuds
+live writes `s` and no `q`. An edge that carries only `s` is not bound at the edge alone (`edgeLocalBound`) and may be evicted like any other
+at the 1,200 edges, by design; one with a live `q` is bound. A map full of bound edges refuses the write and the pair is not written. The
+yearly step fades `s` by a tenth a year, like every resentment. The will ladder (`Wl`) is not touched, and a `Wl.cut` pair stays on it and
+counts toward the 12 when it has a rung.
+
+**What the player reads.** One more line in the notice `The Reading of the Will` for the strongest pair (anger, then ids): a line of
+`KIN_STRIFE` (`text/pools.ts`) that names both first names, 90 characters or less with any two names (each is cut to 24 characters). No new
+popup, no pace key, no weight row.
+
+**The one slot.** The reading puts at most one question to the heir: the sibling's share (`will.estate.ask`, for an heir who was not cut out)
+or the heir's own claim (`will.estate.heir`, for one who was), never both. On a stamped life `useFamilyAct(n, 'will')` (the one door,
+`society/contract.ts`) is called once, before either, and takes one of the year's three family choices; the year is fresh, because
+`continueAsChild` resets `n.yearActions` before the reading. With none left the question is not asked, and a claim that nobody presses goes
+back to the relatives it was taken from (no dollar is lost). Nothing is called when the reading asks nothing.
+
+**What it does not do.** No draw (the order is by number and id; the line is one text draw, no `g.rng`), no dollar, no memory on the edge and
+no saved field of its own: the edges are inside E6a's caps.
