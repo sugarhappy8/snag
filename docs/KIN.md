@@ -374,7 +374,7 @@ so `edge.f === Person.relationship` holds for the spouse too. `syncLegacy` runs 
 **Limits.** Anger travels as `Edge.s` x 0.6 (the will's record `data.wl` stays the late player's and reads blank for the heir); a rival's
 feud ends at the hand-over even though the enemy stays as a contact. The relatives the hand-over drops and the heir's own anchor leave
 kin records with a spouse or heir flag and no living anchor; `continueAsChild` clears those flags before it syncs the world
-(`releaseKinFlags`, section 5), so `kinProblems` names nothing at the hand-over. Their `pair` and `kin` edges, and the pair edge of the
+(`releaseKinFlags`, section 9, step 5), so `kinProblems` names nothing at the hand-over. Their `pair` and `kin` edges, and the pair edge of the
 heir's new spouse, wait for the orphan sweep of `life.kin` at the next year step.
 
 ## 14. The family quarrels over the will (R4-L10, `events/will-strife.ts` and `events/will-estate.ts`)
@@ -442,7 +442,7 @@ the edge are kin sids, and the orphan sweep of `syncKin` read only one, so it re
   the links they held.
 - **A flag no longer outlives its anchor (E16 rehearsal 2, item 4, cause B).** `cleanupPeople` runs inside `relationships` (order 40),
   after the kin step (37) of the same year, an unfriend or an event drops a friend with `removePerson` at any time, and the hand-over
-  rebuilds the list; each of them clears the flags of the links the leaving anchor held in the same call (`releaseKinFlags`, step 5), so a
+  rebuilds the list; each of them clears the flags of the links the leaving anchor held in the same call (`releaseKinFlags`, section 9, step 5), so a
   record whose last anchor was just dropped is unflagged at once and `kinProblems` has nothing to name between steps. The acceptance still
   tolerates the line for one year step (it was written for the lag) and fails it the second time running; the fuzzer tolerates nothing.
 - **A job record may outlive its firm by one family year.** A company that fails or is sold leaves its relatives' `FamilyJob.assetId` until
