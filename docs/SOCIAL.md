@@ -528,7 +528,61 @@ the open loans (3) and the debts (40).
 another and `society->life` stays at the two files the lead approved (`acts.ts` and `seam.ts`); `society/debt.ts` registers its script
 through the kernel's `scripts.ts`. `test/relationship-ratchet.json` has one new entry, `society/debt.ts` with one `addRelationship(` call.
 
-## 15. What the next tasks add here
+## 15. Secrets and gossip (R4-E11 part A, D.4, X27, X29, C39)
+
+Something the player did that a few people know. A secret is a record under `secret:<n>` in the **edges map** (it shares the map's chunks and
+caps; every reader of edges skips it, `isSecretKey`):
+
+```
+{ a: the ref it is about, k: 'affair' | 'debt', v: severity 1..5, h: holders (6), y: the year it began, p?: the year it leaked }
+```
+
+At most 40 (`EDGE_CAPS.secrets`), 6 holders each. The normalizer (`world/edges.ts`, E6a) keeps a record only as it is valid and cuts to the 40 that
+matter (an unleaked one over a leaked one, a heavier one over a lighter, a newer over an older); `readSecrets(g)` lists them in number order
+(`secret:2` before `secret:10`). The one writer is `putSecret(g, key, secret | null)` in `world/edge-write.ts`: it reads the record back through
+the normalizer, refuses an edge key, refuses a 41st record (one of the 40 can be replaced) and replaces the root, frozen, like `putEdge`.
+`society/secret.ts` is the layer above, and the only caller:
+
+| Name | What it does |
+|---|---|
+| `addSecret(g, about, kind, v, holders)` | begins a secret and answers its id (`secret:<n>`, the next after the largest held), or `null`: a life that is not stamped, an `about` that is not the player (a record about an earlier player is inert, X28), a kind other than `affair` and `debt`, a severity that is not a whole number from 1 to 5, no holder who is a living person of the game (6 are kept, each once), the same kind with the same holders begun already this year, or 40 held none of which is spent. A **spent** secret is dropped to make room: one about an earlier player, or one that leaked `LEAK.spentAfter` (10) years ago or more, inert ones first and then the longest gone |
+| `secretsOf(g)`, `readSecret(g, id)` | the records in number order, with their ids; pure, total, a hostile record reads as none |
+| `leakOdds(g, holder)` | the odds that a holder tells in a year, below |
+| `leakPass(g)` | the yearly pass, below |
+| `betray(g, key, severity)` | the cost of a betrayal. Part B of the task |
+
+**The odds.** `0.02 + 0.10 x resentment + 0.06 x (1 - honesty) + 0.04 x temper x resentment`, with resentment the `s` of the edge
+`holder > player` over 100, honesty the honesty axis over 100 and temper the other end of the steadiness axis over 100 (the seam, `society/seam.ts`).
+The temper term only counts when there is a grudge to spill, so a holder who is honest and holds none leaks at **0.02, whatever their temper**
+(under 3% a year); the odds never pass **0.22**. Honesty from a person's words is cut to 5..95, so only a person with a Met record reaches 100.
+
+**The pass** runs inside the one `society.acts` entry, after the debts (`society/module.ts`), so it is stamped by `social.ay` like the rest. For
+each secret that is about the player, has not leaked and began in an earlier year, each holder in the order of the list (a holder who is dead, a
+pet or not in the game does not roll) draws once from the stream `social`, `actRoll(g, 'leak', '<secret id>|<holder ref>')`; the first holder
+under their odds who has someone to tell leaks it. A `debt` secret is moot while the player owes nobody a loan (it reads the record of section 14,
+`debtsOf`). Nothing but that stream is drawn: `g.rng` and `g.nextId` are untouched by the decision.
+
+**A leak** (`society/gossip.ts`): the holder tells at most 2 people, their best-liked contacts, and each of those at most 1 more, then it stops
+(hop cap 2, so 4 people at most, each once, never a holder). The contacts of a person are the living people of the game they know (the same
+circle as the favors: family, friends, or one school or firm), best liked first: the `f` of the edge `person > contact` when the map holds
+it, else a base of 55 for family, 50 for friends and 45 for a school or firm, ties by person key. (The model has no other acquaintance graph, so
+without an edge the order is the key order.) `spread` itself takes the lists as an argument, so the cap holds for any graph, a hostile one
+included. Everyone told gets the memory `gossiped_about_me` (weight 1, 2 or 3 by severity) and a relationship hit of `3 x severity` as an
+`offence` through the shim, bounded so that no person loses more than `LEAK.damageYear` (30) points to leaks in one pass whatever the number of
+secrets (40 of severity 5 with 6 holders each cost a person 30, not 600). The secret's `p` is set to the year **first**: the secret leaks at most
+once, the hits apply once for each (secret, person), and the pass skips a record whose `p` is set.
+
+**What the player hears.** One line of `LEAK_LINES` (four phrasings, each names the holder and the first person told) in the life log, and the
+notice `Word Got Around` once in `PACE.askGap` years (the kin family `leak`, `pop.kin.leak`; at most `PACE.askLife` in a life): a notice, not a
+choice, so it spends no family act (X40). The fact `social.leak` goes on the bus, subject the player's ref, other party the holder's key, `v`
+the number told, severity 40, 53, 65, 78 or 90 for a secret of 1 to 5, at most 8 a pass; the module declares it in `facts`, and the bus drops a
+kind nobody declared. Reputation by group, leak timing and scandal stories are R5's.
+
+Tests: `test/social-gossip.test.ts` (the record, the cap, the spread over 10,000 simulated leaks, the odds, the pass, the fact),
+`test/social-act-auth.test.ts` (the leak and `addSecret` in the states that block them). Part B of the task (betrayal, reconciliation, mentorship)
+is written red in `test/social-reconcile.test.ts` and `test/social-mentor.test.ts` and gets its own section here.
+
+## 16. What the next tasks add here
 
 - R4-E11 to E16: secrets, feuds, staff. Each one that queues a choice calls `useFamilyAct` with its own source
   (`social` at the close) and adds its export line to `society/contract.ts`.

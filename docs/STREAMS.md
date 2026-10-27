@@ -39,7 +39,8 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   acts do nothing on the golden lives until the stamp is flipped (E16), so the test calls `actRoll` itself. Code outside `society/` that
   needs the same luck (E13's staff loyalty) calls `outcomeStream` with the same literal tag. R4-E10b draws it for the ask of a loan
   (`loan.ask|<edge key>`: the first value is the lender's yes, the second picks the log line) and for the answer "ask for more time"
-  of `A Lender Calls` (`lender.time|<debt key>`); the yearly service of the debts draws nothing from it.
+  of `A Lender Calls` (`lender.time|<debt key>`); the yearly service of the debts draws nothing from it. R4-E11 draws it once for each holder of each secret
+  and year (`leak|<secret id>|<holder ref>`: one value, the holder's roll against their odds); the spread of a leak and the odds draw nothing.
 - The tag `soc.kin` (R4, `kin.ts`) is not a stream either. `keyedSpouse` reads `streamKey(worldSeed(g), 'soc.kin', year, anchorKey)` with
   `streamUnit(key, facet)`: facet 0 says whether a kin spouse is of the opposite gender (92 percent) and facet 1 is the spouse's birth
   year relative to the anchor's, a whole number from -4 to 4. Facets 2 to 15 are reserved and unused. There is no generator, no `g`,

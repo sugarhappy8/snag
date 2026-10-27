@@ -8,6 +8,10 @@
 //                            required field unreadable, a feud, a debt or a dialogue store the map has no room for, and a new edge
 //                            when the map is full of bound edges.
 //   remember(g, who, kind, o)  makes a memory on the edge `who > (o.with ?? the player)` and applies what the kind does to it, once.
+//   putSecret(g, key, secret)  (R4-E11) the same for a secret under 'secret:<n>': the record, or null to remove it. A secret is no edge, so
+//                            putEdge refuses its key and this refuses an edge key; it is the only writer of the records. The record is
+//                            read back through the normalizer (a field that is not valid refuses the write), 40 secrets at most (the 41st
+//                            is refused, a record already there can be replaced) and the root is replaced and frozen like putEdge's.
 //
 // The rules, in the order the tests prove them:
 //   - The patch is merged into the edge and read back through the E6a normalizer (world/edges.ts), so a field out of range is cut, a
@@ -45,7 +49,7 @@ import { personEntity } from '../kernel/person-ref'
 import type { GameState, Person } from '../types'
 import { EDGE_CAPS } from './caps'
 import { MEMORY_FX, formatMemory, isMemoryKind, isPinnedKind, parseMemory, type MemoryKind } from './edge-memory'
-import { edgeKey, edgeLocalBound, isSecretKey, normalizeEdges, salience, trustMap, type Edge, type EdgeKey, type EdgeMap } from './edges'
+import { edgeKey, edgeLocalBound, isSecretKey, normalizeEdges, salience, trustMap, type Edge, type EdgeKey, type EdgeMap, type SecretRecord } from './edges'
 import { playerRef } from './people'
 import { SEEN_MAX, SEEN_MIN, isPlain } from './rows'
 import { socialOn } from './social'
@@ -222,14 +226,14 @@ function keysOf(root: EdgeMap): readonly string[] {
 }
 
 /** True when the edits only replace edges the root holds: no key is added and none is removed, so the root keeps its keys and their order. */
-function replacesOnly(cur: EdgeMap, edits: ReadonlyMap<string, Edge | null>, insertKey: string | null): boolean {
+function replacesOnly(cur: EdgeMap, edits: ReadonlyMap<string, Edge | SecretRecord | null>, insertKey: string | null): boolean {
   if (insertKey !== null) return false
   for (const [k, v] of edits) if (v === null || v === undefined || !hasOwn(cur, k)) return false
   return true
 }
 
 /** Stores a new root: the keys of `cur` in order with `edits` applied (an edge, or null to remove it) and `insertKey` placed where it sorts. */
-function commit(g: GameState, cur: EdgeMap, edits: ReadonlyMap<string, Edge | null>, insertKey: string | null, tally?: Tally): void {
+function commit(g: GameState, cur: EdgeMap, edits: ReadonlyMap<string, Edge | SecretRecord | null>, insertKey: string | null, tally?: Tally): void {
   const keys = keysOf(cur)
   // Born as a dictionary (no prototype yet): a map of 1,200 keys is one in the end, and an object that starts as a plain literal first
   // walks through a hidden-class step for each of its first keys. The prototype is put back before the root is stored, so what is stored
@@ -335,6 +339,54 @@ export function putEdge(g: GameState, key: EdgeKey, patch: Partial<Edge> | null)
   edits.set(key, sealEdge(put))
   // the counts are the new map's own unless memories were trimmed (then the next write walks the map once)
   commit(g, cur, edits, old === undefined ? key : null, tally.memories <= EDGE_CAPS.memTotal ? tally : undefined)
+  return true
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// putSecret
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+const sameHolders = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i])
+
+function sameSecret(a: Readonly<SecretRecord>, b: Readonly<SecretRecord>): boolean {
+  return a.a === b.a && a.k === b.k && a.v === b.v && a.y === b.y && a.p === b.p && sameHolders(a.h, b.h)
+}
+
+/** The record, sealed: a copy whose holders are the writer's own list, frozen, itself frozen. */
+function sealSecret(s: Readonly<SecretRecord>): SecretRecord {
+  return Object.freeze({ ...s, h: Object.freeze(s.h.slice()) as unknown as SecretRecord['h'] }) as SecretRecord
+}
+
+/** The secrets the root holds. */
+function secretCount(map: EdgeMap): number {
+  let n = 0
+  for (const k of Object.keys(map)) if (isSecret(k)) n++
+  return n
+}
+
+/**
+ * Writes the secret under `key` ('secret:<n>'): the record, or `null` to remove it. Returns true when the map holds the secret as asked
+ * (written, already so, or nothing to remove) and false when the write was refused and nothing was written: a key that is not a secret
+ * key, a record the normalizer would not keep as it is given (a field out of range, a kind it does not know, a leak year that is not a
+ * year; a list of holders over 6 or with a repeat is cut by the normalizer and the cut record is what is stored), and a 41st secret.
+ */
+export function putSecret(g: GameState, key: string, secret: SecretRecord | null): boolean {
+  if (typeof key !== 'string' || !isSecret(key)) return false
+  const cur = current(g)
+  const old = hasOwn(cur, key) ? (cur as unknown as Record<string, SecretRecord>)[key] : undefined
+  const tally = TALLIES.get(cur)
+  if (secret === null) {
+    if (old === undefined) return true
+    commit(g, cur, new Map([[key, null]]), null, tally)
+    return true
+  }
+  if (!isPlain(secret)) return false
+  const one = normalizeEdges({ [key]: secret }) as unknown as Record<string, SecretRecord>
+  if (!hasOwn(one, key)) return false
+  const clean = one[key]!
+  if (old !== undefined && sameSecret(old, clean)) return true
+  if (old === undefined && secretCount(cur) >= EDGE_CAPS.secrets) return false
+  commit(g, cur, new Map([[key, sealSecret(clean)]]), old === undefined ? key : null, tally)
   return true
 }
 

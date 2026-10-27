@@ -303,6 +303,17 @@ export const DEBT_DEFAULT_LINES = defineLines('social.default', [
   'A year went by and I paid {who} nothing.',
 ])
 
+// R4-E11 (D.4, X27): the line of a secret that gets out (society/secret.ts). {who} is "my sister Fatima" (the holder who told) and {whom} the
+// first person told ("my friend Kay"), so a leak names two people. A line never opens on a slot, because both start with "my". Said in the life
+// log for each leak, and as the notice `Word Got Around` once in a few years (the kin family `leak`).
+/** A secret gets out: {who} told {whom}. */
+export const LEAK_LINES = defineLines('social.leak', [
+  'Word got around. {who} told {whom}, and it went on from there.',
+  'It got out. {who} had told {whom} what I kept quiet.',
+  'I heard that {who} let it slip to {whom}.',
+  'What I kept quiet is out now. {who} told {whom}.',
+])
+
 /** A close relative loses a spouse: {who} is "my sister Fatima", {spouse} is the first name of the one who died. Said once, on a stamped life (R4-L4). */
 export const KIN_WIDOWED = defineLines('life.kinWidowed', [
   '{spouse} died this year, and {who} is on their own now.',

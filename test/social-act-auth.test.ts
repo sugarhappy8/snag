@@ -13,6 +13,9 @@
 // for `serviceDebt`, which is not an act but a function that books money: it answers 0 where an act answers null.
 // R4-E13 is not an act (a company's key people are not people of the game): its rows are the last describe, the same check for the year
 // step and the five writers of business/staff-loyalty.ts on a life that is not stamped.
+// R4-E11 part A adds the secret: `leakPass` (the yearly leak) and `addSecret` (the writer of the records) in the states that block them. Neither is
+// an act; each answers with nothing written. An estranged holder is NOT a blocked state of the leak: a grudge is what makes a holder tell (the
+// plan's list of states was written for the acts). The enrolment of the mentor and `betray` are part B and have their rows beside their tests.
 //
 // The blocked states: a life that is not stamped; the person dead, a pet, estranged or not in the game; the call-in cooldown not elapsed; the
 // edge cap reached (a map of 1,200 bound edges with none for this person); a key whose second end is not the current ego (another owner's edge,
@@ -25,13 +28,15 @@ import { staffTurnover } from '../src/game/business/staff'
 import { managerPoached, staffGone, staffHired, staffLoyaltyYear, staffRaised, staffYelled } from '../src/game/business/staff-loyalty'
 import { bizOf, type KeyStaff } from '../src/game/business/state'
 import { peekLedger } from '../src/game/kernel/ledger'
-import { runAct, type SocialAct } from '../src/game/society/acts'
+import { actRoll, runAct, type SocialAct } from '../src/game/society/acts'
 import { debtToken, serviceDebt } from '../src/game/society/debt'
 import { broker, helpAct, vouch } from '../src/game/society/favor'
 import { askLoan, lend, lendAct, loanAct } from '../src/game/society/loan'
+import { LEAK, addSecret, leakPass, readSecret } from '../src/game/society/secret'
 import type { Edge } from '../src/game/world/edges'
-import { putEdge } from '../src/game/world/edge-write'
+import { putEdge, putSecret } from '../src/game/world/edge-write'
 import { playerRef } from '../src/game/world/people'
+import type { EntityRef } from '../src/game/kernel/ids'
 import type { GameState, Person } from '../src/game/types'
 import { makeTestGame } from './helpers'
 import { company } from './market-kit'
@@ -429,5 +434,146 @@ describe('staff loyalty: authorization inside the function', () => {
     const hired = JSON.stringify(f.g.world?.edges)
     staffGone(f.g, f.b.staff[0]!)
     expect(JSON.stringify(f.g.world?.edges)).not.toBe(hired)
+  })
+})
+
+// R4-E11 part A: the secret. The leak runs once a year inside the one `society.acts` entry and `addSecret` is the writer the callers use, so both
+// check their own authorization: in each blocked state they write nothing, draw nothing and book nothing.
+describe('the secret: authorization inside the function', () => {
+  /** A stamped adult with a circle of friends: a holder who will surely leak (the roll is under the floor of the odds) and two to tell. */
+  interface Leak {
+    g: GameState
+    holder: Person
+    told: Person[]
+    id: string
+  }
+
+  function leaking(stamped = true): Leak {
+    const g = stamped ? socialGame(1, { age: 30 }) : makeTestGame(1, { age: 30 })
+    const [holder, ...told] = [0, 1, 2, 3].map(() => cast(g, 70, 'friend')) as [Person, ...Person[]]
+    if (stamped) {
+      expect(putEdge(g, `${personEntity(holder)}>${personEntity(told[0]!)}`, { t: 50, f: 90, r: 50, s: 0, o: 0, y: g.year, l: g.year })).toBe(true)
+      g.year -= 1
+    }
+    const id = stamped ? addSecret(g, playerRef(g), 'affair', 3, [holder])! : 'secret:1'
+    // an unstamped game has no way to write a record: it is put in by hand, as a hostile save could carry it
+    if (!stamped) Object.assign(g, { world: { v: 1, edges: { 'secret:1': { a: playerRef(g), k: 'affair', v: 3, h: [personEntity(holder)], y: g.year - 1 } } } })
+    if (stamped) g.year += 1
+    for (let i = 1; i < 6000; i++) {
+      const life = `life-${i}`
+      if (actRoll({ lifeId: life, flags: g.flags, year: g.year }, 'leak', `secret:1|${personEntity(holder)}`)() < LEAK.base) {
+        g.lifeId = life
+        break
+      }
+    }
+    return { g, holder, told, id }
+  }
+
+  interface Blocked {
+    name: string
+    apply(w: Leak): void
+    stamped?: boolean
+  }
+
+  const states: readonly Blocked[] = [
+    { name: 'a life that is not stamped', apply: () => undefined, stamped: false },
+    { name: 'the player dead', apply: (w) => void (w.g.character.alive = false) },
+    { name: 'a secret about an earlier player (another owner)', apply: (w) => void putSecret(w.g, w.id, { ...readSecret(w.g, w.id)!, a: 'person:old-ego' as EntityRef }) },
+    { name: 'the holder dead', apply: (w) => void (w.holder.alive = false) },
+    { name: 'the holder a pet', apply: (w) => void (w.holder.relation = 'pet') },
+    { name: 'the holder not in the game', apply: (w) => void (w.g.people = w.g.people.filter((p) => p.id !== w.holder.id)) },
+    { name: 'a holder who has nobody to tell', apply: (w) => void (w.g.people = w.g.people.filter((p) => p.id === w.holder.id)) },
+    { name: 'a secret that began this year', apply: (w) => void putSecret(w.g, w.id, { ...readSecret(w.g, w.id)!, y: w.g.year }) },
+    { name: 'a secret that has leaked already', apply: (w) => void putSecret(w.g, w.id, { ...readSecret(w.g, w.id)!, p: w.g.year - 1 }) },
+    { name: 'a debt secret while the player owes nobody', apply: (w) => void putSecret(w.g, w.id, { ...readSecret(w.g, w.id)!, k: 'debt' }) },
+  ]
+
+  for (const state of states) {
+    it(`leakPass writes nothing, draws nothing and books nothing for: ${state.name}`, () => {
+      const w = leaking(state.stamped ?? true)
+      state.apply(w)
+      const before = JSON.stringify(w.g)
+      const ledger = JSON.stringify(peekLedger(w.g))
+      const { rng, nextId } = w.g
+      leakPass(w.g)
+      expect(JSON.stringify(w.g)).toBe(before)
+      expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+      expect(w.g.rng).toBe(rng)
+      expect(w.g.nextId).toBe(nextId)
+    })
+  }
+
+  it('control: the same arrangement in the allowed state leaks, hits the people told and books no money', () => {
+    const w = leaking(true)
+    const before = JSON.stringify(w.g)
+    const ledger = JSON.stringify(peekLedger(w.g))
+    const { rng } = w.g
+    leakPass(w.g)
+    expect(JSON.stringify(w.g)).not.toBe(before)
+    expect(readSecret(w.g, w.id)!.p).toBe(w.g.year)
+    expect(w.told[0]!.relationship).toBeLessThan(70)
+    expect(JSON.stringify(peekLedger(w.g))).toBe(ledger)
+    expect(w.g.rng).toBe(rng)
+    expect(states.length).toBeGreaterThanOrEqual(10)
+  })
+
+  /** One call of the writer: a stamped game with friends, and what to offer. */
+  interface Add {
+    g: GameState
+    about: EntityRef
+    kind: 'affair' | 'debt'
+    severity: number
+    holders: (Person | EntityRef)[]
+  }
+
+  function adding(stamped = true): Add {
+    const g = stamped ? socialGame(1, { age: 30 }) : makeTestGame(1, { age: 30 })
+    const people = [0, 1, 2].map(() => cast(g, 70, 'friend'))
+    return { g, about: playerRef(g), kind: 'affair', severity: 3, holders: [people[0]!] }
+  }
+
+  const adds: readonly [string, (a: Add) => void, boolean?][] = [
+    ['a life that is not stamped', () => undefined, false],
+    ['an about that is another owner\'s ego', (a) => void (a.about = 'person:old-ego' as EntityRef)],
+    ['an about that is a friend', (a) => void (a.about = personEntity(a.holders[0] as Person))],
+    ['no holder', (a) => void (a.holders = [])],
+    ['a holder who is dead', (a) => void ((a.holders[0] as Person).alive = false)],
+    ['a holder who is a pet', (a) => void ((a.holders[0] as Person).relation = 'pet')],
+    ['a holder who is not in the game', (a) => void (a.holders = ['person:nobody' as EntityRef])],
+    ['a severity of 0', (a) => void (a.severity = 0)],
+    ['a severity of 6', (a) => void (a.severity = 6)],
+    ['a severity that is not a number', (a) => void (a.severity = Number.NaN)],
+    ['a kind it does not know', (a) => void (a.kind = 'rumour' as never)],
+    [
+      'the table of 40 secrets full of live ones',
+      (a) => {
+        for (let n = 1; n <= 40; n++) expect(putSecret(a.g, `secret:${n}`, { a: a.about, k: 'affair', v: 2, h: [personEntity(a.holders[0] as Person)], y: a.g.year - 1 })).toBe(true)
+      },
+    ],
+  ]
+
+  for (const [name, apply, stamped] of adds) {
+    it(`addSecret answers null and changes nothing for: ${name}`, () => {
+      const a = adding(stamped ?? true)
+      apply(a)
+      const before = JSON.stringify(a.g)
+      const { rng, nextId } = a.g
+      expect(addSecret(a.g, a.about, a.kind, a.severity, a.holders)).toBeNull()
+      expect(JSON.stringify(a.g)).toBe(before)
+      expect(a.g.rng).toBe(rng)
+      expect(a.g.nextId).toBe(nextId)
+    })
+  }
+
+  it('control: addSecret in the allowed state writes the record and draws and books nothing', () => {
+    const a = adding(true)
+    const before = JSON.stringify(a.g)
+    const { rng, nextId } = a.g
+    const id = addSecret(a.g, a.about, a.kind, a.severity, a.holders)
+    expect(id).toBe('secret:1')
+    expect(JSON.stringify(a.g)).not.toBe(before)
+    expect(a.g.rng).toBe(rng)
+    expect(a.g.nextId).toBe(nextId)
+    expect(adds.length).toBeGreaterThanOrEqual(12)
   })
 })

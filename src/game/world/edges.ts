@@ -10,6 +10,7 @@
 //
 //   normalizeEdges(raw)   TOTAL: any value in, a valid map out, never a throw. A map that is already valid comes back as itself.
 //   edgeKey / readEdge / edgesOf / memoriesOf / salience / liveFeuds / openDebts   the pure reads.
+//   readSecrets(g)        the secrets of the map in number order (R4-E11); the one writer of them is putSecret in world/edge-write.ts.
 //   edgeLocalBound(e)     bound by the edge alone: a link kind, an unpaid debt, a feud or a pinned memory.
 //   edgeProblems(raw, people?, ego?)   every fault of a stored map, named, for the world invariant (world/invariants.ts wires it).
 //
@@ -95,6 +96,8 @@ const TALK_TOPICS = 8
 const SCAN_MAX = 64
 const TOKEN = /^[A-Za-z0-9._-]{1,32}$/
 const SECRET_KEY = /^secret:(?:0|[1-9][0-9]{0,8})$/
+/** The length of 'secret:', where the number of a secret key begins. */
+const SECRET_PREFIX = 7
 const SECRET_KINDS: readonly string[] = ['affair', 'debt']
 /** Most problems edgeProblems lists; the rest are counted in a last line. */
 const PROBLEMS_MAX = 60
@@ -503,9 +506,13 @@ export function normalizeEdges(raw: unknown): EdgeMap {
 
 type Entry = readonly [EdgeKey, Readonly<Edge>]
 
+/** A stored secret with its key: ['secret:3', the record]. */
+export type SecretEntry = readonly [key: string, secret: Readonly<SecretRecord>]
+
 interface Derived {
   feuds: number
   debts: number
+  secrets: readonly SecretEntry[]
   index: Map<string, readonly Entry[]> | null
 }
 
@@ -540,13 +547,19 @@ function derived(map: EdgeMap): Derived {
   if (d === undefined) {
     let feuds = 0
     let debts = 0
+    const secrets: SecretEntry[] = []
     for (const k of Object.keys(map)) {
-      if (isSecretKey(k)) continue
+      if (isSecretKey(k)) {
+        secrets.push(Object.freeze([k, map[k] as unknown as SecretRecord] as const))
+        continue
+      }
       const e = map[k]!
       if (e.q !== undefined) feuds++
       if (e.dv !== undefined) debts++
     }
-    d = { feuds, debts, index: null }
+    // 'secret:2' before 'secret:10': by the number, not by the code units of the key
+    secrets.sort((a, b) => Number(a[0].slice(SECRET_PREFIX)) - Number(b[0].slice(SECRET_PREFIX)))
+    d = { feuds, debts, secrets: Object.freeze(secrets), index: null }
     DERIVED.set(map, d)
   }
   return d
@@ -592,6 +605,15 @@ export function liveFeuds(g: Pick<GameState, 'world'>): number {
 /** How many edges carry a valid debt: at most EDGE_CAPS.debts. Pure and total on a hostile map. */
 export function openDebts(g: Pick<GameState, 'world'>): number {
   return derived(storedMap(g)).debts
+}
+
+/**
+ * The secrets of the map (R4-E11), in the order of their numbers: at most EDGE_CAPS.secrets, each one clean (a record that is not valid,
+ * or past the 40, is not listed). The records are frozen when the writer made them. Pure and total on a hostile map; society/secret.ts
+ * is the reader that names the fields.
+ */
+export function readSecrets(g: Pick<GameState, 'world'>): readonly SecretEntry[] {
+  return derived(storedMap(g)).secrets
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------

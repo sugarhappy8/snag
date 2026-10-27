@@ -30,6 +30,7 @@ import {
   HOME_BOUGHT_LINES,
   HOMELESS_LINES,
   KIN_WIDOWED,
+  LEAK_LINES,
   LENT_LINES,
   NOTEBOOK_FULL_LINES,
   REFUSED_LINES,
@@ -291,6 +292,8 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'social.borrow', lines: DEBT_BORROW_LINES, role: 'log', slots: ['money', 'who'] },
   { id: 'social.repay', lines: DEBT_REPAY_LINES, role: 'log', slots: ['money', 'who'] },
   { id: 'social.default', lines: DEBT_DEFAULT_LINES, role: 'log', slots: ['who'] },
+  // R4-E11: a secret gets out; the line names the holder who told and the first person told.
+  { id: 'social.leak', lines: LEAK_LINES, role: 'log', slots: ['who', 'whom'] },
   // R4-L4: a close relative is widowed ({who} is "my sister Fatima", {spouse} the first name of the one who died).
   { id: 'life.kinWidowed', lines: KIN_WIDOWED, role: 'log', slots: ['spouse', 'who'] },
   // R4-E13: a key person poached at the year's end ({who} the full name, {role} the title, {company} the company).

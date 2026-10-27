@@ -917,6 +917,11 @@ and the choice `A Lender Calls`; the four names go out through the door. `typica
 leaf `world/typical-income.ts`, and `society/acts.ts` stays the one file that imports `cash.ts`, so the `society->life` pair stays at two
 imports. The detail is in `docs/SOCIAL.md` section 14.
 
+R4-E11 (part A) added secrets and gossip. A secret is a record `secret:<n>` in the edges map (written only by `putSecret` in
+`world/edge-write.ts`, read with `readSecrets`); `society/secret.ts` begins them (`addSecret`) and runs the yearly leak (`leakPass`, a step
+inside the one `society.acts` entry), `society/gossip.ts` is the pure spread of a leak (two people told, one more through each, hop cap 2). The
+module declares the fact `social.leak`. Betrayal, reconciliation and mentorship are part B. The detail is in `docs/SOCIAL.md` section 15.
+
 ### Main Character Syndrome and instant mastery
 
 `talents.ts MainCharacter` occupies one of the three starting-talent slots. `hasTalent(g, id)` must
