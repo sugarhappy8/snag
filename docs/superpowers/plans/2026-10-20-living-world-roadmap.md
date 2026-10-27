@@ -256,7 +256,7 @@ Total 24,700. Order: core, knowledge and quiet years first; migration and fog af
 | People UI and fog | D.10 1,000, G.10a 400, H.5 900, H.7 900 | 3,200 | `ui/components/PersonSheet.tsx`, `RelationshipsSheet.tsx`, `business/staff.ts`, `advisors/team.ts` |
 
 Total 16,900. Golden tests of relationships, love, wealth, will and nepo land before the shim. Opus candidates: A.K8 and the `npc-lives.ts` edits (digest A: the riskiest).
-**Size.** 16,900 source, 20,024 test, 1,800 docs; 69 agent-hours, 15 tasks, 4 tracks, 21.1 wall hours. State: R4 about 29,000 nodes, the first row of the world's allotment (R4 about 29,000, R5 +6,000, R6 +6,000; R4-P2 raised `WORLD_NODE_CAP` to 80,000 and `WORLD_BUDGET` to 55,000 nodes and 800,000 bytes, and fixed the over-cap drop order, so `edges` is not the shard that goes first). Met 400 people, edges 1,200, secrets 40, feuds 12, memories 8 an edge; about 250 KB raw.
+**Size.** Planned: 16,900 source, 20,024 test, 1,800 docs; 69 agent-hours, 15 tasks, 4 tracks, 21.1 wall hours. Built (v5.3.0, counted at bda16a4 against v5.2.0 with `git diff --shortstat origin/main`): 13,956 source lines added and 738 deleted (net 13,218, 78% of the plan) in 180 files; 59,699 test lines added and 455 deleted in 147 files, 5,400 of the added lines in recorded JSON fixtures; 2,222 lines of docs in 16 files; 54 plan tasks in 4 tracks, after the cross-check split them from 15 and added the lead's platform tasks; about 34 wall hours from the first commit on the branch to the E16 head (agent-hours were not tracked). Bundle: +53,676 gzip bytes of the +60,000 allowance, about 4.06 bytes per net source line. State: R4 about 29,000 nodes, the first row of the world's allotment (R4 about 29,000, R5 +6,000, R6 +6,000; R4-P2 raised `WORLD_NODE_CAP` to 80,000 and `WORLD_BUDGET` to 55,000 nodes and 800,000 bytes, and fixed the over-cap drop order, so `edges` is not the shard that goes first). Measured at the caps: `met` 10,401 nodes and `edges` 19,929, about 30,300 in all (a little over the allotment, which counted the edges at 17,000), and the whole world at every cap about 45,600 nodes and 443,000 bytes; a played stamped life holds about 1,000 nodes in its world. Met 400 people, edges 1,200, secrets 40, feuds 12, memories 8 an edge; about 250 KB raw. The table in A.1 keeps the planned figures.
 **CI.** 4 shards; the golden relationship, love, wealth, will and nepo files run in the fast tier.
 
 **Acceptance.**
@@ -283,6 +283,7 @@ Total 16,900. Golden tests of relationships, love, wealth, will and nepo land be
 | Cycles | K.2b 1,800 | 1,800 | about 90 inner modules of the 85-module component |
 
 Total 16,900.
+**Inputs from R4 (X18).** "Offers, reputation, composer" takes `personaOf`, `nudgePersona` and `axesFromStaff` as its inputs. R4 ships them unwired (the store `persona.me`, the readers at parity and `axesOfPerson`, with no caller), and this track wires the player-facing half of the persona: inferred feedback, narrator pools, guilt costs, how NPCs read the player. It also names the owner of the two stored fields.
 **Size.** 16,900 source, 18,252 test, 1,800 docs; 69 agent-hours, 15 tasks, 4 tracks, 20.7 wall hours. State +6,000 nodes (3 editions plus a 30-year front-page archive at most 30 KB, `textMem` 8 KB). CI goes to 8 shards (9 minutes).
 
 **Acceptance.**
