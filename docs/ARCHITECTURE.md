@@ -887,6 +887,56 @@ the UI. Escrow and a cut-out heir's claim survive into the next generation and r
 if that heir dies first. A written will that omits an otherwise eligible spouse or child counts as
 cutting them out at the reading.
 
+### Society (society/*.ts)
+
+`society/` is the domain of what people do to each other and the budget that keeps it from burying the player in popups. It is layer 3,
+like `events/` and `business/`, and it is new in R4 (v5.3.0). Its one door is `society/contract.ts`: another domain imports only that
+file (the domain rule of `test/layers-domains.test.ts` does not count a contract import), and `society/` reaches `life` and no other
+domain (the `society->life` pair arrived with the acts of R4-E10a: `society/acts.ts` imports `cash.ts` and `society/seam.ts` imports
+`npc-state.ts`, the only two files the pair names). The files of the domain read the world (`world/`), `core` and the kernel, and nothing
+from `events/` or `business/`.
+
+R4-E9 put the first two files in it. `society/budget.ts` is the family-act budget: `useFamilyAct(g, source)` spends one of the three
+family choices a year (`g.yearActions['fam.act']`) on a life the social stamp marks, `familyRoom(g, source)` looks before the spend, and
+`familyLive(g)` says whether the family has a stake (someone cut out of the will, an open feud or debt, a family firm with employed
+relatives) that holds one slot back from the wealth asks and the luxury choice. The sources that spend it are the wealth asks, the
+luxury family choice, the nepo ask, life event and baton prompt, and the will's scene; the acts of the close join them. An
+unstamped life has no counter and keeps the old caps. Later tasks add one export line each to the contract, and their detail goes to
+`docs/SOCIAL.md` (section 12 has the budget).
+
+R4-E10a added the act engine. `society/acts.ts` is the typed `SocialAct` (a pure `blocked` and a pure `plan`) and `runAct`, the one place
+an act writes (the edge through `putEdge`, money through `cash.moveCash`, memories, the relationship shim, the log); it checks its own
+authorization and answers null with nothing written when an act is blocked. `society/favor.ts` holds the first three acts (a favor
+call-in, a vouch, a brokered peace), `society/menu.ts` the person rows (`socialNodes`), `society/seam.ts` the axes, and
+`society/module.ts` the module `society.acts` (close phase, order 6). Luck is the stream `social` (`docs/STREAMS.md`); the detail is in
+`docs/SOCIAL.md` section 13.
+
+R4-E10b added loans between people. `society/loan.ts` holds the terms and the two acts (the ask and the loan itself), `society/debt.ts` the
+debt record `Edge.dv`, `debtsOf`, `serviceDebt`, `debtToken`, `DEBT_KIND`, the yearly service (a step inside the one `society.acts` entry)
+and the choice `A Lender Calls`; the four names go out through the door. `typicalIncome` reaches `society/` through the seam from the layer-2
+leaf `world/typical-income.ts`, and `society/acts.ts` stays the one file that imports `cash.ts`, so the `society->life` pair stays at two
+imports. The detail is in `docs/SOCIAL.md` section 14.
+
+R4-E14 put one more name through the door: `isBound`, which lives in the layer-2 file `world/edge-bound.ts` (the edge held by its own fields or by
+a person at one of its ends) and is only re-exported by `society/contract.ts`. The file also registers the Met store's protector and salience
+and is what `putEdge`, the orphan rule and `cleanupPeople` ask. The detail is in `docs/SOCIAL.md` section 15.
+
+R4-E11 (part A) added secrets and gossip. A secret is a record `secret:<n>` in the edges map (written only by `putSecret` in
+`world/edge-write.ts`, read with `readSecrets`); `society/secret.ts` begins them (`addSecret`) and runs the yearly leak (`leakPass`, a step
+inside the one `society.acts` entry), `society/gossip.ts` is the pure spread of a leak (two people told, one more through each, hop cap 2). The
+module declares the fact `social.leak`. The detail is in `docs/SOCIAL.md` section 16.
+
+R4-E11 (part B) added betrayal, reconciliation and mentorship. `betray` (`society/secret.ts`) is the cost of a betrayal and begins the secret of a
+found affair; `love.ts` and the leak call it, `love.ts` through the door only. `reconcileOdds` (`society/reconcile.ts`) is added to the will's
+`peaceOdds` in `events/will-amends.ts`, through the door, for a stamped pair that owes the player. `society/mentor.ts` enrols up to 3 proteges and
+settles their bonus (0.15 of the year's gain) inside the one `society.acts` entry; it reaches the NPC life through the seam, so the
+`society->life` pair stays at two files. The detail is in `docs/SOCIAL.md` section 17.
+
+R4-E12 added the feud ladder. `society/feud.ts` holds `stepFeuds` (the last step of the one `society.acts` entry), the legal fee, `A Falling Out`
+and `Make peace` (the SocialAct `feud.peace` and the row of `society/menu.ts`); a feud is the rung `Edge.q` and nothing else is saved. The fee is
+booked through `cash.moveCash` to `pool:legal` under `legal`, with `poolPurse` re-exported by `society/acts.ts` so that file stays the one
+importer of `cash.ts`. The module declares the fact `social.feud`. The detail is in `docs/SOCIAL.md` section 18.
+
 ### Main Character Syndrome and instant mastery
 
 `talents.ts MainCharacter` occupies one of the three starting-talent slots. `hasTalent(g, id)` must
@@ -1316,7 +1366,7 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
 - Ages kids' entitlement, lets gifted cars crash, and asks once (one "All Grown Up" popup) whether to keep paying kids who turned 18.
 - Queues this year's money requests.
 
-**Wealth tiers.** Requests need an adult player and tier >= 1. Tier comes from `wealth-core.wealthTier`: net worth ÷ `typicalIncome` (45,000 × country wealth × history realWealthFactor). Tiers start at 25, 80, 400 and 4,000 years of income: comfortable, rich, very rich, ultra rich. `TIER_RATE` sets how many asks a year each tier gets, and `TIER_POPUP_CAP` caps the popups at 1, 2 or 3 (`WEALTH_POPUP_CAP`). In prison the rate is ×0.25 and the cap is 1, and requests arrive as letters. Small asks are bundled into one "Everybody Wants Something" popup.
+**Wealth tiers.** Requests need an adult player and tier >= 1. Tier comes from `wealth-core.wealthTier`: net worth ÷ `typicalIncome` (45,000 × country wealth × history realWealthFactor). `typicalIncome`, `countryWealth` and `US_TYPICAL_INCOME` live in the layer-2 leaf `world/typical-income.ts` (so `society/` can price against them without reaching into `events/`); `wealth-core` re-exports all three. Tiers start at 25, 80, 400 and 4,000 years of income: comfortable, rich, very rich, ultra rich. `TIER_RATE` sets how many asks a year each tier gets, and `TIER_POPUP_CAP` caps the popups at 1, 2 or 3 (`WEALTH_POPUP_CAP`). In prison the rate is ×0.25 and the cap is 1, and requests arrive as letters. Small asks are bundled into one "Everybody Wants Something" popup.
 
 **The catalog.** Entries are `AskDef`s (wealth-ask.ts) in wealth-kids, wealth-family and wealth-world, registered in wealth-catalog. Each entry has who asks, minTier, cooldown, era/age gates, weight and build. A built `Ask` is plain JSON in the popup's data. wealth-resolve.ts turns it into honest options:
 - give

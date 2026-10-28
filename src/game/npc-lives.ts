@@ -27,6 +27,9 @@ import { isIndustryLegal, type Industry } from './data/markets'
 import type { BizState } from './business/state'
 import { clampN, money, num, pct, rec } from './business/util'
 import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
+import { personKey } from './kernel/person-ref'
+import { metRecord } from './world/met'
+import { isClose, peopleFog, readPerson } from './people-fog'
 import { pickLine, pickSite } from './text/pick'
 import { HOME_BOUGHT, HOME_BOUGHT_LINES, PROMO_LINES, PROMOTED } from './text/pools'
 import { npcCompany } from './npc-company-state'
@@ -89,11 +92,23 @@ export function refreshRoyalCareers(g: GameState, newBirth = false): void {
   }
 }
 
+/**
+ * Where a person's ambition starts, 5..98. The roll is the old one, for everyone who has no Met record: 35 plus 40 times a draw, 20 more
+ * for `ambitious` and 25 less for `lazy`. A person with a Met record starts from the record's ambition axis instead; that axis already
+ * counts their words (the record's words come from its axes), so no bonus is added. The draw is taken either way, so every person reads
+ * their seed in the same order.
+ */
+function startingAmbition(p: Person, drawn: number, axis: number | null): number {
+  if (axis !== null) return clampN(axis, 5, 98)
+  return clampN(35 + drawn * 40 + (p.traits.includes('ambitious') ? 20 : 0) - (p.traits.includes('lazy') ? 25 : 0), 5, 98)
+}
+
 export function initializeNpc(g: GameState, p: Person): NpcLife {
   inheritFamilyTalent(g, p)
   const existing = npcLife(p)
   if (existing) return existing
-  const roll = seeded(`npc-life|${p.id}|${g.lifeId.replace(/-g\d+$/, '')}`)
+  const roll = seeded(`npc-life|${personKey(p)}|${g.lifeId.replace(/-g\d+$/, '')}`)
+  const met = metRecord(g, personKey(p))
   const local = typeof p.data.countryId === 'string' ? p.data.countryId : g.character.countryId
   let field: NpcField = /Finance|Bank|Account|Invest/.test(p.occupation) ? 'Finance' : /Doctor|Nurse|Dentist/.test(p.occupation) ? 'Medicine' : /Engineer|Mechanic/.test(p.occupation) ? 'Engineering' : /Law/.test(p.occupation) ? 'Law' : /Software/.test(p.occupation) ? 'Computer Science' : roll.pick(['Engineering','Finance','Mathematics','Law','Marketing','Business'])
   if (field === 'Computer Science' && g.year < 1965) field = 'Mathematics'
@@ -101,7 +116,7 @@ export function initializeNpc(g: GameState, p: Person): NpcLife {
   const life: NpcLife = { v: 1, lastYear: g.year - 1, country: local, city: getCountry(local).cities[0], field, education: p.age >= 23 && professional ? 1 : 0,
     study: p.occupation === 'University Student' ? Math.min(3, Math.max(0, p.age - 18)) : 0,
     skill: clampN(p.stats.smarts * .3 + Math.max(0, p.age - 18) * .5, 10, 85), experience: Math.max(0, p.age - (professional ? 22 : 18)), income: 0,
-    debt: 0, investments: 0, housing: 0, ambition: clampN(35 + roll.next() * 40 + (p.traits.includes('ambitious') ? 20 : 0) - (p.traits.includes('lazy') ? 25 : 0), 5, 98), employer: '', history: [], achievements: [], housingQuality: 50 }
+    debt: 0, investments: 0, housing: 0, ambition: startingAmbition(p, roll.next(), met ? met.a[0] : null), employer: '', history: [], achievements: [], housingQuality: 50 }
   if (life.education) life.achievements.push(`Bachelor's in ${field}`)
   saveNpcLife(p, life)
   return life
@@ -150,21 +165,51 @@ export function startNpcCompany(g: GameState, p: Person, industry?: Industry): b
   saveNpcLife(p, l)
   return true
 }
+/** What the caller may ask of adoptNpcCompany. Both fields are new and the default is v5.2.0: 21 or over, a mortgage left where it is (R4-L8). */
+export interface AdoptOptions {
+  /** The youngest age that may own the firm (21 without it). A value that is not a finite number is the default. */
+  minAge?: number
+  /** The firm's mortgage joins its own debt and the record leaves the asset (a relabelled liability, no flow). Refused when the mortgage is not under the asset's value. */
+  carryMortgage?: boolean
+}
 /**
  * A family firm passes to a living adult relative (the designated sibling of a player who died) and
  * runs on as their company, instead of being turned into cash. Refuses when the person is dead,
- * under 21 or already holds any company record. Draws nothing from g.rng.
+ * under `opts.minAge` (21) or already holds any company record. Draws nothing from g.rng.
+ *
+ * With `carryMortgage` (a stamped life, R4-L8) the asset's mortgage becomes the firm's own debt: the balance joins `b.debt`, the firm
+ * pays the higher of its rate and the mortgage's (never above 60%), the record is deleted from the asset, and the firm is revalued net
+ * of it. It books no flow: the same liability changes its label. A mortgage that is not under the asset's value stays cash (false, and
+ * nothing is touched); a record with no usable balance is dropped as junk.
  */
-export function adoptNpcCompany(g: GameState, p: Person, a: Asset, b: BizState): boolean {
-  if (!p.alive || p.age < 21 || npcCompany(p, g.year) || (p.data.npcCompany ?? null) !== null) return false
+export function adoptNpcCompany(g: GameState, p: Person, a: Asset, b: BizState, opts?: AdoptOptions): boolean {
+  const minAge = typeof opts?.minAge === 'number' && Number.isFinite(opts.minAge) ? opts.minAge : 21
+  if (!p.alive || p.age < minAge || npcCompany(p, g.year) || (p.data.npcCompany ?? null) !== null) return false
+  const carry = opts?.carryMortgage === true && a.mortgage !== undefined
+  const balance = carry ? mortgageOwed(a) : 0
+  if (carry && balance > 0 && !(balance < a.value && Number.isFinite(b.debt + balance))) return false
   const l = initializeNpc(g, p)
   b.npcOwnerId = p.id; b.ceo = 'manager'
   b.manager = { firstName: p.firstName, lastName: p.lastName, gender: p.gender, skill: l.skill, salary: 0, since: g.year }
   a.details = b as unknown as Record<string, Json>
+  if (carry) {
+    if (balance > 0) {
+      const rate = a.mortgage ? Number(a.mortgage.rate) : Number.NaN
+      b.debt = b.debt + balance
+      b.debtRate = clampN(Number.isFinite(rate) ? Math.max(b.debtRate, rate) : b.debtRate, 0, 0.6)
+      b.valuation = valuationOf(b)
+    }
+    delete a.mortgage
+  }
   refreshValue(a, b); storeCompany(p, a)
   p.occupation = 'Business Owner'; l.employer = a.name
   saveNpcLife(p, l)
   return true
+}
+/** The mortgage balance on an asset as a usable sum: 0 for a record that has none (not a number, not finite, not above 0). */
+function mortgageOwed(a: Asset): number {
+  const balance = Number(a.mortgage?.balance)
+  return Number.isFinite(balance) && balance > 0 ? balance : 0
 }
 function claim(g: GameState, id: string): Asset | undefined { return g.assets.find(a => a.kind === 'investment' && a.details.npcCompanyId === id) }
 /** One affordable, forecast-positive expansion at a time; the same site planner as player CEOs. */
@@ -247,7 +292,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
   l.lastYear = g.year
   const local = getCountry(l.country), e = economyOf(g, l.country), income = typicalIncome(g, l.country)
   const learning = educationAccess(e)
-  const roll = seeded(`npc-decision|${g.lifeId.replace(/-g\d+$/, '')}|${p.id}|${g.year}`)
+  const roll = seeded(`npc-decision|${g.lifeId.replace(/-g\d+$/, '')}|${personKey(p)}|${g.year}`)
   const gifted = npcHasMainCharacter(p)
   const managedJob = managedEmployment(g, p)
   let appointment = syncRoyalAppointment(g, p, l)
@@ -333,7 +378,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
   }
   if (gifted && !managedJob && !appointment && p.age >= 21 && p.age <= 70 && l.ambition >= 65 && !/Student/.test(p.occupation) && !npcCompany(p, g.year)) {
     // Ambition drives frequency and willingness to challenge the family, not talent inheritance.
-    const ventureRoll = seeded(`npc-venture|${g.lifeId.replace(/-g\d+$/, '')}|${p.id}|${g.year}`)
+    const ventureRoll = seeded(`npc-venture|${g.lifeId.replace(/-g\d+$/, '')}|${personKey(p)}|${g.year}`)
     if (ventureRoll.chance((l.ambition - 55) / 100)) {
       saveNpcLife(p, l)
       const rivals = g.assets.filter(a => a.kind === 'business').map(a => ({ a, b: a.details as unknown as BizState }))
@@ -472,14 +517,40 @@ export function investInNpc(g: GameState, personId: string, amount: number, acqu
   }
   return true
 }
+
+/** One number of an NPC as the player reads it: the text that goes in the row, the middle of the estimate and the chip it earns. */
+interface Seen { text: string; mid: number | null; conf?: 0 | 1 | 2 | 3; asOf?: number }
+
+/** The chip of a row that shows several reads: the weakest confidence and the oldest reading. Nothing when no read was an estimate. */
+function chipOf(reads: readonly Seen[]): { conf?: 0 | 1 | 2 | 3; asOf?: number } {
+  const confs = reads.flatMap((r) => (r.conf === undefined ? [] : [r.conf]))
+  if (confs.length === 0) return {}
+  const years = reads.flatMap((r) => (r.asOf === undefined ? [] : [r.asOf]))
+  return { conf: Math.min(...confs) as 0 | 1 | 2 | 3, ...(years.length > 0 ? { asOf: Math.min(...years) } : {}) }
+}
+
 export function npcLifeNodes(g: GameState, p: Person): MenuNode[] {
   const l = npcLife(p)
   if (p.relation === 'pet') return []
-  if (!l) return npcHasMainCharacter(p) ? [{ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', text: 'Main Character Syndrome — inherited from family. Every talent; masters skills through first use as they grow up.' }] : []
-  const close = p.relationship >= 35 || p.livesWithPlayer
+  if (!l) return npcHasMainCharacter(p) ? [{ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', text: 'Main Character Syndrome - inherited from family. Every talent; masters skills through first use as they grow up.' }] : []
+  const close = isClose(p)
   const company = npcCompany(p, g.year)
-  const nodes: MenuNode[] = [{ type: 'info', id: `npc.life.${p.id}`, emoji: '📖', text: `Life & Career — ${p.occupation}${l.employer ? ` at ${l.employer}` : ''}. Lives in ${l.city || getCountry(l.country).cities[0]}, ${getCountry(l.country).name}. ${l.achievements.join('; ') || (l.study > 0 ? `Studying ${l.field}` : 'No known higher qualification')}. ${close ? `Experience ${l.experience} years · professional skill ${Math.round(l.skill)}/100 · net worth incl. property & companies about ${money(npcWorth(p, g.year, g))}. Ambition ${Math.round(l.ambition)}/100.` : 'Private finances are not known to you.'}\n${close ? l.history.slice(-6).join('\n') : ''}` }]
-  if (npcHasMainCharacter(p)) nodes.push({ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', text: `Main Character Syndrome — every talent; masters skills through first use.${close ? ` Ambition ${Math.round(l.ambition)}/100: ${l.ambition >= 80 ? 'may build a competing family business' : l.ambition >= 65 ? 'wants an independent business' : 'prefers a career or a quieter life'}.${typeof p.data.rivalOf === 'string' && company ? ` ${company.a.name} competes in your industry.` : ''}` : ''}` })
+  // With the profile (R4-U5) skill, ambition and net worth read as the estimate the player earns, and the row carries its chip; in Exact
+  // and with the flag off they are today's figures. A key the contract refuses reads as not clear yet and never as the number.
+  const fog = peopleFog()
+  const seen = (field: string, truth: number, today: string): Seen => {
+    if (!fog) return { text: today, mid: truth }
+    const e = readPerson(g, p, field, truth)
+    return e ? { text: e.words, mid: e.mid, conf: e.conf, ...(e.asOf !== undefined ? { asOf: e.asOf } : {}) } : { text: 'not clear yet', mid: null, conf: 0 }
+  }
+  const skill = close ? seen('skill', l.skill, `${Math.round(l.skill)}/100`) : null
+  const worth = close ? npcWorth(p, g.year, g) : 0
+  const wealth = close ? seen('worth', worth, `about ${money(worth)}`) : null
+  const ambition = close ? seen('ambition', l.ambition, `${Math.round(l.ambition)}/100`) : null
+  const nodes: MenuNode[] = [{ type: 'info', id: `npc.life.${p.id}`, emoji: '📖', ...chipOf([skill, wealth, ambition].flatMap((r) => (r === null ? [] : [r]))), text: `Life & Career - ${p.occupation}${l.employer ? ` at ${l.employer}` : ''}. Lives in ${l.city || getCountry(l.country).cities[0]}, ${getCountry(l.country).name}. ${l.achievements.join('; ') || (l.study > 0 ? `Studying ${l.field}` : 'No known higher qualification')}. ${close ? `Experience ${l.experience} years · professional skill ${skill!.text} · net worth incl. property & companies ${wealth!.text}. Ambition ${ambition!.text}.` : 'Private finances are not known to you.'}\n${close ? l.history.slice(-6).join('\n') : ''}` }]
+  // The sentence after the ambition follows what the player believes (the estimate's middle), so it never gives the figure away.
+  const drive = (m: number | null): string => (m === null ? '' : `: ${m >= 80 ? 'may build a competing family business' : m >= 65 ? 'wants an independent business' : 'prefers a career or a quieter life'}`)
+  if (npcHasMainCharacter(p)) nodes.push({ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', ...(ambition ? chipOf([ambition]) : {}), text: `Main Character Syndrome - every talent; masters skills through first use.${ambition ? ` Ambition ${ambition.text}${drive(ambition.mid)}.${typeof p.data.rivalOf === 'string' && company ? ` ${company.a.name} competes in your industry.` : ''}` : ''}` })
   if (!company || !p.alive || !close) return nodes
   const { a, b } = company
   nodes.push({ type: 'info', id: `npc.company.${p.id}`, emoji: '🏢', text: `${a.name}: revenue ${money(b.last?.revenue ?? 0)}, costs ${money((b.last?.netRevenue ?? 0) - (b.last?.pbt ?? 0))}, net ${money(b.last?.net ?? 0)}, cash ${money(b.cash)}, debt ${money(b.debt)}, valuation ${money(b.valuation)}. Ownership: ${p.firstName} ${pct(b.share, 1)}.` })

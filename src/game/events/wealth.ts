@@ -21,9 +21,12 @@ import { pickLine } from '../text/pick'
 import { AVOIDING_LINES, VENTURE_LOST_LINES } from '../text/pools'
 import { fillSlots, stateLine } from '../text/state'
 import { logStateLine } from '../text/state-log'
+import { familyRoom, useFamilyAct } from '../society/contract'
 import { askIsStoryline, askPaceKey } from './ask-families'
 import { askDefs } from './wealth-catalog'
 import { askedPurse, wholePurse } from './purses'
+import { remember } from '../world/edge-write'
+import { memoryOdds } from '../world/edge-odds'
 import { ADULT_SCRIPT, presentAsk, presentBundle } from './wealth-resolve'
 import type { Ask, AskDef } from './wealth-ask'
 import { isEstranged } from './will-core'
@@ -69,11 +72,17 @@ export function yearlyWealth(g: GameState): void {
   if (tier >= 1 && budget > 0) queueRequests(g, tier, budget)
 }
 
-/** Most request popups this year: by tier, never more than WEALTH_POPUP_CAP, one letter in prison. */
+/**
+ * Most request popups this year: by tier, never more than WEALTH_POPUP_CAP, one letter in prison. On a life the social stamp marks the
+ * family choices share three a year (society/budget.ts), so the old cap sits inside what the budget has left for wealth: min(old, room),
+ * where room is 3 less the reserve and less what wealth and the luxury choice have spent (R4-E9, X40). A life that is not stamped has
+ * no room limit and gets the old number to the digit. This is a number, not a spend: the spend is made where a choice is queued.
+ */
 export function popupBudget(g: GameState, tier: number): number {
   if (tier <= 0) return 0
   const cap0 = Math.min(WEALTH_POPUP_CAP, TIER_POPUP_CAP[Math.min(tier, TIER_POPUP_CAP.length - 1)] ?? WEALTH_POPUP_CAP)
-  return g.character.prison ? Math.min(1, cap0) : cap0
+  const old = g.character.prison ? Math.min(1, cap0) : cap0
+  return Math.min(old, familyRoom(g, 'wealth'))
 }
 
 // ---------------------------------------------------------------------------
@@ -129,19 +138,20 @@ function payAllowances(g: GameState): void {
         x.given += amt
         x.missed = 0
       })
-      if (amt >= norm * 0.8 && chance(g, 0.5)) addRelationship(p, 1)
+      if (amt >= norm * 0.8 && chance(g, 0.5)) addRelationship(g, p, 1)
       if (isDescendant(p) && p.age < 30) {
         const ratio = amt / Math.max(1, norm)
         if (ratio > 2) addEntitlement(p, Math.min(6, Math.round(Math.log2(ratio) * 1.5)))
         else if (ratio <= 1.2) addEntitlement(p, -1)
       }
     } else {
-      addRelationship(p, -randInt(g, 2, 5))
+      addRelationship(g, p, -randInt(g, 2, 5))
       const missed = t.missed + 1
       updateTies(g, p, (x) => {
         x.missed = missed
         if (missed >= 2) x.allowance = 0
       })
+      remember(g, p, 'allowance_cut', { w: missed >= 2 ? 2 : 1, by: 'ego' })
       log(g, missed >= 2 ? `I couldn't afford ${myOf(p)}'s allowance again, so I stopped it.` : `I couldn't afford ${myOf(p)}'s allowance this year.`, 'bad')
     }
   }
@@ -157,7 +167,7 @@ function collectLoans(g: GameState): void {
     const t = readTies(g, p)
     if (t.owes <= 0) continue
     const years = Math.max(0, g.year - (t.owesSince || g.year))
-    if (p.money > 0 && chance(g, repayOdds(p, t.owes))) {
+    if (p.money > 0 && chance(g, repayOdds(p, t.owes, g))) {
       const want = Math.max(Math.min(t.owes, 100), Math.round(t.owes * randFloat(g, 0.3, 1)))
       const pay = Math.max(0, Math.min(t.owes, Math.floor(p.money), want))
       if (pay <= 0) continue
@@ -166,15 +176,17 @@ function collectLoans(g: GameState): void {
         x.owes = Math.max(0, x.owes - pay)
         if (x.owes === 0) x.owesSince = 0
       })
-      addRelationship(p, 2)
+      addRelationship(g, p, 2)
       const left = t.owes - pay
+      remember(g, p, 'loan_repaid', { w: left > 0 ? 1 : 2, by: 'them' })
       // A part payment is said through its row (text/state-table.ts), one record per person: when the debt has halved since the
       // last line (after 2 years) or after 5 quiet years. A quiet year still takes the log id the line took. The last payment
       // is its own line and always speaks.
       if (left > 0) logStateLine(g, stateLine(g, 'loan.back', left, { id: p.id, slots: { who: cap(myOf(p)), whom: myOf(p), he: p.gender === 'male' ? 'he' : 'she', money: money(pay), left: money(left) } }), 'good')
       else log(g, `${cap(myOf(p))} paid back the last ${money(pay)} ${p.gender === 'male' ? 'he' : 'she'} owed me!`, 'good')
     } else if (chance(g, Math.min(0.5, 0.1 + years * 0.04))) {
-      addRelationship(p, -randInt(g, 1, 4))
+      addRelationship(g, p, -randInt(g, 1, 4))
+      remember(g, p, 'loan_unpaid', { w: years >= 3 ? 2 : 1, by: 'them' })
       // The last mark is read before this year's is written: the line comes once in five years.
       const said = t.marks.avoid
       updateTies(g, p, (x) => {
@@ -209,7 +221,7 @@ function settleVentures(g: GameState): void {
         // A royal appointment is their title: the court keeps it (syncRoyalAppointment), and a
         // reload would put it straight back.
         if (p.age < 65 && x.kind === 'venture' && !p.data.royalAppointment) p.occupation = 'Business Owner'
-        addRelationship(p, randInt(g, 4, 8))
+        addRelationship(g, p, randInt(g, 4, 8))
         notePerson(p, `Made ${x.what} a success with your money.`)
       }
       log(g, `${cap(x.what)} took off! ${cap(who)} paid me back ${money(back)}.`, 'good')
@@ -219,7 +231,7 @@ function settleVentures(g: GameState): void {
       addMoney(g, back, { reason: 'draw', with: 'pool:firms' })
       log(g, `${cap(x.what)} fizzled. ${cap(who)} paid me back ${money(back)} of the ${money(x.amt)} I put in.`)
     } else {
-      if (p && p.alive) addRelationship(p, -randInt(g, 0, 3))
+      if (p && p.alive) addRelationship(g, p, -randInt(g, 0, 3))
       log(g, fillSlots(pickLine(g, VENTURE_LOST_LINES), { what: x.what, money: money(x.amt) }), 'bad')
     }
   }
@@ -243,7 +255,7 @@ function kidsYear(g: GameState): void {
       if (how === 'spoiled' && chance(g, 0.5)) p.stats.smarts = Math.max(0, p.stats.smarts - 1)
       if (how === 'fair' && chance(g, 0.35)) {
         p.stats.smarts = Math.min(100, p.stats.smarts + 1)
-        addRelationship(p, 1)
+        addRelationship(g, p, 1)
       }
     }
     const t = readTies(g, p)
@@ -268,6 +280,8 @@ function kidsYear(g: GameState): void {
 function askAboutGrownKids(g: GameState): number {
   const grown = g.people.filter((p) => p.alive && isDescendant(p) && p.age >= 18 && !readTies(g, p).adultOk && readTies(g, p).allowance > 0)
   if (!grown.length) return 0
+  // a choice of the family: it takes one of the year's three, and a stamped life with none left does not get the question this year
+  if (!useFamilyAct(g, 'wealth')) return 0
   const names = grown.map((p) => p.firstName).join(' and ')
   const total = grown.reduce((s, p) => s + readTies(g, p).allowance, 0)
   scriptChoice(
@@ -326,7 +340,7 @@ export function requestCandidates(g: GameState, tier: number): Candidate[] {
         if (last > 0 && g.year - last < def.cooldown) continue
         if (def.when && !def.when(g, tier, p)) continue
         // Kids and young adults ask far more often than anyone else; estranged people rarely do.
-        const w = def.weight(g, tier, p) * (p.relationship < 15 ? 0.3 : 1) * (isDescendant(p) ? (p.age < 18 ? 3 : p.age < 25 ? 2 : 1) : 1)
+        const w = def.weight(g, tier, p) * (p.relationship < 15 ? 0.3 : 1) * (isDescendant(p) ? (p.age < 18 ? 3 : p.age < 25 ? 2 : 1) : 1) * (1 + memoryOdds(g, p, 'ask'))
         if (w > 0 && Number.isFinite(w)) out.push({ def, p, w })
       }
     } else {
@@ -368,13 +382,19 @@ function queueRequests(g: GameState, tier: number, budget: number): void {
     else big.push(a)
   }
   // Every ask that is presented notes its family, whether it is a popup, a part of a bundle or sent to a secretary's inbox.
+  // The shared budget is spent here, before presentAsk and presentBundle can hand an ask to a secretary's approval inbox, so an inbox ask
+  // takes a slot as well (that only tightens the budget; it never lets it pass three). One spend for each big ask, one for the bundle (or
+  // the one small ask): a choice that finds no slot is dropped, not kept for next year (R4-E9, X40, C13).
   for (const a of big) {
+    if (!useFamilyAct(g, 'wealth')) continue
     noteAsk(g, a)
     presentAsk(g, a)
   }
-  for (const a of small) noteAsk(g, a)
-  if (small.length === 1) presentAsk(g, small[0])
-  else if (small.length > 1) presentBundle(g, small)
+  if (small.length > 0 && useFamilyAct(g, 'wealth')) {
+    for (const a of small) noteAsk(g, a)
+    if (small.length === 1) presentAsk(g, small[0])
+    else presentBundle(g, small)
+  }
 }
 
 /**

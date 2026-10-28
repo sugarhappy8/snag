@@ -1,4 +1,7 @@
-import type { Json, Person } from './types'
+import { personKey } from './kernel/person-ref'
+import type { GameState, Json, Person } from './types'
+import { axesFromTraits, type Axes } from './world/axes'
+import { metRecord } from './world/met'
 
 export type NpcField = 'Engineering' | 'Finance' | 'Mathematics' | 'Law' | 'Marketing' | 'Medicine' | 'Business' | 'Computer Science'
 export interface NpcLife {
@@ -19,6 +22,21 @@ export function npcLife(p: Person): NpcLife | null {
     ambition: n(d.ambition, 50, 100), employer: typeof d.employer === 'string' ? d.employer : '', history: strings(d.history), achievements: strings(d.achievements), housingQuality: n(d.housingQuality, 50, 100) }
 }
 export function saveNpcLife(p: Person, life: NpcLife): void { p.data.life = life as unknown as Json }
+/**
+ * The five axes of a person (R4-S10, D.2 c), for a reader that wants more than a trait word. A person with a Met record (one who was born
+ * from a sid) has the record's axes. Everyone else has the axes of their words, and when they have a life, that life's ambition in
+ * place of the words' (an NPC's ambition is rolled once and then lives in `NpcLife`; npcLife reads a life with none stored as 50). A
+ * person with no life keeps the ambition their words give. Pure: no draw, no write, no life made. Total: any words, any life, any
+ * sid answer with numbers in 0..100. A new object each call. `driveOf`, `integrityFor` and `temper` keep their signatures, because
+ * they take no state and so cannot read the world; a reader that has the game calls this.
+ */
+export function axesOfPerson(g: Pick<GameState, 'world'>, p: Person): Axes {
+  const met = metRecord(g, personKey(p))
+  if (met) return { ambition: met.a[0], honesty: met.a[1], empathy: met.a[2], risk: met.a[3], steadiness: met.a[4] }
+  const life = npcLife(p)
+  const base = axesFromTraits(p.traits)
+  return life ? { ...base, ambition: life.ambition } : base
+}
 export function npcEducationSkill(p: Person, focus?: string): number {
   const l = npcLife(p)
   if (!l) return 0

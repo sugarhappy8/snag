@@ -64,7 +64,8 @@ describe('the world step repairs a world that came in hostile', () => {
 
   it('cuts a world far past the node cap down under it', () => {
     const g = makeTestGame(7, { age: 40, money: 50_000 })
-    setWorld(g, { v: 1, a: junk(300_000), b: junk(200_000) })
+    // Sized from the cap, so a change of the cap keeps the world at ten times it (500,000 nodes of junk would be under ten times 80,000).
+    setWorld(g, { v: 1, a: junk(WORLD_NODE_CAP * 6), b: junk(WORLD_NODE_CAP * 4) })
     expect(nodes(g.world)).toBeGreaterThan(WORLD_NODE_CAP * 10)
     yearlyWorld(g)
     expect(nodes(g.world)).toBeLessThan(WORLD_NODE_CAP)

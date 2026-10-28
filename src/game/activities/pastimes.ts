@@ -176,7 +176,7 @@ const DEFS: Pastime[] = [
     play: (g, partner) => {
       const kind = g.year >= 2000 && adoption(g, 'homeComputer', 0.1) ? 'mix CD' : 'mixtape'
       if (partner) {
-        addRelationship(partner, randInt(g, 6, 12))
+        addRelationship(g, partner, randInt(g, 6, 12))
         notePerson(partner, `The player made them a ${kind}.`)
         addStat(g, 'happiness', randInt(g, 3, 6))
         log(g, `I made a ${kind} for ${partner.firstName}.`, 'good')
@@ -202,7 +202,7 @@ const DEFS: Pastime[] = [
       masterInstrument(g, 'Voice')
       const win = chance(g, hasTalent(g, 'Music') ? 0.7 : 0.25)
       addStat(g, 'happiness', win ? randInt(g, 7, 11) : randInt(g, 3, 6))
-      if (partner) addRelationship(partner, randInt(g, 3, 8))
+      if (partner) addRelationship(g, partner, randInt(g, 3, 8))
       result(g, 'Karaoke Night', `${win ? 'You hit every note of a big ballad, and the room went silent, then wild.' : 'You hit about half the notes, and the friends cheered the whole second verse.'}${partner ? `\n\n${partner.firstName} sang the harmony, loudly.` : ''}`, '\u{1F3A4}', win ? 'good' : undefined)
     },
   },
@@ -220,7 +220,7 @@ const DEFS: Pastime[] = [
       const fall = chance(g, 0.06)
       addStat(g, 'happiness', fall ? 1 : randInt(g, 3, 7))
       addStat(g, 'health', fall ? -4 : 1)
-      if (partner) addRelationship(partner, randInt(g, 3, 8))
+      if (partner) addRelationship(g, partner, randInt(g, 3, 8))
       result(g, 'Roller Rink', fall ? 'You went down on the first lap and your wrist went with you. The rest of the evening was spent at the snack bar with an ice pack.' : `You skated until the lights went down.${partner ? ` ${partner.firstName} held your hand on the slow song.` : ''}`, '\u{1F6FC}', fall ? 'bad' : 'good')
     },
   },
@@ -239,7 +239,7 @@ const DEFS: Pastime[] = [
       if (through) {
         addStat(g, 'happiness', randInt(g, 5, 9))
         if (partner) {
-          addRelationship(partner, randInt(g, 6, 12))
+          addRelationship(g, partner, randInt(g, 6, 12))
           notePerson(partner, 'The player dedicated a song to them on the radio.')
         }
         log(g, partner ? `I dedicated a song to ${partner.firstName} on the radio.` : 'I got through to the radio station and requested a song.', 'good')
@@ -270,7 +270,7 @@ const DEFS: Pastime[] = [
         const job = g.character.job ?? g.character.partTimeJob
         if (job) job.performance = Math.max(0, job.performance - 1)
       }
-      if (partner) addRelationship(partner, randInt(g, 3, 7))
+      if (partner) addRelationship(g, partner, randInt(g, 3, 7))
       result(g, 'Streaming Night', `${tired ? 'You watched until 3 a.m. again and went through the next day on coffee and regret.' : 'You watched three episodes and said "one more" twice.'}${partner ? `\n\nYou and ${partner.firstName} argued happily about the plot.` : ''}`, '\u{1F4FA}')
     },
   },
@@ -307,7 +307,7 @@ const DEFS: Pastime[] = [
       const p = family.length ? family.slice().sort((a, b) => a.relationship - b.relationship)[0] : undefined
       addStat(g, 'happiness', 1)
       if (p) {
-        addRelationship(p, randInt(g, 2, 5))
+        addRelationship(g, p, randInt(g, 2, 5))
         result(g, 'Family Chat', `You read the family messages and answered ${p.firstName}, who had not heard from you in a while. It took two minutes, and ${p.gender === 'male' ? 'he' : 'she'} replied with eleven hearts.`, '\u{1F46A}', 'good')
       } else {
         result(g, 'Family Chat', 'You read the family messages, sent a thumbs-up and felt more connected than you had expected.', '\u{1F46A}')
@@ -357,7 +357,7 @@ function cafeVisit(g: GameState, what: 'write' | 'learn' | 'play'): void {
     const p = far.length ? pick(g, far) : undefined
     addStat(g, 'happiness', randInt(g, 4, 8))
     if (p) {
-      addRelationship(p, randInt(g, 6, 12))
+      addRelationship(g, p, randInt(g, 6, 12))
       notePerson(p, 'Heard from the player through a message typed at a cyber cafe.')
     }
     log(g, p ? `I wrote to ${p.firstName} from a cyber cafe.` : 'I wrote a long letter from a cyber cafe.', 'good')

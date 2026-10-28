@@ -119,7 +119,7 @@ shows its outcome as a popup. With it on and Quiet Mode on, the year closes and 
 ## Pace: families
 
 A popup family is a kind of thing the game keeps asking about. The rule is `PACE` in `src/game/text/pace.ts`, with one key for every
-family (`paceKey`: `pop.<engine>.<family>`, the engines are `ev`, `ask`, `biz` and `kit`).
+family (`paceKey`: `pop.<engine>.<family>`, the engines are `ev`, `ask`, `biz`, `kit` and, since R4, `kin`).
 
 - Events, company events and the career kit are weighted. A family that spoke within the last 5 years (`PACE.window`) weighs x0.25
   (`paceWeight`, `popupSeen`). A roll is unchanged: the weights move the pick, not the chance that something happens.
@@ -134,8 +134,13 @@ family (`paceKey`: `pop.<engine>.<family>`, the engines are `ev`, `ask`, `biz` a
   years for the whole life (`noteFamily` with `lifetime`; every other family forgets a year 10 behind), at most 12 of them, and
   `familyUses` counts the ones not after `g.year`. A new life starts a new count: the text memory is a personal key, so an heir starts
   clean.
-- The text memory holds 120 families in all, so the engines declare at most 60 families (`PACE.maxFamilies`) between them and leave
-  the rest to the text pools. Today that is 32 event families, 14 ask families and the company and career ones.
+- The text memory holds 160 families in all, so the engines declare at most 80 families (`PACE.maxFamilies`) between them and leave
+  the rest to the text pools. Today that is 32 event families, 14 ask families, the company and career ones and the three `kin`
+  families (63 of the 80). R4 raised both numbers once (from 120 and 60), and the 17 that are left are for the later releases.
+- The `kin` engine is a closed list, `KIN_FAMILIES`: `pop.kin.feud` (a falling out), `pop.kin.lender` (a lender calls) and
+  `pop.kin.leak` (a secret leaks). `paceKey('kin', ...)` throws for any other name. Its scripts are family choices, so they spend one
+  of the three a year that a life with the social stamp shares (`docs/SOCIAL.md`, section 12) and stay out of `DEFERRABLE_SCRIPTS`:
+  the year close keeps them and counts them first, because a family choice that waits a year changes the thing it asks about.
 
 ### How to add a family
 
@@ -146,7 +151,7 @@ family (`paceKey`: `pop.<engine>.<family>`, the engines are `ev`, `ask`, `biz` a
    `src/game/business/event-families.ts` and a career crisis in `src/game/special/kit/families.ts` (keyed by career and crisis id,
    because ids repeat across careers). A new ask or event with no family has only its own cooldown, and `test/ask-families.test.ts`
    fails on an ask that has none.
-3. Count it: the families of all four engines stay under `PACE.maxFamilies` (60). `test/pace-families.test.ts` and `test/pace.test.ts`
+3. Count it: the families of all five engines stay under `PACE.maxFamilies` (80). `test/pace-families.test.ts` and `test/pace.test.ts`
    do the counting.
 4. A script whose choices may wait for a year with room goes in `DEFERRABLE_SCRIPTS` in `year-close.ts`. Do that only for a choice
    that is still true a year later. A decision that cannot wait (a company, a crime) stays out and is counted first.
@@ -241,7 +246,7 @@ mechanisms that do, and the order to reach for them.
 | `DEFERRABLE_SCRIPTS`, `CloseReport`, `closeYear` | `src/game/hubs/year-close.ts` |
 | `AnswerMark`, `markAnswer`, `calmOutcome`, `settleAnswer` | `src/game/hubs/year-outcomes.ts` |
 | the `yearCard` flag, in `FLAG_DEFS` | `src/game/flags.ts` |
-| `PACE`, `PaceEngine`, `paceKey`, `notePopup`, `popupSeen`, `paceWeight`, `askGapOk` | `src/game/text/pace.ts` |
+| `PACE`, `PaceEngine`, `KIN_FAMILIES`, `paceKey`, `notePopup`, `popupSeen`, `paceWeight`, `askGapOk` | `src/game/text/pace.ts` |
 | `TOLD_YEARS`, `toldLately`, `noteTold` | `src/game/text/told.ts` |
 | `ordinalWord` | `src/game/text/ordinal.ts` |
 | `EVENT_FAMILIES`, `eventFamily` | `src/game/events/families.ts` |

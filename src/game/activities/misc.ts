@@ -196,7 +196,7 @@ function pray(g: GameState, p: Prayer): void {
     case 'love': {
       const partner = currentPartner(g)
       if (partner) {
-        addRelationship(partner, randInt(g, 4, 8))
+        addRelationship(g, partner, randInt(g, 4, 8))
         result(g, 'Pray', `You prayed for love. ${partner.firstName} surprised you with breakfast in bed the next morning.`, p.emoji, 'good')
       } else {
         addStat(g, 'happiness', randInt(g, 2, 4))

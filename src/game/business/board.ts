@@ -44,6 +44,7 @@ import { readTech } from './deeptech-state'
 import { bizWorth, niceAmount } from './economy'
 import { financeCandidateScore, financeLeadershipSkill, financeTarget } from './finance-leadership'
 import { bizOf, findBusiness, hasExecutiveShares, readBiz, runsIt, type BizState, type Manager, type Statement } from './state'
+import { managerPoached } from './staff-loyalty'
 import { clampN, markBest, money, num, pct, rec, str } from './util'
 import { groupById, groupIdOf } from './conglomerate-state'
 import { treasurySpare } from './group-treasury'
@@ -220,6 +221,8 @@ function poached(g: GameState, a: Asset, b: BizState, st: BoardState, m: Manager
   if (hasExecutiveShares(m)) return
   const next = boardExists(g, b) && !controlsBoard(st) ? boardPick(g, b, st) : interim(g, b, m)
   const prev = managerName(m)
+  // R4-E13: on a stamped life the company remembers who left for a rival (poached_me on mgr:<asset id>), before the next CEO starts.
+  managerPoached(g, a, m)
   // They resigned: no severance, but the change still costs morale.
   handOver(g, a, b, next, { forCause: true })
   log(g, `${prev} was poached ${how} and left ${a.name}.`, 'bad')

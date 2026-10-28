@@ -758,7 +758,7 @@ const trollScript = defineScript('special.social.troll', (g, choice, data) => {
     const p = getPerson(g, choice)
     if (!p) return
     if (chance(g, 0.65)) {
-      addRelationship(p, -randInt(g, 10, 25))
+      addRelationship(g, p, -randInt(g, 10, 25))
       text = `You trolled your ${relationLabel(p).toLowerCase()} ${p.firstName} online. They saw it and are furious with you.`
     } else text = `You trolled your ${relationLabel(p).toLowerCase()} ${p.firstName} online. Luckily, they never saw it.`
   }

@@ -246,3 +246,166 @@ export const DONATED_LINES = defineLines('charity.donated', [
   'I wrote {charity} a check for {money}.',
   'I pledged {money} to {charity} and paid it.',
 ])
+
+// R4-E10a (D.4): the log lines of the favor acts (society/favor.ts). Each names the person, so a favor reads as someone's. {who} is
+// "my friend Kay" (the one who was asked), {third} the person the word was put in with, {whom} the relative the peace is made with.
+// A line never opens on a slot, because {who} starts with "my". The acts pick a line with their own roll (their plan is pure).
+/** A favor done: {who}. */
+export const FAVOR_DONE_LINES = defineLines('social.favorDone', [
+  'I asked {who} for a favor and got it.',
+  'I called in a favor with {who}, and it was done.',
+  'When I asked, {who} came through.',
+  'I turned to {who} for a favor and got what I needed.',
+])
+/** A favor refused: {who}. */
+export const FAVOR_REFUSED_LINES = defineLines('social.favorRefused', [
+  'I asked {who} for a favor. The answer was no.',
+  'When I asked for help, {who} said no.',
+  "I asked {who} for a hand and didn't get one.",
+  "This time {who} couldn't help me.",
+])
+/** A word put in for the player: {who} spoke up with {third}. */
+export const VOUCH_LINES = defineLines('social.vouch', [
+  'I had {who} put in a word for me with {third}.',
+  'I asked {who} to speak up for me with {third}.',
+  'With {third}, {who} vouched for me.',
+  'I got {who} to vouch for me to {third}.',
+])
+/** A peace brokered: {who} went between the player and {whom}. */
+export const BROKER_LINES = defineLines('social.broker', [
+  'I asked {who} to speak for me to {whom}.',
+  'I sent word to {whom} through {who}.',
+  'Through {who}, I put out a hand to {whom}.',
+  'I had {who} talk to {whom} on my behalf.',
+])
+
+// R4-E10b (D.4, X24): the log lines of a loan between people (society/loan.ts, society/debt.ts). Each names the person. {who} is "my friend Kay"
+// (the lender), {money} the sum. A line never opens on a slot, because {who} starts with "my".
+/** A loan taken: {money}, {who}. */
+export const DEBT_BORROW_LINES = defineLines('social.borrow', [
+  'I borrowed {money} from {who}.',
+  'I took a loan of {money} from {who}.',
+  'I asked {who} for {money} and got it.',
+  'I left with {money} that {who} lent me.',
+])
+/** A payment on a loan, or the last of it: {money}, {who}. */
+export const DEBT_REPAY_LINES = defineLines('social.repay', [
+  'I paid {who} back {money}.',
+  'I sent {money} to {who} for the loan.',
+  'I put {money} toward the loan from {who}.',
+  'I counted out {money} for {who}, as agreed.',
+])
+/** A year with nothing paid: {who}. */
+export const DEBT_DEFAULT_LINES = defineLines('social.default', [
+  'I had nothing to pay {who} this year.',
+  'I missed my payment to {who}.',
+  'The loan from {who} went unpaid this year.',
+  'A year went by and I paid {who} nothing.',
+])
+
+// R4-E11 (D.4, X27): the line of a secret that gets out (society/secret.ts). {who} is "my sister Fatima" (the holder who told) and {whom} the
+// first person told ("my friend Kay"), so a leak names two people. A line never opens on a slot, because both start with "my". Said in the life
+// log for each leak, and as the notice `Word Got Around` once in a few years (the kin family `leak`).
+/** A secret gets out: {who} told {whom}. */
+export const LEAK_LINES = defineLines('social.leak', [
+  'Word got around. {who} told {whom}, and it went on from there.',
+  'It got out. {who} had told {whom} what I kept quiet.',
+  'I heard that {who} let it slip to {whom}.',
+  'What I kept quiet is out now. {who} told {whom}.',
+])
+
+// R4-E12 (D.4, X29, X31): the log lines of a feud (society/feud.ts), four to a rung, each naming the person. {who} is "my sister Fatima" (the enemy),
+// {whom} the first person the gossip reached, {money} the lawyers' fee. A line never opens on a slot, because {who} starts with "my". The cold rung is the
+// status row `feud.cold` of the state table, which speaks sparingly; the rest are drawn from these with the text kit's own stream.
+/** The gossip rung: {who} ran the player down to {whom}. */
+export const FEUD_GOSSIP_LINES = defineLines('social.feudGossip', [
+  'I heard {who} has been running me down to {whom}.',
+  "It's all over town that {who} badmouthed me to {whom}.",
+  'Now {whom} knows what {who} really thinks of me.',
+  'Word is {who} has been telling {whom} the worst of me.',
+])
+/** The sabotage rung: {who} made the year harder. */
+export const FEUD_SABOTAGE_LINES = defineLines('social.feudSabotage', [
+  'This year {who} went out of the way to hurt me.',
+  'I keep running into trouble, and {who} is behind it.',
+  'At work and at home, {who} made my year harder.',
+  'Everything that went wrong this year traced back to {who}.',
+])
+/** The legal rung: the suit with {who} was decided and the lawyers took {money}. */
+export const FEUD_LEGAL_LINES = defineLines('social.feudLegal', [
+  'My feud with {who} ended in court. The lawyers got {money}.',
+  'I paid {money} in legal fees over my fight with {who}.',
+  'In the end {who} and I settled. The lawyers took {money}.',
+  'The suit with {who} cost me {money} before it was done.',
+])
+/** The legal rung for a payer with nothing to pay, and the answer "pay it off" with nothing left over: {who}. */
+export const FEUD_SETTLED_LINES = defineLines('social.feudSettled', [
+  'The suit with {who} was settled, and neither of us won.',
+  'I settled things with {who} through the lawyers.',
+  'The lawyers ended my fight with {who}.',
+  'My fight with {who} ended in a settlement.',
+])
+/** A peace made with {who}. */
+export const FEUD_PEACE_LINES = defineLines('social.feudPeace', [
+  'I sat down with {who}, and we made peace.',
+  'I called {who}, and we talked it out.',
+  'After all this time, {who} took my hand.',
+  'I made the first move, and {who} met me halfway.',
+])
+/** A feud that burned out: the text of the notice `Feud Cooled`, {who}. */
+export const FEUD_COOLED_LINES = defineLines('social.feudCooled', [
+  'The anger between {who} and me has died down.',
+  "These days {who} and I don't keep score.",
+  "I don't think about the fight with {who} anymore.",
+  'The fight with {who} burned itself out.',
+])
+/** A feud that ended because {who} died. */
+export const FEUD_GONE_LINES = defineLines('social.feudGone', [
+  'With {who} gone, the old fight is over.',
+  "I lost {who}, and there's no one left to fight.",
+  'My fight with {who} ended when they died.',
+  "There's no making peace now. I lost {who}.",
+])
+
+/** A close relative loses a spouse: {who} is "my sister Fatima", {spouse} is the first name of the one who died. Said once, on a stamped life (R4-L4). */
+export const KIN_WIDOWED = defineLines('life.kinWidowed', [
+  '{spouse} died this year, and {who} is on their own now.',
+  'This year {who} lost their spouse, {spouse}.',
+  '{spouse}, {who}\'s spouse, died this year.',
+  'This year {who} buried {spouse}.',
+  'This year {who} was widowed when {spouse} died.',
+  'I got word that {spouse} died, leaving {who} widowed.',
+])
+
+// R4-E13 (D.4): a key person lured away by a rival at the year's end (business/staff-loyalty.ts). {who} is the full name, {role} the
+// title and {company} the company's name, so a loss reads as someone's. Each line holds all three slots.
+/** A key person poached: {who}, {role}, {company}. Said once for each person, on a stamped life. */
+export const STAFF_POACHED_LINES = defineLines('business.staffPoached', [
+  'A rival lured {who}, our {role}, away from {company}.',
+  "{who} took a rival's offer. {company} lost its {role}.",
+  'A competitor hired {who} away, and {company} lost its {role}.',
+  '{who} left {company} for a rival, and our {role} went with them.',
+])
+
+// R4-L7 (A.K8 b): what is left of a divorce settlement the player owes an ex lapses (divorce-debt.ts): ten years have gone by, or the ex is dead or
+// gone. {money} is what was still owed. A line never opens on a slot.
+/** The rest of a divorce debt lapses: {money}. Said once for the debt, on a stamped life. */
+export const DIVORCE_LAPSE = defineLines('life.divorceLapse', [
+  'The last {money} I owed from the divorce lapsed.',
+  'The last {money} of the divorce debt was never collected.',
+  'I was let off the last {money} of the divorce settlement.',
+  'The {money} still left on the divorce debt lapsed.',
+])
+
+// R4-L10 (D.9 b): the reading of the will, when a relative who was cut out holds it against one who was favored (events/will-strife.ts). {who} is
+// the cut-out relative's first name and {whom} the favored one's, trimmed to 24 characters, so a line stays under the log cap with any two names.
+// Said as one more line of the notice `The Reading of the Will`, for the strongest pair only, on a stamped life. A line opens on a first name, so it reads in the notice's third person.
+/** A cut-out relative against a favored one: {who}, {whom}. */
+export const KIN_STRIFE = defineLines('life.kinStrife', [
+  "{who} wouldn't look at {whom} after the reading.",
+  '{who} blamed {whom} for how it came out.',
+  '{who} left before {whom} could say a word.',
+  '{who} stared at {whom} across the table.',
+  '{who} said {whom} got the better deal.',
+  "{who} told {whom} this wasn't over.",
+])

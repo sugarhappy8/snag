@@ -85,7 +85,7 @@ function releaseRuleProblems(version: string, defs: Record<string, FlagDef>): st
 }
 
 describe('FLAG_DEFS', () => {
-  it('has the nine agreed keys, each well formed', () => {
+  it('has the eleven agreed keys, each well formed', () => {
     expect([...KEYS].sort()).toEqual([
       'annualReport2',
       'chartKit',
@@ -94,7 +94,9 @@ describe('FLAG_DEFS', () => {
       'navPalette',
       'navRegroup',
       'noticeDigest',
+      'peopleProfile',
       'quietInbox',
+      'social',
       'yearCard',
     ])
     for (const key of KEYS) {

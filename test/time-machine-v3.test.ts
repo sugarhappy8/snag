@@ -62,11 +62,12 @@ async function boot(local: Record<string, string> = {}) {
   const save = await import('../src/game/save')
   const { ageUp } = await import('../src/game/aging')
   const { createNewLife } = await import('../src/game/life')
+  const { withFlags } = await import('../src/game/flags')
   const schema = await import('../src/game/save-schema')
   const codec = await import('../src/game/save-codec')
   const tm = await import('../src/game/timeMachine')
   const { decodeSnapshotRecord, encodeSnapshotRecord } = await import('../src/game/snapshot-codec')
-  return { save, ageUp, createNewLife, schema, codec, tm, storage, decodeSnapshotRecord, encodeSnapshotRecord }
+  return { save, ageUp, createNewLife, withFlags, schema, codec, tm, storage, decodeSnapshotRecord, encodeSnapshotRecord }
 }
 type Engine = Awaited<ReturnType<typeof boot>>
 
@@ -79,9 +80,13 @@ function fixture(name: string): Rec {
   return JSON.parse(gunzipSync(readFileSync(`test/fixtures/${name}`)).toString()) as Rec
 }
 
-/** A child's life, aged one year at a time the way the store plays them: popups cleared, health kept up so nobody dies young. */
+/**
+ * A child's life, aged one year at a time the way the store plays them: popups cleared, health kept up so nobody dies young. It is made with
+ * the social key off, in the engine's own module graph, whatever the build default says: a stamped newborn already holds a world shard, and
+ * the case below says a newborn's snapshot has none to keep (R4-E16, step 0).
+ */
 function newLife(e: Engine): GameState {
-  const g = e.createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR })
+  const g = e.withFlags({ social: false }, () => e.createNewLife({ seed: LIFE_SEED, year: BIRTH_YEAR }))
   g.queue = []
   return g
 }

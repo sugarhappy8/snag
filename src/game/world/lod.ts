@@ -26,6 +26,11 @@
 //   - Every shard is written by replacing its root (commitShard), only when it changed. No luck is drawn here except through
 //     stream(g, 'lod', ...) in seededEntity, and no clock is read.
 //
+//   - The Met store (world/met-ops.ts, R4) is swept in the same step, inside the same year stamp: sweepMet lets go the records idle
+//     for the same five years by the same rule (a plain one is dropped, one held only by its own stake becomes a tombstone, one held
+//     by a Person, a holder or a registered protector stays) and counts the records that left in `demoted`. A life with no Met shard
+//     writes nothing.
+//
 // The index readers go through the registered normalizers: import world/shards for effect (world/sync.ts does).
 import type { EntityRef } from '../kernel/ids'
 import { acctBalance, bookBurn, foldAccount, type AcctRef } from '../kernel/ledger'
@@ -37,6 +42,7 @@ import { DEMOTE_AFTER_YEARS, LOD_CAPS } from './caps'
 import { firmRef, normalizeFirms, rankFirms, readFirms } from './firms'
 import { OUTSIDE, readHoldings } from './holdings'
 import { normalizeHomes, rankHomes, readHomes } from './homes'
+import { sweepMet } from './met-ops'
 import { normalizePeople, npcFirmId, personRef, playerRef, readPeople } from './people'
 import { commitShard, isPlain, overOf, refOfKind, sameJson, seenOf } from './rows'
 import { worldShard } from './state'
@@ -332,6 +338,7 @@ export function lodSweep(g: GameState): number {
     const next = cut(live, ctx, g.year)
     gone += release(g, def, next.keep, [...idle, ...next.out].sort((a, b) => cmp(a.id, b.id)))
   }
+  gone += sweepMet(g)
   writeLod(g, { y: g.year, pooled: { person: readPeople(g).over, firm: readFirms(g).over, home: readHomes(g).over }, demoted: lodShard(g).demoted + gone })
   return gone
 }

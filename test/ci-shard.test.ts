@@ -470,9 +470,9 @@ describe('the CI workflow', () => {
 
   it('keeps the name CI (release.yml listens for it) and the sharded matrix', () => {
     expect(yml.split('\n')[0]).toBe('name: CI')
-    expect(yml).toContain('shard: [1, 2, 3, 4]')
-    expect(yml).toContain('SLICE: ${{ matrix.shard }}/4')
-    expect(yml).toContain('ci-shard.mjs ${{ matrix.shard }} 4')
+    expect(yml).toContain('shard: [1, 2, 3, 4, 5, 6, 7, 8]')
+    expect(yml).toContain('SLICE: ${{ matrix.shard }}/8')
+    expect(yml).toContain('ci-shard.mjs ${{ matrix.shard }} 8')
   })
 
   it('has the five jobs, a gate that always runs, and no whole-suite step', () => {

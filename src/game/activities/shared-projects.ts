@@ -74,7 +74,7 @@ export function yearlySharedProjects(g: GameState): void {
     q.effort = false
     const unavailable = sharedAvailability(g, p, q.kind)
     if (unavailable) { q.note = `${unavailable} Paid materials were used for the attempted year; progress is paused.`; continue }
-    q.progress++; addRelationship(p, 5)
+    q.progress++; addRelationship(g, p, 5)
     if (q.kind === 'mentorship') {
       const l = initializeNpc(g, p); l.skill = Math.min(85, g.character.stats.smarts, l.skill + 3)
       l.history = [...l.history, `${g.year}: completed a year of practical mentorship with ${fullName(g.character)}`].slice(-24); saveNpcLife(p, l)

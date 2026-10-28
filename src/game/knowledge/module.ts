@@ -7,8 +7,9 @@
 //            research teaches about the keys the player already tracks.
 //
 // yearlyKnowledge returns at once for the dead and for a life with no record (a default life never gets one). Otherwise: prune what can no
-// longer be read, run the standing orders, then settle the heat (risk.ts, which writes the year stamp `sy` the step is idempotent by), and
-// let an empty record go. It draws nothing outside risk.ts and reads no information mode, so Exact and Realistic play the same years.
+// longer be read, forget the rows of a subject that has left (forgetGone), run the standing orders, then settle the heat (risk.ts, which
+// writes the year stamp `sy` the step is idempotent by), and let an empty record go. It draws nothing outside risk.ts and reads no
+// information mode, so Exact and Realistic play the same years.
 //
 // applyReveals never runs in Exact mode, touches at most 12 stored rows a call (the stalest first), and draws nothing: a `lab` reading is
 // the truth plus a hashed draw (intel.ts takeReading), once a year per key, so a replayed call narrows nothing twice. The sd follows the
@@ -21,7 +22,7 @@ import { intelBriefingMenu } from './briefing'
 import { takeReading } from './intel'
 import { kindOfKey } from './kinds'
 import { isExact } from './mode'
-import { recordFor, tidyRecord } from './record'
+import { forget, recordFor, tidyRecord } from './record'
 import { settleHazard } from './risk'
 import { rawRec, readRows, stampOf } from './rows'
 import { runOrders } from './standing'
@@ -29,6 +30,8 @@ import { readingSd } from './sources'
 
 /** The most stored rows one reveal call may sharpen. */
 export const REVEAL_ROWS = 12
+/** The most stored rows one yearly step forgets for a subject that has left (R4-U2). */
+export const FORGET_ROWS = 12
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
@@ -41,12 +44,32 @@ function ask<T>(f: () => T): T | null {
   }
 }
 
-/** The yearly step: prune, run the standing orders, settle the heat. Idempotent by the record's year stamp. */
+/**
+ * Forget the stored rows of a subject that has left (R4-U2): a row whose key kind has a `gone` hook that answers true for it, the stalest
+ * first, at most FORGET_ROWS a step. A kind with no hook, and a hook that throws or answers anything but true, keep their rows. Pure
+ * reads of the game; the only write is `forget`.
+ */
+function forgetGone(g: GameState): void {
+  const rec = rawRec(g)
+  if (!rec) return
+  let forgotten = 0
+  for (const [key] of readRows(g, rec)) {
+    if (forgotten >= FORGET_ROWS) break
+    const kind = kindOfKey(key)
+    if (!kind || typeof kind.gone !== 'function') continue
+    if (ask(() => kind.gone!(g, key)) !== true) continue
+    forget(g, key)
+    forgotten++
+  }
+}
+
+/** The yearly step: prune, forget what left, run the standing orders, settle the heat. Idempotent by the record's year stamp. */
 export function yearlyKnowledge(g: GameState): void {
   if (!g.character.alive) return
   const before = rawRec(g)
   if (!before || stampOf(before.sy, g.year) === g.year) return
   recordFor(g)
+  forgetGone(g)
   runOrders(g)
   settleHazard(g)
   tidyRecord(g)

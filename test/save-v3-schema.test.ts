@@ -13,6 +13,9 @@
 //   idb-v4.1.1.json.gz        v4.1.1 as IndexedDB held it: the gz2 record, the localStorage marker and the plain JSON
 //   save-v5.0.0-heavy.json.gz v5.0.0 (the first schema 3 writer), a 20-year life with four companies, the inline v3 form
 //   save-v5.1.0-heavy.json.gz v5.1.0 (R3), the same life on the engine of the release commit: its log lines carry the source `s`
+//   save-v5.3.0-heavy.json.gz v5.3.0 (R4), the same life on the engine of the release commit with the build key `social` on: a stamped life
+//                             (the world shard `social`, the edges of its family)
+//   save-v5.3.0-stamped.json.gz v5.3.0 (R4), a stamped life after one hand-over: a loan, a divorce debt, a secret, a feud, kin records, 22 exes
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
@@ -24,6 +27,7 @@ import { createNewLife } from '../src/game/life'
 import { isLoadableGame, migrateSave, SAVE_SCHEMA } from '../src/game/save-schema'
 import { decodeSnapshotRecord } from '../src/game/snapshot-codec'
 import type { GameState } from '../src/game/types'
+import { socialOn } from '../src/game/world/social'
 
 const FIXTURES = 'test/fixtures'
 // A fixed life as a constant, not a `seed: <digits>` pin (test/seed-pins.test.ts).
@@ -142,6 +146,42 @@ describe('the fixtures load and run five years', () => {
     expect((load('save-v5.0.0-heavy.json.gz').log as { entries: { s?: unknown }[] }[]).flatMap((y) => y.entries).some((e) => 's' in e)).toBe(false)
     const { game, from } = ready(raw)
     expect(from).toBe(3)
+    expectPlayable(game, game.year)
+  })
+
+  // The schema v5.3.0 wrote, as a literal (R4 added optional shards and no schema step): the heavy life of the release is stamped at
+  // creation (X6), so its world holds the stamp and the edges of its family, and a v5.2.0 save holds neither.
+  it('the v5.3.0 heavy save is schema 3, needs no step, carries the social stamp and its edges, and plays', () => {
+    const raw = load('save-v5.3.0-heavy.json.gz')
+    expect(raw.schemaVersion).toBe(3)
+    const world = raw.world as Record<string, unknown>
+    expect(world).toHaveProperty('social')
+    expect(Object.keys(world.edges as object).length).toBeGreaterThan(0)
+    expect(load('save-v5.1.0-heavy.json.gz').world as object).not.toHaveProperty('social')
+    const { game, from } = ready(raw)
+    expect(from).toBe(3)
+    expect(socialOn(game)).toBe(true)
+    expectPlayable(game, game.year)
+  })
+
+  // The one fixture that holds every record of the web of people at once: the stamp, kin records in the Met shard, a loan and a divorce
+  // debt (edge.dv kinds 0 and 1), a secret, a feud (edge.q), 22 live exes and the second generation.
+  it('the v5.3.0 stamped save is schema 3, holds the debts, the secret, the feud, the kin records and 22 exes, and plays', () => {
+    const raw = load('save-v5.3.0-stamped.json.gz')
+    expect(raw.schemaVersion).toBe(3)
+    expect(raw.generation).toBe(2)
+    const world = raw.world as { social: unknown; edges: Record<string, { dv?: number[]; q?: number[] }>; met: Record<string, unknown> }
+    expect(world.social).toBeDefined()
+    const edges = Object.entries(world.edges)
+    expect(edges.filter(([, e]) => e.dv?.[3] === 0)).toHaveLength(1)
+    expect(edges.filter(([, e]) => e.dv?.[3] === 1)).toHaveLength(1)
+    expect(edges.filter(([, e]) => e.q !== undefined)).toHaveLength(1)
+    expect(edges.filter(([key]) => key.startsWith('secret:'))).toHaveLength(1)
+    expect(Object.keys(world.met).some((sid) => sid.startsWith('kin.'))).toBe(true)
+    expect((raw.people as { relation: string; alive: boolean }[]).filter((p) => p.relation === 'ex' && p.alive)).toHaveLength(22)
+    const { game, from } = ready(raw)
+    expect(from).toBe(3)
+    expect(socialOn(game)).toBe(true)
     expectPlayable(game, game.year)
   })
 

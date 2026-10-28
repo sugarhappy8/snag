@@ -2,7 +2,7 @@
 // sponsoring job, and the ways out (leaving, deportation). Mutates the draft; used by the
 // Emigrate menu (immigration-apply.ts) and the yearly immigration clock (immigration.ts).
 import { companyName, hireForJob } from '../careers'
-import { addStat, count, currentPartner, endJob, log, notice, remember, spend } from '../core'
+import { addStat, count, currentPartner, endJob, log, notice, remember, setRelationship, spend } from '../core'
 import { dualRule, type InvestKind } from '../data/immigration'
 import { priceLevel } from '../history/timeline'
 import type { Industry } from '../data/jobs'
@@ -190,7 +190,7 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
     } else if (forced) {
       p.data.countryId = oldId
       p.livesWithPlayer = false
-      p.relationship = Math.max(0, p.relationship - 15)
+      setRelationship(g, p, Math.max(0, p.relationship - 15))
       notePerson(p, `Stayed in ${oldName} when the player had to leave.`)
       lines.push(`${p.firstName} stayed behind in ${oldName}.`)
     } else {

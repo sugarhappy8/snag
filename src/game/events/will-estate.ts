@@ -19,7 +19,9 @@ import { counterparty, type Reason } from '../kernel/reasons'
 import { notePerson } from '../people'
 import { chance, rand, randFloat, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
+import { useFamilyAct } from '../society/contract'
 import type { Character, GameState, Json, Person } from '../types'
+import { socialOn } from '../world/social'
 import { noteCashGift, personCountry, typicalIncome } from './wealth-core'
 import { askedPurse, wholePurse } from './purses'
 import { afterWillChange, ensureSnap, reactionClause } from './will-act'
@@ -37,6 +39,7 @@ import {
   willSlices,
   type Slice,
 } from './will-core'
+import { strifeEdges, strifeLine } from './will-strife'
 
 const EMOJI = '\u{1F4DC}'
 
@@ -304,6 +307,11 @@ export interface EstatePlan {
   carried: number
   /** A claim the heir may press, held out of everyone's share until they decide (written to the new state by settleReading). */
   pot: Pot | null
+  /**
+   * The slices of the people other than the heir (no charity, nothing empty), as fractions of the estate: who the cut-out relatives may hold
+   * it against (R4-L10, events/will-strife.ts). The will state does not reach the heir, so the plan carries them. Empty on a life that is not stamped.
+   */
+  recipients: { id: string; pct: number }[]
 }
 
 export interface EstateInput {
@@ -371,6 +379,7 @@ export function planEstate(n: GameState, input: EstateInput): EstatePlan {
     lines: [],
     carried,
     pot: null,
+    recipients: socialOn(n) ? slices.filter((s) => s.id !== CHARITY && s.id !== input.heirId && s.pct > 0).map((s) => ({ id: s.id, pct: s.pct })) : [],
   }
   const excluded = excludedFamily(n, inIds)
   const worth = estate / Math.max(1, people.length + 1)
@@ -541,10 +550,15 @@ export function settleReading(n: GameState, plan: EstatePlan, old: Character, he
   for (const c of plan.cutOut) {
     const p = n.people.find((x) => x.id === c.id)
     if (!p || p.id === heirId) continue
-    if (heirCut) addRelationship(p, 5)
-    else addRelationship(p, -Math.round(c.anger / 8))
+    if (heirCut) addRelationship(n, p, 5)
+    else addRelationship(n, p, -Math.round(c.anger / 8))
   }
   out.push(...readingLines(n, plan, old, heirId))
+  // On a stamped life the relatives who were cut out hold it against the ones who were favored: edges between the two (R4-L10, X31), and one line
+  // for the strongest pair. The will ladder is not touched. strifeEdges does nothing on a life that is not stamped.
+  const quarrel = strifeEdges(n, plan, heirId)
+  const quarrelLine = quarrel === null ? null : strifeLine(n, quarrel)
+  if (quarrelLine !== null) out.push(quarrelLine)
 
   // Siblings who got everything react to the heir being cut out.
   if (heirCut) {
@@ -557,16 +571,16 @@ export function settleReading(n: GameState, plan: EstatePlan, old: Character, he
       if (mood === 'guilt' && s.money > 0) {
         const amt = Math.min(Math.round(s.money), Math.max(1, Math.round(s.money * randFloat(n, 0.2, 0.5))))
         moveCash(n, wholePurse(s), askedPurse(n), amt, 'gift')
-        addRelationship(s, 8)
+        addRelationship(n, s, 8)
         log(n, `${s.firstName} felt guilty and shared ${formatMoney(amt)} of the inheritance with me.`, 'good')
         out.push(`${s.firstName} pulled you aside, red-eyed, and pressed ${formatMoney(amt)} into your hands. "It isn't fair. Take it."`)
       } else if (mood === 'gloat') {
-        addRelationship(s, -12)
+        addRelationship(n, s, -12)
         addStat(n, 'happiness', -4)
         log(n, `${s.firstName} gloated about getting the inheritance.`, 'bad')
         out.push(`${s.firstName} didn't try very hard to hide a smile. You will remember that smile.`)
       } else {
-        addRelationship(s, -3)
+        addRelationship(n, s, -3)
         out.push(`${s.firstName} stared at the carpet and said nothing at all.`)
       }
     }
@@ -575,30 +589,44 @@ export function settleReading(n: GameState, plan: EstatePlan, old: Character, he
   notice(n, 'The Reading of the Will', out.join('\n\n'), { emoji: EMOJI, tone: heirCut ? 'bad' : undefined })
 
   // An angry sibling who was cut out asks the heir for a share.
+  let ask: { p: Person; cash: number; anger: number } | null = null
   if (!heirCut) {
     const asker = plan.cutOut
       .filter((c) => c.anger >= 45 && c.id !== heirId && c.outcome !== 'won' && c.outcome !== 'settled')
       .sort((a, b) => b.anger - a.anger)
       .map((c) => ({ c, p: n.people.find((x) => x.id === c.id) }))
       .find(({ p }) => !!p && p.alive && isSiblingOf(p) && p.age >= 18)
-    if (asker && asker.p && plan.heirCash > 0) {
-      const p = asker.p
-      const cash = plan.heirCash
-      const half = Math.round(cash / 2)
-      const tenth = Math.round(cash / 10)
-      scriptChoice(
-        n,
-        S_ASK,
-        `${p.firstName} Wants a Share`,
-        `${p.firstName} caught you outside the lawyer's office. "You got everything. I got a speech about how ${old.gender === 'male' ? 'he' : 'she'} 'loved me in ${old.gender === 'male' ? 'his' : 'her'} own way.' Be fair."`,
-        [
-          { id: 'half', label: `Split it evenly (give ${formatMoney(half)})`, emoji: '\u{2696}\u{FE0F}' },
-          { id: 'tenth', label: `Give a tenth (${formatMoney(tenth)})`, emoji: '\u{1F91D}' },
-          { id: 'keep', label: 'Keep what the will gave you', emoji: '\u{1F512}' },
-        ],
-        { emoji: EMOJI, data: { pid: p.id, cash, anger: asker.c.anger }, personId: p.id },
-      )
+    if (asker && asker.p && plan.heirCash > 0) ask = { p: asker.p, cash: plan.heirCash, anger: asker.c.anger }
+  }
+
+  // The reading puts at most one question to the heir: the sibling's (S_ASK needs an heir who was not cut out) or the heir's own claim (S_HEIR
+  // needs a cut-out heir), never both. On a stamped life it takes one of the year's three family choices (R4-L10, X40); the year is fresh
+  // (continueAsChild resets n.yearActions before the reading). With none left the question is not asked, and a claim that nobody presses goes
+  // back to the relatives it was taken from. On a life that is not stamped useFamilyAct is true and writes nothing.
+  if ((ask !== null || plan.heirClaim) && !useFamilyAct(n, 'will')) {
+    const pot = plan.heirClaim ? readPot(n) : null
+    if (pot) {
+      refund(n, pot)
+      writePot(n, null)
     }
+    return
+  }
+  if (ask !== null) {
+    const { p, cash, anger } = ask
+    const half = Math.round(cash / 2)
+    const tenth = Math.round(cash / 10)
+    scriptChoice(
+      n,
+      S_ASK,
+      `${p.firstName} Wants a Share`,
+      `${p.firstName} caught you outside the lawyer's office. "You got everything. I got a speech about how ${old.gender === 'male' ? 'he' : 'she'} 'loved me in ${old.gender === 'male' ? 'his' : 'her'} own way.' Be fair."`,
+      [
+        { id: 'half', label: `Split it evenly (give ${formatMoney(half)})`, emoji: '\u{2696}\u{FE0F}' },
+        { id: 'tenth', label: `Give a tenth (${formatMoney(tenth)})`, emoji: '\u{1F91D}' },
+        { id: 'keep', label: 'Keep what the will gave you', emoji: '\u{1F512}' },
+      ],
+      { emoji: EMOJI, data: { pid: p.id, cash, anger }, personId: p.id },
+    )
   }
 
   // The cut-out heir may take the family to court.
@@ -635,7 +663,7 @@ defineScript(S_ASK, (g, choice, data) => {
     updateWl(g, p, (w) => {
       w.hard = Math.min(3, w.hard + 1)
     })
-    addRelationship(p, -10)
+    addRelationship(g, p, -10)
     log(g, `I kept my whole inheritance when ${p.firstName} asked for a share.`, 'bad')
     notice(g, 'Fair Is Fair', `You kept it all. ${p.firstName} nodded slowly, the way people do when they've decided something about you.`, { emoji: EMOJI, tone: 'bad' })
     return
@@ -644,7 +672,7 @@ defineScript(S_ASK, (g, choice, data) => {
   if (amt <= 0) return
   moveCash(g, askedPurse(g), wholePurse(p), amt, 'gift')
   noteCashGift(g, p, amt)
-  addRelationship(p, choice === 'half' ? 22 : 10)
+  addRelationship(g, p, choice === 'half' ? 22 : 10)
   addStat(g, 'happiness', choice === 'half' ? 4 : 2)
   log(g, `I shared ${formatMoney(amt)} of my inheritance with ${p.firstName}.`, 'good')
   notice(g, 'Fair Is Fair', `You gave ${p.firstName} ${formatMoney(amt)}. ${choice === 'half' ? 'It cost you half. It bought you a sibling.' : 'It was not nothing. It was not everything.'}`, { emoji: EMOJI, tone: 'good' })
@@ -663,7 +691,7 @@ defineScript(S_HEIR, (g, choice, data) => {
     }
     addMoney(g, -fee, 'legal')
     writePot(g, { ...pot, year: g.year + randInt(g, 1, 3) })
-    for (const s of siblings) addRelationship(s, -randInt(g, 6, 12))
+    for (const s of siblings) addRelationship(g, s, -randInt(g, 6, 12))
     log(g, `I took my ${g.character.gender === 'male' ? 'father' : 'mother'}'s will to court.`)
     notice(g, 'See You in Court', `Your lawyer filed the papers and billed you ${formatMoney(fee)} for the privilege. The court will decide in a year or three. The next family get-together will be interesting.`, { emoji: '\u{2696}\u{FE0F}' })
     return
@@ -675,14 +703,14 @@ defineScript(S_HEIR, (g, choice, data) => {
     if (given > 0) addMoney(g, given, 'inheritance')
     refund(g, { ...pot, claim: pot.claim - given })
     writePot(g, null)
-    for (const s of siblings) addRelationship(s, agreed ? 3 : -2)
+    for (const s of siblings) addRelationship(g, s, agreed ? 3 : -2)
     log(g, agreed ? `My family agreed to give me ${formatMoney(given)} of the estate.` : 'I asked my family to be fair about the will. It went nowhere.', agreed ? 'good' : 'neutral')
     notice(g, 'A Family Conversation', agreed ? `After a long, awkward talk, the family agreed to give you ${formatMoney(given)}. No lawyers. Some forgiveness.` : 'You asked nicely. The answer was a polite, immovable no.', { emoji: EMOJI, tone: agreed ? 'good' : undefined })
     return
   }
   refund(g, pot)
   writePot(g, null)
-  for (const s of siblings) addRelationship(s, 2)
+  for (const s of siblings) addRelationship(g, s, 2)
   log(g, 'I let the will stand.')
 })
 
@@ -705,13 +733,13 @@ export function yearlyEstateTail(g: GameState): void {
     if (win) {
       addMoney(g, pot.claim, 'inheritance')
       writePot(g, null)
-      for (const s of siblings) addRelationship(s, -5)
+      for (const s of siblings) addRelationship(g, s, -5)
       log(g, `The court gave me ${formatMoney(pot.claim)} of the estate.`, 'good')
       notice(g, 'The Court Rules', `The judge found for you. ${formatMoney(pot.claim)} is yours. It cost more than money to get, and your relatives have noticed that too.`, { emoji: '\u{2696}\u{FE0F}', tone: 'good' })
     } else {
       refund(g, pot)
       writePot(g, null)
-      for (const s of siblings) addRelationship(s, -3)
+      for (const s of siblings) addRelationship(g, s, -3)
       addStat(g, 'happiness', -3)
       log(g, 'The court upheld the will. I got nothing and a bill.', 'bad')
       notice(g, 'The Court Rules', 'The judge upheld the will. You got nothing, and the fees were already spent. At least the relatives are no longer your opponents; they are merely people who testified against you.', { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })

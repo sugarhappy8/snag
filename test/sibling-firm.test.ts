@@ -8,12 +8,19 @@ import { designateSuccessor, hireRelative } from '../src/game/business/nepo-acti
 import { successorOf } from '../src/game/business/nepo-state'
 import { bizOf, findBusiness } from '../src/game/business/state'
 import { killCharacter } from '../src/game/death'
+import { withFlags } from '../src/game/flags'
 import { continueAsChild } from '../src/game/life'
 import { npcCompany, npcLife, startNpcCompany } from '../src/game/npc-lives'
 import type { GameState, Json, Person } from '../src/game/types'
 import { drain, kid, world } from './nepo-kit'
 
 const FIRM_VALUE = 12_000_000
+
+/**
+ * The kit's family business on a life that is NOT stamped, whatever the build default says. This file pins the path of the lives that are
+ * not stamped, which lives as long as old saves do; the stamped twins are test/sibling-firm-held.test.ts (R4-E16, step 0).
+ */
+const plainWorld: typeof world = (seed, opts) => withFlags({ social: false }, () => world(seed, opts))
 
 interface Scene {
   g: GameState
@@ -26,7 +33,7 @@ interface Scene {
 
 /** A $12M family firm, a designated successor (employed at it) and a different sole will heir. */
 function scene(seed: number, before?: (s: Scene) => void): Scene {
-  const { g, a, b } = world(seed, { age: 78 })
+  const { g, a, b } = plainWorld(seed, { age: 78 })
   const successor = kid(g, 39, { smarts: 88 })
   const willHeir = kid(g, 36, { smarts: 65 })
   expect(hireRelative(g, a, b, successor, { rank: 2 }, { quiet: true }).ok).toBe(true)
@@ -133,7 +140,7 @@ describe('the sibling still gets cash when the firm cannot be held', () => {
 
 describe('claiming a company the child already owned is unchanged', () => {
   it('the continuing child gets their own NPC company back as a player asset', () => {
-    const { g } = world(136, { age: 78 })
+    const { g } = plainWorld(136, { age: 78 })
     const heir = kid(g, 34, { smarts: 80 })
     heir.money = 8_000_000
     expect(startNpcCompany(g, heir, 'cafe')).toBe(true)

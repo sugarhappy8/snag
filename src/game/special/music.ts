@@ -388,7 +388,7 @@ function release(g: GameState, job: Job, typeId: string, subgenre: string, title
   addStat(g, 'happiness', cert ? 12 : quality >= 50 ? 5 : -5)
   for (const id of d.bandmates) {
     const mate = getPerson(g, id)
-    if (mate) addRelationship(mate, cert ? 8 : quality >= 50 ? 3 : -4)
+    if (mate) addRelationship(g, mate, cert ? 8 : quality >= 50 ? 3 : -4)
   }
   const verdict =
     quality >= 85
@@ -474,14 +474,14 @@ const kickScript = defineScript('special.music.kick', (g, choice) => {
   if (!job || !mate) return
   const d = md(job)
   if (chance(g, 0.3)) {
-    addRelationship(mate, -15)
+    addRelationship(g, mate, -15)
     return say(g, 'Band Vote', `You tried to kick ${mate.firstName} out of ${d.bandName}, but the rest of the band voted against you. Awkward rehearsal tomorrow.`, '\u{1F5F3}\u{FE0F}', 'bad')
   }
   d.bandmates = d.bandmates.filter((id) => id !== mate.id)
   d.members = Math.max(1, d.members - 1)
   d.popularity = clamp100(d.popularity - randInt(g, 1, 4))
   if (mate.relation === 'coworker') g.people = g.people.filter((p) => p.id !== mate.id)
-  else addRelationship(mate, -30)
+  else addRelationship(g, mate, -30)
   log(g, `I kicked ${fullName(mate)} out of the band.`, 'bad')
   say(g, d.bandName ?? 'Band', `You kicked ${fullName(mate)} out of the band. They took the van keys with them.`, '\u{1F462}')
 })

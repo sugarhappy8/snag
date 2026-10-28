@@ -61,10 +61,10 @@ function settlePlan(g: GameState, job: Job): void {
   state.trust = bounded(state.trust + outcome.trust)
   if (outcome.rating === 'setback' && plan.approach === 'speed') state.warnings = Math.min(3, state.warnings + 1)
   job.performance = bounded(job.performance + outcome.performance - (state.warnings >= 3 ? 2 : 0))
-  if (boss) addRelationship(boss, outcome.rating === 'setback' ? -3 : plan.approach === 'people' ? 3 : 1)
+  if (boss) addRelationship(g, boss, outcome.rating === 'setback' ? -3 : plan.approach === 'people' ? 3 : 1)
   if (plan.approach === 'people') {
     for (const coworker of g.people.filter((person) => person.alive && person.relation === 'coworker' && person.contextId === job.company)) {
-      addRelationship(coworker, outcome.rating === 'setback' ? -1 : 2)
+      addRelationship(g, coworker, outcome.rating === 'setback' ? -1 : 2)
     }
   }
   if (outcome.rating === 'setback') addStat(g, 'happiness', -2)

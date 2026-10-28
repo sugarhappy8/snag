@@ -544,14 +544,14 @@ const COOK_SCRIPT = defineScript('act.creative.cook', (g, choice, data) => {
   const skill = skillLine(g, 'cooking', gain)
   if (q < 25) {
     if (chance(g, 0.3)) addStat(g, 'health', -randInt(g, 2, 5))
-    for (const p of eaters) addRelationship(p, -randInt(g, 1, 3))
+    for (const p of eaters) addRelationship(g, p, -randInt(g, 1, 3))
     log(g, `I cooked ${dish}. It was a disaster.`, 'bad')
     return result(g, 'Kitchen Disaster', `${pick(g, [g.year >= 1975 ? `You tried to make ${dish} and set off every smoke alarm in the building.` : `You tried to make ${dish} and smoked out the whole building.`, `Your ${dish} came out a color that food should never be.`, `You cooked ${dish}. The dog wouldn't eat it, and the dog eats socks.`])}\n\n${skill}`, '\u{1F525}', 'bad')
   }
   const good = q >= 60
   if (good) addStat(g, 'health', 1)
   addStat(g, 'happiness', good ? randInt(g, 3, 6) : 1)
-  for (const p of eaters) addRelationship(p, good ? randInt(g, 2, 5) : 0)
+  for (const p of eaters) addRelationship(g, p, good ? randInt(g, 2, 5) : 0)
   const who = eaters.length === 0 ? '' : eaters.length === 1 ? ` ${eaters[0].firstName} ${good ? 'had seconds' : 'ate it. Politely'}.` : ` ${good ? 'Everyone at the table went back for seconds.' : 'Everyone ate it. Politely.'}`
   log(g, good ? `I cooked a delicious ${dish === 'something experimental' ? 'experimental dish' : dish}.` : `I cooked ${dish}.`, good ? 'good' : 'neutral')
   return result(

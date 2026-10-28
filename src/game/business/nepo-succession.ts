@@ -7,6 +7,7 @@ import { entitlement } from '../events/wealth-core'
 import { isEstranged } from '../events/will-core'
 import type { Asset, GameState, Person } from '../types'
 import { seeded } from '../assets'
+import { INTEGRITY_TRAITS } from '../world/axes'
 import { readJob, seedKey, writeJob, type FamilyJob } from './nepo-job'
 import { employeesOf, isCeoOf, readFamily, familyOf, successorOf } from './nepo-state'
 import { CEO_STYLES, type BizState, type CeoStyle, type Manager } from './state'
@@ -29,7 +30,7 @@ export function styleFor(p: Person): CeoStyle {
 /** How straight a relative plays, 0-100: honest and loyal types high, spoiled and sneaky ones low. */
 export function integrityFor(p: Person): number {
   let v = 62 + seeded(`integrity|${seedKey(p)}`).next() * 20
-  for (const [t, d] of Object.entries({ honest: 15, loyal: 6, kind: 3, caring: 3, sneaky: -20, manipulative: -15, arrogant: -8, jealous: -4 })) if (p.traits.includes(t)) v += d
+  for (const [t, d] of Object.entries(INTEGRITY_TRAITS)) if (p.traits.includes(t)) v += d
   v -= entitlement(p) * 0.3
   return Math.round(clampN(v, 5, 98))
 }

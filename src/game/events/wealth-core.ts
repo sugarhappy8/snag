@@ -16,14 +16,18 @@ import { addRelationship, clamp, formatMoney, netWorth, relationLabel, shortMone
 import { carPriceMult, goodsMult, housingMult, localGoodsMult, nicePrice } from '../assets'
 import { marketOf } from '../data/markets'
 import { realWealthFactor } from '../history/events-people'
-import { getCountry } from '../world'
+import { countryWealth, typicalIncome } from '../world/typical-income'
 import type { GameState, Json, Person, RelationKind } from '../types'
+import { syncLegacy } from '../world/edge-step'
+import { memoryOdds } from '../world/edge-odds'
+import { socialOn } from '../world/social'
 
 // ---------------------------------------------------------------------------
 // Wealth tiers
 
-/** A typical full-time yearly income in the US today (careers pay US salary x country wealth). */
-export const US_TYPICAL_INCOME = 45_000
+// The typical income lives in the world layer (world/typical-income.ts) so society/ can use it without reaching into events/;
+// these three names stay importable from here.
+export { US_TYPICAL_INCOME, countryWealth, typicalIncome } from '../world/typical-income'
 
 /** Net worth / typical income at which each tier starts: comfortable, rich, very rich, ultra rich. */
 export const TIER_AT: readonly number[] = [25, 80, 400, 4_000]
@@ -44,16 +48,6 @@ export const TIER_MULT: readonly number[] = [1, 1, 2.2, 5, 12]
 
 /** Entitlement at which someone shows the 'spoiled' trait. */
 export const ENTITLED_AT = 60
-
-export function countryWealth(countryId: string): number {
-  const w = getCountry(countryId).wealth
-  return typeof w === 'number' && Number.isFinite(w) ? Math.max(0.08, w) : 1
-}
-
-/** A typical yearly income where the character lives, in this year's real terms (constant dollars). */
-export function typicalIncome(g: GameState, countryId = g.character.countryId, year = g.year): number {
-  return Math.max(1_000, Math.round(US_TYPICAL_INCOME * Math.min(1.6, countryWealth(countryId)) * realWealthFactor(year)))
-}
 
 /**
  * How much richer you look than you are because of what you flash: the watch at the party, the
@@ -279,6 +273,8 @@ export function updateTies(g: GameState, p: Person, fn: (t: WealthTies) => void)
   const t = readTies(g, p)
   fn(t)
   writeTies(p, t)
+  // A stamped life follows the loan into the edge at once (R4-E7, X22); the record stays the authority.
+  if (socialOn(g)) syncLegacy(g, p)
   return t
 }
 
@@ -561,15 +557,19 @@ export function sting(p: Person, base: number): number {
   return Math.max(1, Math.round(base * (1 + entitlement(p) / 100)))
 }
 
-/** Yearly odds someone pays something back (from who they are, no randomness). */
-export function repayOdds(p: Person, owes: number): number {
+/**
+ * Yearly odds someone pays something back (from who they are, no randomness). With the game, a stamped life adds what the person
+ * remembers of the player (world/edge-odds.ts, within plus or minus 0.15); without it, or on a life that is not stamped, the term is 0.
+ */
+export function repayOdds(p: Person, owes: number, g?: GameState): number {
   let o = 0.15 + (p.relationship - 50) / 400 - entitlement(p) / 300
   if (traitIn(p, 'honest', 'loyal', 'kind', 'caring')) o += 0.12
   if (traitIn(p, 'sneaky', 'manipulative', 'lazy')) o -= 0.1
   if (p.money >= owes) o += 0.15
+  if (g !== undefined) o += memoryOdds(g, p, 'repay')
   return Math.max(0.03, Math.min(0.75, o))
 }
 
-export function bumpRelationship(p: Person, delta: number): void {
-  if (Number.isFinite(delta) && delta !== 0) addRelationship(p, delta)
+export function bumpRelationship(g: GameState, p: Person, delta: number): void {
+  if (Number.isFinite(delta) && delta !== 0) addRelationship(g, p, delta)
 }

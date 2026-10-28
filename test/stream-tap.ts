@@ -177,4 +177,14 @@ export const STREAM_SLICES: Readonly<Record<string, StreamRow>> = {
     why: 'R3-M7 simulateStudioEngines draws a pushing year\'s setback from outcomeStream(g, "effort.risk", year, "studio:<engine>"); it cuts the gain of an engine in development (assets), which moves the studio\'s costs and cash, so the owner\'s pay and net worth (character), the company\'s investment (economy) and the report line (text), and no played life pushes an engine yet',
     driven: true,
   },
+  'life.path': {
+    slices: ['world', 'people', 'flagsPersonal', 'text'],
+    why: 'R4-L2 ageTo (world/life-path.ts) draws a kin record\'s death and illness from outcomeStream(g, "life.path", year, sid); once L4 steps with it, a kin death widows an anchor (people), writes the death year d into the Met shard (world), moves the family-year stamps in the personal flags and says a line (text); no played life holds a kin record yet, so the test drives the call',
+    driven: true,
+  },
+  social: {
+    slices: ['world', 'people', 'character', 'flagsPersonal', 'text'],
+    why: 'R4-E10a runAct (society/acts.ts) draws a favor\'s answer from outcomeStream(g, "social", year, "<act>|<edge key>"): a yes writes the call-in year, the obligation and the memories on the edge (world) and the relationship deltas of the giver and of the third person a vouch reaches (people), and a log line and a notice say so (text); the loans and the debts of E10b move the player\'s cash (character) and the family-act counter and the stamps sit in the personal flags (flagsPersonal). The acts do nothing on a life that is not stamped and no golden life is stamped until E16, so the test drives actRoll itself',
+    driven: true,
+  },
 }

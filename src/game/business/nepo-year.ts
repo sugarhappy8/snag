@@ -14,7 +14,9 @@ import { marketOf } from '../data/markets'
 import { notePerson } from '../people'
 import { chance, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { familyRoom, useFamilyAct } from '../society/contract'
 import type { Asset, GameState, Person } from '../types'
+import { remember } from '../world/edge-write'
 import { handOver, managerCandidate } from './career'
 import { driveOf, expectedRating, fitOf, nextSkill } from './nepo-model'
 import { clearJob, readJob, writeJob, writePast, type FamilyJob } from './nepo-job'
@@ -33,9 +35,22 @@ export function popupRoom(g: GameState): boolean {
   return (g.yearActions[POP_KEY] ?? 0) < NEPO_POPUPS && g.queue.filter((m) => m.kind === 'choice').length < 4
 }
 
-/** Spend one of the year's popups. */
+/**
+ * Spend one of the year's popups: the local cap of this module (`nepo.pop`, 2). The year's one outcome notice spends this and nothing
+ * else, because a notice is not a choice and takes no slot of the shared family budget (R4-E9, C13).
+ */
 export function usePopup(g: GameState): boolean {
   return useYearAction(g, POP_KEY, NEPO_POPUPS)
+}
+
+/**
+ * Spend one of the year's popups for a CHOICE (an ask, a life event, the question of the baton): the shared budget must have room for
+ * nepo, then the local cap is spent, then the shared key (society/budget.ts, R4-E9, X40). A refusal on either side spends nothing on the
+ * other. On a life that is not stamped there is no shared budget and this is usePopup.
+ */
+export function useChoicePopup(g: GameState): boolean {
+  if (familyRoom(g, 'nepo') < 1) return false
+  return usePopup(g) && useFamilyAct(g, 'nepo')
 }
 
 // ---------------------------------------------------------------------------
@@ -139,8 +154,8 @@ function step(g: GameState, a: Asset, b: BizState, e: Employee, out: Outcome[]):
     if (chance(g, 0.3)) p.stats.smarts = clampN(p.stats.smarts + 1, 0, 100)
     if (entitlement(p) > 0 && chance(g, 0.5)) addEntitlement(p, -1)
   }
-  if (job.mood >= 70 && chance(g, 0.4)) addRelationship(p, 1)
-  if (job.mood < 35 && chance(g, 0.4)) addRelationship(p, -2)
+  if (job.mood >= 70 && chance(g, 0.4)) addRelationship(g, p, 1, 'decay')
+  if (job.mood < 35 && chance(g, 0.4)) addRelationship(g, p, -2, 'decay')
   const tenure = g.year - job.since
   const drive = driveOf(p)
   const first = p.firstName
@@ -157,7 +172,7 @@ function step(g: GameState, a: Asset, b: BizState, e: Employee, out: Outcome[]):
       writeJob(p, job)
       leave(g, a, b, p, 'quit')
       log(g, `${first} quit ${a.name}${job.unpaid > 0 ? ' after the company missed ' + his(p) + ' pay' : ''}.`, 'bad')
-      addRelationship(p, -randInt(g, 4, 10))
+      addRelationship(g, p, -randInt(g, 4, 10))
       out.push({ title: 'They Quit', text: `${first} quit ${a.name}${job.unpaid > 0 ? ', fed up with being paid late' : ', fed up and underappreciated'}. ${He(p)} said it was not personal. It was a little personal.`, emoji: '\u{1F6AA}', tone: 'bad', weight: 3 })
       return
     }
@@ -165,7 +180,7 @@ function step(g: GameState, a: Asset, b: BizState, e: Employee, out: Outcome[]):
       writeJob(p, job)
       leave(g, a, b, p, 'startup')
       p.data.founder = g.year
-      addRelationship(p, 3)
+      addRelationship(g, p, 3)
       log(g, `${first} left ${a.name} to start ${his(p)} own company.`, 'neutral')
       out.push({ title: 'Going It Alone', text: `${first} quit ${a.name} to start ${his(p)} own company. "I want to know what I can do without ${p.relation === 'child' ? 'the family name' : 'your name on the door'}," ${he(p)} said. You were proud for about a minute and then worried about the competition.`, emoji: '\u{1F680}', tone: 'neutral', weight: 3 })
       return
@@ -395,7 +410,7 @@ function siblingDrama(g: GameState, a: Asset, b: BizState, emps: readonly Employ
         j.mood = clampN(j.mood - 8, 0, 100)
         writeJob(low.p, j)
       }
-      addRelationship(low.p, -3)
+      addRelationship(g, low.p, -3)
       log(g, `${low.p.firstName} complained that ${top.p.firstName} is paid more at ${a.name}.`, 'bad')
     }
   }
@@ -407,7 +422,8 @@ function siblingDrama(g: GameState, a: Asset, b: BizState, emps: readonly Employ
     )
     if (passed.length > 0 && chance(g, 0.2)) {
       const p = passed[randInt(g, 0, passed.length - 1)]
-      addRelationship(p, -randInt(g, 2, 5))
+      addRelationship(g, p, -randInt(g, 2, 5))
+      remember(g, p, 'passed_over', { w: 2, by: 'ego' })
       log(g, `${p.firstName} told me it is not fair that ${senior.p.firstName} got a ${senior.job.title} job at ${a.name} and ${he(p)} didn't.`, 'bad')
     }
   }
@@ -429,7 +445,7 @@ function arcs(g: GameState): void {
         if (chance(g, 0.4)) {
           kinMoney(g, p, typicalIncome(g, personCountry(g, p)) * randInt(g, 4, 30), 'luck')
           p.occupation = 'Founder'
-          addRelationship(p, 4)
+          addRelationship(g, p, 4)
           log(g, `${myKin(p)}'s company took off.`, 'good')
         } else {
           kinMoney(g, p, -Math.min(p.money * 0.6, typicalIncome(g, personCountry(g, p)) * 3), 'luck', 0)
@@ -442,7 +458,7 @@ function arcs(g: GameState): void {
     if (made > 0 && p.age >= 24 && g.year - made >= 4 && chance(g, 0.04)) {
       p.data.nepoSelfMade = -made
       kinMoney(g, p, typicalIncome(g, personCountry(g, p)) * randInt(g, 1, 6), 'wage')
-      addRelationship(p, 3)
+      addRelationship(g, p, 3)
       p.stats.happiness = clampN(p.stats.happiness + 5, 0, 100)
       log(g, `${myKin(p)} got a big promotion at ${his(p)} own job. ${He(p)} mentioned ${he(p)} did not need your help.`, 'good')
     }
@@ -517,6 +533,9 @@ function batonPrompt(g: GameState, a: Asset, b: BizState): boolean {
   if (c.age < 66 || g.year - fam.handYear < 4 || c.prison) return false
   const name = s.kind === 'person' ? `${s.person.firstName} ${s.person.lastName}` : s.name
   const skill = s.kind === 'person' ? Math.round(s.job.skill) : Math.round(s.skill)
+  // The slot is spent before the year is marked: a prompt the budget refuses leaves handYear alone and the question comes next year.
+  // The local cap is spent here as well (the caller used to do it after the prompt was queued); nothing in between reads it.
+  if (!useChoicePopup(g)) return false
   fam.handYear = g.year
   scriptChoice(
     g,
@@ -558,6 +577,6 @@ export function familyYear(g: GameState): void {
   for (const a of businessAssets(g)) {
     if (!popupRoom(g)) break
     const b = bizOf(g, a)
-    if (batonPrompt(g, a, b)) usePopup(g)
+    batonPrompt(g, a, b)
   }
 }

@@ -110,6 +110,38 @@ export const STATE_TABLE = {
     ],
     band: logBand(2),
   },
+  // R4-E10b (D.4): a part payment of a loan the player owes a person (society/debt.ts), one record per lender (the call passes the
+  // lender's id), the value what is still owed: it speaks each time the debt halves, or after 5 quiet years. {who} is "my friend Kay".
+  'debt.owe': {
+    variants: ['I still owe {who} {money}.', 'There is {money} left on what I owe {who}.', 'I paid down the loan from {who}. {money} to go.'],
+    band: logBand(2),
+  },
+  // R4-L7 (A.K8 b): a payment on the divorce settlement the player still owes an ex (divorce-debt.ts), one record per ex (the call passes the ex's
+  // id). The value is the share of the debt paid so far, 0 to 1: it speaks each time another fifth is paid (the last payment is the fifth band, so
+  // the closing of the debt is said too: gap 1), or after 4 quiet years. {who} is "my ex Dana", {money} what the year's payment was.
+  'divorce.pay': {
+    variants: [
+      'I paid {who} {money} on the divorce settlement.',
+      'Another {money} went to {who} for the divorce.',
+      'I sent {who} {money} toward the divorce debt.',
+      'This year I handed {who} {money} of what the divorce cost.',
+    ],
+    band: bandBy(0.2, 0.4, 0.6, 0.8, 1),
+    every: 4,
+    gap: 1,
+  },
+  // R4-E12 (D.4): the cold rung of a feud (society/feud.ts), one record per person (the call passes the person's id). It speaks the year the feud
+  // starts and again after 3 quiet years while it is still cold; the value is the rung, so a rung is one band. {who} is "my sister Fatima".
+  'feud.cold': {
+    variants: [
+      'Things between {who} and me went cold.',
+      'I stopped hearing from {who}, and we both knew why.',
+      "At the last dinner, {who} wouldn't look at me.",
+      'The silence with {who} has settled in.',
+    ],
+    band: () => 0,
+    every: 3,
+  },
 } as const satisfies Record<string, StateSpec>
 
 export type StateKey = keyof typeof STATE_TABLE

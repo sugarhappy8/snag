@@ -6,7 +6,8 @@
 //                      not registered is not part of the world: normalizeWorld drops it.
 //   worldShard(g, n)   pure. The shard read through its registered reader (cached per object).
 //   normalizeWorld     total and bounded: what a load, a restore or a Time Machine jump passes g.world through. It never throws,
-//                      whatever it is given, and it never returns more than WORLD_NODE_CAP nodes.
+//                      whatever it is given, and it never returns more than WORLD_NODE_CAP nodes. Over the cap it drops whole shards
+//                      in a fixed order (overCapDrops): the indexes and news first, the books and the people's memory last.
 //
 // A shard is written by replacing its root, never by editing it in place (ensureWorld(g).people = { ...next }), because the Save
 // track shares each shard root between drafts, frozen. worldShard caches by the identity of the saved object for the same reason:
@@ -15,7 +16,7 @@
 // This file imports no shard module (the registration hub, world/shards.ts, imports them), so the root can never be part of a cycle
 // with the shards it holds. `./world` is still the file src/game/world.ts (countries and names); never add world/index.ts.
 import type { GameState } from '../types'
-import { WORLD_NODE_CAP } from './caps'
+import { WORLD_DROP_FIRST, WORLD_KEEP_LAST, WORLD_NODE_CAP } from './caps'
 import type { WorldState } from './types'
 
 export const WORLD_V = 1
@@ -129,6 +130,32 @@ interface Kept {
   drop: boolean
 }
 
+/** The class of a shard in the over-cap order: 0 goes first (the indexes and the news), 1 is every other shard, 2 goes last (the books and the people's memory). */
+function dropClass(name: string): 0 | 1 | 2 {
+  if (WORLD_DROP_FIRST.includes(name)) return 0
+  return WORLD_KEEP_LAST.includes(name) ? 2 : 1
+}
+
+/**
+ * The shards to drop, in order, to bring a world of `total` nodes down to `cap` (R4-P2, X47): the names, and none when it fits. The
+ * order is fixed and not "the largest first": the WORLD_DROP_FIRST class goes first, then every shard that is in neither list, then
+ * WORLD_KEEP_LAST, which is never touched while a shard of another class can still go. Inside a class the largest goes first, ties by
+ * name, whatever order the shards were handed in, and it stops as soon as the world fits. A shard that passed the cap by itself is
+ * counted as cap + 1 by the caller; it goes when its class's turn comes. Pure and total.
+ */
+export function overCapDrops(shards: readonly { name: string; nodes: number }[], total: number, cap: number = WORLD_NODE_CAP): string[] {
+  const out: string[] = []
+  if (!(total > cap)) return out
+  const order = [...shards].sort((a, b) => dropClass(a.name) - dropClass(b.name) || b.nodes - a.nodes || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  let left = total
+  for (const shard of order) {
+    if (left <= cap) break
+    out.push(shard.name)
+    left -= shard.nodes
+  }
+  return out
+}
+
 function build(raw: unknown): WorldState {
   const out: WorldState = { v: WORLD_V }
   if (!isWorld(raw)) return out
@@ -151,13 +178,9 @@ function build(raw: unknown): WorldState {
     total += nodes
   }
   if (total > WORLD_NODE_CAP) {
-    // Largest first, ties by name. A shard that passed the cap by itself is counted as cap + 1, so it always goes before the rest.
-    const order = [...kept].sort((a, b) => b.nodes - a.nodes || (a.name < b.name ? -1 : 1))
-    for (const k of order) {
-      if (total <= WORLD_NODE_CAP) break
-      k.drop = true
-      total -= k.nodes
-    }
+    // The fixed order of overCapDrops: indexes and news first, the books and the people's memory last, the largest first inside a class.
+    const gone = new Set(overCapDrops(kept, total))
+    for (const k of kept) if (gone.has(k.name)) k.drop = true
   }
   for (const k of kept) if (!k.drop) out[k.name] = k.value
   return out
@@ -165,7 +188,8 @@ function build(raw: unknown): WorldState {
 
 /**
  * Makes any value into a valid world: { v: 1 } for anything that is not one, `y` only as an integer from 1900 to 100000, only the
- * registered shards (each through its own reader), and at most WORLD_NODE_CAP nodes (the largest shards are dropped first). It never throws.
+ * registered shards (each through its own reader), and at most WORLD_NODE_CAP nodes (over it, shards are dropped in the fixed order of
+ * overCapDrops: the indexes first, the books and the people's memory last, the largest first inside a class). It never throws.
  */
 export function normalizeWorld(raw: unknown): WorldState {
   try {

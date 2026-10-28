@@ -4,6 +4,7 @@
 // static closure of src/main.tsx. Nothing outside the chart zone (src/ui/charts/) and the palette zone (the five
 // files in PALETTE_ZONE) imports a zone file at run time except through its gate (src/ui/charts/lazy.tsx and
 // src/ui/nav/lazy.tsx, made with lazyView), and a gate imports no zone file statically. `import type` is free.
+// R4-U4 added the person profile zone (PersonProfile.tsx and FactRow.tsx, gate src/ui/people/lazy.tsx).
 // The fence is live from a zone's first file, but the gate is only required once the zone's dispatcher exists
 // (src/ui/charts/ChartView.tsx, src/ui/nav/Palette.tsx): the chart helpers of R1-C2 to R1-C8 land before the gate of
 // R1-C9, and this test has to stay green in every merge order. Each rule is also run on a synthetic tree in
@@ -72,6 +73,17 @@ const GAMES: Zone = {
   gate: 'src/ui/minigames/lazy.tsx',
   needsGate: (members) => members.includes('src/ui/minigames/Blackjack.tsx'),
   loads: 'src/ui/minigames/Blackjack.tsx',
+}
+
+/** The person profile zone (R4-U4, X48): the profile of a living person in Realistic. PersonSheet.tsx stays outside it and draws the hero while the chunk loads. */
+const PEOPLE_PROFILE_ZONE = ['src/ui/components/PersonProfile.tsx', 'src/ui/components/FactRow.tsx']
+
+const PEOPLE_PROFILE: Zone = {
+  name: 'people-profile',
+  inZone: (p) => PEOPLE_PROFILE_ZONE.includes(p),
+  gate: 'src/ui/people/lazy.tsx',
+  needsGate: (members) => members.includes('src/ui/components/PersonProfile.tsx'),
+  loads: 'src/ui/components/PersonProfile.tsx',
 }
 
 /** A path relative to the root, with forward slashes. */
@@ -193,6 +205,10 @@ describe('lazy chunks and zones in the real src', () => {
 
   it('11: only src/ui/minigames/lazy.tsx reaches the six games, and it does so dynamically', () => {
     expect(zoneViolations(ROOT, GAMES)).toEqual([])
+  })
+
+  it('12: only src/ui/people/lazy.tsx reaches the person profile, and it does so dynamically', () => {
+    expect(zoneViolations(ROOT, PEOPLE_PROFILE)).toEqual([])
   })
 })
 
@@ -345,6 +361,53 @@ describe('10: the checks fail on a synthetic violation', () => {
 
     const typeOnly = tree({ ...early, 'src/ui/screens/A.tsx': "import type { fmt } from '../charts/format'\nexport type A = typeof fmt\n" })
     expect(zoneViolations(typeOnly, CHARTS)).toEqual([])
+  })
+
+  const people = {
+    'src/ui/components/PersonSheet.tsx': "import { PersonProfileLazy } from '../people/lazy'\nexport const Sheet = PersonProfileLazy\nexport const personName = 1\n",
+    'src/ui/components/PersonProfile.tsx': "import { FactRow } from './FactRow'\nimport { personName } from './PersonSheet'\nexport const PersonProfile = FactRow + personName\nexport type PersonProfileProps = { g: number }\n",
+    'src/ui/components/FactRow.tsx': 'export const FactRow = 1\n',
+    'src/ui/people/lazy.tsx': "import type { PersonProfileProps } from '../components/PersonProfile'\nexport const PersonProfileLazy = (): Promise<unknown> => import('../components/PersonProfile')\nexport type P = PersonProfileProps\n",
+  }
+
+  it('12: the profile zone as it should be passes, and the profile may import the sheet it sits in', () => {
+    expect(zoneViolations(tree(people), PEOPLE_PROFILE)).toEqual([])
+  })
+
+  it('12: a file outside the profile zone that imports the profile or FactRow at run time, or starts its chunk', () => {
+    for (const [name, body, path] of [
+      ['profile', "import { PersonProfile } from './PersonProfile'\nexport const a = PersonProfile\n", 'src/ui/components/Other.tsx'],
+      ['row', "import { FactRow } from './FactRow'\nexport const a = FactRow\n", 'src/ui/components/Other.tsx'],
+      ['dynamic', "export const a = () => import('./PersonProfile')\n", 'src/ui/components/Other.tsx'],
+      ['the sheet', "import { PersonProfile } from './PersonProfile'\nexport const personName = PersonProfile\n", 'src/ui/components/PersonSheet.tsx'],
+    ] as const) {
+      const found = zoneViolations(tree({ ...people, [path]: body }), PEOPLE_PROFILE)
+      expect(found, name).toHaveLength(1)
+      expect(found[0], name).toContain(path)
+    }
+    const typeOnly = tree({ ...people, 'src/ui/components/Other.tsx': "import type { PersonProfileProps } from './PersonProfile'\nexport type A = PersonProfileProps\n" })
+    expect(zoneViolations(typeOnly, PEOPLE_PROFILE)).toEqual([])
+  })
+
+  it('12: the gate must load PersonProfile.tsx dynamically, and the zone needs no gate until PersonProfile.tsx exists', () => {
+    const wrong = tree({ ...people, 'src/ui/people/lazy.tsx': "export const PersonProfileLazy = (): Promise<unknown> => import('../components/FactRow')\n" })
+    expect(zoneViolations(wrong, PEOPLE_PROFILE).some((v) => v.includes('never imports src/ui/components/PersonProfile.tsx'))).toBe(true)
+    const staticGate = tree({ ...people, 'src/ui/people/lazy.tsx': "import { PersonProfile } from '../components/PersonProfile'\nexport const load = () => import('../components/PersonProfile')\nexport const P = PersonProfile\n" })
+    expect(zoneViolations(staticGate, PEOPLE_PROFILE).some((v) => v.includes('gate'))).toBe(true)
+    const { 'src/ui/people/lazy.tsx': _gate, ...noGate } = people
+    const missing = zoneViolations(tree(noGate), PEOPLE_PROFILE)
+    expect(missing).toHaveLength(1)
+    expect(missing[0]).toContain('src/ui/people/lazy.tsx is missing')
+    expect(zoneViolations(tree({ 'src/ui/components/FactRow.tsx': 'export const FactRow = 1\n' }), PEOPLE_PROFILE)).toEqual([])
+  })
+
+  it('12: PersonProfile.tsx is a chunk of its own: the gate loads it and src/main.tsx does not reach it', () => {
+    const root = tree({ ...people, 'src/main.tsx': "import './ui/components/PersonSheet'\n" })
+    expect(chunkViolations(root)).toEqual([])
+    const leaky = tree({ ...people, 'src/main.tsx': "import './ui/components/PersonProfile'\n" })
+    const found = chunkViolations(leaky)
+    expect(found).toHaveLength(1)
+    expect(found[0]).toContain('src/ui/components/PersonProfile.tsx')
   })
 
   const palette = {

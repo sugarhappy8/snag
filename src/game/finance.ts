@@ -875,7 +875,7 @@ function handleDebt(g: GameState): void {
   if (parent && chance(g, 0.3)) {
     const amount = -c.money
     moveCash(g, personPurse(parent), playerPurse(g), amount, 'gift')
-    addRelationship(parent, -8)
+    addRelationship(g, parent, -8)
     const pr = pronouns(parent.gender)
     notice(g, 'Bailed Out', `Your ${relationLabel(parent).toLowerCase()} ${parent.firstName} paid off your ${debt} debt. ${pr.He} made you promise to "get your life together." ${pr.He} will be bringing this up at every holiday.`, { emoji: '🫶', tone: 'good' })
     log(g, `My ${relationLabel(parent).toLowerCase()} bailed me out of ${debt} of debt.`, 'good')

@@ -1,5 +1,5 @@
 // R2-L18 (A.K1, A.K2): the acceptance no single task of the ledger and world track owns. The oldest fixture runs five years with a
-// world it never had, twelve hostile worlds load and stay bounded (RF4), a replay, a reload and a Time Machine fork give the same
+// world it never had, sixteen hostile worlds load and stay bounded (RF4; twelve of R2 and four of R4-E6b for the `edges` and `social` shards), a replay, a reload and a Time Machine fork give the same
 // state byte for byte (RF5, the world half), an heir keeps every shard (RF3), every dollar the player holds is booked (strict drift,
 // opt in) and the two docs name what the code has (docs/LEDGER.md, docs/WORLD.md).
 //
@@ -147,11 +147,32 @@ const HOSTILE: Hostile[] = [
     name: 'an unknown shard that fills the save',
     make: (room) => ({ v: 1, junk: { v: 1, rows: Array.from({ length: Math.min(499_000, room - 10) }, () => 1) } }),
   },
+  // R4-E6b: the edge map and the social stamp. A hostile world is repaired by the first world step when it holds a key the game does not
+  // know or more nodes than the cap; the four below do one or the other, so every one ends with a map and a stamp that pass worldProblems.
+  {
+    name: 'an edges shard of 20,000 edges',
+    make: () => ({
+      v: 1,
+      edges: Object.fromEntries(Array.from({ length: 20_000 }, (_, i) => [`person:q${String(i).padStart(5, '0')}>person:zz`, { t: 50, f: 1 + (i % 99), r: 50, s: i % 7, o: 0, y: 2020, l: 2029 }])),
+    }),
+  },
+  {
+    name: 'edges of 1e300 and minus 1e300 beside a shard nobody registered',
+    make: () => ({ v: 1, edges: { 'person:q1>person:zz': { t: 1e300, f: -1e300, r: 50, s: 50, o: 1e300, y: 2020, l: 1e300 } }, junk: { v: 1 } }),
+  },
+  {
+    name: 'a stamp that is on with 40,000 mentor pairs',
+    make: (room) => ({ v: 1, social: { v: 1, on: 1, y: 2029, fy: 2020, ms: Array.from({ length: Math.min(40_000, Math.floor(room / 4)) }, (_, i) => [`person:q${i}`, 50]) } }),
+  },
+  {
+    name: 'an edges shard that is a string and a stamp that is a list, beside a shard nobody registered',
+    make: () => ({ v: 1, edges: NEVER_MADE, social: [1, 1, 2029], junk: { v: 1 } }),
+  },
 ]
 
 describe('hostile worlds put into the oldest fixture (RF4)', () => {
-  it('has twelve of them', () => {
-    expect(HOSTILE).toHaveLength(12)
+  it('has sixteen of them', () => {
+    expect(HOSTILE).toHaveLength(16)
   })
 
   it.each(HOSTILE.map((h) => [h.name, h] as const))('%s: loads, three years play, the world ends bounded and the books hold', (_name, hostile) => {

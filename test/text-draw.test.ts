@@ -249,12 +249,12 @@ describe('the text stream and its cursor', () => {
     const g = makeTestGame(2)
     for (let i = 0; i < 2000; i++) {
       const k = (i * 7) % 400
-      pickLine(g, pool(2 + (k % 39), 'cap' + k), i % 3 === 0 ? 'fam.' + (k % 150) : undefined)
+      pickLine(g, pool(2 + (k % 39), 'cap' + k), i % 3 === 0 ? 'fam.' + (k % 200) : undefined)
       if (i % 40 === 39) g.year++
     }
     const mem = readTextMem(g)
     expect(Object.keys(mem.p).length).toBeLessThanOrEqual(300)
-    expect(Object.keys(mem.f).length).toBeLessThanOrEqual(120)
+    expect(Object.keys(mem.f).length).toBeLessThanOrEqual(160)
     expect(mem).toEqual(g.flags.textMem)
     expect(nodes(g.flags.textMem)).toBeLessThanOrEqual(700)
     expect(JSON.parse(JSON.stringify(g.flags.textMem))).toEqual(g.flags.textMem)

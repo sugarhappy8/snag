@@ -3,6 +3,7 @@
 // EntityRef (kernel/ids.ts), never by object reference.
 import type { EntityRef } from '../kernel/ids'
 import type { LedgerShard } from '../kernel/ledger-types'
+import type { MetShard } from './met'
 
 /** An indexed person: the Person stays in g.people, this row says the world knows about it. `seen` is the last year it was touched. */
 export interface PersonRow {
@@ -69,5 +70,7 @@ export interface WorldState {
   homes?: HomesShard
   holdings?: HoldingsShard
   lod?: LodShard
+  /** Who the player has met (R4-S4, world/met.ts): records and tombstones keyed by sid. Absent until a writer runs. */
+  met?: MetShard
   [other: string]: unknown
 }

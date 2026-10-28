@@ -90,7 +90,7 @@ const PERSONAL: readonly string[] = [
   'lux.lots', 'lux.showN', 'luxury.bought', 'luxury.secretary', 'luxury.society', 'luxury.societyBanned',
   'luxury.societyRejected', 'luxury.staff', 'martialArts', 'mcs.mastered', 'memoryBest', 'midlifeCrisis',
   'missedPayments', 'missedThisYear', 'mobGrudge', 'nation.me', 'nepo.favors', 'out', 'overdosed', 'parentsStatus',
-  'partTimeShifts', 'pendingAsks', 'petBan', 'pregnancy', 'previousGeneration', 'prisonLife', 'professions', 'puberty',
+  'partTimeShifts', 'pendingAsks', 'persona.me', 'petBan', 'pregnancy', 'previousGeneration', 'prisonLife', 'professions', 'puberty',
   'readDictionary', 'recordedGrave', 'recordedRibbon', 'recoveredAddictions', 'rehabSuccess', 'relapseAge',
   'royalPrivateHoldings', 'royalty', 'screenTime', 'selectiveExamTaken', 'sexualityRealized', 'sharedProjects',
   'skill.voice', 'special.actor.bollywood', 'special.actor.booed', 'special.actor.comforted',

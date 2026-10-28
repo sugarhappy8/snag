@@ -4,7 +4,7 @@
 // Lots and bookings are seeded per life and year, so the catalogue is stable and no menu consumes
 // g.rng. Only buying a lot or taking a trip rolls the dice.
 import { globalGoodsMult, nicePrice, seeded, yearKey } from '../assets'
-import { addStat, children, count, currentPartner, formatMoney, log, notice, remember, scriptChoice, shortMoney, spend, useYearAction } from '../core'
+import { addStat, children, count, currentPartner, formatMoney, log, notice, remember, scriptChoice, setRelationship, shortMoney, spend, useYearAction } from '../core'
 import { brandById, brandsFor, brandName } from '../data/brands'
 import { addEntitlement, gratitude } from '../events/wealth-core'
 import { PRESENT_YEAR } from '../history/timeline'
@@ -293,7 +293,7 @@ function voyageOpen(g: GameState, v: Voyage): boolean {
 
 function companionJoy(g: GameState, people: Person[], cost: number): void {
   for (const p of people) {
-    p.relationship = Math.min(100, p.relationship + gratitude(p, randInt(g, 5, 9)))
+    setRelationship(g, p, Math.min(100, p.relationship + gratitude(p, randInt(g, 5, 9))))
     if (p.age < 25 && (p.relation === 'child' || p.relation === 'stepchild')) addEntitlement(p, cost / people.length > 6_000 ? 2 : 1)
   }
 }

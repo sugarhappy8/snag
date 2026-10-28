@@ -129,14 +129,22 @@ function historyLine(t: WealthTies): string {
     .join('\n')
 }
 
-function infoText(g: GameState, p: Person): string {
+/**
+ * A reader for the numbers of a person that the profile fogs (R4-U5): `(g, p, field, truth)` answers the words the player may read,
+ * a range or a word. The screen that builds the menu hands it in; this file does not import people-fog.ts (events->life is a counted
+ * pair of the layer ratchet). Without one the text is today's.
+ */
+export type PersonWords = (g: GameState, p: Person, field: string, truth: number) => string
+
+function infoText(g: GameState, p: Person, words?: PersonWords): string {
   const t = readTies(g, p)
   const lines: string[] = []
   const summary = moneySummary(g, p)
   if (summary) lines.push(summary)
   if (isDescendant(p)) {
     const how = upbringing(g, p)
-    lines.push(`Upbringing: ${upbringingLabel(how)}${entitlement(p) > 0 ? ` · Entitlement ${entitlement(p)}%` : ''}`)
+    const spoiled = entitlement(p)
+    lines.push(`Upbringing: ${upbringingLabel(how)}${spoiled > 0 ? ` · Entitlement ${words ? words(g, p, 'entitlement', spoiled) : `${spoiled}%`}` : ''}`)
   }
   if (t.car) lines.push(`Drives the ${t.car.label.replace(/^an? /, '')} you bought ${pr(p).him}`)
   if (t.bound > g.year) lines.push(`Money talk is off the table until ${t.bound}`)
@@ -163,7 +171,7 @@ function prisonBlock(g: GameState): string | null {
 }
 
 /** The Money group for a person's sheet (empty when it doesn't apply). */
-export function wealthNodes(g: GameState, person: Person): MenuNode[] {
+export function wealthNodes(g: GameState, person: Person, words?: PersonWords): MenuNode[] {
   if (!hasMoneyMenu(g, person)) return []
   const pid = person.id
   const live = (x: GameState) => getPerson(x, pid)
@@ -187,15 +195,15 @@ export function wealthNodes(g: GameState, person: Person): MenuNode[] {
     children: (x) => {
       const p = live(x)
       if (!p) return []
-      return moneyChildren(x, p)
+      return moneyChildren(x, p, words)
     },
   }
   return [group]
 }
 
-function moneyChildren(g: GameState, p: Person): MenuNode[] {
+function moneyChildren(g: GameState, p: Person, words?: PersonWords): MenuNode[] {
   const pid = p.id
-  const nodes: MenuNode[] = [{ type: 'info', id: 'wealth.info', emoji: '\u{1F4CB}', text: (x) => (getPerson(x, pid) ? infoText(x, getPerson(x, pid)!) : '') }]
+  const nodes: MenuNode[] = [{ type: 'info', id: 'wealth.info', emoji: '\u{1F4CB}', text: (x) => (getPerson(x, pid) ? infoText(x, getPerson(x, pid)!, words) : '') }]
   if (allowanceOk(p)) nodes.push(allowanceAction(g, p))
   const t = readTies(g, p)
   if (t.owes > 0) nodes.push(repayAction(p), forgiveAction(p))
@@ -268,8 +276,8 @@ function repayAction(p: Person): MenuAction {
       const t = readTies(g, q)
       if (t.owes <= 0) return
       const x = pr(q)
-      if (q.money <= 0 || !chance(g, Math.min(0.9, repayOdds(q, t.owes) + 0.15))) {
-        addRelationship(q, -randInt(g, 3, 8))
+      if (q.money <= 0 || !chance(g, Math.min(0.9, repayOdds(q, t.owes, g) + 0.15))) {
+        addRelationship(g, q, -randInt(g, 3, 8))
         notice(g, 'Paying It Back', q.money <= 0 ? `${q.firstName} turned ${x.his} pockets inside out. ${cap(x.he)} really doesn't have it.` : `${q.firstName} said ${x.he}'ll "definitely" pay you back "soon." ${cap(x.he)} changed the subject to the weather. Twice.`, { emoji: '\u{1F9FE}' })
         return
       }
@@ -279,7 +287,7 @@ function repayAction(p: Person): MenuAction {
         w.owes = Math.max(0, w.owes - pay)
         if (w.owes === 0) w.owesSince = 0
       })
-      addRelationship(q, -randInt(g, 1, 4))
+      addRelationship(g, q, -randInt(g, 1, 4))
       const left = t.owes - pay
       log(g, `${cap(myOf(q))} paid me back ${money(pay)}.`, 'good')
       notice(g, 'Paying It Back', left > 0 ? `${q.firstName} paid you ${money(pay)}, which is everything ${x.he} has. ${money(left)} to go.` : `${q.firstName} paid back every last cent (${money(pay)}). It was awkward. It was also correct.`, { emoji: '\u{1F4B5}', tone: 'good' })
@@ -307,7 +315,7 @@ function forgiveAction(p: Person): MenuAction {
       // Gratitude and karma grow with what the debt meant to them (in local incomes), so lending
       // pocket change and forgiving it every year isn't a cheap way to buy love or karma.
       const weight = owed / Math.max(1, typicalIncome(g, personCountry(g, q)))
-      addRelationship(q, Math.max(1, Math.min(20, Math.round(2 + 4 * Math.log10(1 + weight * 20)))))
+      addRelationship(g, q, Math.max(1, Math.min(20, Math.round(2 + 4 * Math.log10(1 + weight * 20)))))
       const karma = weight >= 0.5 ? 2 : weight >= 0.1 ? 1 : 0
       if (karma > 0) addHidden(g, 'karma', karma)
       log(g, `I forgave the ${money(owed)} ${myOf(q)} owed me.`, 'good')
@@ -350,7 +358,7 @@ function lendAction(g: GameState, p: Person): MenuAction {
       })
       count(g, 'wealthLoans')
       // A token loan earns a token thank-you.
-      addRelationship(q, gratitude(q, amt >= typicalIncome(g, personCountry(g, q)) * 0.05 ? 4 : 1))
+      addRelationship(g, q, gratitude(q, amt >= typicalIncome(g, personCountry(g, q)) * 0.05 ? 4 : 1))
       log(g, `I lent ${myOf(q)} ${money(amt)}.`)
       notice(g, 'Lend Money', `You lent ${q.firstName} ${money(amt)}. ${cap(pr(q).he)} promised to pay you back. You both believed it, briefly.`, { emoji: '\u{1F91D}' })
     },
@@ -429,7 +437,7 @@ defineScript(CAR_SCRIPT, (g, choice, data) => {
     t.given += price
   })
   const fancy = type === 'sports' || type === 'supercar'
-  addRelationship(p, gratitude(p, fancy ? 18 : type === 'luxury' ? 14 : 10))
+  addRelationship(g, p, gratitude(p, fancy ? 18 : type === 'luxury' ? 14 : 10))
   if (isDescendant(p) && p.age < 30) addEntitlement(p, type === 'supercar' ? 15 : type === 'sports' ? 10 : type === 'luxury' ? 6 : 2)
   notePerson(p, `Got ${label} from you at ${p.age}.`)
   log(g, `I bought ${myOf(p)} ${label} (${money(price)}).`, 'good')
@@ -485,7 +493,7 @@ defineScript(TRIP_SCRIPT, (g, choice, data) => {
     for (const k of Object.keys(t.marks)) if (k.startsWith('gift.trip.') && k !== `gift.trip.${g.year}`) delete t.marks[k]
     t.given += opt.price
   })
-  addRelationship(p, gratitude(p, opt.id === 'luxury' ? 14 : opt.id === 'abroad' ? 10 : 6))
+  addRelationship(g, p, gratitude(p, opt.id === 'luxury' ? 14 : opt.id === 'abroad' ? 10 : 6))
   p.stats.happiness = Math.min(100, p.stats.happiness + randInt(g, 5, 12))
   if (isDescendant(p) && p.age < 30) addEntitlement(p, opt.id === 'luxury' ? 6 : opt.id === 'abroad' ? 2 : 0)
   log(g, `I paid for ${myOf(p)}'s vacation (${money(opt.price)}).`, 'good')
@@ -546,7 +554,7 @@ defineScript(HOUSE_SCRIPT, (g, choice, data) => {
     p.livesWithPlayer = false
     p.data.movedOut = true
   }
-  addRelationship(p, gratitude(p, choice === 'whole' ? 22 : 12))
+  addRelationship(g, p, gratitude(p, choice === 'whole' ? 22 : 12))
   if (isDescendant(p) && p.age < 35) addEntitlement(p, choice === 'whole' ? 8 : 3)
   notePerson(p, choice === 'whole' ? `You bought ${pr(p).him} a house at ${p.age}.` : `You paid the deposit on ${pr(p).his} house at ${p.age}.`)
   log(g, choice === 'whole' ? `I bought ${myOf(p)} a house (${money(price)}).` : `I paid the deposit on ${myOf(p)}'s house (${money(price)}).`, 'good')
@@ -609,7 +617,7 @@ function ventureAction(g: GameState, p: Person): MenuAction {
         t.marks['gift.venture'] = g.year
         t.given += amt
       })
-      addRelationship(q, gratitude(q, 10))
+      addRelationship(g, q, gratitude(q, 10))
       notePerson(q, `Started ${idea} with your money at ${q.age}.`)
       log(g, `I gave ${myOf(q)} ${money(amt)} to start ${idea}.`, 'good')
       notice(g, 'Seed Money', `You gave ${q.firstName} ${money(amt)} to start ${idea}. ${cap(pr(q).he)} promised to pay you back "with interest" if it works. You'll know in a few years.`, { emoji: '\u{1F4A1}', tone: 'good' })

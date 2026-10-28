@@ -614,7 +614,7 @@ defineScript(APE_SCRIPT, (g, choice, data) => {
   const c = g.character
   if (c.age < 18 && net < 0 && -net >= local(g, 300) && chance(g, 0.3)) {
     const ps = parents(g)
-    for (const p of ps) addRelationship(p, -randInt(g, 3, 8))
+    for (const p of ps) addRelationship(g, p, -randInt(g, 3, 8))
     const who = ps.length === 1 ? `Your ${relationLabel(ps[0]).toLowerCase()}` : 'Your parents'
     text += `\n\n${who} found out you lost ${formatMoney(-net)} on a coin with a frog on it and gave you a two-hour lecture on "real investing."`
   }

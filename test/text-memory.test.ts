@@ -43,7 +43,7 @@ function nodeCount(value: unknown): number {
 
 describe('limits', () => {
   it('are the agreed caps', () => {
-    expect(TEXT_MEM_LIMITS).toEqual({ pools: 300, families: 120, recent: 8, bag: 12, famYears: 12, famWindow: 10, rings: 4, ring: 64, ringKey: 80, states: 120 })
+    expect(TEXT_MEM_LIMITS).toEqual({ pools: 300, families: 160, recent: 8, bag: 12, famYears: 12, famWindow: 10, rings: 4, ring: 64, ringKey: 80, states: 120 })
   })
 })
 
@@ -241,18 +241,18 @@ describe('families', () => {
     expect(readTextMem(g).f.mixed).toBe('2026,2030')
   })
 
-  it('evicts the oldest family past 120 and moves a noted family last', () => {
+  it('evicts the oldest family past 160 and moves a noted family last', () => {
     const g = game()
-    for (let i = 0; i <= 120; i++) noteFamily(g, 'fam' + i)
+    for (let i = 0; i <= 160; i++) noteFamily(g, 'fam' + i)
     let keys = Object.keys(readTextMem(g).f)
-    expect(keys).toHaveLength(120)
+    expect(keys).toHaveLength(160)
     expect(keys[0]).toBe('fam1')
     noteFamily(g, 'fam1')
     keys = Object.keys(readTextMem(g).f)
-    expect(keys[119]).toBe('fam1')
-    noteFamily(g, 'fam121')
+    expect(keys[159]).toBe('fam1')
+    noteFamily(g, 'fam161')
     keys = Object.keys(readTextMem(g).f)
-    expect(keys).toHaveLength(120)
+    expect(keys).toHaveLength(160)
     expect(keys).toContain('fam1')
     expect(keys).not.toContain('fam2')
   })
@@ -416,8 +416,8 @@ describe('writableTextMem', () => {
     expect(pk[299]).toBe('k4999')
     expect(pk.every((k) => Number(k.slice(1)) % 10 !== 0)).toBe(true)
     const fk = Object.keys(mem.f)
-    expect(fk).toHaveLength(120)
-    expect(fk[119]).toBe('f499')
+    expect(fk).toHaveLength(160)
+    expect(fk[159]).toBe('f499')
     expect(Object.keys(mem.r)).toEqual(['r0', 'r1', 'r2', 'r3'])
     for (const ring of Object.values(mem.r)) {
       expect(ring).toHaveLength(64)
@@ -433,18 +433,18 @@ describe('writableTextMem', () => {
 })
 
 describe('size', () => {
-  it('a full memory (300 pools, 120 families, 4 full rings) is at most 700 JSON nodes', () => {
+  it('a full memory (300 pools, 160 families, 4 full rings) is at most 740 JSON nodes', () => {
     const g = game()
     for (let i = 0; i < 300; i++) rememberPool(writableTextMem(g), 'pool' + i, 20, i % 20)
-    for (let i = 0; i < 120; i++) noteFamily(g, 'fam' + i)
+    for (let i = 0; i < 160; i++) noteFamily(g, 'fam' + i)
     for (const name of ['a', 'b', 'c', 'd']) ringWrite(g, name, Array.from({ length: 64 }, (_, i) => name + i))
     const mem = readTextMem(g)
     expect(Object.keys(mem.p)).toHaveLength(300)
-    expect(Object.keys(mem.f)).toHaveLength(120)
+    expect(Object.keys(mem.f)).toHaveLength(160)
     expect(Object.values(mem.r).every((r) => r.length === 64)).toBe(true)
     const nodes = nodeCount(g.flags.textMem)
     expect(nodes).toBeGreaterThan(600)
-    expect(nodes).toBeLessThanOrEqual(700)
+    expect(nodes).toBeLessThanOrEqual(740)
   })
 
   it('stays plain JSON', () => {

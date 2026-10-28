@@ -30,6 +30,12 @@ Four promises hold on every screen of the track, and each task's test checks the
 | Single stocks, penny stocks, coins (R3-G9) | how much it swings in a year: steady, choppy, wild, extreme, or a range | `sec:<hash>:vol` | `invest/swing.ts` |
 | A private company (R3-G10) | what it is worth, as an appraisal range, and your stake as the same band times your share | `val:<asset>:value` | `business/valuation-fog.ts` |
 | Purple hints (R3-G11) | the figure after "about", "roughly", "around" or "~" | `hint:<hash>:<n>` | `fog/hint/lens.ts` |
+| A person profile (R4-U3, U4) | happiness, health, smarts and looks as words or ranges, cash for someone close, up to 6 personality words, the first trait word at exposure .30 and the second at .60 | `ppl:<key>:<field>` | `people-fog.ts`, `hubs/people-facts.ts`, `ui/components/PersonProfile.tsx` |
+| The rows under a person (R4-U5) | an NPC's skill, ambition and net worth, "Entitlement" and a will's anger as words, one Look closer group | `ppl:<key>:skill`, `:ambition`, `:worth` | `npc-lives.ts`, `relationships.ts`, `events/wealth-menu.ts`, `events/will-amends.ts` |
+| Hired staff (R4-U6) | a hire's skill as a range that tightens with the years, the trait named after a year or a background check, the "current contribution" recomputed on the read | `stf:<asset>:<id>:skill` | `business/leader-fog.ts`, `business/staff.ts` |
+| The CEO and managers (R4-U7) | the shortlist and the CEO rows as ranges, no star, a background check, the letter's word from the read | `cand:<shortlist>:<n>:skill`, `stf:<asset>:ceo:skill` | `business/leader-fog.ts`, `business/manage.ts`, `business/board-ceo.ts` |
+| How you're connected and Shared history (R4-U9, U10) | nothing: the connection rows and the memory lines are facts the player already has, so they carry no chip | none | `hubs/people-web.ts`, `hubs/people-memory.ts` |
+| The People cockpit (R4-U8) | nothing: its four tiles (Closest, Drifting, Owed to you, Estranged) and its badges are facts the player already has, so they carry no chip | none | `hubs/cockpit.ts`, `hubs/people.ts` |
 
 The words and ranges come from `know` (`knowledge/contract.ts`): `$4.2M` when the reading is sharp, `about $4M`, `$3M to $5M`, or only a
 word. The chip is three dots (a rough guess, a fair estimate, a good estimate, close to exact) and "as of 2023" once a reading is 2 or more
@@ -70,7 +76,9 @@ Left for later (listed here so nobody thinks it was forgotten):
   and the vote shows a word (or a percent with the Business talent) and no chip.
 - The valuation sites that still print the truth: the Annual Report, events and offers that name a valuation, the deep-tech and game studio
   statements, the cockpit charts, the Exit tile in `hubs/company.ts` and the "group worth about" line of the form screen.
-- Company Watch, politics polls, people sheets and what a rival sees of the player (H.5, H.7, H.9, H.10) are other items.
+- Company Watch, politics polls and what a rival sees of the player (H.9, H.10) are other items.
+- The dating candidate and the adoption candidate screens (`love.ts`) print Looks and Smarts exactly. H.5 and H.7 do not name them, so a
+  candidate for a date or an adoption is still read in full.
 
 ## The market rule
 
@@ -79,6 +87,37 @@ rule is "exact numbers for the player's own industry's markets", read literally:
 player has a company in. What fogs is a market of an industry the player has no company in (a screen that shows one passes `industry`), and
 the internals of a rival everywhere: quality, technology and product-line quality. Narrowing the rule to the countries where the company
 sells, or widening it, is an edit to that function and to nothing else.
+
+## People and hired staff
+
+The profile, the rows under it, the hired-staff sheet and the CEO reads sit behind one build flag, `peopleProfile` (R4, X8), and Realistic.
+Exact, and Realistic with the flag off, print v5.2.0 byte for byte (`test/people-ui-golden.test.ts` holds the rows). The flag gates the
+profile, the staff and CEO reads and the cockpit tiles together, and it applies to every life, stamped by the social flag or not.
+`usesProfile(p)` of `people-fog.ts` is the one gate of the profile: the flag, Realistic, and a living person who is not a pet. The dead and
+pets keep the old sheet.
+
+- **Exposure.** `exposureOf(p)` in `people-fog.ts` is `min(1, 0.1 + 0.6 [lives with you] + 0.4 min(1, years known / 8) + 0.3 relationship / 100)`.
+  It is a pure number, nothing is saved, and an heir has the exposure the new relationships earn. Knowledge's `exp` option turns it into a
+  passive sd of `sd0 x (1 - 0.4 exposure)`. A hired staff member or a CEO has `min(1, years / 3)` (`staffExposure` in `leader-fog.ts`).
+  Only those two files pass `exp:` to `know()` (`test/knowledge-unwired.test.ts`).
+- **Close.** `isClose(p)` is relationship 35 or more, or living with you. It stays the gate of cash on hand and of an NPC's career detail.
+  A stranger's cash reads `Private` until they are close or the player has paid for a read of it.
+- **Traits.** `traitsShown(p)` names the first trait word at exposure .30 and the second at .60, in array order. The rest read "Not clear yet".
+  A hired staff member's trait is named after a year in the job or at once after a background check at the hire.
+- **Personality.** At most 6 of the 15 personality stats are words (a cap of `PEOPLE_CAPS`), in the order of a hash of the person and the
+  stat; the rest is one unknown row.
+- **Look closer.** One group `look.person` per living person who is not a pet, at most 5 keys (`PEOPLE_CAPS.lookKeys`: smarts, health,
+  mood, cash, and skill when the person has an NPC life), the private investigator only, priced by scope and the person's country and never
+  by the player's cash. Net worth is a passive read and is not for sale.
+- **Connections and memories.** At most 6 connection rows and 3 memory lines (`PEOPLE_CAPS`). They are facts and not estimates: a spouse by
+  name, a count of kids, a job at your company, a debt, a cut-off, and, on a life the social flag stamped, what the person remembers.
+- **The Palette.** The index holds one Look closer for every living person who is not a pet. They tie on tier, depth and label, so the
+  Look closer entries come in the order of the people list, and a query shows 30 of them; the name of a person finds the person before their
+  Look closer (`test/people-ui-acceptance.test.ts`, case l). Nothing ranks one person's Look closer above another's.
+- **Forgetting.** A researched person or staff member who left is forgotten by the yearly knowledge step, at most 12 rows a step
+  (`PEOPLE_CAPS.forgetPerStep`), and the whole research record keeps its 120 rows.
+- **Ceilings.** `PEOPLE_CAPS` is the row `people-reads` of `test/ceiling-list.json`: 100 times the data stats, kin links, purchases and
+  people leaves the rows of a profile, the Look closer keys and the research record inside their caps (`test/ceiling-kit.ts`).
 
 ## Keys and sd0
 
@@ -95,6 +134,15 @@ that number and no other.
 | Local market | .25 | `mkt.size`, `mkt.share`, `sec.*` |
 | Scorecard, odds, hint | .20 | `cmp.score`, `odds.*`, `hint.*` |
 | An interview | .18 | `cand.skill` |
+| A hire | .20 | `stf.skill` (the Business talent narrows it) |
+| A face | .12 | `ppl.looks` |
+| A body | .22 | `ppl.health` |
+| A mood | .28 | `ppl.happiness` |
+| A mind | .32 | `ppl.smarts` |
+| A craft | .30 | `ppl.skill` |
+| A character | .45 | `ppl.*`: traits, the fifteen personality stats and ambition |
+| A purse | .50 | `ppl.cash` |
+| A fortune | .55 | `ppl.worth` |
 
 The relevant talent narrows a passive read by 0.6 and a source by 0.8 (Main Character every key), and no read is sharper than its source's
 floor. A forecast (`scn`) is a signed amount read against the larger of the move's own value and a tenth of last year's sales, so a small
@@ -107,6 +155,13 @@ a truth `lookCloser` offers nothing and no purchase works. `cmp` and `cand` have
 candidate is read by the background check in the popup (`takeReading`, a fee of 3% of the role's local pay booked through the company, never
 the cash on hand), so there is nothing to sell at a Look closer row. A Knowledge test that wants synthetic truths for a kind the game owns
 holds them with `overrideKeyKind`, never `registerKeyKind` (a clash throws).
+
+R4 adds two owners, each registered at module load:
+
+- `ppl` in `people-fog.ts`: a label, the truth of a number by the person's key (`personKey`, among the Persons of `g.people`), a tier 1 scope in
+  the person's country, and `gone`, true when nobody has the key any more. Net worth has no truth there, so it is read in place and not sold.
+- `stf` in `business/leader-fog.ts`: a label and `gone` only (its truth is null). A hire or a CEO is read by the interview, the background check
+  and the years, so there is nothing to sell; `gone` is what lets the yearly step forget a hire who left.
 
 ## How to add a screen
 
@@ -189,5 +244,11 @@ the Look closer row (`ILLEGAL_CONFIRM`).
 | `test/fog-invest.test.ts`, `fog-valuation.test.ts` | swings and the analyst note, the private valuation and its appraisal |
 | `test/fog-hint-lens.test.ts` | the lens rule and `markBest` |
 | `test/fog-acceptance.test.ts` | the sweep on the merged tree: every screen has its chip or row in Realistic and none in Exact, a hire and a purchase from every source, three industries fuzzed in Realistic, the replay unchanged, these docs |
+| `test/people-ui-golden.test.ts` | Exact and Realistic with the flag off print the rows recorded at v5.2.0: the person sheet, the action rows, the staff sheets, the CEO lists, the cockpit |
+| `test/person-facts-ui.test.ts`, `test/people-facts.test.ts`, `test/people-web.test.ts`, `test/people-memory.test.ts` | the profile, its rows, the connections card and the memory lines |
+| `test/people-fog.test.ts`, `test/people-rows.test.ts` | exposure, the `ppl` owner, forgetting, the rows under a person and Look closer |
+| `test/fog-staff.test.ts`, `test/fog-leader.test.ts` | the hired-staff sheet, the CEO shortlist, rows and letter, and the `stf` owner |
+| `test/people-cockpit.test.ts` | the People tiles and badges |
+| `test/people-ui-acceptance.test.ts` | the sweep of the track: chips and Look closer in Realistic and none in Exact, every screen pure, the owners, a purchase and two checks, three played lives replayed in Exact, old saves and hostile records, these docs, the money team's claimed versus true, the money scan, the Palette |
 | `test/foresight-scan.test.ts` | only `invest/instinct.ts` reads a later year; the swing reads and the analyst note do not |
 | `test/golden-digest.test.ts`, `kernel-parity.test.ts`, `replay-purity.test.ts`, `old-saves.test.ts` | fog moves no digest, no parity fixture and no old save |

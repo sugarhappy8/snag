@@ -16,7 +16,7 @@ import { readJob, readPast } from './nepo-job'
 import { driveOf, outlookFor, outlookText } from './nepo-model'
 import { materialize, pseudoId, planHire, planProposal, hireRelative, rollOutsider, CUSHY_PAY_MULT, type HireOpts, type Outsider } from './nepo-actions'
 import { familyOf, hireBlock, isRelative, kinWord, readFamily } from './nepo-state'
-import { popupRoom, usePopup } from './nepo-year'
+import { popupRoom, useChoicePopup } from './nepo-year'
 import { bizOf, businessAssets, findBusiness, stakeValue, type BizState } from './state'
 import { clampN, money, num, rec, str } from './util'
 
@@ -372,14 +372,14 @@ function decline(g: GameState, a: Asset, b: BizState, k: Asker, fair: boolean): 
     real.data.nepoSelfMade = g.year
     addEntitlement(real, -8)
     real.stats.smarts = clampN(real.stats.smarts + 2, 0, 100)
-    addRelationship(real, fair ? 4 : 2)
+    addRelationship(g, real, fair ? 4 : 2)
     if (real.age >= 18 && !/\bat\b/.test(real.occupation)) real.occupation = randomOccupation(g, Math.max(23, real.age))
     notePerson(real, `Turned down for a job at ${a.name}; earned ${real.gender === 'male' ? 'his' : 'her'} own way instead.`)
     log(g, `${real.firstName} found ${real.gender === 'male' ? 'his' : 'her'} own way after I said no.`, 'good')
     return `${he} found something on ${real.gender === 'male' ? 'his' : 'her'} own, and respects you for it.`
   }
   const ent = entitlement(real)
-  addRelationship(real, -Math.round((fair ? 3 : 6 + ent / 8) + (trait(real, 'ambitious') ? 3 : 0)))
+  addRelationship(g, real, -Math.round((fair ? 3 : 6 + ent / 8) + (trait(real, 'ambitious') ? 3 : 0)))
   if (ent >= 50 || !fair) real.data.nepoGrudge = g.year
   void b
   return fair ? `${he} took it fairly well.` : `${he} took it badly.`
@@ -460,7 +460,7 @@ export function askRound(g: GameState): void {
   if (g.year - fam.askYear < 2) return
   const askers = rollAskers(g, top.b)
   if (askers.length === 0) return
-  if (!usePopup(g)) return
+  if (!useChoicePopup(g)) return
   familyOf(top.b).askYear = g.year
   for (const k of askers) {
     if (k.pid) {

@@ -8,7 +8,7 @@ and `src/game/kernel/ids.ts`.
 
 ## g.world
 
-- `GameState.world?: WorldState` is `{ v: 1, y?, ledger?, people?, firms?, homes?, holdings?, lod?, ...other shards }`. `v` is the
+- `GameState.world?: WorldState` is `{ v: 1, y?, ledger?, people?, firms?, homes?, holdings?, lod?, met?, ...other shards }`. `v` is the
   root's version, `y` the year the world last stepped (an integer from 1900 to 100000, or absent).
 - Absent reads as empty. `readWorld(g)` is pure and returns a frozen `{ v: 1 }` for an absent, garbage or wrong-version `g.world`, so
   a save from before R2 needs no migration. `ensureWorld(g)` is the writer: it creates `{ v: 1 }` and drops garbage on the first
@@ -22,6 +22,9 @@ and `src/game/kernel/ids.ts`.
 - The shards of R2: `ledger` (the books, `kernel/ledger.ts`), `people`, `firms`, `homes`, `holdings` and `lod`. The module registry
   of the Kernel track adds `facts` (the facts the bus recorded, at most 400, `world/facts.ts`); it joins the hub with one line.
   R3 adds `frontier` (how far the world's research is ahead of the calendar path, `world/frontier.ts`, see "The frontier" below).
+  R4 adds `met` (who the player has met, `world/met.ts`, see "The Met store" below), `edges` (what people feel about each other and
+  remember, `world/edges.ts`) and `social` (the stamp of a life that plays the social track, `world/social.ts`); see "The edge store and
+  the social stamp" below.
 - A shard is written by replacing its root (`ensureWorld(g).people = { ...next }`, or `commitShard`), never by editing it in place,
   because the save layer shares each shard root between drafts, frozen. The one exception is `ledger`, which every booking edits in
   place and which the save layer therefore treats as a core slice. Every writer has a test that runs it on a state whose shard roots
@@ -80,6 +83,8 @@ duplicate row and drop a bad one before the check could see it. It checks:
 - the three indexes and the holdings table: a v1 shard, a list of valid rows, one row for an id, at most the shard's cap of rows, and
   every asset in the holdings summing to 1 within 1e-6;
 - the frontier (R3): a v1 shard of known fields, every row valid and in its caps, no lead over 12 years and no lead on an AI capability;
+- the Met shard (R4), read raw: every key a sid (or a legacy person id on a tombstone), every field in its range, at most 400 records and
+  200 tombstones, keys ascending, a living Person whose strict sid has a record, and no sid on a child, stepchild or grandchild;
 - the people of the game: unique ids and at most one living spouse;
 - the index against the records, only when the world was stamped this year (or `live: true`): a row stamped with this year names a
   record that exists, there are no more fresh rows than the index may hold, and every held asset is in the firms or the homes index.
@@ -96,14 +101,39 @@ duplicate row and drop a bad one before the check could see it. It checks:
   cap, in sorted id order, once a year. Protected means an obligation exists (a person of `g.people`, the owner of an old NPC firm, a
   holder in the table, a company or home whose record still exists, the player): a protected row is never let go by idleness or by
   the cap. The rows that survive depend only on the set of names, never on the order they came in.
+- The Met store follows the same rules (`world/met-ops.ts`, R4-S7; the full note is in `docs/PEOPLE.md`). `lodSweep` calls `sweepMet`
+  inside its year stamp: a record idle for the same five years (`s < year - 5`) is dropped and its account folded into
+  `pool:hh:<the person's own country>`, or, when only its own stake holds it (a flag, an obligation, a grudge of 20 or more), turned into a
+  tombstone that keeps the obligation; a record held by a Person of `g.people`, a holder in the table or a registered protector stays as
+  it is. A tombstone is let go only when nothing holds it and it is 20 years old. `touchMet` at 400 records lets go the lowest ranked
+  unprotected one by `[protected, salience, recency, key]` and returns false when every record is held, so the 400 that stay depend only
+  on the set of names. `lodSweep` counts the records that left in `demoted`, and a life with no `met` key writes nothing.
 
 ## The budget
 
-- A shard is bounded by its own reader (the caps above and the ledger's), and the whole world by `WORLD_NODE_CAP`, 40,000 nodes:
-  `normalizeWorld` drops the largest shards first, ties by name, until it fits.
-- The budget for a long life (`WORLD_BUDGET` in `world/budget.ts`): 25,000 nodes, 450,000 bytes of JSON and a world step of 60 ms.
-  The 50-year probe in `test/world-budget.test.ts` asserts the nodes and bytes, and asserts the step at 240 ms so a loaded machine
-  does not flake. The ledger's own part is at most 9,000 nodes and 600 flow rows.
+- A shard is bounded by its own reader (the caps above and the ledger's), and the whole world by `WORLD_NODE_CAP`, 80,000 nodes
+  (40,000 until R4, which passes that by itself: the arithmetic is written next to the constant in `world/caps.ts`). Over the cap
+  `normalizeWorld` drops whole shards in a fixed order, on a load, a restore and the settle step of live play alike, and stops as soon
+  as the world fits:
+  1. the indexes and the news first, `facts`, `frontier`, `lod`, `people`, `firms` and `homes` (`WORLD_DROP_FIRST`): the next world
+     step rebuilds the three indexes from the records they list, and the others are counters, a short history and a bounded field table;
+  2. then every other shard, one of a later release or a test included;
+  3. never, while any shard of the other two classes can still go, `ledger`, `holdings`, `met`, `edges` and `social`
+     (`WORLD_KEEP_LAST`): the books, who owns what, who the player has met and what people owe and remember. `met` arrives with
+     R4-S4; `edges` and `social` are the Edges track's. The order already names all three, so the cap can never take their debts and
+     memories with it.
+
+  Inside a class the largest shard goes first, ties by name, so the result depends on the sizes and the names and never on the order
+  the keys came in. The order is the pure function `overCapDrops` in `world/state.ts`.
+- What each release may add, in nodes, worst case (`WORLD_ALLOTMENT`): R4 about 29,000, R5 6,000 more, R6 6,000 more, on top of the
+  about 19,000 of the shards that exist in v5.2.0. The sum, about 59,000, leaves a quarter of the cap free. A release that needs more
+  raises the cap and its row in the same commit.
+- The budget for a long life (`WORLD_BUDGET` in `world/budget.ts`): 55,000 nodes, 800,000 bytes of JSON and a world step of 60 ms.
+  The nodes and bytes are the larger of two numbers: the starting figures, and the measurement of the worst case (every list at its
+  cap at once, `met` and `edges` at theirs: about 45,600 nodes and 443,000 bytes when R4-P2 measured it) plus 15%. The test pins the
+  relation, so a change that grows the worst case past it has to raise the budget on purpose. The 50-year probe in
+  `test/world-budget.test.ts` asserts the nodes and bytes, and asserts the step at 240 ms so a loaded machine does not flake. The
+  ledger's own part is at most 9,000 nodes and 600 flow rows.
 - `worldBudget(g)` is pure and walks the whole world: per-shard nodes, the total, the bytes and a line for every breach. It is for
   tests, dev tools and the platform probe, never for a tap. `timed(label, fn)` adds the time of `fn` to a table that is never saved
   and never read by the simulation; `budgetReport()` and `resetBudgetReport()` read and empty it.
@@ -135,16 +165,30 @@ dead player's account is folded, so the books still balance, and every shard of 
 that went in the same year (the dead player, a company the estate took) go back to last year, so no row says "seen this year" for a
 record the heir does not have.
 
+On a life the social flag stamps (v5.3.0) the hand-over also carries what the family felt and owed, and nothing else changes in the shards
+(`docs/KIN.md`, sections 11 to 15). The Met store, the edges and the stamp reach the heir by clone, and the same call then does, in this
+order: the late player's debts to people are paid from the estate, oldest first, and every debt edge that was listed is closed; the estate is
+closed; the character becomes the heir; the claims people owed the late player pass to the heir at the will's share; the edges of the people
+who stay cross to the heir through `heirEdges` (trust and respect at half, resentment at 0.6, a direct kin's feeling the blend of the old
+number and the new dice) and every edge that ended at the dead ego goes; and the account of a heir with a sid is folded into the player's
+account, a relabel and no flow. The relatives the will cut out quarrel with the ones it favored, as edges between two NPCs, at most 3 for a
+person and 36 in a reading. The Met names are the same before and after, so a person met is the same person in every generation
+(`test/life-acceptance.test.ts`: 120 years, three lives, two hand-overs or more). An unstamped life, a v5.2.0 save and every heir of one get
+the old statements and write none of it.
+
 ## Hostile loads
 
 The save loader (`isLoadableGame`) bounds a save by 500,000 JSON nodes and does not look inside `g.world`; every reader normalizes.
 So a hostile `world` is harmless in three steps: a reader never trusts what it reads (`worldShard`, `peekLedger` and each shard's
 normalizer return a valid shard for any input, and a valid input comes back as itself); the first write replaces a garbage root
-(`ensureWorld`); and the first world step replaces a world that holds a key the game does not know or more than 40,000 nodes with
-what `normalizeWorld` makes of it. `test/world-acceptance.test.ts` loads twelve of them into the oldest fixture (a number, a string,
+(`ensureWorld`); and the first world step replaces a world that holds a key the game does not know or more than 80,000 nodes with
+what `normalizeWorld` makes of it. `test/world-acceptance.test.ts` loads sixteen of them into the oldest fixture (a number, a string,
 an array, a future version, a ledger of 50,000 accounts, a people shard of 500 rows, balances of 1e300 and minus 1e300, a ledger
 whose identity is broken, holdings that sum to 7, an `lod` shard of strings, a `__proto__` key, an unknown shard that fills the
-save): each still loads, three years play, the world ends under 40,000 nodes with no unknown key, and the books hold.
+save, and four of R4 for `edges` and `social`: 20,000 edges, edges of 1e300 beside an unknown shard, a stamp with 40,000 mentor pairs,
+an edges string and a stamp list beside an unknown shard): each still loads, three years play, the world ends under the node cap with no
+unknown key, and the books hold. None of the sixteen is sized against the cap: the big ones are cut by their own reader or dropped by
+the rule for an unknown key.
 
 ## The frontier
 
@@ -240,6 +284,80 @@ All reads are pure: no write, no `g.rng`, the same number for the same source in
   size 1 by both sides and 5 port calls a year) holds every cap above and the state at 3,600 nodes, books no money and leaves `g.rng`
   and `g.nextId` alone; a rerun, a clone and a JSON reload give equal JSON; an heir keeps the shard; every old fixture, a life to 2026
   and a modern life with no company have no `frontier` key; twelve hostile shards load into the oldest fixture and stay bounded.
+
+## The Met store
+
+Since R4 (v5.3.0) `g.world.met` keeps who the player has met, or is bound to by a debt, a spouse, an heir, a company or a feud. The
+code is `world/met.ts` and the ceilings are `MET_CAPS` in `world/caps.ts`. The person, the sid and the latent identity behind a record
+are described in `docs/PEOPLE.md`; this section is the shard.
+
+- The shape is a plain object keyed by sid, with no `v` and no `y` (the version of the slice travels in `sv`). A key is a sid of the
+  strict grammar (`world/sid.ts`), or a legacy person id `p<digits>` when the value is a tombstone, so a debt outlives its Person.
+  Keys ascend in plain code-unit order (`a < b`, never `localeCompare`): the entity codec tests `prev < k`, and a shard that is not
+  in that order rides whole in the world chunk and `stats.unsortedEntities` names it.
+- A record is `{ f, l, g, b, c, k, a, y, s, w, fl, gr, ob, d?, r?, j? }`: first and last name (24 and 32 characters), gender (1 male),
+  born (1700..100000: wider than the rest on purpose, because a person is born before the life starts), country, which name was drawn
+  (0..8), the five axes (whole 0..100), first met, last seen and died (1900..100000), role weight (0..9), stake flags (0..63: 1 debt,
+  2 spouse, 4 heir, 8 company, 16 feud, 32 will), grudge (0..100) and obligation (-100..100). `r` (a role tag) and `j` (a job or firm
+  ref of 52 characters at most) are reserved for R6, sanitized and written by nobody in R4. A tombstone is `[year, grudge, obligation,
+  flags, first, last, gb]` with `gb = born * 2 + gender`, so waking one gives both back (`packGb`, `unpackGb`).
+- Absent until a writer runs. The writers are `touchMet`, `markMet`, `evictMet`, `tombstoneMet` and `sweepMet` of `world/met-ops.ts`;
+  nothing in a played life calls them in R4 except the yearly sweep, which does nothing for a life with no `met` key, so such a life has
+  none, and an old save loads with none. Reads (`readMet`, `metRecord`, `metTomb`, `metKinds`) are pure, draw nothing and write nothing.
+- Bounded by its reader. `normalizeMet` is total: any value in, a valid shard out, and a valid shard comes back as itself. It scans at
+  most 5,000 entries, cuts every field into its range and drops what cannot be read (a number that is not finite, axes that are not
+  five numbers, a key that is no sid, a tombstone of the wrong length, a record of more than 24 nodes), drops unknown keys, keeps 400
+  records and 200 tombstones (protected entries first: a flag, an obligation or a grudge of 20 held on the entry itself; then the
+  freshest; then by key, so the survivors depend only on the set of names) and returns the keys ascending. A record born in 1760
+  comes back as stored; one seen in 1850 is cut to 1900.
+- Worst case 10,401 nodes: 400 records of 22 (the record, 12 plain fields, the axes list with its five numbers, and `d`, `r`, `j`) +
+  200 tombstones of 8 + the map root, about 90,000 characters. `worldBudget` counts records and tombstones against the caps, as
+  stored, and `worldProblems` prints `metProblems` as "met: ..." lines. Over the world's node cap `met` is in the keep-last class.
+- One writer. `writeMet(g, next)` stores the cleaned shard by replacing the root, only when something changed, with keys ascending and
+  every unchanged entry kept by identity (so the save layer rewrites one chunk for one tap). It writes nothing when the shard is absent
+  and `next` is empty. What it stores is sealed (the root, each entry and the axes list are frozen), so a record is built new for each
+  change and never edited, and a read of a sealed root costs nothing.
+- Load order: the shard registers itself when `world/met.ts` loads, and `world/shards.ts` imports it, like `facts` and `frontier`.
+- Proven by `test/world-met.test.ts`: twelve hostile shards, the ranges, the cut, the order, the writer on a deep-frozen root, pure
+  reads, every fault of `metProblems`, and the shard at its caps inside the budget P2 set.
+- The acceptance, `test/registry-acceptance.test.ts` (R4-S11): a 120-year probe of one life through two hand-overs, with a scripted
+  caller that touches three slots a year, puts and clears stakes, leaves tombstones, makes a person every ten years, nudges the persona
+  and floods the store with 450 people twice. After every year the world has no problem, the books hold, the shard is inside its caps and
+  at most 10,401 nodes, every number is finite, no Person with a sid is a child, and every stake and debt the caller left is still there.
+  A rerun, a clone and a JSON reload of year 60, an heir and a Time Machine fork give the same Met keys and names (a fork differs only
+  in people met after its snapshot); a person owed in 2031 and let go comes back in 2040 with the same name; every fixture from before
+  v5.3.0 has no `met` key and no `persona.me` key, even after three played years, and a fixture of v5.3.0 or later loads and saves
+  again byte for byte; twelve hostile shards are played through the whole game, an heir included. The ceiling `met-caps` (40,000 touches,
+  20,000 tombstones asked for 200 places, a hostile shard of 40,000 entries) and its sister `persona-nudge` are in
+  `test/ceiling-list.json`, and `test/registry-money-scan.test.ts` holds the static rules: no dollar, no `g.rng`, no unlisted stream tag
+  in the registry files, and `Person.data.sid` written by two files only.
+
+## The edge store and the social stamp
+
+Since R4 (v5.3.0) a life that has the stamp keeps `g.world.edges`, who feels what about whom and what they remember, and
+`g.world.social`, the stamp itself. The model, the caps and the writer are described in `docs/SOCIAL.md`; this section is the two
+shards as the world sees them. The code is `world/edges.ts` (the model and the reader), `world/edge-memory.ts` (the 41 memory kinds),
+`world/edge-write.ts` (the writer), `world/social.ts` (the stamp) and `world/edges-slice.ts` (the save row); the ceilings are
+`EDGE_CAPS` in `world/caps.ts`.
+
+- `edges` is one keyed map, `'person:p12>person:p3'` to the edge, with no `v` and no `y` (the version of the slice travels in `sv`).
+  Keys ascend in plain code-unit order, like the Met store, for the entity codec. The same map holds the secrets under `secret:<n>`.
+  At most 1,200 edges, 8 memories an edge and 4,000 in all, 12 feuds, 40 debts, the dialogue store on 120 edges, 40 secrets.
+- `social` is `{ v: 1, on: 1, y, fy }` with an optional `ay` and at most three `[person ref, skill]` pairs in `ms`. A life that has it is
+  stamped; every other life, every v5.2.0 save and every heir of one has neither shard and plays as it did (X6).
+- Absent until a writer runs. Nothing in the game calls the writers in this task: `putEdge` and `remember` (`world/edge-write.ts`) and
+  `stampSocial` and `patchSocial` (`world/social.ts`) wait for R4-E7. An old save loads with neither key, and saves again byte for byte.
+- Bounded by their readers. `normalizeEdges` and `normalizeSocial` are total: any value in, a valid shard out (the stamp is dropped when
+  it is not a stamp), and a valid shard comes back as itself. `worldBudget` counts the map against its caps as stored, and
+  `worldProblems` prints `edgeProblems` and `socialProblems` as "edges: ..." and "social: ..." lines. Over the world's node cap both are
+  in the keep-last class, beside the books, the holdings and `met`.
+- `edges` is an entity slice (`world/edges-slice.ts`): it leaves the `world` chunk and takes eight chunks `e.edge.0` to `e.edge.7`, so
+  a tap that changes one edge writes one chunk (see "An entity record" in `docs/SAVE.md`). `social` is a derived row of the world chunk.
+- Load order: both shards register themselves when their files load, and `world/shards.ts` imports them, like `facts`, `frontier` and `met`.
+- Worst case 19,929 nodes for the map with its secrets and 5 to 16 for the stamp. The R4 allotment (`WORLD_ALLOTMENT`) counts the map
+  without a link kind and a call-in stamp on every edge (17,529 nodes with the secrets); the slice row and the world cap hold the larger one.
+- Proven by `test/world-edge-slice.test.ts` (the writer on a deep-frozen root, 100 times the caps, the codec, one chunk a tap, the
+  Time Machine, every fixture, forged chunks) and `test/world-social.test.ts`.
 
 ## How to add a shard
 

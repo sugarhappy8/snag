@@ -131,7 +131,7 @@ export function attemptInfluence(g: GameState, targetId: InfluenceTargetId, pers
     return
   }
   if (!succeeded) {
-    addRelationship(person, -2)
+    addRelationship(g, person, -2)
     log(g, `I paid for influence, but nobody found ${person.firstName} a job.`, 'bad')
     notice(g, 'No Favor Returned', `The go-between took ${formatMoney(cost)} and stopped returning calls. ${person.firstName} received nothing. Influence is never guaranteed.`, { emoji: '📵', tone: 'bad' })
     return
@@ -146,7 +146,7 @@ export function attemptInfluence(g: GameState, targetId: InfluenceTargetId, pers
   }
   // The cap bounds what this favor adds; it must never confiscate a wealthy relative's savings.
   personCash(g, person, Math.max(person.money, Math.min(1_000_000_000, Math.round(person.money + annual * .1))) - person.money, 'wage')
-  addRelationship(person, 8)
+  addRelationship(g, person, 8)
   count(g, 'bribesSucceeded')
   log(g, `A corrupt favor secured ${person.firstName} a job as ${title}.`, 'bad')
   notice(g, 'Favor Granted', `${person.firstName} was installed as ${title}, earning about ${formatMoney(annual)} a year. Nobody asks how they got it. Yet.`, { emoji: target.emoji, tone: 'neutral' })

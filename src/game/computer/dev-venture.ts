@@ -1368,7 +1368,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
     case 'cofounderOffer': {
       const p = g.people.find((x) => x.id === str(d.personId))
       if (choice !== 'accept' || !p) {
-        if (p) addRelationship(p, -randInt(g, 2, 6))
+        if (p) addRelationship(g, p, -randInt(g, 2, 6))
         say('Solo', 'You decided to keep going alone. Your friend said "no worries" in a tone that suggested worries.')
         return
       }
@@ -1378,7 +1378,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
       v.cofounder = str(d.name, p.firstName)
       v.quality = between(v.quality + randInt(g, 3, 7), 5, 100)
       if (v.stage === 'building') v.progress = between(v.progress + 25, 0, 100)
-      addRelationship(p, randInt(g, 6, 12))
+      addRelationship(g, p, randInt(g, 6, 12))
       done()
       log(g, `${p.firstName} joined ${name} as my co-founder.`, 'good')
       say('Co-Founders', `${p.firstName} is officially your co-founder. You celebrated with ${localPick(g, 'food') || 'pizza'} and a 40-slide pitch deck. You own ${Math.round(v.stake * 100)}% now.`, 'good')

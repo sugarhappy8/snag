@@ -694,13 +694,13 @@ export function hireCostars(c: CareerCtx<ActorState>, id: string): void {
   const co = people[randInt(g, 0, people.length - 1)]
   const conceited = co.traits.includes('arrogant') || co.traits.includes('manipulative')
   if (conceited && chance(g, 0.6)) {
-    addRelationship(co, -randInt(g, 5, 15))
+    addRelationship(g, co, -randInt(g, 5, 15))
     addStat(g, 'happiness', -4)
     careerLog(c, `I hung out with my co-star ${co.firstName}. It went badly.`, 'bad')
     careerSay(c, 'Co-Stars', `${fullName(co)} spent the evening talking about their trailer.`, '\u{1F465}', 'bad')
     return
   }
-  addRelationship(co, randInt(g, 8, 18))
+  addRelationship(g, co, randInt(g, 8, 18))
   p.buzz = Math.min(100, p.buzz + 3)
   addStat(g, 'happiness', 5)
   careerLog(c, `I hung out with my co-star ${co.firstName}.`)

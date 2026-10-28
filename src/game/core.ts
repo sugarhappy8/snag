@@ -1,5 +1,6 @@
 // Shared helpers every game module uses: stats, money, log, modals, people lookups.
 import { bookPlayer, roomFor, tokenSeen, type Why } from './kernel/ledger'
+import { applyRelationship, assignRelationship, notifyMirror, type RelKind } from './kernel/relations'
 import { noticeWeightFor, noticeWeightOf } from './notice-weights'
 import { chance, uid } from './rng'
 import type {
@@ -56,9 +57,22 @@ export function addPersonStat(p: Person, key: StatKey, delta: number): void {
   p.stats[key] = Math.round(clamp(p.stats[key] + delta))
 }
 
-export function addRelationship(p: Person, delta: number): void {
-  if (!Number.isFinite(p.relationship) || !Number.isFinite(delta)) return
-  p.relationship = Math.round(clamp(p.relationship + delta))
+/**
+ * The one way to move a relationship by an amount. The body is the v5.2.0 expression (kernel/relations.ts applyRelationship: nothing for a
+ * non-finite relationship or delta, else Math.round(clamp(p.relationship + delta))); what it changed goes to the mirror hook, which is
+ * unbound until R4-E7 (a stamped life only). `kind` is `decay` for the yearly drift; the default is the sign of the delta.
+ */
+export function addRelationship(g: GameState, p: Person, delta: number, kind?: RelKind): void {
+  const change = applyRelationship(p, delta, kind)
+  if (change !== null) notifyMirror(g, p, change)
+}
+
+/**
+ * The one way to set a relationship to a value: the old raw write `p.relationship = value`, verbatim (no clamp, no rounding), so a
+ * call site passes its old right-hand side unchanged and a randInt inside it draws in the same place.
+ */
+export function setRelationship(g: GameState, p: Person, value: number, kind?: RelKind): void {
+  notifyMirror(g, p, assignRelationship(p, value, kind))
 }
 
 // ---------------------------------------------------------------------------
@@ -837,11 +851,46 @@ export function parents(g: GameState, aliveOnly = true): Person[] {
   return peopleBy(g, ['parent', 'stepparent'], aliveOnly)
 }
 
-export function removePerson(g: GameState, id: string): void {
-  g.people = g.people.filter((p) => p.id !== id)
+/** What removePerson tells once a person has left the list: the game (already without them) and the person who left. */
+export type DepartureHook = (g: GameState, gone: Person) => void
+
+let departure: DepartureHook | null = null
+
+/**
+ * Binds what removePerson tells when someone leaves the list (R4 fix, rehearsal 2 item 4 cause B): kin.ts binds it, so the spouse and heir
+ * flags of the links a leaving anchor held end in the same call and not at the next year step. A hook and not an import, because kin.ts
+ * imports this file. A second call replaces the first. Unbound, a removal is the old filter and nothing else.
+ */
+export function bindDeparture(fn: DepartureHook): void {
+  departure = fn
 }
 
-/** Human label for a relation: "Mother", "Boyfriend", "Best Friend", "Dog"... */
+export function removePerson(g: GameState, id: string): void {
+  const gone = departure === null ? undefined : g.people.find((p) => p.id === id)
+  g.people = g.people.filter((p) => p.id !== id)
+  if (gone !== undefined && departure !== null) departure(g, gone)
+}
+
+/** What a relative who became a Person is called: lower-case letters, spaces and hyphens, 20 characters at most (`niece`, `sister-in-law`; KIN.md). */
+const KIN_WORD = /^[a-z][a-z -]{0,19}$/
+
+/**
+ * The kin word of a friend, with its first letter capitalized ("niece" reads "Niece"), or undefined for no word and for a value that is not one
+ * (R4-U9, X38). A nepo outsider has none: the cousin or in-law that business/nepo-actions.ts hires is a coworker with `data.kin` and a
+ * `data.nepoSeed` (since v1.7.0), and Befriend, Make Peace and the hand-over (which keeps the data) can make that person a friend on a life that
+ * was never stamped. Their `data.kin` is the nepo code's word for who they are to the firm, not a label for the people screens, and that life reads
+ * "Friend" as it did on v5.2.0. The Life track's kin (a niece made a Person, the late player's sibling who is now an uncle) never has a seed.
+ */
+function kinWord(p: Person): string | undefined {
+  const data: unknown = p.data
+  if (typeof data !== 'object' || data === null) return undefined
+  const d = data as Record<string, unknown>
+  if (typeof d.nepoSeed === 'string' && d.nepoSeed !== '') return undefined
+  const kin = d.kin
+  return typeof kin === 'string' && KIN_WORD.test(kin) ? kin.charAt(0).toUpperCase() + kin.slice(1) : undefined
+}
+
+/** Human label for a relation: "Mother", "Boyfriend", "Best Friend", "Dog"... A friend with a kin word reads as it ("Niece", "Sister-in-law"). */
 export function relationLabel(p: Person): string {
   const m = p.gender === 'male'
   switch (p.relation) {
@@ -864,7 +913,7 @@ export function relationLabel(p: Person): string {
     case 'grandchild':
       return m ? 'Grandson' : 'Granddaughter'
     case 'friend':
-      return 'Friend'
+      return kinWord(p) ?? 'Friend'
     case 'bestFriend':
       return 'Best Friend'
     case 'enemy':

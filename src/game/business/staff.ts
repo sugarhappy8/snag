@@ -9,6 +9,7 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
+import { socialOn } from '../world/social'
 import { bizWorth, fxValue, LASTING_YEARS, localEcon, localPay, staffNet, TALENT_HIRE, talentCeo, type Worth } from './economy'
 import { laborProtection, localOuting, severanceMonths, STAFF_TRAITS, traitOf, unionStrength } from './flavor'
 import { roleTitle, sameRole } from './era'
@@ -16,10 +17,12 @@ import { manageBlock, noCash, tooBusy } from './gate'
 import { familyStaffLine } from './nepo-staff-line'
 import { industryDef, type RoleDef } from './industries'
 import { sectorRoleBlurb } from './sector-data'
-import { CAND_MAX, candidateLabel, candidateLine, candidateRead, dropVet, hireFooter, hireLookRow, shortlistId, takeVet, validId, vetChoice, vetFee, type Vet } from './staff-fog'
+import { carryRead, shownLeader, skillText, staffFog, staffSkillRead, traitNamed, type HiredRead } from './leader-fog'
+import { CAND_MAX, candidateLabel, candidateLine, candidateRead, dropVet, hireFooter, hireLookRow, hiredRead, shortlistId, takeVet, validId, vetChoice, vetFee, type Vet } from './staff-fog'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
 import { clampN, markBest, money, num, rec, str, toJson } from './util'
 import { leadershipPower, leadershipSummary, LEADERSHIP } from './leadership'
+import { staffGone, staffHired, staffLoyaltyYear, staffRaised, staffYelled } from './staff-loyalty'
 
 /** Key people the company can use: more with more locations, never more than the roles it has. */
 export function maxKeyStaff(b: BizState): number {
@@ -166,8 +169,21 @@ function openShortlist(g: GameState, a: Asset, b: BizState, role: RoleDef, list:
   })
 }
 
+/**
+ * What the player read of the candidate picked from a shortlist, as the popup showed it (R4-U6), for the sheet of the new hire. Null in
+ * Exact, with the flag off, and for a pick that is not a candidate. Pure: it is taken before the settled shortlist forgets its checks.
+ */
+function readOfPick(g: GameState, d: Record<string, Json>, choice: string): HiredRead | null {
+  const i = /^c\d$/.test(choice) ? Number(choice.slice(1)) : -1
+  const id = validId(d.ck)
+  const list = Array.isArray(d.candidates) ? d.candidates : []
+  const c = i >= 0 && i < CAND_MAX ? asCandidate(list[i]) : null
+  return id !== null && c !== null ? hiredRead(g, id, i, c.skill) : null
+}
+
 const HIRE = defineScript('business.hire', (g, choice, data) => {
   const d = rec(data)
+  const carried = d ? readOfPick(g, d, choice) : null
   // A settled shortlist (hired, or nobody) forgets its background checks; the choice to check keeps them.
   if (d && choice !== 'vet') {
     const id = validId(d.ck)
@@ -220,6 +236,9 @@ const HIRE = defineScript('business.hire', (g, choice, data) => {
     years: 0,
   }
   b.staff.push(s)
+  if (carried) carryRead(g, a.id, s.id, carried)
+  // R4-E13: on a stamped life the hire is remembered (hired_me) on the edge staff:<id> > player; nothing otherwise
+  staffHired(g, s)
   count(g, 'businessHires')
   log(g, `I hired ${s.firstName} ${s.lastName} as ${s.role} at ${a.name}.`, 'good')
   notice(
@@ -350,6 +369,7 @@ function staffAction(a: Asset, id: string, key: string, label: string, emoji: st
 export function fireStaff(g: GameState, a: Asset, b: BizState, s: KeyStaff, why = 'fired'): void {
   const sev = Math.round((s.salary * severanceMonths(b.countryId)) / 12)
   b.staff = b.staff.filter((x) => x.id !== s.id)
+  staffGone(g, s)
   firmCash(g, b, -sev, 'payroll', a.id)
   b.yearCosts += sev
   b.morale = clampN(b.morale - 4, 0, 100)
@@ -366,6 +386,12 @@ export function fireStaff(g: GameState, a: Asset, b: BizState, s: KeyStaff, why 
   notice(g, 'Let Go', text, { emoji: '\u{1F4E6}' })
 }
 
+/** What the sheet prints for a hire's skill behind staffFog() (R4-U6): a range, or "not clear yet" when no read can be made. */
+function skillShown(g: GameState, a: Asset, s: KeyStaff): string {
+  const e = staffSkillRead(g, a.id, s)
+  return e === null ? 'not clear yet' : skillText(e, s.skill)
+}
+
 function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
   const id = s.id
   return {
@@ -373,14 +399,20 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
     id: `biz.staffMember.${a.id}.${id}`,
     label: `${s.firstName} ${s.lastName}`,
     emoji: s.gender === 'female' ? '\u{1F469}\u{200D}\u{1F4BC}' : '\u{1F468}\u{200D}\u{1F4BC}',
-    subtitle: `${s.role} · skill ${s.skill} · morale ${s.morale}%`,
+    subtitle: g => `${s.role} · skill ${staffFog() ? skillShown(g, a, s) : s.skill} · morale ${s.morale}%`,
     header: g => {
       const b = readBiz(g, a), live = b.staff.find(x => x.id === id)
       if (!live) return 'This leader no longer works here.'
-      const contribution = leadershipPower(b, live.focus) - leadershipPower({ ...b, staff: b.staff.filter(x => x.id !== id) }, live.focus)
+      // R4-U6: behind staffFog() the skill is a range that tightens with the years, the trait is named after a year or a check, and the
+      // contribution is worked out on the team as the player reads it (the middle of each range), so it no longer gives the truth away.
+      const fog = staffFog()
+      const team = fog ? { ...b, staff: b.staff.map(x => shownLeader(g, a.id, x)) } : b
+      const skillWords = fog ? skillShown(g, a, live) : `${live.skill}/100`
+      const traitWords = fog && !traitNamed(g, a.id, live) ? 'Trait not clear yet' : traitOf(live.trait).label
+      const contribution = leadershipPower(team, live.focus) - leadershipPower({ ...team, staff: team.staff.filter(x => x.id !== id) }, live.focus)
       const pct = (factor: number) => (100 * contribution * factor).toFixed(1)
       const impact = live.focus === 'sales' ? `+${pct(LEADERSHIP.sales)} percentage points of customer demand` : live.focus === 'finance' ? `−${pct(LEADERSHIP.overhead)} percentage points of operating overhead` : live.focus === 'ops' ? `+${pct(LEADERSHIP.capacity)} percentage points of capacity and −${pct(LEADERSHIP.unitCost)} of unit costs` : `+${(contribution * LEADERSHIP.quality).toFixed(1)} points toward the quality target`
-      return `${live.firstName} ${live.lastName}, ${live.age} · ${live.role}\nSkill ${live.skill}/100 · ${traitOf(live.trait).label} · Morale ${live.morale}% · ${formatMoney(live.salary)}/yr.\n${b.industry === 'bank' || b.industry === 'onlineBank' || b.industry === 'investmentFirm' ? 'Their specialty directly improves financial operations and the strength of private models.' : `Their current contribution: ${impact}.`} Training and morale improve their contribution.\n\n${leadershipSummary(b)}`
+      return `${live.firstName} ${live.lastName}, ${live.age} · ${live.role}\nSkill ${skillWords} · ${traitWords} · Morale ${live.morale}% · ${formatMoney(live.salary)}/yr.\n${b.industry === 'bank' || b.industry === 'onlineBank' || b.industry === 'investmentFirm' ? 'Their specialty directly improves financial operations and the strength of private models.' : `Their current contribution: ${impact}.`} Training and morale improve their contribution.\n\n${leadershipSummary(b)}`
     },
     children: (): MenuNode[] => [
       staffAction(a, id, 'compliment', 'Compliment', '\u{1F44F}', 'Tell them they are doing great', (g, _b, x) => {
@@ -392,6 +424,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
         if (!useYearAction(g, `biz.raise.${id}`, 1)) return tooBusy(g, `given ${x.firstName} a raise`)
         x.salary = Math.round(x.salary * 1.1)
         x.morale = clampN(x.morale + randInt(g, 12, 20), 0, 100)
+        staffRaised(g, x, 2)
         log(g, `I gave ${fullName(x)} a raise.`, 'good')
         notice(g, 'Raise', `${x.firstName} now earns ${formatMoney(x.salary)} a year and has stopped updating their résumé.`, { emoji: '\u{1F4B5}', tone: 'good' })
       }),
@@ -412,6 +445,7 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
         x.morale = clampN(x.morale - randInt(g, 15, 28), 0, 100)
         b.morale = clampN(b.morale - 3, 0, 100)
         addHidden(g, 'karma', -2)
+        staffYelled(g, x)
         const cur = findBusiness(g, a.id)
         if (!cur) return
         if (chance(g, 0.08 + laborProtection(b.countryId) * 0.08)) {
@@ -419,12 +453,14 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
           firmCash(g, b, -cost, 'legal', cur.id)
           b.yearCosts += cost
           b.staff = b.staff.filter((y) => y.id !== x.id)
+          staffGone(g, x)
           log(g, `${fullName(x)} sued ${cur.name} after I screamed at them.`, 'bad')
           notice(g, 'Lawsuit', `You yelled at ${x.firstName}, who recorded it, quit and sued for a hostile workplace. ${cur.name} settled for ${formatMoney(cost)}.`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
           return
         }
         if (x.morale < 25 && chance(g, 0.4)) {
           b.staff = b.staff.filter((y) => y.id !== x.id)
+          staffGone(g, x)
           log(g, `${fullName(x)} quit after I yelled at them.`, 'bad')
           notice(g, 'Quit', `${x.firstName} threw ${x.gender === 'female' ? 'her' : 'his'} badge on your desk and walked out. Rumor has it a competitor hired ${x.gender === 'female' ? 'her' : 'him'} by lunch.`, { emoji: '\u{1F6AA}', tone: 'bad' })
           return
@@ -594,6 +630,7 @@ function raiseAllAction(a: Asset): MenuAction {
       b.wageLevel = clampN(Math.round((b.wageLevel + 0.05) * 100) / 100, 0.7, 1.5)
       b.raiseYear = g.year
       b.morale = clampN(b.morale + randInt(g, 6, 12), 0, 100)
+      for (const k of b.staff) staffRaised(g, k, 1)
       log(g, `I gave everyone at ${cur.name} a raise.`, 'good')
       notice(g, 'Raises All Round', `Every employee at ${cur.name} got a 5% raise. The break room erupted in polite applause. Morale: ${b.morale}%.`, { emoji: '\u{1F4B0}', tone: 'good' })
     },
@@ -687,6 +724,8 @@ function payPolicyAction(a: Asset): MenuAction {
 
 /** Morale-driven quitting at year end (a key person with very low morale may leave). */
 export function staffTurnover(g: GameState, a: Asset, b: BizState): void {
+  // R4-E13: a stamped life reads the edge of each person (staff-loyalty.ts); any other life keeps the rule below to the draw.
+  if (socialOn(g)) return staffLoyaltyYear(g, a, b)
   for (const s of [...b.staff]) {
     if (s.morale >= 30 || !chance(g, 0.35)) continue
     b.staff = b.staff.filter((x) => x.id !== s.id)

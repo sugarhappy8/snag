@@ -313,7 +313,7 @@ const homeFront: Def<NoData> = {
         fx: {},
         then: (s, g) => {
           const partner = partnerOf(g)
-          if (partner) addRelationship(partner, -6 - (s.family >= 85 ? 10 : 0))
+          if (partner) addRelationship(g, partner, -6 - (s.family >= 85 ? 10 : 0))
         },
       }),
     },

@@ -23,6 +23,29 @@ you opened a menu) and for words (one more line in a pool must not change the ne
 - The tag `frontier` (R3, `world/frontier.ts` and `world/frontier-step.ts`) is drawn with `outcomeStream`, with the field, a one-letter
   kind (`d` for a disclosure's luck, `f` for a rival's follow) and the origin key as the id. A Time Machine jump re-rolls the
   unfinished year and keeps the finished ones. Its row in `STREAM_SLICES` is `driven`: no played life writes a disclosure yet.
+- The tag `soc.latent` (R4, `world/latent.ts`) is not a stream. `latent` reads `streamKey(familySeed, 'soc.latent', 0, sid)` with
+  `streamUnit(key, facet)`: a hash of the family and the sid, so there is no generator, no `g`, no row in `test/stream-tap.ts` and
+  nothing to carry. The facet numbers are append-only and pinned by `test/fixtures/latent-golden.json` (`docs/PEOPLE.md`).
+- The tag `life.path` (R4, `world/life-path.ts`) is drawn with `outcomeStream`: the id is the sid of a kin record for the death roll
+  of a year, and the sid plus `|ill` for the illness roll. `ageTo(g, base, year)` says from the family seed whether a record that is
+  not a Person is alive in a year and whether it is unwell. It is a pure read (no `g.rng`, no write), scans at most 130 years and, with
+  `since`, only the years after the last one seen. A Time Machine jump re-rolls the year it lands in and keeps the finished years.
+  Its row in `STREAM_SLICES` is `driven`: no played life holds a kin record until L4 steps with it. Facet 15 of the latent person
+  stays reserved and unused.
+- The tag `social` (R4, `society/acts.ts`) is drawn with `outcomeStream` in one place: `actRoll(g, act, key, year = g.year)` is
+  `outcomeStream(g, 'social', year, '<act>|<edge key>')`, and the roll of an act (`ActCtx.roll`) is that generator. The first value
+  decides whether a giver says yes to a favor and the second picks the log line, so a plan stays a pure function of the state. A Time
+  Machine jump re-rolls the year it lands in. `actRoll` does not look at the social stamp. Its row in `STREAM_SLICES` is `driven`: the
+  acts do nothing on the golden lives until the stamp is flipped (E16), so the test calls `actRoll` itself. Code outside `society/` that
+  needs the same luck (E13's staff loyalty) calls `outcomeStream` with the same literal tag. R4-E10b draws it for the ask of a loan
+  (`loan.ask|<edge key>`: the first value is the lender's yes, the second picks the log line) and for the answer "ask for more time"
+  of `A Lender Calls` (`lender.time|<debt key>`); the yearly service of the debts draws nothing from it. R4-E11 draws it once for each holder of each secret
+  and year (`leak|<secret id>|<holder ref>`: one value, the holder's roll against their odds); the spread of a leak and the odds draw nothing. R4-E12 draws it for the start of a feud (`feud.start|<edge key>`: one value against 0.10 + (s - 45) / 200), the rise of a feud (`feud.up|<edge key>`: one value against 0.25) and a talk to make peace (`feud.peace|<edge key>`: the yes, then the line); the rungs, the fee and the odds draw nothing.
+- The tag `soc.kin` (R4, `kin.ts`) is not a stream either. `keyedSpouse` reads `streamKey(worldSeed(g), 'soc.kin', year, anchorKey)` with
+  `streamUnit(key, facet)`: facet 0 says whether a kin spouse is of the opposite gender (92 percent) and facet 1 is the spouse's birth
+  year relative to the anchor's, a whole number from -4 to 4. Facets 2 to 15 are reserved and unused. There is no generator, no `g`,
+  no row in `test/stream-tap.ts`; the values are the frozen table `KIN_IDENTITY` and a kin record's face never changes, so a changed value
+  after R4 takes a `RECORD_REASON` and a row in `moved-tests.md` (`docs/KIN.md`).
 
 ## Words: `pickLine` and `pick`
 
@@ -65,6 +88,10 @@ you opened a menu) and for words (one more line in a pool must not change the ne
   same commit, and the tag must be a string literal so the table can see it. A leak outside the row is a bug, never a reason to
   widen the row. A stream that a module draws from but no played life reaches yet (`lod`, in `seededEntity`) is marked `driven`: the
   test calls the module itself in the tapped year, and `year: 0` says the module passes 0 instead of the calendar year.
+- `test/social-acceptance.test.ts` (R4-E15) plays three stamped lives for 120 years and continues each from year 60 by a `structuredClone`, by a JSON reload and by a
+  Time Machine jump. The first two end at the very JSON of the original. The jump compares the rolls of the stream `social`: the years that ended before the jump
+  keep theirs and the year it lands in and every one after it roll again. `test/social-money-scan.test.ts` forbids `Math.random` and any draw from `g.rng` in the
+  files of the track, so the stream is the only luck it has.
 - `test/replay-purity.test.ts` ages one life five more years four ways (a `structuredClone`, a JSON reload through `migrateSave`,
   a Time Machine snapshot loaded at the same age, and `saveGame` then `loadGame` on a memory backend, a chunked save v3) and
   compares the nine slice digests each year. A failure is a purity bug.

@@ -125,7 +125,7 @@ export function pickLine<T>(g: GameState, lines: readonly T[] & readonly string[
  * pickLine for a pool whose lines carry ${} holes (the codemod writes `site`, a number it derives from the file and the array text).
  * Such a pool has new text for every value of its holes, so hashing the lines would write one throwaway pool per call into the
  * 300-pool memory. The site is the memory key: 's' + 8 hex digits. It never notes a family (a number is not a family name, and
- * the 120-family memory is the composer's). A site that is not an integer in 0..0xffffffff falls back to the hash of the lines.
+ * the 160-family memory is the composer's). A site that is not an integer in 0..0xffffffff falls back to the hash of the lines.
  * One text draw, like pickLine.
  */
 export function pickSite<T>(g: GameState, lines: readonly T[] & readonly string[], site: number): T {

@@ -313,7 +313,7 @@ describe('hostile memory', () => {
       expect(textCursor(g), name).toEqual({ year: g.year, n: 40 })
       const mem = readTextMem(g)
       expect(Object.keys(mem.p).length, name).toBeLessThanOrEqual(300)
-      expect(Object.keys(mem.f).length, name).toBeLessThanOrEqual(120)
+      expect(Object.keys(mem.f).length, name).toBeLessThanOrEqual(160)
       expect(Object.keys(mem.r).length, name).toBeLessThanOrEqual(4)
       expect(mem, name).toEqual(g.flags.textMem)
       expect(JSON.stringify(g.flags.textMem).length, name).toBeLessThan(50_000)
@@ -328,7 +328,7 @@ describe('hostile memory', () => {
     expect(Object.keys(mem.p)).toHaveLength(300)
     expect(Object.keys(mem.p)[299]).toBe('fresh.pool')
     expect(Object.keys(mem.p)[298]).toBe('k4999')
-    expect(Object.keys(mem.f)).toHaveLength(120)
+    expect(Object.keys(mem.f)).toHaveLength(160)
   })
 
   it('8c: a ring in a hostile memory is read back clean', () => {

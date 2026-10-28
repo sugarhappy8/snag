@@ -11,6 +11,8 @@
 //             company's revenue): a band's width is its sd times the scale, so the truth as a scale would print itself. A delta kind with
 //             no scale cannot be fogged or bought
 //   revealedBy  the Effort research fields whose results sharpen the key (R3-H5 binds the sink that reads it)
+//   gone      true when the subject of the key has left (a person who is no longer in the book, a staff member who was let go): the
+//             yearly step forgets the stored rows of such a key, a few a year (module.ts forgetGone). A hook that throws reads as false
 //
 // The registry is a module-level table: it holds code, not the game, so nothing here is saved. Registering the same def twice is fine
 // (a reloaded module, a test file that registers again); a different def for a taken kind throws, so two owners can never fight over one
@@ -26,9 +28,10 @@ export interface KeyKind {
   scope?(g: GameState, key: string): Scope
   scale?(g: GameState, key: string): number | null
   revealedBy?(g: GameState, key: string): readonly string[]
+  gone?(g: GameState, key: string): boolean
 }
 
-const HOOKS = ['label', 'truth', 'scope', 'scale', 'revealedBy'] as const
+const HOOKS = ['label', 'truth', 'scope', 'scale', 'revealedBy', 'gone'] as const
 
 const registry = new Map<string, KeyKind>()
 
@@ -45,7 +48,7 @@ function checked(def: KeyKind): void {
   if (typeof def !== 'object' || def === null) throw new Error('registerKeyKind: the def is not an object')
   if (!isKindName(def.kind)) throw new Error(`registerKeyKind: ${String(def.kind)} cannot start a key`)
   if (typeof def.label !== 'function' || typeof def.truth !== 'function') throw new Error(`registerKeyKind: ${def.kind} needs a label and a truth`)
-  for (const h of ['scope', 'scale', 'revealedBy'] as const) {
+  for (const h of ['scope', 'scale', 'revealedBy', 'gone'] as const) {
     if (def[h] !== undefined && typeof def[h] !== 'function') throw new Error(`registerKeyKind: ${def.kind} ${h} is not a function`)
   }
 }

@@ -18,14 +18,14 @@ The aging seam is `ageUp`: the clock and the economy step run first, then one en
 | `world` | the world step W1 to W6: demography, labor, firms, housing, government, prices (empty) |
 | `frontier` | the world frontier's year (R3): world.frontier 10 fades public research and lets a rival follow your disclosures (`world/frontier-step.ts`) |
 | `society` | the society step (empty) |
-| `life` | history 10, digest 20, household 30, effort.you 35, relationships 40, sharedProjects 50, givingFund 60, background 70, royalty 80, royalCareers 90, health 100, education 110, professions 120 |
+| `life` | history 10, digest 20, household 30, effort.you 35, life.kin 37, relationships 40, sharedProjects 50, life.estates 55, givingFund 60, background 70, royalty 80, royalCareers 90, health 100, education 110, professions 120 |
 | `careers` | career 10, special 20 |
 | `government` | nation 10 |
 | `firms` | workshop 10, corruption 20, business 30, techWaves 40 |
-| `money` | development 10, investments 20, hedge 30, shops 40, computer 50, finance 60, wealth 70, familyUse 80, nepo 90, willFeuds 100 |
+| `money` | development 10, investments 20, hedge 30, shops 40, computer 50, finance 60, wealth 70, life.debts 75, familyUse 80, nepo 90, willFeuds 100 |
 | `assets` | immigration 10, assets 20, crime 30, underworld 40 |
 | `advisors` | advisors 10 |
-| `close` | milestones 10 |
+| `close` | world.edges 5, society.acts 6, milestones 10 |
 | `settle` | W7: world 10 (the world indexes and the invariant check; it runs after every module that books money, and before the year events and the player) |
 | `news` | the news detectors (empty) |
 
@@ -141,9 +141,11 @@ One line each. A track that adds a file here adds its line; `test/kernel-accepta
 - `src/game/kernel/ids.ts` - entity ids such as `person:p42` and `firm:a7`: `EntityRef`, `ref`, `isRef`, `parseRef`.
 - `src/game/kernel/ledger-types.ts` - the saved shape of the ledger, types only.
 - `src/game/kernel/ledger.ts` - the ledger: `book`, `bookMint`, `bookBurn`, `checkLedger`, `flowsOf`; every dollar is an entry between two accounts.
+- `src/game/kernel/person-ref.ts` - the one rule for a person's key: validSid, personSid, personKey, personEntity, heirUnsafe.
 - `src/game/kernel/ports.ts` - `definePort` and `portStatus`: how one domain calls another without importing it.
 - `src/game/kernel/reasons.ts` - the reason table: why money moved, who is on the other side, and the closed lists of mints and burns with their yearly caps.
 - `src/game/kernel/registry.ts` - the module registry: `ModuleDef`, `registerModule`, `YEARLY_PHASES` and the sorted lists.
+- `src/game/kernel/relations.ts` - the door for `Person.relationship`: `applyRelationship` and `assignRelationship` (the v5.2.0 write, to the digit), `RelKind`, and the mirror hook `bindMirror` and `notifyMirror`; a hook, not a port, and nothing binds it until the Edge mirror (R4-E7).
 - `src/game/kernel/shapes.ts` - shape tables for the save: `packShapes` writes a repeated object shape's key list once, `unpackShapes` reads it back under hard limits.
 - `src/game/kernel/slices.ts` - the slice table: every piece of saved state declares its home chunk, caps, `normalize` and `migrate`; `sliceOf`, `hasSlice`.
 - `src/game/kernel/spreads.ts` - the bid-ask spreads of the pools: `ask` and `bid`, so no pool trades at the mid price both ways.

@@ -965,7 +965,7 @@ const requestDischarge: MenuAction = {
       say(g, 'Discharge', `Your request was approved. You received an honorable discharge from the ${unit} after ${years} year${years === 1 ? '' : 's'} of service.`, '\u{1F396}\u{FE0F}', 'good')
     } else {
       const boss = getPerson(g, job.bossId)
-      if (boss) addRelationship(boss, -5)
+      if (boss) addRelationship(g, boss, -5)
       say(g, 'Discharge', pickLine(g, ['Your request was denied. Get back to work, soldier.', 'Your commanding officer laughed, tore up your request, and handed you a mop.']), '\u{1F4DD}', 'bad')
     }
   },
@@ -1016,11 +1016,11 @@ const reportMisconduct: MenuAction = {
     if (roll < 0.35) {
       say(g, 'Report Misconduct', `You filed a grievance against ${name}. It was ignored.`, '\u{1F6A9}')
     } else if (roll < 0.65) {
-      if (boss) addRelationship(boss, -20)
+      if (boss) addRelationship(g, boss, -20)
       say(g, 'Report Misconduct', `You filed a grievance against ${name}, who was formally reprimanded. ${boss ? `${boss.firstName} now glares at you constantly.` : ''}`, '\u{1F6A9}', 'good')
     } else if (roll < 0.85) {
       bump(job, -10)
-      if (boss) addRelationship(boss, -25)
+      if (boss) addRelationship(g, boss, -25)
       say(g, 'Report Misconduct', `Your grievance against ${name} backfired. You were assigned extra duties for "wasting command's time".`, '\u{1F6A9}', 'bad')
     } else {
       say(g, 'Report Misconduct', `Your grievance was upheld, and ${name} received a dishonorable discharge.`, '\u{1F6A9}', 'good')

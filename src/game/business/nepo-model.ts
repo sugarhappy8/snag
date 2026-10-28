@@ -14,25 +14,10 @@ import type { Person } from '../types'
 import { npcEducationSkill } from '../npc-state'
 import { npcHasMainCharacter } from '../talents'
 import { ageCeiling } from '../mastery'
+import { DRIVE_TRAITS } from '../world/axes'
 import { MAX_RANK, seedKey, type FamilyJob } from './nepo-job'
 import { rankDef } from './nepo-roles'
 import { clampN } from './util'
-
-const DRIVE_TRAITS: Record<string, number> = {
-  ambitious: 12,
-  serious: 6,
-  sporty: 4,
-  nerdy: 4,
-  loyal: 3,
-  honest: 2,
-  optimistic: 3,
-  calm: 2,
-  lazy: -22,
-  rebellious: -4,
-  arrogant: -3,
-  anxious: -3,
-  dramatic: -2,
-}
 
 /** How hard this person works, 0-100 (stable for a person). */
 export function driveOf(p: Person): number {

@@ -10,6 +10,7 @@ import { catchOdds, crookedSkim, yearlyAdvisors } from '../src/game/advisors/yea
 import { bindMoneyContext, formatMoney, netWorth } from '../src/game/core'
 import { investingBlocked } from '../src/game/history/markets'
 import { buySecurity, investmentHoldings, investmentListing, managedBook, yearlyInvestments } from '../src/game/investments'
+import { yearlyEntries } from '../src/game/kernel/registry'
 import { nextRandom } from '../src/game/rng'
 import type { Asset, GameState, Json, NoticeModal } from '../src/game/types'
 import { client, coinHolding, madeUpStock, own, warp, withTeam } from './advisors-kit'
@@ -131,7 +132,14 @@ describe('the hook', () => {
     const i = names.indexOf('advisors')
     expect(i).toBeGreaterThan(-1)
     expect(names[i - 1]).toBe('underworld')
-    expect(names[i + 1]).toBe('milestones')
+    // R4's edge step (world.edges, close phase, order 5) runs between the two: whatever sits there is a close step ahead of the milestones' order 10
+    const m = names.indexOf('milestones')
+    expect(m).toBeGreaterThan(i)
+    expect(names.slice(i + 1, m)).toContain('world.edges')
+    for (const e of yearlyEntries('aging').slice(i + 1, m)) {
+      expect(e.phase, e.id).toBe('close')
+      expect(e.order, e.id).toBeLessThan(10)
+    }
     for (const before of ['investments', 'finance', 'assets']) expect(names.indexOf(before)).toBeLessThan(i)
   })
 

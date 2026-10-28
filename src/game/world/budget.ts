@@ -11,11 +11,19 @@
 // function of the game; this file only measures it. No luck is drawn here either.
 import { LEDGER_CAPS } from '../kernel/ledger'
 import type { GameState } from '../types'
-import { FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS } from './caps'
+import { EDGE_CAPS, FRONTIER_CAPS, HOLDING_ROWS_CAP, LOD_CAPS, MET_CAPS } from './caps'
+import { isSecretKey } from './edges'
+import { SOCIAL_MS_MAX } from './social'
 import { readWorld } from './state'
 
-/** What the world may cost: nodes and bytes of g.world after a long life, and the milliseconds one world step is meant to take. */
-export const WORLD_BUDGET = { nodes: 25_000, bytes: 450_000, stepMs: 60 } as const
+/**
+ * What the world may cost: nodes and bytes of g.world after a long life, and the milliseconds one world step is meant to take.
+ * R4-P2 raised the nodes from 25,000 to 55,000 and the bytes from 450,000 to 800,000 (cross-check X47). The measurement behind them
+ * (test/world-budget.test.ts, every list at its cap at once, `met` and `edges` included): about 45,600 nodes and 443,000 bytes, and
+ * the budget is the larger of the starting numbers and that measurement plus 15% (52,500 nodes, 510,000 bytes), so the starting
+ * numbers stand. The hard ceiling is WORLD_NODE_CAP in world/caps.ts, and the split by release is WORLD_ALLOTMENT beside it.
+ */
+export const WORLD_BUDGET = { nodes: 55_000, bytes: 800_000, stepMs: 60 } as const
 
 export interface WorldBudget {
   /** Nodes of each shard of the stored world, by name (the root's own `v` and `y` are not shards). */
@@ -74,6 +82,47 @@ function capsOf(name: string, shard: unknown): [string, number, number][] {
       return [['rows', sizeOf(shard.rows), LOD_CAPS.homes]]
     case 'holdings':
       return [['rows', sizeOf(shard.rows), HOLDING_ROWS_CAP]]
+    case 'met': {
+      // A tombstone is an array, a record is not: counted as stored, so a shard written around its reader shows.
+      let tombs = 0
+      for (const v of Object.values(shard)) if (Array.isArray(v)) tombs++
+      return [
+        ['records', sizeOf(shard) - tombs, MET_CAPS.records],
+        ['tombstones', tombs, MET_CAPS.tombs],
+      ]
+    }
+    case 'edges': {
+      // Counted as stored, so a map written around its reader shows. A secret is not an edge; the dialogue store is an `n` or a `d` that is not empty.
+      let edges = 0
+      let secrets = 0
+      let memories = 0
+      let feuds = 0
+      let debts = 0
+      let talk = 0
+      for (const key of Object.keys(shard)) {
+        if (isSecretKey(key)) {
+          secrets++
+          continue
+        }
+        edges++
+        const e = shard[key]
+        if (!isPlain(e)) continue
+        if (Array.isArray(e.m)) memories += e.m.length
+        if (e.q !== undefined) feuds++
+        if (e.dv !== undefined) debts++
+        if ((Array.isArray(e.n) && e.n.length > 0) || (Array.isArray(e.d) && e.d.length > 0)) talk++
+      }
+      return [
+        ['edges', edges, EDGE_CAPS.edges],
+        ['secrets', secrets, EDGE_CAPS.secrets],
+        ['memories', memories, EDGE_CAPS.memTotal],
+        ['feuds', feuds, EDGE_CAPS.feuds],
+        ['debts', debts, EDGE_CAPS.debts],
+        ['dialogue edges', talk, EDGE_CAPS.talkEdges],
+      ]
+    }
+    case 'social':
+      return [['pairs', sizeOf(shard.ms), SOCIAL_MS_MAX]]
     case 'frontier': {
       const recs = isPlain(shard.f) ? Object.values(shard.f) : []
       let rows = 0

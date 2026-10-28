@@ -3,8 +3,12 @@
 // time it is tried, and a place in the will (or a smaller share) is a promise on your estate. None
 // of it creates money, and trust only comes back by a bounded amount.
 import { addRelationship, addStat, canAfford, clamp, count, getPerson, log, notice, pronouns } from '../core'
+import { flagOn } from '../flags'
+import { isExact } from '../knowledge/contract'
 import { chance, randInt } from '../rng'
+import { reconcileOdds } from '../society/contract'
 import type { GameState, MenuNode, Person } from '../types'
+import { remember } from '../world/edge-write'
 import { entitlement } from './wealth-core'
 import { addHeir, changeWill, reconcile } from './will-act'
 import {
@@ -32,12 +36,20 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`
 }
 
+/**
+ * The person profile exists (R4-U5): the build flag is on and the player reads estimates. The same switch as peopleFog() of
+ * people-fog.ts, which this file may not import (events->life is a counted pair of the layer ratchet), so it is gated here; a case
+ * in test/people-rows.test.ts holds the two equal for the four pairs of flag and mode.
+ */
+const fogged = (): boolean => flagOn('peopleProfile') && !isExact()
+
 function statusLine(g: GameState, p: Person): string {
   const w = readWl(g, p)
   const bits: string[] = []
   if (w.estr) bits.push(`Estranged since ${w.estrY}`)
   if (w.known) {
-    bits.push(`${angerLabel(w.anger)} (${w.anger}/100)`)
+    // The word stays; the figure behind it is theirs, and a profile does not print what you cannot read.
+    bits.push(fogged() ? angerLabel(w.anger) : `${angerLabel(w.anger)} (${w.anger}/100)`)
     const how = HOW_TEXT[(w.how as Learn) in HOW_TEXT ? (w.how as Learn) : 'external']
     bits.push(`knew by ${how}${w.knownY > 0 ? ` in ${w.knownY}` : ''}`)
   } else if (w.cut) {
@@ -79,7 +91,7 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
   }
 
   const known = w.known
-  const odds = peaceOdds(g, p)
+  const odds = talkOdds(g, p)
   nodes.push({
     type: 'action',
     id: 'will.peace',
@@ -208,11 +220,22 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
   return nodes
 }
 
+/**
+ * The odds that a heart-to-heart gets through, as the row shows them and the roll uses them: the will's own (`peaceOdds`) and, on a stamped
+ * life, what the society side adds for the obligation the person owes (R4-E11, `reconcileOdds` through the contract door), held between
+ * 0.05 and 0.85. With no obligation, or on a life that is not stamped, the addition is 0 and the odds are `peaceOdds` to the digit.
+ */
+function talkOdds(g: GameState, p: Person): number {
+  const base = peaceOdds(g, p)
+  const extra = reconcileOdds(g, p)
+  return extra > 0 ? clamp(base + extra, 0.05, 0.85) : base
+}
+
 function heartToHeart(g: GameState, p: Person): void {
   const w = readWl(g, p)
   if (w.talkY === g.year) return
   if (w.estr && w.anger > 55) return
-  const odds = peaceOdds(g, p)
+  const odds = talkOdds(g, p)
   const t = temper(p)
   updateWl(g, p, (x) => {
     x.talkY = g.year
@@ -225,7 +248,8 @@ function heartToHeart(g: GameState, p: Person): void {
       y.anger -= relief
       y.hard = Math.max(0, y.hard - 1)
     })
-    addRelationship(p, Math.min(4, 1 + Math.round(relief / 10)))
+    addRelationship(g, p, Math.min(4, 1 + Math.round(relief / 10)))
+    remember(g, p, 'olive_branch', { w: w.estr ? 3 : 2, by: 'ego' })
     log(g, `I had an honest talk with ${p.firstName} about my will.`, 'good')
     if (w.estr) reconcile(g, p)
     const left = readWl(g, p)
@@ -238,7 +262,7 @@ function heartToHeart(g: GameState, p: Person): void {
       y.anger += bump
     })
   }
-  addRelationship(p, -1)
+  addRelationship(g, p, -1)
   log(g, `I tried to talk to ${p.firstName} about my will. It didn't land.`)
   notice(g, 'The Talk', `${p.firstName} heard you out and shook ${x.his} head. "Sorry isn't a share." Maybe next year.`, { emoji: '\u{1F54A}\u{FE0F}' })
 }
@@ -253,7 +277,8 @@ function explainReasons(g: GameState, p: Person): void {
     x.anger -= relief
     x.explained = 'kind'
   })
-  addRelationship(p, 2)
+  addRelationship(g, p, 2)
+  remember(g, p, 'told_gently', { w: 2, by: 'ego' })
   addStat(g, 'happiness', -1)
   log(g, `I explained my will to ${p.firstName}.`)
   const left = readWl(g, p)

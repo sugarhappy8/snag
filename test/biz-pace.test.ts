@@ -15,7 +15,7 @@ import { ASK_FAMILIES } from '../src/game/events/ask-families'
 import { EVENT_LIBRARY, eventPaceFamily } from '../src/game/events'
 import { KIT_FAMILIES } from '../src/game/special/kit/families'
 import { readTextMem } from '../src/game/text/memory'
-import { PACE, notePopup, paceKey, withPaceOff } from '../src/game/text/pace'
+import { KIN_FAMILIES, PACE, notePopup, paceKey, withPaceOff } from '../src/game/text/pace'
 import type { Asset, GameState } from '../src/game/types'
 import { probeLife } from './probe-life'
 
@@ -54,12 +54,12 @@ describe('the families table', () => {
     expect(bizPaceKey('not.an.event')).toBeUndefined()
   })
 
-  it('fits, with the event, ask, company and career families, under the 60 the text memory leaves for popups', () => {
+  it('fits, with the event, ask, company and career families, under the 80 the text memory leaves for popups', () => {
     const events = new Set(EVENT_LIBRARY.map((e) => eventPaceFamily(e.id)).filter((f): f is string => f !== undefined)).size
     const asks = new Set(Object.values(ASK_FAMILIES).map((e) => e.family)).size
     const biz = groups().size
     const kit = new Set(Object.values(KIT_FAMILIES)).size
-    expect(events + asks + biz + kit).toBeLessThanOrEqual(PACE.maxFamilies)
+    expect(events + asks + biz + kit + KIN_FAMILIES.length).toBeLessThanOrEqual(PACE.maxFamilies)
   })
 })
 

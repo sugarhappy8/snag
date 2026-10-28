@@ -8,11 +8,14 @@
 // Costs and pace: at most one popup scene a year (useYearAction 'will.scene'), the quiet beats are
 // bundled into one "Family Tension" notice, and the hook draws no randomness at all for a player
 // with nobody cut out, so ordinary lives are untouched.
-import { addStat, count, formatMoney, log, notice, spend, useYearAction } from '../core'
+import { addStat, count, formatMoney, log, notice, setRelationship, spend, useYearAction } from '../core'
 import { realWealthFactor } from '../history/events-people'
 import { divorce } from '../love'
+import { personEntity } from '../kernel/person-ref'
 import { chance, pick, randInt, shuffle } from '../rng'
 import type { GameState, Person } from '../types'
+import { remember } from '../world/edge-write'
+import { useFamilyAct } from '../society/contract'
 import { landline } from './era'
 import { goodsScale, isAbroad, typicalIncome } from './wealth-core'
 import { afterWillChange, ensureSnap, estrange, learn } from './will-act'
@@ -97,12 +100,14 @@ function takeSides(g: GameState, angry: Person, notes: string[]): void {
     const sympathy = t.forgiving + (xw.cut ? 2 : 0) + (x.relationship < 40 ? 1 : 0) - (inW && greedy ? 2 : 0) - (isDiscreet(x) && !xw.cut ? 1 : 0)
     if (sympathy >= 1) {
       const dent = randInt(g, 3, 7)
-      x.relationship = Math.max(0, x.relationship - dent)
+      setRelationship(g, x, Math.max(0, x.relationship - dent))
       if (xw.cut && xw.known) updateWl(g, x, (w) => void (w.anger = Math.min(Math.max(w.anger, aw.anger), w.anger + 5)))
+      // the memory is the angry one's: on the edge angry > x, where x (the second end, so by 'ego') took the side
+      remember(g, angry, 'took_my_side', { w: 1, by: 'ego', with: personEntity(x) })
       notes.push(`${cap(yourWho(x))} took ${angry.firstName}'s side, loudly, at the worst possible moment.`)
       log(g, `${cap(myWho(x))} took ${angry.firstName}'s side about my will.`, 'bad')
     } else {
-      x.relationship = Math.min(100, x.relationship + 2)
+      setRelationship(g, x, Math.min(100, x.relationship + 2))
       notes.push(`${cap(yourWho(x))} told everyone ${angry.firstName} was being dramatic. Whether that helps is another matter.`)
     }
   }
@@ -191,7 +196,7 @@ export function yearlyWillFeuds(g: GameState): void {
     updateWl(g, p, (x) => {
       x.anger = next
     })
-    if (next >= 25 && !inW && !w.estr) p.relationship = Math.max(0, p.relationship - Math.max(1, Math.round(next / 30)))
+    if (next >= 25 && !inW && !w.estr) setRelationship(g, p, Math.max(0, p.relationship - Math.max(1, Math.round(next / 30))))
     if (!inW && w.cut && next >= 25 && !w.cold) {
       updateWl(g, p, (x) => {
         x.cold = true
@@ -232,6 +237,9 @@ export function yearlyWillFeuds(g: GameState): void {
   const tryScene = (): boolean => {
     if (scene) return false
     if (!useYearAction(g, 'will.scene', 1)) return false
+    // a scene is one of the family's choices: on a stamped life it takes one of the year's three as well (R4-E9, X40), and a scene that
+    // finds none is not played this year. will.scene is spent either way, so a falling out (E12) cannot slip in behind it
+    if (!useFamilyAct(g, 'will')) return false
     scene = true
     return true
   }
@@ -282,11 +290,11 @@ export function yearlyWillFeuds(g: GameState): void {
   for (const p of estranged) {
     const w = readWl(g, p)
     p.livesWithPlayer = false
-    p.relationship = Math.min(p.relationship, 20)
+    setRelationship(g, p, Math.min(p.relationship, 20))
     for (const gc of g.people) {
       if (gc.alive && gc.relation === 'grandchild' && (gc.data.parentId === p.id || gc.data.childOf === p.id || gc.otherParentId === p.id)) {
         gc.livesWithPlayer = false
-        gc.relationship = Math.max(0, gc.relationship - 2)
+        setRelationship(g, gc, Math.max(0, gc.relationship - 2))
       }
     }
     if (!scene && w.anger < 35 && g.year - w.estrY >= 3 && chance(g, 0.12) && tryScene()) queueOlive(g, p)

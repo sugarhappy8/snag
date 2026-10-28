@@ -6,6 +6,8 @@ import { bell, chance, pick, rand, randInt, uid } from './rng'
 import { getCountry, namePoolOf, randomFirstName, randomLastName } from './world'
 import { inheritFamilyTalent } from './talents'
 import type { GameState, Gender, Json, Person, RelationKind, StatKey } from './types'
+import { readMet } from './world/met'
+import { nameKey, takenNames } from './world/met-names'
 
 export const TRAITS = [
   'kind',
@@ -230,7 +232,11 @@ export function eraName(g: GameState, name: string, countryId: string, gender: G
 
 function nameTaken(g: GameState, person: Person): boolean {
   const same = (x: { firstName: string; lastName: string }) => x.firstName === person.firstName && x.lastName === person.lastName
-  return same(g.character) || g.people.some((p) => p.alive && p.relation !== 'pet' && same(p))
+  if (same(g.character) || g.people.some((p) => p.alive && p.relation !== 'pet' && same(p))) return true
+  // A life with Met entries (R4-S8) also holds the names of the registry: every Met record and tombstone, a dead relative, the brand
+  // pairs. A life with none reads nothing more, so it draws exactly as before.
+  if (Object.keys(readMet(g)).length === 0) return false
+  return takenNames(g).has(nameKey(person.firstName, person.lastName))
 }
 
 export function pickDistinct<T>(g: GameState, items: readonly T[], n: number): T[] {

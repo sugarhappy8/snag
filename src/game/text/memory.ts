@@ -1,8 +1,8 @@
 // Text kit memory (R1-T1, E.T1): what the game said lately, kept in g.flags.textMem.
 // Every value is a string or a string array, so a pool costs one JSON node and the whole memory stays
-// under about 690 nodes. A pool is one short string: 'b<mask>.<last>' for a shuffle-bag (a pool of 12
-// lines or fewer) or 'w<i>,<j>,...' for a window (the last 8 indexes, oldest first). The readers are strict:
-// a value that is not exactly the codec reads as empty, and the writer trims a hostile save back inside the
+// under about 725 nodes (R4-E9 raised the families from 120 to 160, X41: 685 nodes at 120, 725 at 160). A pool is one short string:
+// 'b<mask>.<last>' for a shuffle-bag (a pool of 12 lines or fewer) or 'w<i>,<j>,...' for a window (the last 8 indexes, oldest first).
+// The readers are strict: a value that is not exactly the codec reads as empty, and the writer trims a hostile save back inside the
 // caps, so a damaged or oversized memory can never make the state grow.
 // R2-B2 adds one more string, the text cursor c ('<year>,<count>', see text/draw.ts): it lives here because it is stored in the
 // memory, and this file owns the codec and the repair of everything stored in it.
@@ -13,7 +13,7 @@ import type { GameState } from '../types'
 
 export const TEXT_MEM_LIMITS = Object.freeze({
   pools: 300,
-  families: 120,
+  families: 160,
   /** Indexes a window pool remembers. */
   recent: 8,
   /** A pool of this many lines or fewer is a shuffle-bag. */
@@ -257,7 +257,7 @@ export function familyStats(g: GameState, fam: string): { last: number | null; c
  * Pure. The years the family record holds, ascending, read the way familyStats reads them, for a hot path (R3-Q8 pace asks it for every
  * event it weighs): it reads the one record instead of sanitizing the whole memory, so a year's pick costs a few reads, not a few
  * hundred. An own key, a valid key and a record that is exactly the codec; a family map over its cap is the one case that needs the
- * full clean (it keeps the newest 120 keys), so it asks the sanitized memory. Null for a family that was never noted or a damaged one.
+ * full clean (it keeps the newest 160 keys), so it asks the sanitized memory. Null for a family that was never noted or a damaged one.
  * Years after g.year are still in the list: each reader drops them (no foresight).
  */
 function yearsOf(g: GameState, fam: string): number[] | null {

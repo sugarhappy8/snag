@@ -22,7 +22,7 @@
 //   - spill from one disclosure is 1 + 5 size points (1 to 6) times the shield (open 1, patent 0.5 the default; secret is refused),
 //     so it is at most 6 points, and the pool holds at most 18 (the agreed ceiling of the roadmap's probe);
 //   - bounded: 6 rows a market and 4 markets a field. An older row folds into `fold`, so the lead is never lost. 20 fields of 24
-//     rows are about 3,500 JSON nodes (14% of the world's budget), and a life with a few pushes is under 150;
+//     rows are about 3,500 JSON nodes (6% of the world's budget), and a life with a few pushes is under 150;
 //   - history is fixed: a disclosure dated 2026 or earlier changes nothing. No foresight: one dated after g.year is refused;
 //   - replay-safe: a row is keyed by its year and origin, so a disclosure made twice is stored once (while its row is stored: a row
 //     that has folded away, after 6 more in the same market and year, can be pushed again, and the caps above still hold); the luck

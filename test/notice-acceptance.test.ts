@@ -80,10 +80,10 @@ function sweep(name: string, fn: () => void): void {
 
 const LINK_RE = /^[a-z]+(?:\/[A-Za-z0-9._:-]{1,40}){0,6}$/
 /** The caps the plan promises (R1-T1 and R1-T5), written out here so that raising one in the source fails this file. */
-const CAPS = { pools: 300, families: 120, rings: 4, ring: 64, ringKey: 80, famYears: 12, poolRecord: 48, familyRecord: 83 } as const
+const CAPS = { pools: 300, families: 160, rings: 4, ring: 64, ringKey: 80, famYears: 12, poolRecord: 48, familyRecord: 83 } as const
 const INBOX_CAPS = { rows: 60, text: 160, link: 80 } as const
-/** The most JSON nodes the roadmap budgets for the text memory (about 690 worst case) and for the inbox (about 425). */
-const TEXT_MEM_NODES = 700
+/** The most JSON nodes the roadmap budgets for the text memory (about 725 worst case at 160 families) and for the inbox (about 425). */
+const TEXT_MEM_NODES = 740
 const INBOX_NODES = 450
 const COUNT_MAX = 1e9
 

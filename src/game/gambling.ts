@@ -133,7 +133,7 @@ export function maybeGamblingAddiction(g: GameState, stake: number, moneyBefore:
 function spouseReaction(g: GameState, lost: number, moneyBefore: number): void {
   const s = spouse(g)
   if (!s || lost < 1_000 || lost < moneyBefore * 0.2 || !chance(g, 0.35)) return
-  addRelationship(s, -randInt(g, 6, 14))
+  addRelationship(g, s, -randInt(g, 6, 14))
   notice(g, 'Busted', `Your ${relationLabel(s).toLowerCase()} ${s.firstName} found out you lost ${formatMoney(lost)} gambling. ${pickSite(g, [`${s.firstName} isn't speaking to you.`, `${s.firstName} changed the password to the bank account.`, `${s.firstName} said "we'll talk about this later" in a voice that made your blood run cold.`], 0x7a8fcaf5)}`, { emoji: '😠', tone: 'bad' })
 }
 

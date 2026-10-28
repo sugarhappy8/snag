@@ -507,7 +507,7 @@ export function bumpHidden(g: GameState, key: 'karma' | 'athleticism' | 'willpow
 
 export function bumpRelationship(g: GameState, p: Person, lo: number, hi: number): number {
   const d = randInt(g, lo, hi)
-  addRelationship(p, d)
+  addRelationship(g, p, d)
   return d
 }
 

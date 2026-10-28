@@ -97,6 +97,8 @@ function makeWorld() {
     home: () => homeEl,
     addSheet: () => dialog('sheet', ['s1', 's2', 's3']),
     addPopup: () => dialog('popup', ['ok', 'cancel']),
+    /** Any dialog by name: Relationships mounts the list sheet and the person sheet, and a popup from runner.overlay, in one commit. */
+    addDialog: dialog,
     /** Take a subtree out of the page, as React does before an unmount cleanup runs. Focus in it falls to the body. */
     detach: (e: El) => {
       if (e.parent) e.parent.kids.splice(e.parent.kids.indexOf(e), 1)
@@ -361,6 +363,80 @@ describe('openModal: stacked modals', () => {
     hA.close()
     expect(w.inertNames()).toEqual([])
     expect(isModalOpen()).toBe(false)
+  })
+
+  // R4-U4: the person sheet is the one place three dialogs share a commit. Relationships mounts its list sheet and the person's
+  // sheet together, and an action on the person (a PersonSheet runner.overlay) puts a popup in the same tree. The profile inside the
+  // person sheet is a lazy chunk and opens nothing of its own (test/person-facts-ui.test.ts), but vitest cannot see the freeze that
+  // v5.2.0 fixed, so the stacking is pinned here with all three in the page before the first one opens.
+  describe('a list sheet, a person sheet and a popup that all mount in one commit', () => {
+    function three(w: World) {
+      const list = w.addDialog('list', ['l1', 'l2'])
+      const person = w.addDialog('person', ['p1', 'p2', 'p3'])
+      const popup = w.addDialog('popup', ['ok', 'cancel'])
+      const hList = open(w, list.box, null)
+      const hPerson = open(w, person.box, null)
+      const hPopup = open(w, popup.box, null)
+      return { list, person, popup, hList, hPerson, hPopup }
+    }
+
+    it('keeps the top one live and isolates the two below it with the page', () => {
+      const w = makeWorld()
+      const d = three(w)
+      for (const live of [d.popup.box, ...d.popup.kids]) expect(isInert(live)).toBe(false)
+      expect(w.active()).toBe(d.popup.box)
+      expect(w.inertNames()).toEqual(['bar', 'content', 'listBackdrop', 'personBackdrop'])
+      expect(isInert(d.person.box)).toBe(true)
+      expect(isInert(d.list.box)).toBe(true)
+      // The popup's own backdrop was isolated by the list sheet, and the person sheet gave it back before the popup opened.
+      expect(w.count('inert:popupBackdrop:true')).toBe(1)
+      expect(w.count('inert:popupBackdrop:false')).toBe(1)
+    })
+
+    it('hands the page back one dialog at a time, top first', () => {
+      const w = makeWorld()
+      const d = three(w)
+      d.hPopup.close()
+      expect(w.inertNames()).toEqual(['bar', 'content', 'listBackdrop'])
+      expect(isInert(d.person.box)).toBe(false)
+      expect(isInert(d.person.kids[0]!)).toBe(false)
+      d.hPerson.close()
+      expect(w.inertNames()).toEqual(['bar', 'content'])
+      expect(isInert(d.list.box)).toBe(false)
+      d.hList.close()
+      expect(w.inertNames()).toEqual([])
+      expect(isModalOpen()).toBe(false)
+      expect(w.count('inert:content:true')).toBe(1)
+      expect(w.count('inert:content:false')).toBe(1)
+      expect(w.count('inert:bar:true')).toBe(1)
+      expect(w.count('inert:bar:false')).toBe(1)
+    })
+
+    it('frees the page exactly once when the dialogs close from the bottom up', () => {
+      const w = makeWorld()
+      const d = three(w)
+      d.hList.close()
+      expect(w.inertNames()).toEqual(['bar', 'content', 'listBackdrop', 'personBackdrop'])
+      expect(isInert(d.popup.box)).toBe(false)
+      d.hPerson.close()
+      expect(isInert(d.popup.box)).toBe(false)
+      expect(w.inertNames()).toEqual(['bar', 'content', 'listBackdrop', 'personBackdrop'])
+      d.hPopup.close()
+      expect(w.inertNames()).toEqual([])
+      expect(isModalOpen()).toBe(false)
+      expect(w.count('inert:content:true')).toBe(1)
+      expect(w.count('inert:content:false')).toBe(1)
+      expect(w.count('inert:bar:true')).toBe(1)
+      expect(w.count('inert:bar:false')).toBe(1)
+    })
+
+    it('lets focus return to the person sheet when the popup closes', () => {
+      const w = makeWorld()
+      const d = three(w)
+      d.hPopup.close()
+      expect(w.active()).toBe(d.person.box)
+      expect(isInert(w.active() as El)).toBe(false)
+    })
   })
 
   it('frees the page exactly once when the lower of two same-commit dialogs closes first', () => {

@@ -9,6 +9,8 @@ import { refreshValue } from './business/economy'
 import { keptFundHolders, payOutDroppedFunds, settleFundsAtDeath } from './business/hedge-year'
 import { heirCitizenships } from './activities/immigration-state'
 import { personCash } from './cash'
+import { foldAccount, playerAcct } from './kernel/ledger'
+import { personSid } from './kernel/person-ref'
 import {
   addHidden,
   addMoney,
@@ -30,6 +32,7 @@ import {
   roleLabel,
   SAVE_SCHEMA,
   scriptChoice,
+  setRelationship,
   spend,
   zodiacFor,
 } from './core'
@@ -52,6 +55,9 @@ import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
 import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
+import { carryEdges, carryReceivables, contactHeld, estateSentences, heirShareOf, heirSpouseOverrides, keptContacts, keptStart, payPersonalDebts } from './modules/heirs'
+import { releaseKinFlags } from './kin'
+import { settleKinEstates } from './modules/kin-estates'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
 import { benchWorldFlags } from './business/ai-bench-claims'
@@ -60,7 +66,11 @@ import { waveWorldFlags } from './business/tech-waves'
 import { bizOf, readBiz, type Manager } from './business/state'
 import { yearlyMainCharacter } from './mastery'
 import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, pickedTalents, refreshFamilyTalents, talentLabel, type TalentId } from './talents'
+import { flagOn } from './flags'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
+import './world/edge-mirror'
+import { playerRef } from './world/people'
+import { socialOn, stampSocial } from './world/social'
 import { syncWorld } from './world/sync'
 import type {
   AncestorSummary,
@@ -1009,6 +1019,10 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   }
   // A citizen of the country you're born in (immigration.ts adds passports later).
   c.citizenships = [c.countryId]
+  // The social stamp (R4-E7, X6): the one place a life is marked. The build key decides only whether a NEW life is stamped; everything
+  // after this asks socialOn(g), so every v5.2.0 save, every unstamped life and every heir of one plays as it always did. The mark draws
+  // nothing and makes no id, so the life a seed rolls is the same either way.
+  if (flagOn('social')) stampSocial(g)
   return g
 }
 
@@ -1135,6 +1149,9 @@ function parentNoun(gender: Gender): string {
   return gender === 'male' ? 'father' : 'mother'
 }
 
+/** The relations of the late player's own siblings: on a stamped hand-over a kept one is an uncle or an aunt to the heir (R4-L9). */
+const LATE_SIBLINGS: ReadonlySet<string> = new Set(['sibling', 'halfSibling', 'stepsibling'])
+
 /**
  * Generations: after the player dies, carry on as one of their children. Returns a new
  * GameState (the input is not modified).
@@ -1183,6 +1200,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // the result independent of which child the user chooses to continue as.
   // Co-owners who died before the player pass their stakes on first (the player's part joins the
   // estate that divides now), so no share stays on a late relative's record.
+  // On a stamped life a relative's estate is settled first (R4-L5): the people it names become Persons, so the stake below can reach them.
+  settleKinEstates(n)
   settleLateFamilyOwners(n)
   // The same for family hedge funds: a relative who died first passes their units on, and yours are in the estate.
   settleFundsAtDeath(n)
@@ -1215,9 +1234,15 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     if (unit.assets.some(a => groupIds.has(a.id)) || !unit.recipient || unit.recipient.id === childId) continue
     // A plain firm (one asset, no mortgage, no family co-owners) stays a company: the designated
     // sibling runs it as an NPC owner. Anything else falls through to the cash conversion below.
+    // On a stamped life (R4-L8, X35) a mortgage under the firm's value goes with it, as the firm's own debt, and a sibling of 18
+    // to 20 may own it; an unstamped life keeps the rule above to the letter.
     const firm = !unit.group && unit.assets.length === 1 ? unit.assets[0] : null
-    const firmState = firm && firm.kind === 'business' && !(firm.mortgage?.balance ?? 0) ? readBiz(n, firm) : null
-    if (firm && firmState && !firmState.familyShares?.length && adoptNpcCompany(n, unit.recipient, firm, firmState)) {
+    const stamped = socialOn(n)
+    const owed = firm?.mortgage?.balance ?? 0
+    const passes = !owed || (stamped && owed > 0 && owed < (firm?.value ?? 0))
+    const firmState = firm && firm.kind === 'business' && passes ? readBiz(n, firm) : null
+    const terms = stamped ? { minAge: 18, carryMortgage: true } : undefined
+    if (firm && firmState && !firmState.familyShares?.length && adoptNpcCompany(n, unit.recipient, firm, firmState, terms)) {
       delete unit.recipient.data.nepo
       continue
     }
@@ -1232,10 +1257,15 @@ export function continueAsChild(g: GameState, childId: string): GameState {
 
   const debts = old.loans.reduce((s, l) => s + l.balance, 0)
   const divisibleEquity = divisibleProperty.reduce((s, a) => s + a.value - (a.mortgage?.balance ?? 0), 0)
-  const estate = Math.round(old.money + divisibleEquity - debts)
+  // On a stamped life (R4-L6, X24, X34) what the late player owed to people is paid after the bank loans and before the slices, and the
+  // will's share of the heir is read here for the claims the heir takes over below. An unstamped life skips all of it (null).
+  const heirShare = socialOn(n) ? heirShareOf(n, childId) : null
+  const personal = heirShare === null ? null : payPersonalDebts(n, old, old.money + divisibleEquity - debts)
+  const personalPaid = personal?.paid ?? 0
+  const estate = Math.round(old.money + divisibleEquity - debts - personalPaid)
   const adult = heirP.age >= 18
   // Who inherits what (the will, charity, contests and probate live in events/will-estate.ts).
-  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0 || groupIds.size > 0, cashAfterDebts: old.money - debts, taxDelta: personalTax(g, 'inheritance', old.countryId) / 100 })
+  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0 || groupIds.size > 0, cashAfterDebts: old.money - debts - personalPaid, taxDelta: personalTax(g, 'inheritance', old.countryId) / 100 })
   bookEstate(n, plan, { old, heirId: childId, gross: old.money + divisibleEquity, debts })
   const heirIncluded = plan.heirIncluded
   const shareCount = Math.max(1, plan.ways)
@@ -1384,6 +1414,12 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     return out
   }
 
+  // On a stamped life (R4-L9, X6, X33) a direct kin starts at the blend of the dice and of what the family felt: round((roll + old) / 2), where
+  // `old` is the relationship before the hand-over. The seven draws below keep their order and count either way, so the dice are the unstamped
+  // twin's; an unstamped life takes the roll alone, as it always did.
+  const stamped = socialOn(n)
+  const blend = (roll: number, p: Person): number => (stamped && Number.isFinite(p.relationship) ? Math.round((roll + p.relationship) / 2) : roll)
+
   // The late player.
   people.push({
     id: old.id,
@@ -1407,22 +1443,22 @@ export function continueAsChild(g: GameState, childId: string): GameState {
 
   let guardian: Person | undefined
   if (otherParent) {
-    const p = reset(otherParent, 'parent', randInt(n, 55, 95), age < 18)
+    const p = reset(otherParent, 'parent', blend(randInt(n, 55, 95), otherParent), age < 18)
     people.push(p)
     if (p.alive) guardian = p
   }
   const spouse = n.people.find((p) => p.alive && p.relation === 'spouse' && p.id !== otherParent?.id)
   if (spouse && (age < 18 || heirP.livesWithPlayer)) {
-    const p = reset(spouse, 'stepparent', randInt(n, 30, 75), age < 18)
+    const p = reset(spouse, 'stepparent', blend(randInt(n, 30, 75), spouse), age < 18)
     people.push(p)
     guardian = guardian ?? p
   }
 
   for (const sib of n.people.filter((p) => (p.relation === 'child' || p.relation === 'stepchild') && p.id !== childId)) {
-    people.push(reset(sib, siblingRelation(heirP, sib), randInt(n, 35, 85), age < 18 && sib.livesWithPlayer))
+    people.push(reset(sib, siblingRelation(heirP, sib), blend(randInt(n, 35, 85), sib), age < 18 && sib.livesWithPlayer))
   }
   for (const gp of n.people.filter((p) => p.alive && (p.relation === 'parent' || p.relation === 'stepparent'))) {
-    const p = reset(gp, 'grandparent', randInt(n, 50, 90), false)
+    const p = reset(gp, 'grandparent', blend(randInt(n, 50, 90), gp), false)
     people.push(p)
     guardian = guardian ?? p
   }
@@ -1432,27 +1468,54 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   if (heirP.data.married === true && spouseName && age >= 18) {
     const [first, ...rest] = spouseName.split(' ')
     const spouseGender: Gender = sexuality === 'gay' ? heir.gender : sexuality === 'straight' ? (heir.gender === 'male' ? 'female' : 'male') : chance(n, 0.5) ? 'male' : 'female'
+    // On a stamped life the spouse already has a face (R4-L9, C21, X15): the Met record behind the heir's spouse link, or the Person that holds
+    // its sid. Every legacy expression below is still evaluated in its order, so the dice are the unstamped twin's, and the face replaces
+    // their RESULTS afterwards. A holder that the rebuilt list already took (it cannot be a stranger then) leaves the old path.
+    const wanted = stamped ? heirSpouseOverrides(n, heirP) : null
+    const holder = wanted?.holder ?? null
+    const face = wanted !== null && (holder === null || !people.some((p) => p.id === holder.id)) ? wanted : null
     const before = n.people.length
+    const legacyAge = Math.max(18, age + randInt(n, -4, 4))
+    const legacyRelationship = randInt(n, 55, 90)
+    const legacySkin = randomSkinTone(n, country)
     heirSpouse = createPerson(n, {
       relation: 'spouse',
-      age: Math.max(18, age + randInt(n, -4, 4)),
+      age: legacyAge,
       gender: spouseGender,
       firstName: first,
       lastName: rest.join(' ') || heir.lastName,
-      relationship: randInt(n, 55, 90),
+      relationship: legacyRelationship,
       livesWithPlayer: true,
-      skinTone: randomSkinTone(n, country),
+      skinTone: legacySkin,
     })
     // createPerson appends to the old list; move them into the rebuilt one.
     n.people.splice(before)
     heirSpouse.yearsKnown = randInt(n, 2, Math.max(2, age - 18))
+    if (face !== null) {
+      if (holder === null) {
+        // a new Person: the record's name, gender and age and the sid (the only writer of a sid here is heirSpouseOverrides' file)
+        heirSpouse.firstName = face.firstName
+        heirSpouse.lastName = face.lastName
+        heirSpouse.gender = face.gender
+        heirSpouse.age = face.age
+        heirSpouse.data = { ...heirSpouse.data, ...face.data }
+      } else {
+        // the Person that holds the sid is the spouse and keeps its identity; the call above and its Person are discarded, with no sid and
+        // no override, so no second Person ever touches the account person:<sid>
+        const kept = reset(holder, 'spouse', heirSpouse.relationship, true)
+        kept.yearsKnown = heirSpouse.yearsKnown
+        kept.data = { ...kept.data }
+        delete kept.data.kin
+        heirSpouse = kept
+      }
+    }
     people.push(heirSpouse)
   }
   // Grandchildren through the heir become the heir's children.
   for (const gc of n.people.filter((p) => p.relation === 'grandchild')) {
     const ids = [gc.data.parentId, gc.data.childOf, gc.otherParentId, ...strList(gc.data.parentIds)]
     if (!ids.includes(childId)) continue
-    const kid = reset(gc, 'child', randInt(n, 60, 95), gc.alive && gc.age < 18)
+    const kid = reset(gc, 'child', blend(randInt(n, 60, 95), gc), gc.alive && gc.age < 18)
     if (heirSpouse) kid.otherParentId = heirSpouse.id
     people.push(kid)
   }
@@ -1460,12 +1523,24 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     people.push(reset(pet, 'pet', randInt(n, 40, 80), true))
   }
   // Persistent entrepreneurs and known relatives do not disappear when the viewpoint changes.
-  for (const contact of n.people) {
-    if (contact.id === childId || people.some(p => p.id === contact.id) || (!npcLife(contact) && !familyOwnerIds.has(contact.id))) continue
-    const kept = reset(contact, 'friend', Math.min(60, contact.relationship), false)
+  // On a stamped life (R4-L9, X33) every kept contact starts at what keptStart says: half of the old number, at least 25 for a person the
+  // late player was bound to, at most 60; the late player's siblings are an uncle or an aunt to the heir. An unstamped life keeps min(60, old).
+  const oldEgo = playerRef(n)
+  const heldContact = stamped ? contactHeld(n, oldEgo) : null
+  const keep = (contact: Person, relation: RelationKind, relationship: number): Person => {
+    const kept = reset(contact, relation, relationship, false)
     kept.notes = contact.notes
     kept.data.generationConnection = `Known through ${oldName}`
-    people.push(kept)
+    if (stamped && LATE_SIBLINGS.has(contact.relation) && typeof kept.data.kin !== 'string') kept.data.kin = contact.gender === 'male' ? 'uncle' : 'aunt'
+    return kept
+  }
+  for (const contact of n.people) {
+    if (contact.id === childId || people.some(p => p.id === contact.id) || (!npcLife(contact) && !familyOwnerIds.has(contact.id))) continue
+    people.push(keep(contact, 'friend', heldContact ? keptStart(contact.relationship, heldContact(contact), contact.relation === 'enemy') : Math.min(60, contact.relationship)))
+  }
+  // and the people the late player was bound to, the best friends and the feuds (at most 40, none that are already in the list)
+  if (stamped) {
+    for (const c of keptContacts(n, childId, oldEgo, new Set(people.map((p) => p.id)))) people.push(keep(c.person, c.relation, c.relationship))
   }
   n.people = people
   for (const unit of allocatedUnits) {
@@ -1495,6 +1570,11 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   n.ancestors = [...n.ancestors, summary]
   closeEstate(n, old)
   n.character = heir
+  const claims = heirShare === null ? null : carryReceivables(n, old, heirShare)
+  carryEdges(n, oldEgo, playerRef(n), n.people)
+  // The belt (R4-L11, X39). No writer gives a child a sid (X15); if one ever did, the heir's money would sit in person:<sid> while the player's account is person:<id>. A relabel, no flow.
+  const heirSid = personSid(heirP)
+  if (stamped && heirSid !== null) foldAccount(n, `person:${heirSid}`, playerAcct(n), `estate:${old.id}:${n.year}:sidfold`)
   // The inheritance and the heir's first lines are written in the heir's currency (they may
   // live abroad), not the late parent's.
   bindMoneyContext(n)
@@ -1611,6 +1691,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   }
   n.flags.grandkidsSeen = n.people.filter((p) => p.relation === 'grandchild').map((p) => p.id)
   inheritanceLines.push(...groupInheritanceLines)
+  inheritanceLines.push(...estateSentences(old, personal, claims))
 
   const childWord = heir.gender === 'male' ? (heirP.relation === 'stepchild' ? 'stepson' : 'son') : heirP.relation === 'stepchild' ? 'stepdaughter' : 'daughter'
   log(n, `I am now playing as ${fullName(heir)}, the ${childWord} of ${oldName}.`, 'event')
@@ -1677,6 +1758,10 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   )
   // The reading of the will: reactions, contests, the cut-out heir's choices (events/will-estate.ts).
   settleReading(n, plan, old, childId)
+  // The list was rebuilt: the heir was an anchor and is the player now, and a relative the rebuild dropped took their links out of the list. The
+  // flags of what they linked end here and not at the next kin step (R4 fix, rehearsal 2 item 4 cause B); the edges stay the step's, so the
+  // new spouse keeps the pair edge to the heir until then. Nothing on a life the stamp does not mark.
+  releaseKinFlags(n)
   // g.world came with the clone; the people were rebuilt above, so index them (and the firms, homes and holdings) again.
   syncWorld(n)
   return n
@@ -1885,11 +1970,11 @@ const SEXUALITY = defineScript('life.sexuality', (g, choice) => {
     const supportive = chance(g, (strict ? 0.45 : 0.88) * era)
     const who = p.relation === 'stepparent' ? (p.gender === 'male' ? 'stepfather' : 'stepmother') : p.gender === 'male' ? 'father' : 'mother'
     if (supportive) {
-      p.relationship = clampStat(p.relationship + randInt(g, 3, 10))
+      setRelationship(g, p, clampStat(p.relationship + randInt(g, 3, 10)))
       reactions.push(pickSite(g, [`Your ${who} hugged you and said they're proud of you.`, `Your ${who} said, "We know, sweetie. We've known for years."`, `Your ${who} cried happy tears and offered to make a celebratory cake.`], 0xbfbad3cf))
     } else {
       rejected++
-      p.relationship = clampStat(p.relationship - randInt(g, 10, 25))
+      setRelationship(g, p, clampStat(p.relationship - randInt(g, 10, 25)))
       reactions.push(pickSite(g, [`Your ${who} went quiet and left the room.`, `Your ${who} said they "need some time to process this."`], 0x9fc22c0f))
     }
   }

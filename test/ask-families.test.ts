@@ -75,7 +75,7 @@ describe('the ask families table', () => {
     expect(new Set(['kid.wedding', 'sibling.wedding', 'friend.wedding'].map(fam))).toEqual(new Set(['wedding']))
   })
 
-  it('is few families, and with the event families still leaves room under 60 for company events and the career kit', () => {
+  it('is few families, and with the event families still leaves room under 80 for company events, the career kit and the kin families', () => {
     const asks = families().size
     const events = new Set(EVENT_LIBRARY.map((e) => eventPaceFamily(e.id)).filter((f): f is string => f !== undefined)).size
     expect(asks).toBeLessThanOrEqual(14)

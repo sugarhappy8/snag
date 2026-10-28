@@ -322,7 +322,7 @@ defineScript(FAMILY_SCRIPT, (g, choice, data) => {
     const salary = Math.round(typicalIncome(g) * 2.5 / 1000) * 1000
     person.occupation = title
     person.data.influenceJob = { by: g.character.id, target: 'politician', title, salary, hiredYear: g.year, lastPaid: g.year - 1 }
-    addRelationship(person, 10)
+    addRelationship(g, person, 10)
     addCase(g, me, { kind: 'nepotism', label: `Gave ${person.firstName} a government post`, evidence: .2, amount: salary * 4 })
     me.heat = Math.min(100, me.heat + 6)
     count(g, 'nepotismPosts')
@@ -331,7 +331,7 @@ defineScript(FAMILY_SCRIPT, (g, choice, data) => {
     notice(g, 'Family Business', `${person.firstName} is now ${title}, at ${formatMoney(salary)} a year of public money. They are thrilled. The press is curious.`, { emoji: '👪' })
     return
   }
-  addRelationship(person, -8)
+  addRelationship(g, person, -8)
   writeMe(g, me)
   notice(g, 'Family', `${person.firstName} took it badly. "After everything I did for your campaign?"`, { emoji: '😤' })
 })

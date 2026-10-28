@@ -3,10 +3,12 @@
 // them, in a life that is played and not built.
 //
 //   (a) screens   in Realistic every screen of the track has its chip or its Look closer row (market, rival, company card, hiring,
-//                 chip scorecard, investing, politics) and in Exact none has either; a board vote says a word
+//                 chip scorecard, investing, politics, and from R4-U11 a person with the profile flag on) and in Exact none has either;
+//                 a board vote says a word
 //   (b) pure      every one of those screens builds on a deep-frozen copy, leaves the JSON and g.rng alone, and prints no NaN,
 //                 undefined or dash
-//   (c) owners    every key family of the track has an owner who can say what a key is called and what it really is
+//   (c) owners    every key family of the track has an owner who can say what a key is called and what it really is (ppl and stf from R4-U11;
+//                 cand stays ownerless)
 //   (d) bought    after a hire (with its background check) and a purchase from each source, on a life with the Business and Investing
 //                 talents, every screen of the game still renders: no throw, no write, no hole in the text
 //   (e) played    three industries are played in Realistic by the engine fuzzer, with every company screen rendered each year
@@ -31,7 +33,8 @@ import { kindOf } from '../src/game/knowledge/kinds'
 import { setInfoOverride, withInfoMode } from '../src/game/knowledge/mode'
 import { readKnow, storedEstimates } from '../src/game/knowledge/contract'
 import { markBest } from '../src/game/business/util'
-import { withFlags } from '../src/game/flags'
+import { withFlags, type FlagOverrides } from '../src/game/flags'
+import { personActions } from '../src/game/relationships'
 import { specialJobNodes } from '../src/game/special'
 import { HINT_EMOJI, talentHint } from '../src/game/talents'
 import { runScript } from '../src/game/scripts'
@@ -42,6 +45,7 @@ import { adult, allNodes, company, marketNode, nextYear, renderAll as renderComp
 import { newLeader } from './politics-kit'
 import { makeTestGame } from './helpers'
 import { playLife } from './play-kit'
+import { buildKit } from './people-ui-kit'
 import { chipLab } from './silicon-kit'
 
 const ROOT = join(__dirname, '..')
@@ -100,7 +104,12 @@ interface Scene {
   says?: RegExp
   /** A phrase that must not appear in Exact mode (the label of an estimate). */
   notExact?: RegExp
+  /** Build flags the screen needs, named in Realistic and in Exact alike (R4-U11: `peopleProfile`). */
+  flags?: FlagOverrides
 }
+
+/** The scene's flags laid over the call, if it names any. */
+const withScene = <T>(scene: Scene, fn: () => T): T => (scene.flags ? withFlags(scene.flags, fn) : fn())
 
 const lazy = <T>(make: () => T): (() => T) => {
   let v: T | undefined
@@ -153,6 +162,12 @@ const SCENES: readonly (() => Scene)[] = [
     g.character.talents = []
     return { name: 'politics', g, roots: (x) => specialJobNodes(x), looks: ['look.'], chips: false, says: /\b(unlikely|a long shot|even money|likely|very likely|almost certain|almost no chance)\b/ }
   },
+  () => {
+    // R4-U11: a close sister with a life of her own: her Life & Career row carries the chip, and her Look closer group sells a read of her
+    const kit = buildKit(70)
+    const id = kit.ids.npcLife
+    return { name: 'a person (the rows under the profile)', g: kit.g, roots: (x) => personActions(x, x.people.find((p) => p.id === id)!), looks: ['look.person'], chips: true, flags: { peopleProfile: true } }
+  },
 ]
 
 describe('(a) every screen of the track has its chip or its Look closer row in Realistic, and none in Exact', () => {
@@ -160,21 +175,21 @@ describe('(a) every screen of the track has its chip or its Look closer row in R
     const scene = make()
 
     it(`${scene.name}: Realistic`, () => {
-      inFog(() => {
+      withScene(scene, () => inFog(() => {
         const m = marks(scene.g, scene.roots(scene.g))
         for (const prefix of scene.looks) expect(m.looks.some((id) => id.startsWith(prefix)), `a ${prefix} row among ${m.looks.join(', ')}`).toBe(true)
         if (scene.chips) expect(m.chips, 'rows with a chip').toBeGreaterThan(0)
         if (scene.says) expect(textsOf(scene.g, m.all).some((t) => scene.says!.test(t)), `the text says ${scene.says}`).toBe(true)
-      })
+      }))
     })
 
     it(`${scene.name}: Exact`, () => {
-      withInfoMode('exact', () => {
+      withScene(scene, () => withInfoMode('exact', () => {
         const m = marks(scene.g, scene.roots(scene.g))
         expect(m.looks, 'Look closer rows').toEqual([])
         expect(m.chips, 'rows with a chip').toBe(0)
         if (scene.notExact) expect(textsOf(scene.g, m.all).filter((t) => scene.notExact!.test(t)), 'text that says estimated').toEqual([])
-      })
+      }))
     })
   }
 
@@ -204,7 +219,7 @@ describe('(b) the screens are pure: frozen, no write, no draw, no hole in the te
   for (const make of SCENES) {
     const scene = make()
     it(`${scene.name}`, () => {
-      inFog(() => {
+      withScene(scene, () => inFog(() => {
         const copy = structuredClone(scene.g)
         const json = JSON.stringify(copy)
         const rng = copy.rng
@@ -218,16 +233,16 @@ describe('(b) the screens are pure: frozen, no write, no draw, no hole in the te
         expect(copy.rng).toBe(rng)
         // twice is the same text: nothing on these screens is rolled
         expect(textsOf(copy, walk(copy, scene.roots(copy)))).toEqual(texts)
-      })
+      }))
     })
   }
 })
 
 describe('(c) every key family of the track has an owner', () => {
-  it('riv, mkt, scn, odds, sec and val are registered once the game is loaded, each with a label and a truth; cmp and cand are read in place', () => {
-    // the scenes above loaded every screen of the track
+  it('riv, mkt, scn, odds, sec, val, ppl and stf are registered once the game is loaded, each with a label and a truth; cmp and cand are read in place', () => {
+    // the scenes above loaded every screen of the track (the person scene loads ppl, the company scenes load stf)
     for (const make of SCENES) make()
-    for (const kind of ['riv', 'mkt', 'scn', 'odds', 'sec', 'val']) {
+    for (const kind of ['riv', 'mkt', 'scn', 'odds', 'sec', 'val', 'ppl', 'stf']) {
       const def = kindOf(kind)
       expect(def, kind).not.toBeNull()
       expect(typeof def!.label, kind).toBe('function')

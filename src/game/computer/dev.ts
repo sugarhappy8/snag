@@ -127,17 +127,17 @@ const PARENT_SCRIPT = defineScript('computer.dev.parents.screen', (g, choice, da
   }
   if (choice === 'promise') {
     addStat(g, 'happiness', -randInt(g, 1, 3))
-    if (p) addRelationship(p, randInt(g, 2, 5))
+    if (p) addRelationship(g, p, randInt(g, 2, 5))
     g.flags.devScreenPromise = c.age
     notice(g, 'Pinky Promise', `You promised ${who} you'd cut back on ${screenWord(g)} and do your homework first. ${Who} said "We'll see." It sounded like a threat.`, { emoji: '\u{1F91E}' })
     return
   }
   if (choice === 'earnings' && earned >= localFee(g, 500)) {
-    if (p) addRelationship(p, randInt(g, 3, 7))
+    if (p) addRelationship(g, p, randInt(g, 3, 7))
     notice(g, 'Show Me the Money', `You showed ${who} that you've earned ${money(earned)} at the computer. ${Who} went quiet, then asked if you could ${online(g) ? 'build a website' : 'make a newsletter on the computer'} for ${pickLine(g, ['their friend\'s bakery', 'the church bake sale', 'their book club'])}. ${capitalizeFirst(screenWord(g))}: negotiable. Grades: still not.`, { emoji: '\u{1F4B0}', tone: 'good' })
     return
   }
-  if (p) addRelationship(p, -randInt(g, 5, 10))
+  if (p) addRelationship(g, p, -randInt(g, 5, 10))
   addStat(g, 'happiness', -randInt(g, 2, 5))
   const odds = choice === 'earnings' ? 0.35 : broken ? 0.8 : 0.5
   const taken = chance(g, odds) ? confiscate(1) : ''
@@ -191,7 +191,7 @@ function parentsYear(g: GameState, budget: number): number {
   }
   if (codingSkill(g) >= 40 && (grades ?? 0) >= 75 && chance(g, 0.25)) {
     const p = pick(g, guardians(g))
-    addRelationship(p, 2)
+    addRelationship(g, p, 2)
     log(g, `${capitalizeFirst(parentWord(p)).replace(/^Your/, 'My')} bragged to the neighbors that I'm ${online(g) ? '"basically a hacker."' : 'a "computer whiz."'}`, 'good')
   }
   return 0

@@ -1,6 +1,6 @@
 // Family events: relatives asking for money, parents' health scares, sibling weddings,
 // kids misbehaving, report cards, partners who snore, in-laws and pet antics.
-import { peopleBy, spouse } from '../core'
+import { peopleBy, setRelationship, spouse } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import { pickLine } from '../text/pick'
@@ -539,7 +539,7 @@ export const FAMILY_EVENTS = defineEvents([
           say(g, x, ['Phew', 'Thank goodness'], `You found ${nm(x)} ${where}!`, `My pet, ${nm(x)}, escaped. I found it ${where}.`, { rel: 6, happiness: 6 }, 'good')
         } else if (r <= 9) {
           say(g, x, ['No luck', 'Looked everywhere'], `You weren't able to find ${nm(x)} anywhere. Maybe it will turn up.`, `My pet, ${nm(x)}, escaped and I couldn't find it.`, { happiness: -10 }, 'bad')
-          if (x.p) x.p.relationship = Math.max(0, x.p.relationship - 10)
+          if (x.p) setRelationship(g, x.p, Math.max(0, x.p.relationship - 10))
         } else {
           if (x.p) {
             x.p.alive = false

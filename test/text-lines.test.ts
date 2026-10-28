@@ -17,17 +17,36 @@ import { STATE_TABLE, type StateSpec } from '../src/game/text/state-table'
 import {
   AIR_RAID_LINES,
   AVOIDING_LINES,
+  BROKER_LINES,
   CHILD_UNCURED_LINES,
+  DEBT_BORROW_LINES,
+  DEBT_DEFAULT_LINES,
+  DEBT_REPAY_LINES,
+  DIVORCE_LAPSE,
   DONATED_LINES,
   ENDORSE_RENEWED_LINES,
+  FAVOR_DONE_LINES,
+  FAVOR_REFUSED_LINES,
+  FEUD_COOLED_LINES,
+  FEUD_GONE_LINES,
+  FEUD_GOSSIP_LINES,
+  FEUD_LEGAL_LINES,
+  FEUD_PEACE_LINES,
+  FEUD_SABOTAGE_LINES,
+  FEUD_SETTLED_LINES,
   GAVE_LINES,
   HOME_BOUGHT_LINES,
   HOMELESS_LINES,
+  KIN_STRIFE,
+  KIN_WIDOWED,
+  LEAK_LINES,
   LENT_LINES,
   NOTEBOOK_FULL_LINES,
   REFUSED_LINES,
   RESIGN_LINES,
+  STAFF_POACHED_LINES,
   VENTURE_LOST_LINES,
+  VOUCH_LINES,
 } from '../src/game/text/pools'
 
 const EM_DASH = String.fromCharCode(0x2014)
@@ -102,6 +121,12 @@ const SITE_SLOTS: Readonly<Record<string, readonly string[]>> = {
   'allowance.one': ['money'],
   'allowance.many': ['money', 'count'],
   'loan.back': ['who', 'whom', 'he', 'money', 'left'],
+  // R4-E10b: a part payment of a loan the player owes a person (society/debt.ts); {who} is "my friend Kay".
+  'debt.owe': ['who', 'money'],
+  // R4-L7: a payment on the divorce settlement the player owes an ex (divorce-debt.ts); {who} is "my ex Dana", {money} the year's payment.
+  'divorce.pay': ['who', 'money'],
+  // R4-E12: the cold rung of a feud (society/feud.ts); {who} is "my sister Fatima".
+  'feud.cold': ['who'],
 }
 
 describe('the rows of R2-P9', () => {
@@ -271,6 +296,34 @@ const POOLS: readonly PoolSpec[] = [
   { id: 'history.airRaid', lines: AIR_RAID_LINES, role: 'log', slots: [] },
   { id: 'health.childUncured', lines: CHILD_UNCURED_LINES, role: 'log', slots: ['label', 'who'] },
   { id: 'finance.homeless', lines: HOMELESS_LINES, role: 'log', slots: [] },
+  // R4-E10a: the favor acts name the person (the giver, and the third person or the relative where there is one).
+  { id: 'social.favorDone', lines: FAVOR_DONE_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.favorRefused', lines: FAVOR_REFUSED_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.vouch', lines: VOUCH_LINES, role: 'log', slots: ['third', 'who'] },
+  { id: 'social.broker', lines: BROKER_LINES, role: 'log', slots: ['who', 'whom'] },
+  // R4-E10b: a loan between people names the lender ({who} is "my friend Kay"); the borrow and the repay lines name the sum.
+  { id: 'social.borrow', lines: DEBT_BORROW_LINES, role: 'log', slots: ['money', 'who'] },
+  { id: 'social.repay', lines: DEBT_REPAY_LINES, role: 'log', slots: ['money', 'who'] },
+  { id: 'social.default', lines: DEBT_DEFAULT_LINES, role: 'log', slots: ['who'] },
+  // R4-E11: a secret gets out; the line names the holder who told and the first person told.
+  { id: 'social.leak', lines: LEAK_LINES, role: 'log', slots: ['who', 'whom'] },
+  // R4-E12: a feud with a person. {who} is "my sister Fatima": the gossip rung also names the first person told ({whom}), the legal rung the fee
+  // ({money}); the settled line is the legal rung for a payer with nothing to pay. Each rung has its own four lines and each names the person.
+  { id: 'social.feudGossip', lines: FEUD_GOSSIP_LINES, role: 'log', slots: ['who', 'whom'] },
+  { id: 'social.feudSabotage', lines: FEUD_SABOTAGE_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.feudLegal', lines: FEUD_LEGAL_LINES, role: 'log', slots: ['money', 'who'] },
+  { id: 'social.feudSettled', lines: FEUD_SETTLED_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.feudPeace', lines: FEUD_PEACE_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.feudCooled', lines: FEUD_COOLED_LINES, role: 'log', slots: ['who'] },
+  { id: 'social.feudGone', lines: FEUD_GONE_LINES, role: 'log', slots: ['who'] },
+  // R4-L4: a close relative is widowed ({who} is "my sister Fatima", {spouse} the first name of the one who died).
+  { id: 'life.kinWidowed', lines: KIN_WIDOWED, role: 'log', slots: ['spouse', 'who'] },
+  // R4-E13: a key person poached at the year's end ({who} the full name, {role} the title, {company} the company).
+  { id: 'business.staffPoached', lines: STAFF_POACHED_LINES, role: 'log', slots: ['company', 'role', 'who'] },
+  // R4-L7: what is left of a divorce settlement lapses ({money} is what was still owed).
+  { id: 'life.divorceLapse', lines: DIVORCE_LAPSE, role: 'log', slots: ['money'] },
+  // R4-L10: the reading of the will, a cut-out relative against a favored one ({who} and {whom} are first names, each cut to 24 characters).
+  { id: 'life.kinStrife', lines: KIN_STRIFE, role: 'log', slots: ['who', 'whom'] },
 ]
 
 describe('the pools of R2-P10', () => {

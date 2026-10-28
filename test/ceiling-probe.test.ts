@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { COUNTRIES } from '../src/game/world'
-import { CEILING_PROBES, MAX_EXEMPT, SCALES, guardProblems, isExempt, probeFailures, withWealth, type CeilingProbe } from './ceiling-kit'
+import { CEILING_PROBES, MAX_EXEMPT, SCALES, guardProblems, isExempt, measured, probeFailures, withWealth, type CeilingProbe } from './ceiling-kit'
 import { ROOT } from './scan-kit'
 
 const listIds = (): string[] => (JSON.parse(readFileSync(join(ROOT, 'test', 'ceiling-list.json'), 'utf8')) as { id: string }[]).map((c) => c.id)
@@ -41,12 +41,14 @@ describe('ceiling probes: the real rows', () => {
     expect(CEILING_PROBES.filter(isExempt).length).toBeLessThanOrEqual(MAX_EXEMPT)
   })
 
+  // The rows have just run at these scales in their own tests above, and `measured` hands back what they measured, so this test costs a
+  // read and not a second pass over every row (a deep pass is minutes). Run alone, it finds nothing kept and runs each row itself.
   it(
     'measures something at every scale: a positive, finite value against a positive, finite limit',
     () => {
       for (const p of live) {
         for (const scale of scales) {
-          const r = p.run(scale)
+          const r = measured(p, scale)
           expect(Number.isFinite(r.value) && r.value > 0, `${p.id} at ${scale}: value ${r.value}`).toBe(true)
           expect(Number.isFinite(r.limit) && r.limit > 0, `${p.id} at ${scale}: limit ${r.limit}`).toBe(true)
         }
@@ -57,11 +59,11 @@ describe('ceiling probes: the real rows', () => {
 
   it('presses on the cap where the scaled input must reach it: these rows touch their limit at 100 times', () => {
     // If a probe stopped scaling its input, its value would fall back to the 1x value and the row would pass for no reason.
-    const touching = ['pay-scale', 'olympic-bonus', 'studio-tail', 'podcast-audience', 'fame-ledger', 'mint-caps', 'burn-caps', 'ledger-caps', 'pool-spreads', 'bond-par', 'transaction-levy', 'lod-caps', 'frontier-caps', 'waves-per-year']
+    const touching = ['pay-scale', 'olympic-bonus', 'studio-tail', 'podcast-audience', 'fame-ledger', 'mint-caps', 'burn-caps', 'ledger-caps', 'pool-spreads', 'bond-par', 'transaction-levy', 'lod-caps', 'frontier-caps', 'waves-per-year', 'met-caps', 'persona-nudge', 'edge-caps', 'memory-total', 'loan-cap', 'favor-callin', 'gossip-hops', 'feud-live', 'mentor-gain', 'people-reads', 'kin-caps', 'life-facts', 'life-path-scan', 'kin-estate', 'estate-debts', 'receivable-carry', 'divorce-debt', 'kept-contacts', 'strife-edges']
     for (const id of touching) {
       const p = CEILING_PROBES.find((x) => x.id === id)
       expect(p, id).toBeDefined()
-      const r = p!.run(100)
+      const r = measured(p!, 100)
       expect(r.value, `${id}: ${r.value} against ${r.limit}`).toBeGreaterThanOrEqual(r.limit * 0.999)
     }
   }, TIMEOUT)
@@ -133,6 +135,70 @@ describe('ceiling probes: the kit can fail', () => {
   it('names where the worst case was when the row says so', () => {
     const at: CeilingProbe = { id: 'extra.at', cap: 'a cap', run: () => ({ value: 3, limit: 2, at: 'country ng in 1950' }) }
     expect(probeFailures(at, [1])[0]).toContain('country ng in 1950')
+  })
+})
+
+describe('ceiling probes: the kit keeps what a row measured', () => {
+  // A row that counts its runs and answers with the number of the run, so a kept answer and a fresh one can be told apart.
+  const counted = (limit = 1000): { row: CeilingProbe; runs: () => number } => {
+    let n = 0
+    return { row: { id: 'extra.counted', cap: 'a cap', run: () => ({ value: ++n, limit }) }, runs: () => n }
+  }
+
+  it('hands back what probeFailures measured without running the row again', () => {
+    const { row, runs } = counted()
+    expect(probeFailures(row, [1, 10])).toEqual([])
+    expect(runs()).toBe(2)
+    expect(measured(row, 1).value).toBe(1)
+    expect(measured(row, 10).value).toBe(2)
+    expect(measured(row, 10).limit).toBe(1000)
+    expect(runs()).toBe(2)
+  })
+
+  it('runs a row that nothing has measured, once, and keeps the answer', () => {
+    const { row, runs } = counted()
+    expect(measured(row, 100).value).toBe(1)
+    expect(measured(row, 100).value).toBe(1)
+    expect(runs()).toBe(1)
+  })
+
+  it('runs the row again for a scale probeFailures did not measure', () => {
+    const { row, runs } = counted()
+    probeFailures(row, [1])
+    expect(measured(row, 100).value).toBe(2)
+    expect(runs()).toBe(2)
+  })
+
+  it('has probeFailures run the row fresh every time, so a row test never rests on an answer it did not just get', () => {
+    const { row, runs } = counted()
+    probeFailures(row, [1])
+    measured(row, 1)
+    probeFailures(row, [1])
+    expect(runs()).toBe(2)
+    expect(measured(row, 1).value).toBe(2)
+  })
+
+  it('still fails a row over its limit, and keeps its answer too', () => {
+    const { row } = counted(0)
+    expect(probeFailures(row, [1])).toHaveLength(1)
+    expect(measured(row, 1).value).toBe(1)
+  })
+
+  it('keeps nothing for a row that throws: asking again runs it again and it throws again', () => {
+    let calls = 0
+    const boom: CeilingProbe = { id: 'extra.boom', cap: 'a cap', run: () => { calls += 1; throw new Error('boom') } }
+    expect(probeFailures(boom, [1])).toHaveLength(1)
+    expect(() => measured(boom, 1)).toThrow('boom')
+    expect(() => measured(boom, 1)).toThrow('boom')
+    expect(calls).toBe(3)
+  })
+
+  it('keeps two rows that share an id apart', () => {
+    const a: CeilingProbe = { id: 'extra.same', cap: 'a cap', run: () => ({ value: 1, limit: 2 }) }
+    const b: CeilingProbe = { id: 'extra.same', cap: 'a cap', run: () => ({ value: 5, limit: 9 }) }
+    probeFailures(a, [1])
+    expect(measured(b, 1)).toEqual({ value: 5, limit: 9 })
+    expect(measured(a, 1)).toEqual({ value: 1, limit: 2 })
   })
 })
 

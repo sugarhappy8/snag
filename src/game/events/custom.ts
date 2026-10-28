@@ -400,7 +400,7 @@ const RULES: Rule[] = [
         return out(g, 'Rejected', `You don't have a partner, so you proposed to a stranger at ${where}. They said no, then asked ${g.year >= 1962 ? 'security' : 'a policeman'} to escort you away.`, `I proposed to a stranger at ${where}. It did not go well.`, { happiness: -6, craziness: 2 }, 'bad', '💔')
       }
       if (p.relation === 'spouse') {
-        addRelationship(p, randInt(g, 4, 8))
+        addRelationship(g, p, randInt(g, 4, 8))
         return out(g, 'Still yes', `You got down on one knee and proposed to your ${relTo(p)}, ${p.firstName}, all over again. ${p.firstName} laughed and said yes. Again.`, `I re-proposed to my ${relTo(p)}, ${p.firstName}.`, { happiness: 6 }, 'good', '💍')
       }
       if (p.relation === 'fiance') return out(g, 'Already engaged', `You and ${p.firstName} are already engaged! You spent the evening arguing about wedding colors instead.`, `I talked wedding plans with my ${relTo(p)}, ${p.firstName}.`, { happiness: 2 }, 'neutral', '💒')
@@ -408,12 +408,12 @@ const RULES: Rule[] = [
       if (chance(g, odds)) {
         p.relation = 'fiance'
         p.data.engagedAge = g.character.age
-        addRelationship(p, randInt(g, 6, 12))
+        addRelationship(g, p, randInt(g, 6, 12))
         count(g, 'engagements')
         remember(g, `Got engaged to ${p.firstName} ${p.lastName}.`)
         return out(g, ['Engaged!', 'They said yes!'], `You proposed to ${p.firstName} with a ring made from ${g.year >= 1960 ? 'a twist tie' : 'a piece of string'}. ${p.firstName} said YES! Time to start planning a wedding.`, `I proposed to ${p.firstName} and ${p.gender === 'male' ? 'he' : 'she'} said yes!`, { happiness: 15 }, 'good', '💍')
       }
-      addRelationship(p, -randInt(g, 8, 15))
+      addRelationship(g, p, -randInt(g, 8, 15))
       out(g, 'Not ready', `You proposed to ${p.firstName}, who said "I'm not ready for that." The ${cars(g) ? 'car ride' : 'walk'} home was very quiet.`, `I proposed to ${p.firstName} and got turned down.`, { happiness: -10 }, 'bad', '💔')
     },
   },
@@ -490,7 +490,7 @@ const RULES: Rule[] = [
       const target = namedPerson(g, a) ?? roleTarget(g, a)
       const won = chance(g, 0.35 + g.character.hidden.athleticism / 250)
       if (target && target.relation !== 'pet') {
-        addRelationship(target, -randInt(g, 15, 30))
+        addRelationship(g, target, -randInt(g, 15, 30))
         if (won) return out(g, 'Knockout', `You picked a fight with your ${relTo(target)}, ${target.firstName}, and won. You don't feel great about it.`, `I got into a fight with my ${relTo(target)}, ${target.firstName}.`, { karma: -6, happiness: 2, respect: 4 }, 'neutral', '👊')
         return out(g, 'Ouch', `You picked a fight with your ${relTo(target)}, ${target.firstName}, and lost badly.`, `I lost a fight with my ${relTo(target)}, ${target.firstName}.`, { health: -randInt(g, 5, 12), karma: -4, happiness: -5 }, 'bad', '🤕')
       }
@@ -644,7 +644,7 @@ const RULES: Rule[] = [
       const list = pets(g)
       if (!list.length) return out(g, 'Petless', "You don't have a pet, so you played with the neighbor's dog through the fence. It was the best part of your week.", "I played with the neighbor's dog.", { happiness: 3 }, 'good', '🐕')
       const p = pick(g, list)
-      addRelationship(p, randInt(g, 5, 10))
+      addRelationship(g, p, randInt(g, 5, 10))
       out(g, ['Good pet', 'Best friend'], `You spent the afternoon with your ${relTo(p)}, ${p.firstName}. ${p.firstName} could not have been happier.`, `I spent quality time with my ${relTo(p)}, ${p.firstName}.`, { happiness: 5 }, 'good', '🐾')
     },
   },
@@ -656,13 +656,13 @@ const RULES: Rule[] = [
       const p = currentPartner(g)
       if (!p) return out(g, 'Single', "You're not seeing anyone, so you broke up with your bad habits instead. You'll be back together by Friday.", null, {}, 'neutral', '💔')
       if (p.relation === 'spouse' || g.character.residence.status === 'partner') {
-        addRelationship(p, -randInt(g, 8, 15))
+        addRelationship(g, p, -randInt(g, 8, 15))
         return out(g, 'Serious talk', `You sat ${p.firstName} down for a serious talk about your future together. It got heated. (Ending things for good is done from the Relationships menu.)`, `I had a serious fight about our future with my ${relTo(p)}, ${p.firstName}.`, { happiness: -5 }, 'bad', '💔')
       }
       const name = `${p.firstName} ${p.lastName}`
       p.relation = 'ex'
       p.livesWithPlayer = false
-      addRelationship(p, -randInt(g, 15, 30))
+      addRelationship(g, p, -randInt(g, 15, 30))
       remember(g, `Broke up with ${name}.`)
       out(g, pickLine(g, ['Broken up', "It's over"]), pickSite(g, [`You broke up with ${p.firstName}. ${p.gender === 'male' ? 'He' : 'She'} threw your ${g.year >= 1975 ? 'hoodie' : 'sweater'} out the window.`, `You told ${p.firstName} it's not them, it's you. ${p.firstName} agreed it was you.`], 0x0cb9fc83), `I broke up with ${name}.`, { happiness: -4 }, 'neutral', '💔')
     },
@@ -674,7 +674,7 @@ const RULES: Rule[] = [
     run: (g) => {
       const p = currentPartner(g)
       if (p) {
-        addRelationship(p, randInt(g, 5, 10))
+        addRelationship(g, p, randInt(g, 5, 10))
         return out(g, ['Date night', 'Romance'], `You took ${p.firstName} out for a romantic evening. ${pickLine(g, ['You split a dessert the size of a hubcap.', 'You walked home holding hands.', 'You laughed until the restaurant asked you to leave.'])}`, `I had a romantic night out with ${p.firstName}.`, { happiness: 6 }, 'good', '💕')
       }
       if (inGradeSchool(g) && g.character.age < 16 && chance(g, 0.5)) return out(g, 'Crush', 'You worked up the courage to talk to your crush and said "you too" when they said "have a good weekend." Nailed it.', 'I tried talking to my crush and fumbled it.', { happiness: -2 }, 'neutral', '😳')
@@ -703,7 +703,7 @@ const RULES: Rule[] = [
       if (prank) count(g, 'pranks')
       else count(g, 'insults')
       if (p && p.relation !== 'pet') {
-        addRelationship(p, -randInt(g, prank ? 2 : 6, prank ? 8 : 14))
+        addRelationship(g, p, -randInt(g, prank ? 2 : 6, prank ? 8 : 14))
         return out(g, prank ? 'Gotcha!' : 'Ouch', prank ? `You pranked your ${relTo(p)}, ${p.firstName}, with ${pickLine(g, ['a whoopee cushion', 'plastic wrap on the toilet', 'salt in the sugar bowl', 'a fake spider'])}. ${p.firstName} was not amused.` : `You told your ${relTo(p)}, ${p.firstName}, exactly what you think of ${p.gender === 'male' ? 'him' : 'her'}. It did not go well.`, prank ? `I pranked my ${relTo(p)}, ${p.firstName}.` : `I insulted my ${relTo(p)}, ${p.firstName}.`, { happiness: prank ? 4 : 1, karma: -2 }, 'neutral', prank ? '😜' : '😤')
       }
       out(g, prank ? 'Prankster' : 'Hothead', prank ? 'You pulled a prank on a stranger. They chased you for two blocks.' : 'You yelled at a stranger for walking too slowly. They walked even slower.', prank ? 'I pranked a stranger.' : 'I yelled at a stranger.', { happiness: 2, karma: -2 }, 'neutral', prank ? '😜' : '😤')
@@ -719,15 +719,15 @@ const RULES: Rule[] = [
       const p = namedPerson(g, a) ?? roleTarget(g, a)
       if (!p) return generic(g, a)
       if (p.relation === 'pet') {
-        addRelationship(p, randInt(g, 4, 8))
+        addRelationship(g, p, randInt(g, 4, 8))
         return out(g, 'Good pet', `You spent time with your ${relTo(p)}, ${p.firstName}. Tail wags were had.`, `I spent time with my ${relTo(p)}, ${p.firstName}.`, { happiness: 4 }, 'good', '🐾')
       }
       if (inPrison(g) && !['cellmate'].includes(p.relation)) {
-        addRelationship(p, randInt(g, 2, 6))
+        addRelationship(g, p, randInt(g, 2, 6))
         return out(g, 'Collect call', `You made a collect call from prison to your ${relTo(p)}, ${p.firstName}. It was short, but it meant a lot.`, `I called my ${relTo(p)}, ${p.firstName}, from prison.`, { happiness: 4 }, 'good', '📞')
       }
       const sorry = has(a, /apologi[sz]e|forgive/)
-      addRelationship(p, sorry ? randInt(g, 6, 12) : randInt(g, 3, 8))
+      addRelationship(g, p, sorry ? randInt(g, 6, 12) : randInt(g, 3, 8))
       out(
         g,
         sorry ? 'Making amends' : ['Quality time', 'Family first'],

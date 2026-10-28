@@ -487,7 +487,7 @@ function completePurchase(g: GameState, l: EverydayListing, d: ItemDef, paidBy: 
   // Before smartphones, nobody took mirror selfies in the fitting room.
   const quip = pick(g, QUIPS[l.store]).replace('You took 40 mirror selfies. One was usable.', hasTech(g, 'smartphone') ? 'You took 40 mirror selfies. One was usable.' : 'You twirled in front of the mirror for ten minutes.')
   if (paidBy) {
-    addRelationship(paidBy, 1)
+    addRelationship(g, paidBy, 1)
     log(g, `My ${relationLabel(paidBy).toLowerCase()} bought me ${withArticle(l.name)}.`, 'good')
     notice(g, 'Yes!', `You begged and begged, and your ${relationLabel(paidBy).toLowerCase()} ${paidBy.firstName} finally bought you ${withArticle(l.name)} (${formatMoney(l.price)}). ${quip}`, { emoji: l.emoji, tone: 'good' })
   } else {
@@ -588,7 +588,7 @@ export function buyForChild(g: GameState, l: EverydayListing, childId: string): 
   markBought(g, l.id)
   count(g, 'purchases')
   count(g, 'giftsToKids')
-  addRelationship(kid, randInt(g, 5, 12))
+  addRelationship(g, kid, randInt(g, 5, 12))
   addPersonStat(kid, 'happiness', randInt(g, 4, 10))
   addStat(g, 'happiness', randInt(g, 2, 4))
   notePerson(kid, `Got ${withArticle(l.name)} from the player at age ${kid.age}.`)
@@ -1232,7 +1232,7 @@ export function useEverydayItem(g: GameState, assetId: string): void {
     const partner = g.people.find((p) => p.alive && (p.relation === 'spouse' || p.relation === 'partner' || p.relation === 'fiance'))
     const people = key === 'tandem' && partner ? [partner] : chance(g, 0.75) ? bringPeople(g, use.social) : []
     for (const p of people) {
-      addRelationship(p, randInt(g, 2, use.social + 2))
+      addRelationship(g, p, randInt(g, 2, use.social + 2))
       p.data.lastSeenAge = c.age
     }
     if (people.length) {
@@ -1433,7 +1433,7 @@ export function buyPetSupply(g: GameState, l: EverydayListing, petId: string): b
   markBought(g, l.id)
   count(g, 'purchases')
   const rel = l.price / safe(goodsMult(g))
-  addRelationship(pet, rel >= 1_000 ? randInt(g, 8, 14) : rel >= 100 ? randInt(g, 5, 10) : randInt(g, 3, 6))
+  addRelationship(g, pet, rel >= 1_000 ? randInt(g, 8, 14) : rel >= 100 ? randInt(g, 5, 10) : randInt(g, 3, 6))
   addStat(g, 'happiness', randInt(g, 1, 3))
   if (d.consumable) {
     if (/Supply/.test(d.name)) pet.data.premiumFoodYear = g.year
@@ -1615,7 +1615,7 @@ export function yearlyEveryday(g: GameState): void {
   for (const pet of livingPets(g)) {
     if (num(pet.data.premiumFoodYear) !== g.year - 1) continue
     addPersonStat(pet, 'health', randInt(g, 3, 7))
-    addRelationship(pet, randInt(g, 1, 3))
+    addRelationship(g, pet, randInt(g, 1, 3))
     delete pet.data.premiumFoodYear
   }
 }

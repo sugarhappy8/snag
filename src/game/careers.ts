@@ -1533,7 +1533,7 @@ const JOB_EVENT = defineScript('career.event', (g, choice, data) => {
     if (choice === 'yes') {
       const fun = chance(g, 0.6)
       addStat(g, 'happiness', fun ? 5 : -3)
-      for (const p of g.people) if (p.contextId === job.company && (p.relation === 'coworker' || p.relation === 'boss')) addRelationship(p, 3)
+      for (const p of g.people) if (p.contextId === job.company && (p.relation === 'coworker' || p.relation === 'boss')) addRelationship(g, p, 3)
       job.performance = Math.round(clamp(job.performance + 2))
       log(g, `I participated in ${activity} with my coworkers.`, 'neutral')
       notice(g, 'Team Building', fun ? `You joined your coworkers for ${activity}. It was actually fun!` : `You joined your coworkers for ${activity}. Two hours you'll never get back.`, { emoji: '\u{1F465}' })
@@ -1869,17 +1869,17 @@ function reportToHR(g: GameState, personId: string): void {
   if (roll < 0.35) {
     log(g, `I reported ${name} to HR. Nothing happened.`, 'neutral')
     notice(g, 'Human Resources', pickSite(g, [`You reported ${name} for ${gripe}. HR thanked you for your feedback and filed it directly into the shredder.`, `You reported ${name} for ${gripe}. HR said they'd "look into it." They did not look into it.`], 0x44827f67), { emoji: '\u{1F4C1}' })
-    if (chance(g, 0.4)) addRelationship(target, -10)
+    if (chance(g, 0.4)) addRelationship(g, target, -10)
     return
   }
   if (roll < 0.65) {
-    addRelationship(target, -randInt(g, 10, 20))
+    addRelationship(g, target, -randInt(g, 10, 20))
     log(g, `I reported ${name} to HR and they got a warning.`, 'neutral')
     notice(g, 'Human Resources', `You reported ${name} for ${gripe}. HR gave ${pronouns(target.gender).him} a formal warning. ${pronouns(target.gender).He} has been glaring at you over the cubicle wall ever since.`, { emoji: '\u{26A0}\u{FE0F}' })
     return
   }
   if (roll < 0.85) {
-    addRelationship(target, -randInt(g, 15, 25))
+    addRelationship(g, target, -randInt(g, 15, 25))
     // The pay that is docked goes back to the employers; the floor and the rounding are the ones the line always had.
     const docked = Math.max(0, Math.round(target.money - randInt(g, 200, 1500)))
     personCash(g, target, docked - target.money, 'wage', 0)
@@ -1902,7 +1902,7 @@ function reportToHR(g: GameState, personId: string): void {
     return
   }
   // Backfire: HR sides with them.
-  addRelationship(target, -25)
+  addRelationship(g, target, -25)
   job.performance = Math.round(clamp(job.performance - randInt(g, 4, 8)))
   addStat(g, 'happiness', -4)
   log(g, `I reported ${name} to HR and it backfired.`, 'bad')

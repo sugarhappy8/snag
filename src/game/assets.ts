@@ -997,7 +997,7 @@ export const moveBackHomeAction: MenuAction = {
     }
     const was = c.residence.status
     c.residence = { status: 'parents' }
-    addRelationship(parent, -3)
+    addRelationship(g, parent, -3)
     log(g, 'I moved back in with my parents.')
     notice(g, 'Back Home', `Your ${relationLabel(parent).toLowerCase()} ${parent.firstName} agreed to let you move back in.${was === 'renting' ? ' You ended your lease.' : ''} ${pickLine(g, ['Your old bedroom smells exactly the same.', 'House rules apply. Dinner is at 6.', 'They immediately asked when you plan to leave.'])}`, { emoji: '🏠' })
   },
@@ -2862,12 +2862,12 @@ export function giftAsset(g: GameState, assetId: string, personId: string): bool
   personCash(g, p, Math.round(p.money + a.value) - p.money, 'gift')
   let text: string
   if (a.kind === 'jewelry' && a.details.fake === true && chance(g, 0.45)) {
-    addRelationship(p, -randInt(g, 15, 30))
+    addRelationship(g, p, -randInt(g, 15, 30))
     text = `You gave ${p.firstName} your ${a.name.toLowerCase()}. ${p.firstName} had it appraised the next day. It's fake. ${pronounsOf(p).He} has not stopped bringing it up.`
     log(g, `I gave my ${relationLabel(p).toLowerCase()} ${p.firstName} fake jewelry and got caught.`, 'bad')
   } else {
     const delta = a.value >= 100_000 ? randInt(g, 25, 45) : a.value >= 5_000 ? randInt(g, 15, 30) : randInt(g, 5, 15)
-    addRelationship(p, delta)
+    addRelationship(g, p, delta)
     addHidden(g, 'karma', 3)
     text = `You gave your ${a.name.toLowerCase()} to your ${relationLabel(p).toLowerCase()} ${p.firstName}. ${eraPickPlain(g, [`${p.firstName} was speechless.`, `${p.firstName} hugged you so hard your back cracked.`, `${p.firstName} cried happy tears.`, `@socialMedia ${p.firstName} immediately posted about it online.`, `@!socialMedia ${p.firstName} immediately told the whole street.`])}`
     log(g, `I gave my ${a.name.toLowerCase()} to my ${relationLabel(p).toLowerCase()} ${p.firstName}.`, 'good')

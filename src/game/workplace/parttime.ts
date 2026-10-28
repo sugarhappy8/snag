@@ -170,7 +170,7 @@ export function yearlyPartTimeShift(g: GameState, suppliedJob: Job = g.character
         profile.completed = Math.min(10000, profile.completed + 1)
       }
       const boss = getPerson(g, job.bossId)
-      if (boss?.alive) addRelationship(boss, success ? plan.focus === 'customers' ? 3 : 1 : -2)
+      if (boss?.alive) addRelationship(g, boss, success ? plan.focus === 'customers' ? 3 : 1 : -2)
       const summary = success
         ? `${FOCUS[plan.focus].label}: your shifts were ${rating === 'excellent' ? 'excellent' : 'steady'}. Employer trust is ${state.trust}/100; transferable shift skill is ${profile.skill}/100.`
         : `${FOCUS[plan.focus].label}: missed expectations affected this year’s review. Employer trust is ${state.trust}/100; the next shift year is a fresh opportunity.`
