@@ -139,7 +139,7 @@ pixels was walked, not 320. The walk's play (always give, always the first choic
 player, so its happiness and cash aren't a balance reading. Outcome for `peopleProfile`: case 5 passed,
 so the flag ships on.
 
-## The net-worth drift: an open owner decision
+## The net-worth drift: accepted by the owner
 
 The rehearsal compared 200 seeds before and after the flip (CI runs 40470151509 and 40464717451: the
 release head with the flags off against the same head with them on). Odd seeds are birth lives played to
@@ -174,7 +174,8 @@ passed the hard cap of 1e13. The bisect (nothing was tuned) found this:
 - The probe can't see the hand-over (debts, receivables, the sibling's firm), loan menus or favors the
   player chooses, or the divorce debt and the legal fee, which fire in none of the 200 lives.
 
-The owner decides, and it's open. The options are:
+The owner accepted the drift on 2026-10-28 (option 1), so v5.3.0 ships it untuned and says so here. The
+options were:
 
 1. **Accept the drift and say so.** For it: the cause is a deliberate rule and no tuning knob, and the
    800-seed run shows no direction. New lives play differently from a relative's first death with cash,
@@ -184,8 +185,9 @@ The owner decides, and it's open. The options are:
 3. **Ship the cause dark.** All four sit behind `social`, but only all four off restore the 200 lives.
    L5 off alone leaves 13 birth lives moved and seven breaches.
 
-Whichever the owner picks, the gate needs a better measure than a 100-life percentile table: pooled
-seeds (12 more shards of 2 to 4 minutes) or a paired design with a measured noise band.
+The gate still needs a better measure than a 100-life percentile table: pooled seeds (12 more shards of
+2 to 4 minutes) or a paired design with a measured noise band. That is follow-up work, not part of this
+release.
 
 ## The fuzz verification
 
@@ -305,7 +307,8 @@ The calls that deserve an eye before merge and tag, each taken as the lead's def
 
 - Only new lives get the stamped behaviour (X6).
 - `peopleProfile` ships on because the walk's case 5 passed, and the walk didn't reach cases 3 and 4.
-- The balance drift above, and whether the numbers the planners invented deserve a review: the favor
+- The balance drift above is accepted (option 1, 2026-10-28). Still open: whether the numbers the
+  planners invented deserve a review: the favor
   rule (affection at least 50 and trust at least 40), the loan rate and debt cap, the feud start chance
   `0.10 + (s - 45) / 200` a year, the staff quit and poach formulas, the mentor cap and the legal fee.
 - A direct relative's feeling at the hand-over is a blend, not half (X33). If the owner wants the strict
