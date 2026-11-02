@@ -7,9 +7,10 @@ export default defineConfig({
   // Relative asset paths so the build works at any URL (Cloudflare root or a sub-path).
   base: './',
   plugins: [react()],
-  // One ~7.4 MB bundle (~2.5 MB gzipped; mostly event, job, history and invention text). This is an
+  // One ~7.6 MB bundle (~2.6 MB gzipped; mostly event, job, history and invention text). This is an
   // accepted trade-off for the self-contained game; meaningful code/data splitting is a separate project.
-  build: { chunkSizeWarningLimit: 8000 },
+  // No chunk size limit: the build never warns about the bundle's size, however far it grows.
+  build: { chunkSizeWarningLimit: Infinity },
   server: { port: 5173 },
   preview: { port: 4173 },
   // Whole-life and market sweeps are CPU-heavy. Bound default concurrency so
